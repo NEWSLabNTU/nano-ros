@@ -121,6 +121,20 @@ TIERS = ("Runtime", "BuildOnly", "CarveOut")
 CODE, STRING, COMMENT = 0, 1, 2
 
 
+def _char_literal_end(text: str, i: int) -> int:
+    """End (exclusive) of the char literal opening at `text[i] == "'"`, or `i`
+    when it opens none (a lifetime). `'x'` is one char; `'\\x'`, `'\\x22'` and
+    `'\\u{27}'` are escapes, whose closing quote is within a few characters."""
+    n = len(text)
+    if i + 2 < n and text[i + 1] != "\\" and text[i + 2] == "'":
+        return i + 3
+    if i + 1 < n and text[i + 1] == "\\":
+        j = text.find("'", i + 3)
+        if 0 < j <= i + 12:
+            return j + 1
+    return i
+
+
 def categorize(text: str) -> list[int]:
     """Per-character CODE / STRING / COMMENT for a Rust source fragment."""
     cat = [CODE] * len(text)
@@ -141,6 +155,17 @@ def categorize(text: str) -> list[int]:
                     break
                 i += 1
             continue
+        # A char literal is one token. Without this, the `"` of `'"'` opened a
+        # string that ran to the next `"` in the file, and everything between
+        # was read as non-code (issue 2873). A lifetime (`'a`, `'static`) has
+        # no closing quote two places on, so it stays code.
+        if text[i] == "'":
+            j = _char_literal_end(text, i)
+            if j > i:
+                for k in range(i, j):
+                    cat[k] = STRING
+                i = j
+                continue
         if text.startswith("//", i):
             j = text.find("\n", i)
             j = n if j < 0 else j
@@ -628,6 +653,19 @@ def self_test(verbose: bool = False) -> None:
     # A comment above a row must not become a row, and a `CarveOut` string
     # containing `ic(` must not open one either -- both are in _MINI_RS.
     assert len(cells) == 3, f"selftest: parsed {len(cells)} rows, expected 3"
+
+    # Issue 2873 -- char literals are one token, and a lifetime is code. The
+    # `"` inside `'"'` used to open a string that swallowed the rest.
+    for src in ("let q = '\"'; fn after() {}", "let q = '\\''; fn after() {}",
+                "let q = '\\x22'; fn after() {}", "let q = '\\u{27}'; fn after() {}"):
+        cat = categorize(src)
+        k = src.index("fn after")
+        assert cat[k] == CODE, f"selftest: {src!r} hid the code after its char literal"
+    src = "fn f<'a>(x: &'static str) -> &'a str { \"s\" }"
+    cat = categorize(src)
+    assert cat[src.index("static")] == CODE and cat[src.index("str {")] == CODE, \
+        "selftest: a lifetime was read as a char literal"
+    assert cat[src.index('"s"') + 1] == STRING, "selftest: the string after lifetimes"
 
     for bad, want in (
         ('pub const CELLS: &[InteropCell] = &[\n    ic("x", c(A,B,C,D,E,Runtime), F, G, H),\n];',
