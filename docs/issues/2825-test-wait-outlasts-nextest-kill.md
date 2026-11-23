@@ -5,7 +5,7 @@ status: open
 type: test-gap
 severity: medium
 area: [testing, ci]
-related: [issue-2105, issue-1013]
+related: [issue-2105, issue-1013, phase-590]
 found: 2026-11-22
 ---
 
