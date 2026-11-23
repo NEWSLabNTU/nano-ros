@@ -468,7 +468,7 @@ export ZEPHYR_TOOLCHAIN_VARIANT=zephyr
 # holding only a manifest file.
 #
 # The checkout is the CALLER's. RFC-0103 D6 (amended 2026-10-12): nothing
-# exports it any more — `nros` knows its own SDK root, and `just` derives it from
+# exports it any more — \`nros\` knows its own SDK root, and \`just\` derives it from
 # justfile_directory() for its own recipes — so this file names none and the
 # hint below spells the checkout as a placeholder.
 
