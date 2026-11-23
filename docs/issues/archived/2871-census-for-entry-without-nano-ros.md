@@ -82,9 +82,14 @@ for every image that does not.
   `owned/<bringup>/<image>.census.json`: the recorder schema version, no
   nodes, provenance naming the package's `CMakeLists.txt` and `src/` so a
   reader checks it fresh as for a taken one, and a `stated` line naming the
-  statement. A past `.not-taken` record is retired. The image is then sized
-  from a census-backed, empty inventory, the real empty answer, not issue
-  2806's refused counts.
+  statement, with its inputs by absolute path (the configure stamp checks a
+  census against the workspace, not the package). A past `.not-taken`
+  record is retired. The image is then sized from a census-backed inventory
+  marked empty BY STATEMENT, which derives instead of refusing: zero demand
+  from the program's own entities, plus the runtime's families the bringup's
+  features imply, as for any image. The real empty answer, neither issue
+  2806's "census not taken" refusals nor the "no components were registered"
+  refusal an empty inventory nobody stated still gets.
 - **Misuse is refused.** `runs_nano_ros = false` on an image that is not sized
   by an owned entry's census (a host image, a generated entry, or an entry
   in a bringup that declares `[[component]]` rows) is refused by the take and
