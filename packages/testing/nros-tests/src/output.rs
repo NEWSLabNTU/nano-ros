@@ -2434,7 +2434,8 @@ pub const CLOCK_FROM_PREFIX: &str = "nros: wall clock from ";
 pub const CLOCK_NONE_PREFIX: &str = "nros: no wall-clock source answered (";
 
 /// What the boot paid for the resolution, on the image's own clock:
-/// `nros: clock resolution took <n> ms` (`zephyr/nros_platform_zephyr_shims.c`).
+/// `nros: clock resolution took <n> ms` (`zephyr/nros_platform_zephyr_shims.c`, and
+/// the FreeRTOS port's boot point in `nros-platform-freertos`).
 pub const CLOCK_RESOLUTION_TOOK_PREFIX: &str = "nros: clock resolution took ";
 
 /// The milliseconds a [`CLOCK_RESOLUTION_TOOK_PREFIX`] line reports, or `None`
