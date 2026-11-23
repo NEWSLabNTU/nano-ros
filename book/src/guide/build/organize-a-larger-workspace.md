@@ -257,6 +257,14 @@ Reach for these in order, smallest first:
    `src/<image>_entry/` as a package you own. `nros build` then leaves it
    alone; delete the directory to go back to a generated one.
 
+An owned Zephyr entry still gets from `nros build` what the generated one
+wrote into its own `CMakeLists.txt`: the workspace's Zephyr modules
+(`ZEPHYR_EXTRA_MODULES`) and the workspace's `src/`, first, on
+`NROS_INTERFACE_SEARCH_PATH`, followed by any value you exported. Both ride
+the `west build` line, so a `find_package(<pkg>)` of a workspace message
+package resolves with no `set(NROS_INTERFACE_SEARCH_PATH ...)` in the
+entry. A `set()` of your own in the entry still replaces it.
+
 ## If it doesn't work
 
 - **`nros build` refuses a `system.toml`.** It sits beside a `Cargo.toml` or

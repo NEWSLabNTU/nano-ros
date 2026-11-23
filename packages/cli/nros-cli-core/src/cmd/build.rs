@@ -3145,6 +3145,11 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
                     {
                         resolved_opt.push(format!("-DNROS_OWNED_ENTRY={}", app.display()));
                     }
+                    // Issue 2876 -- and the workspace's interface packages,
+                    // the search path a generated app writes before its
+                    // `find_package(Zephyr)` (issue 2610). An owned entry's
+                    // CMakeLists is the user's, so it rides the west line.
+                    resolved_opt.extend(crate::cmd::configure::owned_interface_search_arg(&root));
                 }
                 // Issue 1867 -- the image's `nros` module is THIS checkout. The
                 // store workspace's manifest project carries none (issue 1258),
@@ -15460,6 +15465,83 @@ mod package_closure_tests {
             ]
         );
         assert_eq!(on_line, generated, "one module set for both carriers");
+    }
+
+    /// Issue 2876 -- ONE interface search path, two carriers. The generated
+    /// west app puts the workspace's `src/` first on
+    /// `NROS_INTERFACE_SEARCH_PATH` (`west_app` `interface_src`, issue 2610),
+    /// and the `-DNROS_INTERFACE_SEARCH_PATH` an OWNED entry gets on the west
+    /// line names the same directory first, then the caller's exported value,
+    /// the generated app's order. On main the owned line carried none.
+    #[test]
+    fn an_owned_west_entry_gets_the_interface_search_path_a_generated_app_gets() {
+        let td = tempfile::tempdir().unwrap();
+        let root = td.path();
+        let cmake = [("CMakeLists.txt", "")];
+        pkg(root, "zephyr_entry", &["talker_pkg", "demo_msgs"], &cmake);
+        pkg(root, "talker_pkg", &["std_msgs"], &cmake);
+        pkg(
+            root,
+            "demo_msgs",
+            &[],
+            &[("CMakeLists.txt", ""), ("msg/Ping.msg", "int32 a\n")],
+        );
+
+        let phys = |p: &Path| std::fs::canonicalize(p).unwrap();
+        let nodes = package_closure(root, ["talker_pkg"]).expect("closure");
+        let entry_dir = root.join("build/zephyr-zenoh/demo__zephyr_entry");
+        std::fs::create_dir_all(&entry_dir).unwrap();
+        let app = crate::builder::west_app::resolve_cmake(
+            root,
+            &entry_dir,
+            &root.join("src/demo_bringup"),
+            "zephyr",
+            None,
+            &std::collections::BTreeMap::new(),
+            None,
+            "zephyr",
+            &nodes,
+        )
+        .expect("resolves");
+        let generated = phys(&entry_dir.join(&app.cmake.as_ref().unwrap().interface_src));
+
+        let arg = crate::cmd::configure::owned_interface_search_arg(root).expect("an arg");
+        let value = arg
+            .strip_prefix("-DNROS_INTERFACE_SEARCH_PATH=")
+            .expect("the -D");
+        let mut roots = value.split(';');
+        assert_eq!(
+            roots.next().map(PathBuf::from),
+            Some(generated.clone()),
+            "the workspace's src/ first, as the generated app: {arg}"
+        );
+        assert_eq!(generated, phys(&root.join("src")));
+        let rest: Vec<&str> = roots.collect();
+        match crate::cmd::configure::user_interface_search_path() {
+            Some(user) if !user.is_empty() => {
+                assert_eq!(
+                    rest.join(";"),
+                    user.to_string_lossy(),
+                    "then the exported value"
+                )
+            }
+            _ => assert!(
+                rest.is_empty(),
+                "nothing after src/ when none is exported: {arg}"
+            ),
+        }
+    }
+
+    /// Issue 2876, the control -- a directory with no interface root (no
+    /// `src/<pkg>/package.xml`, no `package.xml`) gets no `-D`, rather than a
+    /// path that does not exist.
+    #[test]
+    fn a_directory_with_no_interface_root_gets_no_search_path_arg() {
+        let td = tempfile::tempdir().unwrap();
+        assert_eq!(
+            crate::cmd::configure::owned_interface_search_arg(td.path()),
+            None
+        );
     }
 
     /// Issue 2756 -- the closure is in BUILD order, not name order: a launched

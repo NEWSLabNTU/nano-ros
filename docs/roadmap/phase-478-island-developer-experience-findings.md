@@ -812,7 +812,7 @@ AN536) stay green.
 | the probe seeds launch values (C++ `declare_parameter` defaults kept, P3) | fixed on main, `a7574ca6eb` | issue 2640 ([phase-566](phase-566-probe-launch-seeds.md)); T4 |
 | Zephyr root adds packages in `<depend>` order (the Autoware add-once guards) | fixed; the island dropped the guards | issue 2756 |
 | owned west entry: deploy, workspace modules, nested bringup census, `os_config` base | fixed; used on `nano-ros-next` | issues 2861, 2862, 2864 |
-| owned west entry: `NROS_INTERFACE_SEARCH_PATH` (`asi_tests/asi_*_zephyr/CMakeLists.txt:39-40`) | NOT FILED until now | issue 2876, I36 |
+| owned west entry: `NROS_INTERFACE_SEARCH_PATH` (`asi_tests/asi_*_zephyr/CMakeLists.txt:39-40`) | fixed in nano-ros (2876 resolved); the island drops its lines next | issue 2876, I36 |
 | owned entry that never starts nano-ros on the host gets a census (`can_output_test_bringup` `[census] on_missing = "warn"`) | open, fix in flight (its fix branch, PR coming) | 2871 (`docs/issues/`; the fix archives it), I45 |
 | `nros run` `--forbid`, `--settle`, `--zephyr-workspace` | fixed; used on `nano-ros-next` | issue 2863 |
 | the Zephyr workspace ladder skips the project's west workspace (`run-zephyr-fvp-ci.sh:202-213`, `--zephyr-workspace` on every call) | NOT FILED until now | issue 2877, I37 |
@@ -836,12 +836,15 @@ AN536) stay green.
 
 ### I36 -- an owned west entry gets the workspace's interface search path
 
-- **Issue:** [2876](../issues/2876-owned-west-entry-no-interface-search-path.md).
+- **Issue:** [2876](../issues/archived/2876-owned-west-entry-no-interface-search-path.md).
 - **What:** the owned entry configures with the workspace's `src/` on
   `NROS_INTERFACE_SEARCH_PATH`, as a generated app does.
 - **Acceptance:** 2876's (fixture with no line in its CMakeLists; owned and
   generated carriers held to one search path); the island deletes the three
   `set(NROS_INTERFACE_SEARCH_PATH ...)` lines.
+- **Status:** the nano-ros half is done: `nros build` passes the search path
+  on the owned entry's west line (issue 2876, resolved). The island's
+  deletion waits on its pin.
 
 ### I37 -- the Zephyr ladder finds the project's west workspace
 
@@ -1190,7 +1193,7 @@ Filed from the island port's inventory (its phase 15 on `nano-ros-next`
 `f6c8bef`, nano-ros pin `8d4e70a382`), or taken here as island-shaped and
 unowned.
 
-- [issue 2876](../issues/2876-owned-west-entry-no-interface-search-path.md): an owned Zephyr west entry gets no workspace `NROS_INTERFACE_SEARCH_PATH` (I36).
+- [issue 2876](../issues/archived/2876-owned-west-entry-no-interface-search-path.md): an owned Zephyr west entry gets no workspace `NROS_INTERFACE_SEARCH_PATH` (I36).
 - [issue 2877](../issues/2877-zephyr-workspace-ladder-skips-project-west-workspace.md): the Zephyr workspace ladder never looks at the project's own west workspace (I37).
 - [issue 2878](../issues/2878-zephyr-tracing-custom-backend-patch.md): Zephyr 3.7 cannot select an out-of-tree tracing backend; the island carries the patch (I38).
 - [issue 2879](../issues/2879-s32z270-rtu0-zephyr-no-board-network.md): `s32z270-rtu0-zephyr` declares no `[board.net]`, and no VLAN or second interface renders (I39).

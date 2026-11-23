@@ -7,6 +7,7 @@
   <license>Apache-2.0</license>
   <depend>std_msgs</depend>
   <depend>support_pkg</depend>
+  <depend>demo_msgs</depend>
   <exec_depend>talker_pkg</exec_depend>
   <export>
     <build_type>nros_cmake</build_type>

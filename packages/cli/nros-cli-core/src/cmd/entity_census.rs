@@ -1733,15 +1733,7 @@ fn write_zephyr_census_stub(build: &Path) -> Result<PathBuf> {
 /// value. A program outside any workspace (a standalone leaf) gets nothing.
 fn census_interface_search_arg(src: &Path) -> Option<String> {
     let ws = crate::cmd::image_facts::workspace_root_from(src)?;
-    let ws_src = crate::cmd::ws::interface_search_root(&ws).ok()?;
-    let mut search = ws_src.display().to_string();
-    if let Some(user) = crate::cmd::configure::user_interface_search_path()
-        && !user.is_empty()
-    {
-        search.push(';');
-        search.push_str(&user.to_string_lossy());
-    }
-    Some(format!("-DNROS_INTERFACE_SEARCH_PATH={search}"))
+    crate::cmd::configure::owned_interface_search_arg(&ws)
 }
 
 /// Issue 1556 item 4 -- `take --leaf`: the census of a standalone C/C++ leaf.

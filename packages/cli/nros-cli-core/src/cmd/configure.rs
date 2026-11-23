@@ -972,6 +972,26 @@ pub(crate) fn interface_search_path_for(project: &Path) -> Option<std::ffi::OsSt
         .or_else(|| default_interface_search_path(project))
 }
 
+/// Issues 2805 and 2876 -- the `-DNROS_INTERFACE_SEARCH_PATH=` a build of an
+/// OWNED program inside workspace `ws` passes: the workspace's `src/` first,
+/// then the caller's exported value. The layering a generated CMake root and
+/// a generated west application write into their own CMakeLists
+/// (`cmake_root::interface_search_path_cmake`), as one `-D`, for the two
+/// carriers whose CMakeLists `nros build` does not write: the host census
+/// build of an owned program (2805) and an owned west entry's west line
+/// (2876). `None` when `ws` has no interface root.
+pub(crate) fn owned_interface_search_arg(ws: &Path) -> Option<String> {
+    let ws_src = ws::interface_search_root(ws).ok()?;
+    let mut search = ws_src.display().to_string();
+    if let Some(user) = user_interface_search_path()
+        && !user.is_empty()
+    {
+        search.push(';');
+        search.push_str(&user.to_string_lossy());
+    }
+    Some(format!("-DNROS_INTERFACE_SEARCH_PATH={search}"))
+}
+
 #[cfg(test)]
 mod tests {
 
