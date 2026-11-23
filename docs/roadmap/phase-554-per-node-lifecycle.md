@@ -326,7 +326,12 @@ Acceptance:
 
 ### W5 — DDS backends and the derived pools (D7)
 
-Status: OPEN.
+Status: OPEN. Next, ahead of W7 (manager ruling 2026-11-24): two managed nodes
+on Zephyr XRCE do not boot, because each machine boxes 44,200 bytes of service
+servers on a heap whose default does not count them
+([issue 2919](../issues/2919-zephyr-xrce-heap-ignores-managed-node-count.md)).
+Its heap derivation is in PR #4569; sizing those buffers for lifecycle
+messages is this item.
 
 - **Cyclone and XRCE:** each managed node gets its own five service reader and
   writer pairs and its `transition_event` writer (cost accepted, ruled
