@@ -6,7 +6,7 @@ type: bug
 severity: low
 area: [zephyr, testing, logging]
 found: 2026-11-23
-related: [2825, 2815]
+related: [2825, 2815, phase-590]
 ---
 
 ## What happens
