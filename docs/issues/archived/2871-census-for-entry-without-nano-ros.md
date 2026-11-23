@@ -89,7 +89,10 @@ for every image that does not.
   from the program's own entities, plus the runtime's families the bringup's
   features imply, as for any image. The real empty answer, neither issue
   2806's "census not taken" refusals nor the "no components were registered"
-  refusal an empty inventory nobody stated still gets.
+  refusal an empty inventory nobody stated still gets. A derived zero is
+  demand, floored at the pool: `nros-rmw-cffi` floors a derived
+  `node_count` of zero at one, the smallest legal size of its node table
+  (an explicit `NROS_RMW_MAX_NODES` is still range-checked as written).
 - **Misuse is refused.** `runs_nano_ros = false` on an image that is not sized
   by an owned entry's census (a host image, a generated entry, or an entry
   in a bringup that declares `[[component]]` rows) is refused by the take and

@@ -179,9 +179,16 @@ fn emit_max_backends(rungs: &RmwKnobs, sizing: Option<&SizingDescriptor>) {
     // Default 4, matching `nros-node`'s `NROS_EXECUTOR_MAX_NODES`: the shim
     // cannot see more nodes than the executor will register. phase-454 W6.e —
     // and now they read ONE count rather than two equal literals.
-    let node_rung = rungs
-        .max_nodes
-        .or_else(|| sizing.and_then(|d| derived_rung(&d.image.node_count(), "node_count", 4)));
+    // Issue 2871 -- a DERIVED count is demand, published unfloored, and an
+    // image that states its program creates nothing (`runs_nano_ros = false`)
+    // demands zero nodes. Zero is not a legal size for this table, so the
+    // floor of one is applied here, at the pool; an explicit knob is still
+    // range-checked as written.
+    let node_rung = rungs.max_nodes.or_else(|| {
+        sizing
+            .and_then(|d| derived_rung(&d.image.node_count(), "node_count", 4))
+            .map(|n| n.max(1))
+    });
     let nodes = knob("NROS_RMW_MAX_NODES", node_rung, 4);
     if !(1..=64).contains(&nodes) {
         panic!(
