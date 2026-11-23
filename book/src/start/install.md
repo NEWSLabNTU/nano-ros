@@ -221,10 +221,10 @@ To move a version a project's lock records, run `nros update`.
 
 With completion on, `<Tab>` completes `nros` verbs and flags, and the names
 they take: `nros board show <Tab>` lists the board keys, and `nros rmw show
-<Tab>` the RMWs. Ask `nros` for the line your shell needs:
+<Tab>` the RMWs. Ask `nros` for the line your shell needs, naming the shell:
 
 ```sh probe=27 track=installed
-nros completions
+nros completions bash
 ```
 
 It prints the line, and the file to add it to:
@@ -234,10 +234,11 @@ It prints the line, and the file to add it to:
 source <(COMPLETE=bash nros)
 ```
 
-Add that line to the file it names, then open a new terminal. The line is for
-the shell `$SHELL` names; for another, name it: `nros completions zsh`,
-`fish` or `powershell`. In zsh, the line goes after `compinit`. The installer
-and the first `nros setup` print the same line.
+Add that line to the file it names, then open a new terminal. For another
+shell, name it instead: `nros completions zsh`, `fish` or `powershell`. With
+no name, `nros completions` uses the shell `$SHELL` names. In zsh, the line
+goes after `compinit`. The installer and the first `nros setup` print the
+same line.
 
 ## If it doesn't work
 
