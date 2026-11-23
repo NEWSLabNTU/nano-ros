@@ -52,3 +52,14 @@ not.
 - The `[[drift]]` row is re-measured. A fall is only a note under issue 2400
   Ruling (C), so the drift check will not prompt this re-measure. If the walk comes within reach of the shipped stack, the
   row becomes an `[[observed]]` row with a measured peak.
+
+## Progress (2026-11-23): deferred behind #4693
+
+The likely home of the 169 untyped sites, C compiled by cargo build scripts
+(zenoh-pico through `zpico-sys`, the platform shims), is what #4693 (issue
+2658) types: it routes every build-script C compile through one wrapper that
+writes `compile_commands.json`. On the FreeRTOS C talker drift row it moved the
+walk -21 % and re-records that row. So this issue waits for #4693 to land, then
+continues on top of it: a walker listing of the remaining untyped sites by TU
+(the first acceptance item), typing or a reason for each, and a re-measure of
+the `[[drift]]` row. Ruled with the manager; not started before then.
