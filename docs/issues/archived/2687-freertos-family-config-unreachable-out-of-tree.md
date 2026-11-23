@@ -8,7 +8,7 @@ area: [boards, freertos, build]
 related: [phase-577, phase-575]
 found: 2026-11-18
 resolved: 2026-11-23
-resolved_in: "this PR: one always-present family include dir (nros_freertos_family_*.h) on both roads"
+resolved_in: "#4706: one always-present family include dir (nros_freertos_family_*.h) on both roads"
 ---
 
 **Home: phase-577** (RFC-0135, board packages; its doc lands with PR #4177).
