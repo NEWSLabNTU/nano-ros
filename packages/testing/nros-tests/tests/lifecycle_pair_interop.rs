@@ -180,7 +180,7 @@ impl Echo {
         let _ = self.child.wait();
         out.lines()
             .filter_map(|l| l.trim().strip_prefix("data:"))
-            .map(|d| d.trim().trim_matches('\'').trim_matches('\x22').to_string())
+            .map(|d| d.trim().trim_matches('\'').trim_matches('"').to_string())
             .collect()
     }
 }
