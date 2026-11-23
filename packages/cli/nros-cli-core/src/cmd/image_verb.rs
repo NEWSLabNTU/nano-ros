@@ -683,7 +683,9 @@ pub fn planned_endpoints(m: &ros_launch_manifest_model::SystemModel) -> Vec<Plan
 
 /// The topics, services and actions an image's sizing descriptor records.
 /// The configure probe records the image's own endpoints, not which node
-/// holds each, so the image stands on its side.
+/// holds each, so the image stands on its side. A hidden name (a segment
+/// that starts with `_`, such as an action's `<action>/_action/feedback`) is
+/// left out, as `ros2 topic list` leaves it out.
 pub fn descriptor_endpoints(
     image: &str,
     desc: &nros_sizing_descriptor::SizingDescriptor,
@@ -692,6 +694,9 @@ pub fn descriptor_endpoints(
     let side = vec![format!("image {image}")];
     let mut out: Vec<PlannedEndpoint> = Vec::new();
     for e in &desc.endpoints {
+        if is_hidden(&e.topic) {
+            continue;
+        }
         let (kind, provides) = match e.kind {
             K::Publisher => ("topic", true),
             K::Subscription => ("topic", false),
@@ -725,6 +730,12 @@ pub fn descriptor_endpoints(
         }
     }
     out
+}
+
+/// A ROS name ROS 2's tools hide by default: one with a segment that starts
+/// with `_`.
+fn is_hidden(name: &str) -> bool {
+    name.split('/').any(|s| s.starts_with('_'))
 }
 
 /// The plan's rows, then each descriptor row the plan does not wire, in
@@ -1033,13 +1044,17 @@ mod tests {
         let desc = nros_sizing_descriptor::parse(
             "schema_version = 3\n\n[meta]\nentry = \"e\"\nstatus = \"derived\"\nbasis = \
              \"contract\"\n\n[[endpoint]]\nkind = \"publisher\"\ntype = \
+             \"action_msgs/msg/GoalStatusArray\"\ntopic = \
+             \"/fibonacci/_action/status\"\n\n[[endpoint]]\nkind = \"publisher\"\ntype = \
              \"std_msgs/msg/String\"\ntopic = \"/chatter\"\n\n[[endpoint]]\nkind = \
              \"service_server\"\ntype = \"std_srvs/srv/Empty\"\ntopic = \"/reset\"\n",
             Path::new("e.toml"),
         )
         .unwrap();
+        // The action's hidden `_action` topic is left out, as ROS 2 hides it.
         let recorded = descriptor_endpoints("linux", &desc);
         assert_eq!(recorded.len(), 2);
+        assert_eq!(recorded[0].name, "/chatter");
         assert_eq!(recorded[0].providers, ["image linux"]);
         assert!(recorded[0].users.is_empty());
 
