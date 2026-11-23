@@ -961,6 +961,23 @@ image = "linux_talker"
 codegen_out = "build-workspace-codegen/pubsub_bringup"
 build_subdir = "build/posix-zenoh-linux-pubsub_bringup-linux_talker/cmake"
 
+# Issue 2841 -- the `clock-board` configuration of the C linux talker:
+# `[knobs.clock] source = "board"`, with `clock_board_pkg` as the stub board
+# whose hook answers a fixed instant. The stated knob gives the image its own
+# configure (`-cfg<hash>`), which builds the image only, never the components'
+# own executables. `matrix::Config::ClockBoard` cell; `tests/linux_board_clock.rs`
+# runs it.
+[[workspace_fixture]]
+id = "workspace-c-native-talker-clock-board"
+platform = "linux"
+lang = "c"
+rmw = "zenoh"
+dir = "examples/workspaces/c"
+bringup = "src/pubsub_bringup"
+image = "linux_talker_clock_board"
+codegen_out = "build-workspace-codegen/pubsub_bringup"
+build_subdir = "build/posix-zenoh-linux-cfgf58aa09f66-pubsub_bringup-linux_talker_clock_board/cmake"
+
 [[workspace_fixture]]
 id = "workspace-c-native-talker-xrce"
 platform = "linux"
