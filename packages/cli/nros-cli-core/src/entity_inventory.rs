@@ -867,6 +867,11 @@ pub struct EntityInventory {
     /// `nros-metadata.json` path.
     pub source: String,
     components: Vec<ComponentEntities>,
+    /// Issue 2871 -- the image STATES that its program creates nothing
+    /// (`runs_nano_ros = false` on an owned entry, whose census is then empty
+    /// by statement), so no components is the answer and every count derives
+    /// as zero demand instead of refusing as "nothing registered".
+    stated_empty: bool,
     /// Issue 1270 -- the runtime's own service families, when the bringup
     /// declares them. Default (none) for an inventory built from
     /// `nros-metadata.json` alone, which carries no bringup features.
@@ -3663,6 +3668,7 @@ impl EntityInventory {
         Self {
             source: source.into(),
             components: Vec::new(),
+            stated_empty: false,
             infra: InfraServices::default(),
             params: ParamDeclarations::Absent,
             sched_tasks: 0,
@@ -3680,6 +3686,13 @@ impl EntityInventory {
             param_prose: ParamProse::NotConsulted,
             recorded_params: None,
         }
+    }
+
+    /// Issue 2871 -- mark this inventory empty BY STATEMENT: its image's
+    /// program creates no entity, so it derives zero demand for every count
+    /// rather than refusing for want of a component.
+    pub fn set_stated_empty(&mut self) {
+        self.stated_empty = true;
     }
 
     /// phase-517 W5 -- who stated this inventory's rows. See [`StatedBy`].
@@ -5134,7 +5147,10 @@ impl EntityInventory {
                 ),
             };
         }
-        if self.components.is_empty() {
+        // Issue 2871 -- unless the image stated that it creates nothing: then
+        // empty is the answer, and every pool below derives zero demand (the
+        // floors sit at the pools, see the comment on the demand below).
+        if self.components.is_empty() && !self.stated_empty {
             return Derivation::Refused {
                 reason: "no components were registered in this image, so there is nothing to \
                          compose. `nano_ros_node_register()` is what puts a component here."

@@ -1480,6 +1480,15 @@ fn runs_nano_ros_misplaced(asked_q: &str, bringup_dir: &Path) -> eyre::Report {
     )
 }
 
+/// Issue 2871 -- whether the census at `path` was recorded by statement
+/// (`runs_nano_ros = false`) rather than taken.
+pub(crate) fn census_is_stated(path: &Path) -> bool {
+    std::fs::read_to_string(path)
+        .ok()
+        .and_then(|raw| serde_json::from_str::<serde_json::Value>(&raw).ok())
+        .is_some_and(|doc| doc.get("stated").is_some_and(serde_json::Value::is_string))
+}
+
 /// Issue 2871 (option (a), ruled 2026-11-23) -- record the EMPTY census of an
 /// owned entry whose image states `runs_nano_ros = false`, without building
 /// or running its program.
@@ -4886,7 +4895,27 @@ executable=prog_b=/b/b
                 .unwrap();
         assert!(decl.census_backed);
         assert!(decl.census_refused.is_none(), "{:?}", decl.census_refused);
-        assert!(decl.inventory.expect("an inventory").is_empty());
+        let inventory = decl.inventory.expect("an inventory");
+        assert!(inventory.is_empty());
+        // The real empty answer: every count derives, with zero demand from
+        // the program itself (what the runtime's own families add, from the
+        // bringup's features, is counted as for any image), where an empty
+        // inventory nobody stated refuses ("no components were registered").
+        match inventory.derive() {
+            crate::entity_inventory::Derivation::Derived(k) => {
+                assert_eq!(k.entity_total, 0, "{k:?}");
+                assert_eq!(k.max_nodes, 0, "{k:?}");
+                assert!(k.per_component.is_empty(), "{k:?}");
+                assert!(k.per_kind.values().all(|n| *n == 0), "{k:?}");
+            }
+            crate::entity_inventory::Derivation::Refused { reason } => {
+                panic!("a stated empty census refused its counts: {reason}")
+            }
+        }
+        assert!(matches!(
+            crate::entity_inventory::EntityInventory::new("unstated").derive(),
+            crate::entity_inventory::Derivation::Refused { .. }
+        ));
 
         // A second configure rewrites nothing: the census and its digest keep
         // their bytes.

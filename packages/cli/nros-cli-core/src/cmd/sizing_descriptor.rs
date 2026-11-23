@@ -1112,6 +1112,11 @@ fn owned_program_inventory(
         )
     })?;
     let mut inventory = EntityInventory::new(census.display().to_string());
+    // Issue 2871 -- a census recorded empty by `runs_nano_ros = false` is the
+    // image's statement that it creates nothing, so its counts are zero.
+    if nodes.is_empty() && crate::cmd::entity_census::census_is_stated(census) {
+        inventory.set_stated_empty();
+    }
     let node_count = nodes.len();
     for (node, decls) in nodes {
         inventory.insert(ComponentEntities {
