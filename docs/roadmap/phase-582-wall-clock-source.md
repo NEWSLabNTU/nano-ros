@@ -350,5 +350,10 @@ SNTP never re-acquires. A consumer's board hook papers over that with
   re-sync interval runs on guest time, so on an FVP racing an idle guest a
   10 s interval re-queries several times a real second. A ruling on D5's
   "image monotonic time" wording, possibly a knob (phase-478 I44).
+- [Issue 2897](../issues/2897-a53-stack-walk-refuses-aarch64-builtins.md):
+  the stack-floor walk refuses every root on a 64-bit Arm Zephyr image (no
+  aarch64 libgcc builtins row, no arm64 arch-entry frames), so W3's SNTP
+  re-sync thread has no measured 64-bit floor yet; its 8,192 B default rests
+  on the consumer's measured peak (in flight on #4632).
 
 - phase-575 W6: the shape was first agreed there; the design moved here.
