@@ -30,7 +30,8 @@ Take it: nros dev image entity-census take --image talker_bringup:zephyr
 ```
 
 On the self-hosted tier-1/tier-2 runner both rows failed this way (post-submit
-run 45129078867 at `ed2a1070a9`, `zephyr.log` of `build-test-fixtures`). The
+run 45129078867 on main after PR #4646, `zephyr.log` of
+`build-test-fixtures`). The
 run's `build/census-prepass` logs name neither fixture.
 
 ## Root cause
