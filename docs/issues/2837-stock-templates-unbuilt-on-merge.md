@@ -23,7 +23,7 @@ region `RAM' overflowed by 77440 bytes
 ```
 
 The stamped main stack is 77,728 B. Sizing it from the measured peak (the
-user's ruling, #4616) leaves the image about 33 KB over, so something else in
+user's ruling, #4617) leaves the image about 33 KB over, so something else in
 it has grown. The fix belongs to nros 175's batch beside issue 2772. This
 issue is about why nothing noticed: a user's first `nros build` of a stock
 template was the first build it got.
