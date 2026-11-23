@@ -1,7 +1,7 @@
 ---
 id: 2885
 title: "Tier 1 and tier 2 cannot build their linux fixtures: `features/demo_bringup`'s configure refuses to size its parameter store"
-status: open
+status: resolved
 type: bug
 area: [fixtures, params, ci]
 severity: high
@@ -38,4 +38,13 @@ before fixing.
 ## Acceptance
 
 `just build tier1` and `just build tier2-nightly` pass their linux stage in a scheduled
-`run-matrix` run. A release blocker: [phase-590](../roadmap/phase-590-nros12-release-plan.md) W1.
+`run-matrix` run. A release blocker: [phase-590](../../roadmap/phase-590-nros12-release-plan.md) W1.
+
+## Resolution
+
+Gone after issue 2702's per-image configure (`2a83e9aa61`). Reproduced on 2026-11-23 with
+`just build-test-fixtures lane=linux` on a tree based on main `b61082063c` (plus the lane-argument
+fix that issue 2893 now carries): the linux stage exits 0 and no configure prints "the parameter
+store cannot be sized". The linux lane is the stage `just build tier1` and
+`just build tier2-nightly` both stopped in. The scheduled `run-matrix` run is the remaining
+confirmation.

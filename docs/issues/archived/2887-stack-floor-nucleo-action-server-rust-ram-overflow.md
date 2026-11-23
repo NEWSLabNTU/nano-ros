@@ -1,7 +1,7 @@
 ---
 id: 2887
 title: "The stack-floor drift row for the Rust action server on nucleo-f767zi-zephyr no longer links: RAM overflows by 77,440 bytes"
-status: open
+status: resolved
 type: bug
 area: [stack-floor, zephyr, memory]
 severity: high
@@ -37,4 +37,10 @@ Same family as issue 2772 (nucleo parameter-service heap overflowing RAM).
 ## Acceptance
 
 The row links and is walked in a scheduled nightly, or it is retired with a reason. A release
-blocker: [phase-590](../roadmap/phase-590-nros12-release-plan.md) W1.
+blocker: [phase-590](../../roadmap/phase-590-nros12-release-plan.md) W1.
+
+## Resolution
+
+Fixed on main by `617e65bd94` and `ba2fca6ee4`. The 2026-11-23 nightly (run 45115997343) links
+the row and walks it at 90,708 B against the recorded 103,240 B; it reads NOT VERIFIED only for
+the toolchain, not for the image.
