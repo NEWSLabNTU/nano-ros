@@ -1,7 +1,7 @@
 # Phase 590 -- the next release past nros11 (0.6.0-nros12): plan
 
 **Status (2026-11-23). OPEN: plan approved by the user (blockers first); W1 live, tracked below. The date stays tentative and the user confirms before the cut and before publish. No tag, no publish, no
-dispatch with `publish=true` until the user names the day.** Tracks issue 2882 (filed in the
+dispatch with `publish=true` until the user names the day.** Tracks [issue 2882](../issues/2882-nros12-release-for-consumers.md) (filed in the
 phase-478 batch as item I42 of
 [phase-478](phase-478-island-developer-experience-findings.md)); release rules are
 [phase-567](archived/phase-567-regression-prevention.md) W1-W3, as AGENTS.md

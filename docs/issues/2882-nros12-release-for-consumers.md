@@ -5,7 +5,7 @@ status: open
 type: chore
 severity: medium
 area: [release, cli]
-related: [phase-478, 2645, 2770, 2771, phase-567]
+related: [phase-478, 2645, 2770, 2771, phase-567, phase-590]
 found: 2026-11-23
 ---
 
