@@ -121,9 +121,11 @@ With this fix's module in place, a bare `cmake <dir>` on two of those dirs:
 - A live `-DCONFIG_NROS_ZENOH_LOCATOR=…` on the same dir was still refused
   (rc=1).
 
-One residue is out of scope here: a refused live `-DCONFIG_<retired>` stays in
-the cache as `CONFIG_<SYM>:UNINITIALIZED`, because the configure aborts before
-`kconfig.cmake` moves it. Every later bare configure therefore reads it as
-live and refuses again, until the user runs `cmake -U CONFIG_<SYM> <dir>`.
-That user did pass the setting once, so the refusal is honest, but it does not
-name that remedy.
+That check found one residue, which a follow-up commit in the same change
+fixes. A refused live `-DCONFIG_<retired>` stayed in the cache as
+`CONFIG_<SYM>:UNINITIALIZED`, because the configure aborts before
+`kconfig.cmake` moves it. Every later bare configure therefore read it as live
+and refused again, until a `cmake -U CONFIG_<SYM> <dir>` that the message
+never named. Both refusals (retired and knob) now unset the symbols they read
+from the cache before stopping, so a refusal applies only to the configure
+that passed the value. Case H covers it.
