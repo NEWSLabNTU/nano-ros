@@ -2047,6 +2047,8 @@ pub(crate) fn take_owned_census(
             // issue 2433: owned entries on a cross board are census-sized.
             explicit: " (an owned entry on a cross board)",
             per_program: Some(&|exe| owned_program_census_path(root, bringup, image, exe)),
+            // Issue 2871 -- the remedy for a program that never initialises
+            // nano-ros is `runs_nano_ros = false`, named below.
             run_failure: &|| {
                 format!(
                     "`{q}`: the census RUN of the owned entry `{pkg_name}`'s host build failed \
@@ -2054,7 +2056,7 @@ pub(crate) fn take_owned_census(
                      records the ROS entities it registers, so its `main` has to reach its first \
                      blocking call there. A program that never initialises nano-ros has no \
                      census to write: state `runs_nano_ros = false` under `[image.{image}]` and \
-                     its census is recorded empty without running it (issue 2871)."
+                     its census is recorded empty without running it."
                 )
             },
         },
