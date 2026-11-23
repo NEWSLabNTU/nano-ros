@@ -16,7 +16,8 @@
 #      no count or zero nodes derives nothing (the caller falls back to 112 KiB),
 #      one node derives exactly 112 KiB (a one-node image does not grow), four
 #      nodes derive 112 KiB + 3 x 49,152, and a stated buffer scales the
-#      per-node term.
+#      per-node term. An XRCE image's second lifecycle machine carries the
+#      measured XRCE remainder on top of its buffers (issue 2780).
 set -euo pipefail
 repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 mkdir -p "$repo/tmp"
@@ -46,7 +47,7 @@ done
 need "the generated Kconfig does not carry the derive sentinel" \
     zephyr/Kconfig 'default -1 if NROS_CAPABILITY_PARAM_SERVICES'
 need "the resolver does not price the heap from the node count" \
-    zephyr/cmake/nros_cargo_build.cmake '_nros_zephyr_heap_floor("${_nros_heap_base}" "${_nros_heap_buf}"'
+    zephyr/cmake/nros_cargo_build.cmake '_nros_zephyr_heap_floor("${_nros_heap_base}" "${_nros_heap_buf}" "${CONFIG_NROS_RMW_XRCE}"'
 need "the resolver lost the one-node fallback" \
     zephyr/cmake/nros_cargo_build.cmake '_nros_resolve_knob(NROS_MEMORY_HEAP_BYTES "${_nros_heap_base}" default)'
 need "the Rust lane no longer receives the configure-decided heap" \
@@ -65,14 +66,15 @@ selftest() {
     printf '%s\n' \
         "include(\"$repo/zephyr/cmake/nros_heap_floor.cmake\")" \
         '_nros_zephyr_heap_class_base("${LC}" "${PARAMS}" _b)' \
-        '_nros_zephyr_heap_floor("${_b}" "${BUF}" _f _c)' \
+        '_nros_zephyr_heap_floor("${_b}" "${BUF}" "${XRCE}" _f _c)' \
         'message("BASE=[${_b}] FLOOR=[${_f}]")' > "$probe"
-    case_() { # <name> <lifecycle> <rust> <params> <nodes|-> <machines|-> <buffer> <want>
-        local name=$1 lc=$2 rust=$3 params=$4 nodes=$5 machines=$6 buf=$7 want=$8 defs=()
+    case_() { # <name> <lifecycle> <rust> <params> <nodes|-> <machines|-> <buffer> <want> [xrce]
+        local name=$1 lc=$2 rust=$3 params=$4 nodes=$5 machines=$6 buf=$7 want=$8 xrce=${9:-} defs=()
         [ "$nodes" = - ] || defs+=("-DNROS_ENTITY_PARAM_SERVICE_NODES=$nodes")
         [ "$machines" = - ] || defs+=("-DNROS_ENTITY_LIFECYCLE_MACHINES=$machines")
         local r=0
         out="$(cmake "${defs[@]}" "-DLC=$lc" "-DRUST=$rust" "-DPARAMS=$params" "-DBUF=$buf" \
+            "-DXRCE=$xrce" \
             -P "$probe" 2>&1)" || r=$?
         if [ "$r" -ne 0 ]; then bad "$name: the probe failed: $out"; return; fi
         case "$out" in
@@ -92,6 +94,10 @@ selftest() {
     case_ "Rust: two nodes"                      "" y y 2 0 "" $((114688 + p))
     case_ "lifecycle: one node, one machine"     y y y 1 1 "" 196608
     case_ "lifecycle: three nodes, two machines" y "" y 3 2 "" $((196608 + 2 * p + l))
+    # Issue 2780 -- on XRCE a machine also costs its servers' handles and their
+    # session-state slots; one machine still derives exactly the arm.
+    case_ "XRCE lifecycle: one machine"          y "" y 1 1 "" 196608 y
+    case_ "XRCE lifecycle: two machines"         y "" y 2 2 "" $((196608 + p + l + 32768)) y
     case_ "no family: no base, no floor"         "" "" "" 2 0 "" ""
     # A first include from inside a function frame must not lose the
     # constants: the file is include_guard(GLOBAL), so a later include is a

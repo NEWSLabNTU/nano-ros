@@ -434,6 +434,12 @@ pub const KERNEL_TIME_SLICING_ON: &str = "nros: kernel time slicing ON";
 /// default is sized from these lines.
 pub const ZEPHYR_HEAP_PEAK: &str = "nros: heap peak ";
 
+/// Issue 2780 -- the platform heap's refusal line, printed by the shared
+/// allocator funnel (`nros_baremetal_common::heap`, `HEAP EXHAUSTED
+/// (<verdict>): request N bytes, ...`) when an allocation does not fit. Its
+/// presence in a boot log is the heap derivation under-pricing the image.
+pub const PLATFORM_HEAP_EXHAUSTED: &str = "HEAP EXHAUSTED (";
+
 /// The tutorial talker's payload prefix (`"Hello World:"`, the `data` of
 /// every `std_msgs/String` it publishes). A peer that sees the payload rather
 /// than the talker's log — `ros2 topic echo` prints `data: Hello World: N` —

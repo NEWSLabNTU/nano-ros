@@ -187,8 +187,47 @@ buffers priced for it, so a parameter remainder above 0 would only add slack.
 
 Multi-node Rust images already state a measured heap (`realtime-rust`,
 `rust/demo_bringup`: 262,144). They keep it, and the configure reports it
-against the derived value. No in-tree Zephyr image registers more than one
-lifecycle machine, so that term has no measurement yet.
+against the derived value.
+
+### The lifecycle term, measured (issue 2919 part 2)
+
+Host 175 measured the first image with a second lifecycle machine (issue
+2919): two C talkers on XRCE, mps2/an385, Zephyr 3.7. On the flat 196,608
+lifecycle arm the second machine's service set does not fit:
+
+    HEAP EXHAUSTED (TOO SMALL): request 44200 bytes, arena 197120 bytes, free 38696 bytes
+    nros_cpp_lifecycle_register_node: the lifecycle services of `talker` could not be created
+
+The 44,200 bytes are `LifecycleServiceServers`: five servers, each two
+4,096-byte buffers plus a 648-byte XRCE server handle. The buffer is
+nros-node's default (`PARAM_SERVICE_BUFFER_STATED = false` in that build);
+the 4,420 first read off the request was the handle spread over the buffers.
+
+| image (XRCE) | machines | `NROS_XRCE_MAX_SERVICE_SERVERS` | peak |
+| --- | --- | --- | --- |
+| two plain nodes | 0 | 19 | 137,704 |
+| one managed | 1 | 19 | 183,312 |
+| two managed | 2 | 24 | 250,896 (under a stated 327,680) |
+
+So the second machine costs 67,584: 40,960 of buffers, the 3,240 of handles,
+and about 23 KB for the five service-server slots it adds to
+`xrce_session_state_t` (the cap moves 19 to 24; a slot is about 4.7 KB). The
+remainder above the buffers is 26,624 on XRCE. It is priced at 32,768: one
+sample, and these peaks miss the two `/rosout` writers the backend refused
+(issue 2920). zenoh keeps 0: the same two-machine image on zenoh peaked at
+181,536 on the flat arm.
+
+The remainder is per RMW in `nros_heap_floor.cmake`
+(`NROS_ZEPHYR_HEAP_LIFECYCLE_MACHINE_REMAINDER_XRCE`). The two-machine XRCE
+image now derives 319,488 and boots with 69,104 free at its peak. On the
+derivation before this change it derived 286,720 and booted too, but only
+because the parameter term over-prices a node.
+
+The cell that holds it is `features`' `zephyr_mps2_c_lifecycle_pair_xrce`
+(row `workspace-zephyr-cortex-m-c-lifecycle-pair-xrce`, test
+`zephyr_cortex_m_two_managed_xrce_nodes_boot_on_the_derived_heap`). It states
+no heap. With `heap_bytes = 196608` stated, the flat arm, it fails exactly as
+above and publishes nothing.
 
 ## Closes when
 

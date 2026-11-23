@@ -6431,6 +6431,29 @@ pub fn build_zephyr_cortex_m_workspace_cpp_violation_entry() -> TestResult<PathB
     )
 }
 
+/// Issue 2780's lifecycle term -- two managed C nodes on XRCE on
+/// the Zephyr Cortex-M QEMU board (`features`' `demo_bringup:
+/// zephyr_mps2_c_lifecycle_pair_xrce`, board `mps2-an385-zephyr`). The image
+/// states no heap, so it boots on the floor the configure derives from its two
+/// lifecycle machines. `zephyr.elf`, a real Cortex-M3 image. Built by the west
+/// lane into
+/// `<zephyr-build-root>/build-cortex-m-ws-c-lifecycle-pair-xrce/zephyr/zephyr.elf`
+/// (row `workspace-zephyr-cortex-m-c-lifecycle-pair-xrce`); consumed by
+/// `tests/zephyr_cortex_m_qemu.rs`.
+pub fn build_zephyr_cortex_m_workspace_c_lifecycle_pair_xrce() -> TestResult<PathBuf> {
+    let binary_path =
+        zephyr_build_root().join("build-cortex-m-ws-c-lifecycle-pair-xrce/zephyr/zephyr.elf");
+    require_prebuilt_binary_fresh_zephyr(
+        &binary_path,
+        ZephyrLeafSource {
+            dir: "examples/workspaces/features",
+            lang: Some("c"),
+            rmw: Some(Rmw::Xrce.cmake_value()),
+            conf_files: None,
+        },
+    )
+}
+
 /// phase-281 W3c — the Zephyr (native_sim) RT-SCHED-TASKS C workspace Entry
 /// (`realtime-c`'s `demo_bringup:zephyr`, generated since phase-477 W1): the FIRST full west link + runtime proof of the
 /// W3a `ZephyrBoard::run_sched_tasks` seam for a C node (closes the c×zephyr cell).

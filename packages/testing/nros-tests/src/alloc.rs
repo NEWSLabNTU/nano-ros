@@ -143,9 +143,29 @@ pub const XRCE_DOMAIN_SHIFT: u8 = 9;
 pub const fn dds_domain_of(platform: PlatformId, lang: Lang, workload: Workload, rmw: Rmw) -> u8 {
     let base = domain_of(platform, lang, workload);
     match rmw {
-        Rmw::Xrce => base + XRCE_DOMAIN_SHIFT,
+        Rmw::Xrce => base + XRCE_DOMAIN_SHIFT - xrce_tail_domain_offset(workload),
         _ => base,
     }
+}
+
+/// Issue 2780 -- how far an XRCE cell of a TAIL workload sits BELOW its
+/// shifted, clamped slot.
+///
+/// [`domain_of`] clamps every workload past the seventh slot (port offset 60
+/// and up) into slot 6, so two XRCE cells of one (platform, lang) with tail
+/// workloads baked one domain: the mps2 idle-wake witness (`IdleWake`, 84),
+/// which subscribes to `/chatter`, and the two-managed-node talkers
+/// (`Lifecycle`, 80), which publish on it. Each tail workload has a distinct
+/// offset, so its last digit tells them apart. It counts DOWN: the shifted
+/// slot already sits at the top of the platform's 21-wide window, and counting
+/// up ran `IdleWake` into the next platform's (FreertosPosix's Cyclone cell).
+/// XRCE only: Cyclone rows state their formula domain as a literal
+/// (`west_cyclone_domain`), and moving it would move them; the XRCE rows take
+/// theirs from the allocator. `allocator_injective_over_matrix` is what proves
+/// the result is free.
+pub const fn xrce_tail_domain_offset(workload: Workload) -> u8 {
+    let offset = workload.port_offset();
+    if offset >= 60 { (offset % 10) as u8 } else { 0 }
 }
 
 /// Whether an image of `rmw` puts a participant on the RTPS bus, i.e. whether

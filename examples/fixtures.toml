@@ -7583,6 +7583,28 @@ west_build_name = "build-cortex-m-c-idle-wake-xrce"
 west_id = "zephyr/mps2/an385/c/idle-wake/xrce"
 skip_probe = true
 
+# Issue 2780's lifecycle term -- two managed C nodes on XRCE on the
+# Zephyr Cortex-M QEMU board, the (ZephyrQemuCortexM, C, Xrce, Lifecycle,
+# Workspace) cell: `features`' `[image.zephyr_mps2_c_lifecycle_pair_xrce]`.
+# The image states no heap; the configure derives it from its two lifecycle
+# machines, and the second machine's 44,200-byte service set is what Kconfig's
+# flat lifecycle arm could not hold. Agent port 5680 =
+# `alloc::xrce_agent_port_of(ZephyrQemuCortexM, C, Lifecycle)`, on the SLIRP
+# host address. Consumed by tests/zephyr_cortex_m_qemu.rs.
+[[workspace_fixture]]
+id = "workspace-zephyr-cortex-m-c-lifecycle-pair-xrce"
+platform = "zephyr-cortex-m"
+lang = "c"
+rmw = "xrce"
+dir = "examples/workspaces/features"
+bringup = "src/demo_bringup"
+image = "zephyr_mps2_c_lifecycle_pair_xrce"
+board = "mps2/an385"
+west_build_name = "build-cortex-m-ws-c-lifecycle-pair-xrce"
+west_id = "zephyr/mps2/an385/workspace-lifecycle-pair-entry-c/xrce"
+west_xrce_agent_port = 5680
+skip_probe = true
+
 # ---------------------------------------------------------------------------
 # zephyr west WORKSPACE entries — phase-350 W1.
 #
