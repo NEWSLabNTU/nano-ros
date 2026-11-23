@@ -3032,10 +3032,65 @@ impl QoSProfile {
         }
 
         // The clamp — only on fields that WERE best-available.
-        if rel && !supported.contains(QoSPolicyMask::RELIABILITY) {
+        self.step_down(
+            StepDownFields {
+                reliability: rel,
+                durability: dur,
+                liveliness: liv,
+                deadline: dl,
+                lease,
+                lifespan: false,
+            },
+            supported,
+        )
+    }
+
+    /// Fit a profile the RUNTIME chose for one of its own endpoints to what
+    /// the backend honours, and say what that dropped.
+    ///
+    /// The rule for a runtime-owned endpoint (`/rosout`, `/parameter_events`,
+    /// the lifecycle services and `transition_event`): its profile is a
+    /// preference, not a request. Every field the backend's `supported` mask
+    /// lacks steps down by the same rule a best-available field is clamped
+    /// with — TRANSIENT_LOCAL → VOLATILE, a manual liveliness → AUTOMATIC, a
+    /// finite deadline, lease or lifespan → none, and a policy the backend
+    /// honours not at all → `SYSTEM_DEFAULT` — so the endpoint exists on every
+    /// backend instead of being refused for asking.
+    ///
+    /// A profile an APPLICATION supplies never comes here: it stays a
+    /// requirement, and [`Self::validate_against`] refuses it naming the
+    /// policy. So does anything folded onto a runtime profile afterwards (a
+    /// per-topic override, a declared contract), because a person wrote that.
+    ///
+    /// Returns the fitted profile and the policies it no longer requires —
+    /// [`QoSPolicyMask::NONE`] when the backend honours all of them, in which
+    /// case the profile is unchanged. History, depth and the namespace
+    /// convention have no weaker form and are not touched: a runtime profile
+    /// that needs one the backend lacks is still refused.
+    #[must_use]
+    pub fn fit_to_supported(self, supported: QoSPolicyMask) -> (Self, QoSPolicyMask) {
+        let dropped = self.required_policies().missing_from(supported);
+        if dropped.0 == 0 {
+            return (self, QoSPolicyMask::NONE);
+        }
+        let fitted = self.step_down(StepDownFields::ALL, supported);
+        // Only what actually stopped being required: a policy with no weaker
+        // form (history, depth) stays required and is refused downstream.
+        let still = fitted.required_policies().missing_from(supported);
+        (fitted, QoSPolicyMask(dropped.0 & !still.0))
+    }
+
+    /// Step each field named in `fields` down to the strongest value the
+    /// backend honours. The one spelling of the step-down rule, shared by the
+    /// best-available clamp and [`Self::fit_to_supported`].
+    fn step_down(mut self, fields: StepDownFields, supported: QoSPolicyMask) -> Self {
+        if fields.reliability
+            && !matches!(self.reliability, QoSReliabilityPolicy::SystemDefault)
+            && !supported.contains(QoSPolicyMask::RELIABILITY)
+        {
             self.reliability = QoSReliabilityPolicy::SystemDefault;
         }
-        if dur {
+        if fields.durability {
             if matches!(self.durability, QoSDurabilityPolicy::TransientLocal)
                 && !supported.contains(QoSPolicyMask::DURABILITY_TRANSIENT_LOCAL)
             {
@@ -3047,10 +3102,14 @@ impl QoSProfile {
                 self.durability = QoSDurabilityPolicy::SystemDefault;
             }
         }
-        if liv {
-            if matches!(self.liveliness_kind, QoSLivelinessPolicy::ManualByTopic)
-                && !supported.contains(QoSPolicyMask::LIVELINESS_MANUAL_BY_TOPIC)
-            {
+        if fields.liveliness {
+            if matches!(
+                self.liveliness_kind,
+                QoSLivelinessPolicy::ManualByTopic | QoSLivelinessPolicy::ManualByNode
+            ) && !supported.contains(match self.liveliness_kind {
+                QoSLivelinessPolicy::ManualByNode => QoSPolicyMask::LIVELINESS_MANUAL_BY_NODE,
+                _ => QoSPolicyMask::LIVELINESS_MANUAL_BY_TOPIC,
+            }) {
                 self.liveliness_kind = QoSLivelinessPolicy::Automatic;
             }
             if matches!(self.liveliness_kind, QoSLivelinessPolicy::Automatic)
@@ -3059,17 +3118,44 @@ impl QoSProfile {
                 self.liveliness_kind = QoSLivelinessPolicy::None;
             }
         }
-        if dl && self.deadline_ms != 0 && !supported.contains(QoSPolicyMask::DEADLINE) {
+        if fields.deadline && self.deadline_ms != 0 && !supported.contains(QoSPolicyMask::DEADLINE)
+        {
             self.deadline_ms = 0;
         }
-        if lease
+        if fields.lease
             && self.liveliness_lease_ms != 0
             && !supported.contains(QoSPolicyMask::LIVELINESS_LEASE)
         {
             self.liveliness_lease_ms = 0;
         }
+        if fields.lifespan && self.lifespan_ms != 0 && !supported.contains(QoSPolicyMask::LIFESPAN)
+        {
+            self.lifespan_ms = 0;
+        }
         self
     }
+}
+
+/// Which fields [`QoSProfile::step_down`] may touch.
+#[derive(Debug, Clone, Copy)]
+struct StepDownFields {
+    reliability: bool,
+    durability: bool,
+    liveliness: bool,
+    deadline: bool,
+    lease: bool,
+    lifespan: bool,
+}
+
+impl StepDownFields {
+    const ALL: Self = Self {
+        reliability: true,
+        durability: true,
+        liveliness: true,
+        deadline: true,
+        lease: true,
+        lifespan: true,
+    };
 }
 
 /// Which end of the graph a best-available profile is resolved for — issue
@@ -6020,5 +6106,108 @@ mod best_available_tests {
             duration_to_qos_ms(Duration::from_millis(DURATION_BEST_AVAILABLE_MS as u64 - 1)),
             Ok(DURATION_BEST_AVAILABLE_MS - 1)
         );
+    }
+}
+
+#[cfg(test)]
+mod runtime_profile_tests {
+    //! `fit_to_supported`: a runtime-owned endpoint's profile steps down to
+    //! what the backend honours instead of being refused.
+    use super::*;
+
+    /// XRCE's mask: no lifespan, no liveliness.
+    const XRCE: QoSPolicyMask = QoSPolicyMask(
+        QoSPolicyMask::RELIABILITY.0
+            | QoSPolicyMask::DURABILITY_VOLATILE.0
+            | QoSPolicyMask::DURABILITY_TRANSIENT_LOCAL.0
+            | QoSPolicyMask::HISTORY.0
+            | QoSPolicyMask::DEPTH.0
+            | QoSPolicyMask::AVOID_ROS_NAMESPACE_CONVENTIONS.0
+            | QoSPolicyMask::DEADLINE.0,
+    );
+
+    fn rosout_like() -> QoSProfile {
+        QoSProfile {
+            history: QoSHistoryPolicy::KeepLast,
+            depth: 10,
+            reliability: QoSReliabilityPolicy::Reliable,
+            durability: QoSDurabilityPolicy::Volatile,
+            lifespan_ms: 10_000,
+            ..QoSProfile::default()
+        }
+    }
+
+    /// The case that removed `/rosout` from every XRCE image: a 10 s
+    /// lifespan the backend does not carry. Refused as a request, fitted as
+    /// a preference, and the fit then validates.
+    #[test]
+    fn an_unsupported_lifespan_is_dropped_and_named() {
+        let q = rosout_like();
+        assert_eq!(
+            q.validate_against(XRCE),
+            Err(TransportError::IncompatibleQos(QoSPolicyMask::LIFESPAN))
+        );
+        let (fitted, dropped) = q.fit_to_supported(XRCE);
+        assert_eq!(dropped, QoSPolicyMask::LIFESPAN);
+        assert_eq!(fitted.lifespan_ms, 0);
+        assert_eq!(fitted.reliability, q.reliability);
+        assert_eq!(fitted.durability, q.durability);
+        assert_eq!(fitted.depth, q.depth);
+        assert!(fitted.validate_against(XRCE).is_ok());
+    }
+
+    /// A backend that honours everything changes nothing.
+    #[test]
+    fn a_supported_profile_is_returned_unchanged() {
+        let q = rosout_like();
+        let (fitted, dropped) = q.fit_to_supported(QoSPolicyMask(u32::MAX));
+        assert_eq!(fitted, q);
+        assert_eq!(dropped, QoSPolicyMask::NONE);
+    }
+
+    /// The same step-down as a best-available field: TRANSIENT_LOCAL to
+    /// VOLATILE, a manual liveliness to AUTOMATIC, then to none.
+    #[test]
+    fn every_policy_steps_down_by_the_best_available_rule() {
+        let q = QoSProfile {
+            durability: QoSDurabilityPolicy::TransientLocal,
+            liveliness_kind: QoSLivelinessPolicy::ManualByNode,
+            liveliness_lease_ms: 500,
+            deadline_ms: 100,
+            ..rosout_like()
+        };
+        let mask = QoSPolicyMask::RELIABILITY
+            | QoSPolicyMask::DURABILITY_VOLATILE
+            | QoSPolicyMask::HISTORY
+            | QoSPolicyMask::DEPTH
+            | QoSPolicyMask::LIVELINESS_AUTOMATIC;
+        let (fitted, dropped) = q.fit_to_supported(mask);
+        assert_eq!(fitted.durability, QoSDurabilityPolicy::Volatile);
+        assert_eq!(fitted.liveliness_kind, QoSLivelinessPolicy::Automatic);
+        assert_eq!(
+            (
+                fitted.deadline_ms,
+                fitted.liveliness_lease_ms,
+                fitted.lifespan_ms
+            ),
+            (0, 0, 0)
+        );
+        assert!(fitted.validate_against(mask).is_ok());
+        assert!(dropped.contains(QoSPolicyMask::DURABILITY_TRANSIENT_LOCAL));
+        assert!(dropped.contains(QoSPolicyMask::LIFESPAN));
+        assert!(dropped.contains(QoSPolicyMask::DEADLINE));
+    }
+
+    /// History and depth have no weaker form: a runtime profile that needs
+    /// one the backend lacks keeps it, is not reported as dropped, and is
+    /// still refused.
+    #[test]
+    fn a_policy_with_no_weaker_form_is_still_refused() {
+        let q = rosout_like();
+        let mask = QoSPolicyMask::RELIABILITY | QoSPolicyMask::DURABILITY_VOLATILE;
+        let (fitted, dropped) = q.fit_to_supported(mask);
+        assert!(!dropped.contains(QoSPolicyMask::HISTORY));
+        assert!(!dropped.contains(QoSPolicyMask::DEPTH));
+        assert!(fitted.validate_against(mask).is_err());
     }
 }

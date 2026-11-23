@@ -53,18 +53,21 @@ pub unsafe extern "C" fn nros_cpp_rosout_publisher_create(
         let mut hash = [0u8; HASH_CAP];
         name[..rosout::TYPE_NAME.len()].copy_from_slice(rosout::TYPE_NAME.as_bytes());
         hash[..rosout::TYPE_HASH.len()].copy_from_slice(rosout::TYPE_HASH.as_bytes());
-        let qos = if qos.is_null() {
-            nros_cpp_qos_t::from_qos_settings(rosout::qos_bounded())
+        // Issue 2920 -- with no `qos` the profile is the runtime's own, so a
+        // policy the backend cannot carry is dropped rather than refused.
+        let (base_qos, runtime_profile) = if qos.is_null() {
+            (rosout::qos_bounded(), true)
         } else {
-            unsafe { *qos }
+            (unsafe { (*qos).to_qos_settings() }, false)
         };
         let ret = unsafe {
-            crate::publisher::nros_cpp_publisher_create(
+            crate::publisher::publisher_create(
                 node,
                 c"/rosout".as_ptr(),
                 name.as_ptr() as *const c_char,
                 hash.as_ptr() as *const c_char,
-                qos,
+                base_qos,
+                runtime_profile,
                 storage,
             )
         };

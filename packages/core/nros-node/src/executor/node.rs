@@ -64,6 +64,68 @@ pub(crate) fn validate_qos_or_report(
     }
 }
 
+// Issue 2920.
+/// Who chose an endpoint's base profile, which decides what happens to a
+/// policy the backend cannot carry.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ProfileOrigin {
+    /// An application asked for it: a requirement, refused when unsupported.
+    Application,
+    /// The runtime chose it for its own endpoint: a preference, fitted by
+    /// `fit_runtime_qos`. Built only by the `/rosout` and
+    /// `/parameter_events` writers, so an image with neither never makes one.
+    #[cfg_attr(
+        not(any(feature = "rosout", feature = "param-services")),
+        allow(dead_code)
+    )]
+    Runtime,
+}
+
+// Issue 2920.
+/// Fit a profile the RUNTIME chose for one of its own endpoints
+/// (`/rosout`, `/parameter_events`, the lifecycle services and
+/// `transition_event`) to what `supported` honours, and say once, per
+/// endpoint, which policies that dropped.
+///
+/// The rule is [`QoSProfile::fit_to_supported`]'s: a runtime profile is a
+/// preference, so a policy the backend cannot carry steps down instead of
+/// refusing the endpoint. Only the runtime's own base profile comes here.
+/// Whatever a person wrote and is folded on afterwards (a per-topic override,
+/// a declared contract, an application profile) is still validated and
+/// refused naming the policy.
+pub fn fit_runtime_qos(
+    qos: QoSProfile,
+    supported: nros_rmw::QoSPolicyMask,
+    kind: &str,
+    name: &str,
+) -> QoSProfile {
+    let (fitted, dropped) = qos.fit_to_supported(supported);
+    if dropped != nros_rmw::QoSPolicyMask::NONE {
+        report_runtime_qos_fitted(kind, name, dropped);
+    }
+    fitted
+}
+
+/// Cold: it formats. One line per policy, so a profile that loses two says
+/// both.
+#[cold]
+#[inline(never)]
+fn report_runtime_qos_fitted(kind: &str, name: &str, dropped: nros_rmw::QoSPolicyMask) {
+    for (bit, policy) in nros_rmw::QoSPolicyMask::NAMED {
+        if dropped.contains(*bit) {
+            nros_log::log_info!(
+                nros_log::get_logger("nros_node"),
+                "qos: {} '{}' created without {}: this RMW does not honour it, and \
+                 the profile is the runtime's own default, not one the application \
+                 asked for",
+                kind,
+                name,
+                policy.to_str().unwrap_or("a QoS policy")
+            );
+        }
+    }
+}
+
 // ============================================================================
 // Node
 // ============================================================================

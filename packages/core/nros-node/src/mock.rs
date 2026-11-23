@@ -669,6 +669,11 @@ pub struct MockSession {
     /// `executor_stays_small_enough_to_construct_on_a_stack`.
     #[allow(clippy::type_complexity)]
     pub(crate) created_on: RefCell<std::vec::Vec<(std::string::String, std::string::String)>>,
+    /// Issue 2920 -- the policies this session reports it honours. Every one
+    /// by default (`None`, see `supported_qos_policies`); a test that is
+    /// ABOUT a backend's mask narrows it with
+    /// [`MockSession::with_supported_qos`].
+    supported_qos: Option<nros_rmw::QoSPolicyMask>,
 }
 
 impl MockSession {
@@ -727,6 +732,16 @@ impl MockSession {
             created: RefCell::new(heapless::Vec::new()),
             created_on: RefCell::new(std::vec::Vec::new()),
             last_drive_timeout_ms: None,
+            supported_qos: None,
+        }
+    }
+
+    /// A session that honours only `mask`, as a backend with a narrower
+    /// QoS mask (XRCE has no lifespan) does.
+    pub fn with_supported_qos(mask: nros_rmw::QoSPolicyMask) -> Self {
+        Self {
+            supported_qos: Some(mask),
+            ..Self::new()
         }
     }
 
@@ -754,6 +769,7 @@ impl MockSession {
             created: RefCell::new(heapless::Vec::new()),
             created_on: RefCell::new(std::vec::Vec::new()),
             last_drive_timeout_ms: None,
+            supported_qos: None,
         }
     }
 
@@ -768,6 +784,7 @@ impl MockSession {
             created: RefCell::new(heapless::Vec::new()),
             created_on: RefCell::new(std::vec::Vec::new()),
             last_drive_timeout_ms: None,
+            supported_qos: None,
         }
     }
 
@@ -789,6 +806,7 @@ impl MockSession {
             created: RefCell::new(heapless::Vec::new()),
             created_on: RefCell::new(std::vec::Vec::new()),
             last_drive_timeout_ms: None,
+            supported_qos: None,
         }
     }
 }
@@ -863,8 +881,14 @@ impl Session for MockSession {
     /// narrow for the default profile's liveliness bit. That reason is gone —
     /// phase-428 W9 made the default EMPTY — and the real reason was never
     /// the default's width.
+    ///
+    /// A test about a backend's mask narrows it (`with_supported_qos`); that
+    /// is test configuration, not a claim this double carries traffic.
     fn supported_qos_policies(&self) -> nros_rmw::QoSPolicyMask {
-        nros_rmw::QoSPolicyMask(u32::MAX)
+        match self.supported_qos {
+            Some(mask) => mask,
+            None => nros_rmw::QoSPolicyMask(u32::MAX),
+        }
     }
 
     fn create_publisher(

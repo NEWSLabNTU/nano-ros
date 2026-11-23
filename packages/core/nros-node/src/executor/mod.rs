@@ -80,6 +80,8 @@ pub mod monitor;
 #[cfg(any(has_rmw, test))]
 mod node;
 #[cfg(any(has_rmw, test))]
+pub use node::fit_runtime_qos;
+#[cfg(any(has_rmw, test))]
 pub mod node_record;
 #[cfg(any(has_rmw, test))]
 mod node_wake;

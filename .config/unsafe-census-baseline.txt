@@ -49,13 +49,13 @@ nros-board-zephyr                         33   0     1      11      0
 nros-bridge                               36   1     0       8      0
 nros-build                                 1   0     0       0      0
 nros-build-helpers                         2   0     0       2      0
-nros-c                                   595  105     7     526      0
+nros-c                                   595  106     7     526      0
 nros-can-mock                              7   0     0       1      0
 nros-cli                                   1   0     0       0      0
 nros-cli-core                             46   0     0       0      0
 nros-condvar-contract                     10   0     1       2      0
 nros-core                                  3   0     2       3      0
-nros-cpp                                1189  49     0     472      0
+nros-cpp                                1190  50     0     472      0
 nros-log                                  24   0     7       1      0
 nros-macros                               25   0     1       4      0
 nros-node                                921  286    41     199      0

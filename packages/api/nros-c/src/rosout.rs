@@ -72,20 +72,16 @@ pub unsafe extern "C" fn rclc_rosout_publisher_init(
             message_size: 0,
         };
 
-        let bounded;
-        let qos = if qos.is_null() {
-            bounded = rclc_qos_t::from_qos_settings(rosout::qos_bounded());
-            &bounded as *const rclc_qos_t
-        } else {
-            qos
-        };
         // "/rosout\0" — absolute, so no namespace or remap moves it.
-        let rc = crate::publisher::rclc_publisher_init_with_qos(
+        // Issue 2920 -- with no `qos`, the profile is the runtime's own, so a
+        // policy the backend cannot carry is dropped rather than refused.
+        let rc = crate::publisher::publisher_init(
             publisher,
             node,
             &type_info,
             c"/rosout".as_ptr(),
             qos,
+            Some(rosout::qos_bounded()),
         );
         // The descriptor above lives in this frame, so the publisher must not
         // keep it (phase-492 W8): `rcl_publish` on it answers UNSUPPORTED

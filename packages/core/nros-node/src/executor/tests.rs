@@ -19988,6 +19988,56 @@ mod rosout_writers {
         assert!(!executor.rosout_pending(), "settled after the first spin");
     }
 
+    /// Issue 2920 -- on a backend that does not carry LIFESPAN (XRCE), the
+    /// writer still comes up: its 10 s lifespan is the runtime's preference,
+    /// so it is dropped rather than refusing `/rosout` for every node. An
+    /// application publisher asking for the same lifespan is still refused,
+    /// naming the policy.
+    #[test]
+    fn a_backend_without_lifespan_still_gets_a_rosout_writer() {
+        let no_lifespan = nros_rmw::QoSPolicyMask::RELIABILITY
+            | nros_rmw::QoSPolicyMask::DURABILITY_VOLATILE
+            | nros_rmw::QoSPolicyMask::DURABILITY_TRANSIENT_LOCAL
+            | nros_rmw::QoSPolicyMask::HISTORY
+            | nros_rmw::QoSPolicyMask::DEPTH
+            | nros_rmw::QoSPolicyMask::DEADLINE;
+        assert!(
+            crate::rosout::qos_bounded()
+                .validate_against(no_lifespan)
+                .is_err(),
+            "the precondition: the runtime's profile asks for a policy this backend lacks"
+        );
+        let mut executor = executor_with_clock(MockSession::with_supported_qos(no_lifespan));
+        let a = executor.node_builder("rosout_no_lifespan").build().unwrap();
+        let _ = executor.spin_once(core::time::Duration::from_millis(0));
+        assert!(
+            executor.rosout_writer_is_up(a),
+            "the writer is created on a backend without LIFESPAN"
+        );
+        let asked = executor
+            .session
+            .created_qos("/rosout")
+            .expect("/rosout was created");
+        assert_eq!(asked.lifespan_ms, 0, "the lifespan was dropped");
+        assert_eq!(asked.depth, crate::rosout::qos_bounded().depth);
+        assert_eq!(asked.reliability, crate::rosout::qos_bounded().reliability);
+
+        let app = QoSProfile {
+            lifespan_ms: 10_000,
+            ..QoSProfile::default()
+        };
+        let err = executor
+            .create_publisher_raw_on(a, "/app_topic", "std_msgs::msg::dds_::String_", "", app)
+            .err()
+            .expect("an application's lifespan is a request, and is refused");
+        assert_eq!(
+            err,
+            NodeError::Transport(TransportError::IncompatibleQos(
+                nros_rmw::QoSPolicyMask::LIFESPAN
+            ))
+        );
+    }
+
     /// A node that turned `/rosout` off has no writer, and a later spin does
     /// not create one; `close()` drops every writer.
     #[test]

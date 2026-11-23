@@ -343,6 +343,27 @@ pub unsafe extern "C" fn rclc_publisher_init_with_qos(
     topic_name: *const c_char,
     qos: *const rclc_qos_t,
 ) -> rcl_ret_t {
+    publisher_init(publisher, node, type_info, topic_name, qos, None)
+}
+
+/// [`rclc_publisher_init_with_qos`], with the profile the RUNTIME uses when
+/// `qos` is NULL.
+///
+/// Issue 2920 -- `runtime_default` is for the runtime's own endpoints
+/// (`/rosout`): when the caller passed no profile, that one is a preference
+/// and is fitted to what the backend honours instead of being refused. A
+/// profile the caller passed is a request either way.
+///
+/// # Safety
+/// As [`rclc_publisher_init_with_qos`].
+pub(crate) unsafe fn publisher_init(
+    publisher: *mut rcl_publisher_t,
+    node: *const rcl_node_t,
+    type_info: *const rclc_message_type_t,
+    topic_name: *const c_char,
+    qos: *const rclc_qos_t,
+    runtime_default: Option<nros_node::QoSProfile>,
+) -> rcl_ret_t {
     validate_not_null!(publisher, node, type_info, topic_name);
 
     let publisher = &mut *publisher;
@@ -400,10 +421,11 @@ pub unsafe extern "C" fn rclc_publisher_init_with_qos(
     };
 
     // Get QoS settings
-    let _qos_settings = if qos.is_null() {
-        crate::qos::RCLC_QOS_DEFAULT.to_qos_settings()
-    } else {
-        (*qos).to_qos_settings()
+    let runtime_profile = qos.is_null() && runtime_default.is_some();
+    let _qos_settings = match (qos.is_null(), runtime_default) {
+        (true, Some(p)) => p,
+        (true, None) => crate::qos::RCLC_QOS_DEFAULT.to_qos_settings(),
+        (false, _) => (*qos).to_qos_settings(),
     };
 
     // Create the internal publisher
@@ -459,6 +481,20 @@ pub unsafe extern "C" fn rclc_publisher_init_with_qos(
             .with_domain(domain_id)
             .with_node_name(node_name_str)
             .with_namespace(namespace_str);
+
+        // Issue 2920 -- the runtime's own profile is fitted to the backend
+        // before anything a person wrote (overrides, the contract) is folded
+        // on; those stay requests.
+        let _qos_settings = if runtime_profile {
+            nros_node::executor::fit_runtime_qos(
+                _qos_settings,
+                nros_node::Session::supported_qos_policies(&*session),
+                "publisher",
+                topic_str,
+            )
+        } else {
+            _qos_settings
+        };
 
         // Phase 211.H (issue #52) — fold any plan qos_overrides for this
         // topic + publisher role into the profile before create, mirroring

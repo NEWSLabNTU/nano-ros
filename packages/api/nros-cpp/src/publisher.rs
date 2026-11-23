@@ -92,6 +92,37 @@ pub unsafe extern "C" fn nros_cpp_publisher_create(
     qos: nros_cpp_qos_t,
     storage: *mut c_void,
 ) -> nros_cpp_ret_t {
+    unsafe {
+        publisher_create(
+            node,
+            topic,
+            type_name,
+            type_hash,
+            qos.to_qos_settings(),
+            false,
+            storage,
+        )
+    }
+}
+
+/// [`nros_cpp_publisher_create`] over a decoded profile.
+///
+/// Issue 2920 -- `runtime_profile` is true only for a profile the RUNTIME
+/// chose for its own endpoint (`/rosout` with no profile from the caller):
+/// that one is fitted to what the backend honours instead of being refused.
+/// Overrides and the declared contract folded on afterwards stay requests.
+///
+/// # Safety
+/// As [`nros_cpp_publisher_create`].
+pub(crate) unsafe fn publisher_create(
+    node: *const nros_cpp_node_t,
+    topic: *const c_char,
+    type_name: *const c_char,
+    type_hash: *const c_char,
+    base_qos: nros_node::QoSProfile,
+    runtime_profile: bool,
+    storage: *mut c_void,
+) -> nros_cpp_ret_t {
     if node.is_null()
         || topic.is_null()
         || type_name.is_null()
@@ -150,18 +181,6 @@ pub unsafe extern "C" fn nros_cpp_publisher_create(
         _ => topic_info,
     };
 
-    // Phase 211.H (issue #52) — fold any plan qos_overrides for this topic +
-    // publisher role, mirroring Rust's `create_publisher_with_qos`.
-    let qos_settings = unsafe {
-        crate::apply_qos_overrides(
-            qos.to_qos_settings(),
-            node_ref.qos_overrides,
-            node_ref.qos_overrides_len,
-            topic_str,
-            crate::NROS_CPP_QOS_OVERRIDE_ROLE_PUBLISHER,
-        )
-    };
-
     // Phase 104.C.9.b — route through the Node's session when the
     // Node was bound to a non-primary RMW backend via
     // `nros_cpp_node_create_ex`.
@@ -171,6 +190,31 @@ pub unsafe extern "C" fn nros_cpp_publisher_create(
             None => return NROS_CPP_RET_INVALID_ARGUMENT,
         },
         None => ctx.executor.session_mut(),
+    };
+
+    // Issue 2920 -- the runtime's own profile is fitted to this backend
+    // before anything a person wrote is folded on.
+    let base_qos = if runtime_profile {
+        nros_node::executor::fit_runtime_qos(
+            base_qos,
+            nros_node::Session::supported_qos_policies(&*session),
+            "publisher",
+            topic_str,
+        )
+    } else {
+        base_qos
+    };
+
+    // Phase 211.H (issue #52) — fold any plan qos_overrides for this topic +
+    // publisher role, mirroring Rust's `create_publisher_with_qos`.
+    let qos_settings = unsafe {
+        crate::apply_qos_overrides(
+            base_qos,
+            node_ref.qos_overrides,
+            node_ref.qos_overrides_len,
+            topic_str,
+            crate::NROS_CPP_QOS_OVERRIDE_ROLE_PUBLISHER,
+        )
     };
 
     // issue 1608 -- the publisher half of the declared-QoS check. C++ has no
