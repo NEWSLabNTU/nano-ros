@@ -149,13 +149,18 @@ pkill -9 -f "nros-gate-lock-test-$$" 2>/dev/null
 # 4. A hung holder times out, exits red "gate timed out", and the waiter gets
 #    in. Negative control: with a long timeout the waiter is still out.
 x="$tmp/x4"; run_dir "$x"
+# Issue 2872 -- taken BEFORE the holder is launched, so it is no later than
+# the moment its wall limit starts. `a4.start` is written by the holder's
+# command after the deadline wrapper has started counting, so under load it
+# lands late, and "+2 s" from it overstated the bound the lock guarantees.
+python3 -c 'import time; print(time.time())' > "$tmp/a4.launch"
 gate "$x" a4 300 _NROS_GATE_LOCK_TEST_WALL_S=2 & pids+=($!)
 wait_for "$tmp/a4.start" 60
 gate "$x" b4 0.1 & pids+=($!)
 wait
 # A LOWER bound, which load can only widen: the waiter started no earlier
-# than the holder's wall limit.
-[ -s "$tmp/b4.start" ] && gt "$(cat "$tmp/b4.start")" "$(python3 -c "print($(cat "$tmp/a4.start") + 2)")" \
+# than the holder's wall limit, which began after `a4.launch`.
+[ -s "$tmp/b4.start" ] && gt "$(cat "$tmp/b4.start")" "$(python3 -c "print($(cat "$tmp/a4.launch") + 2)")" \
     && ok "negative control: the waiter is out before the holder's timeout" \
     || bad "negative control: the waiter is out before the holder's timeout"
 if [ "$(cat "$tmp/a4.rc")" = 1 ] && nros_grep_q "gate timed out" "$tmp/a4.out" \
