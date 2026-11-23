@@ -210,6 +210,23 @@ else
     if printf '%s\n' "$hout" | nros_grep_q "dropped CLI_CONFIG_$hsym"; then
         fail "H: a value this configure passed was dropped instead of refused"
     fi
+    # The real refusal (a FATAL_ERROR, so the configure stops before Zephyr
+    # would consume the -D) must not leave it cached to refuse the next one.
+    mkdir -p "$WORK/h2"
+    printf '%s\n' \
+        'cmake_minimum_required(VERSION 3.22)' \
+        'project(probe NONE)' \
+        'include("${MODULE}")' \
+        '_nros_image_kconfig_refuse_retired("" "")' \
+        > "$WORK/h2/CMakeLists.txt"
+    if cmake -S "$WORK/h2" -B "$WORK/h2b" "-DMODULE=$MODULE" "-DCONFIG_$hsym=x" >/dev/null 2>&1; then
+        fail "H: _nros_image_kconfig_refuse_retired did not refuse a live -DCONFIG_$hsym"
+    fi
+    if nros_grep_q "^CONFIG_$hsym:" "$WORK/h2b/CMakeCache.txt"; then
+        fail "H: a refused -DCONFIG_$hsym stayed in the cache, so every later configure refuses it again"
+    fi
+    cmake -S "$WORK/h2" -B "$WORK/h2b" "-DMODULE=$MODULE" >/dev/null 2>&1 ||
+        fail "H: the configure after a refused -DCONFIG_$hsym still refused"
 fi
 
 if [ "$FAILURES" -ne 0 ]; then
