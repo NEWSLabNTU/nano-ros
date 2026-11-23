@@ -773,6 +773,17 @@ pub fn derived_values(desc: &nros_sizing_descriptor::SizingDescriptor) -> Vec<De
         .collect()
 }
 
+/// A refusal can run to a list. The table keeps its lead clause and `--json`
+/// the whole of it. The descriptor stores a refusal on one line, its newlines
+/// turned to spaces, so a list shows there as a colon and a run of spaces.
+fn reason_cell(reason: &str) -> String {
+    let first = reason.lines().next().unwrap_or_default().trim_end();
+    match first.find(":   ") {
+        Some(at) => format!("{} (the list: --json)", &first[..at]),
+        None => first.to_string(),
+    }
+}
+
 pub fn render_derived(d: &Derived) -> String {
     let mut t = Table::new(
         &["DERIVED", "VALUE", "REASON"],
@@ -782,14 +793,7 @@ pub fn render_derived(d: &Derived) -> String {
         t.row(vec![
             format!("{}.{}", v.section, v.name),
             v.value.map_or_else(|| "-".to_string(), |n| n.to_string()),
-            // A refusal can run to a list; the table keeps its first line
-            // and `--json` the whole of it.
-            v.reason
-                .lines()
-                .next()
-                .unwrap_or_default()
-                .trim_end()
-                .to_string(),
+            reason_cell(&v.reason),
         ]);
     }
     t.footer(&format!("Read from {}.", d.descriptor.display()));
@@ -836,6 +840,20 @@ pub fn render_show(i: &ImageShow) -> String {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_listed_refusal_keeps_its_lead_clause_in_the_table() {
+        let flat = "2 type(s) carry no derived bound, so it is unknown:     a/msg/A (unbounded)     b/msg/B (unbounded)   Bound the member.";
+        assert_eq!(
+            reason_cell(&format!("not derived: {flat}")),
+            "not derived: 2 type(s) carry no derived bound, so it is unknown (the list: --json)"
+        );
+        assert_eq!(
+            reason_cell("not derived: no budget"),
+            "not derived: no budget"
+        );
+        assert_eq!(reason_cell("first\nsecond"), "first");
+    }
+
     use super::*;
 
     fn item(name: &str, id: &str, bringup: &str) -> ImageItem {
