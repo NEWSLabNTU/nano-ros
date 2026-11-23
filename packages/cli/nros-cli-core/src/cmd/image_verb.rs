@@ -107,7 +107,8 @@ pub struct ShowArgs {
     /// Print the nodes the image's plan will start.
     #[arg(long)]
     pub nodes: bool,
-    /// Print the topics, services and actions the image's plan will create.
+    /// Print the topics, services and actions the image's plan will create,
+    /// and those its sizing descriptor records.
     #[arg(long)]
     pub topics: bool,
     /// Print what the build derived for the image: its target, entity and
@@ -205,7 +206,16 @@ pub struct PlannedEndpoint {
     pub providers: Vec<String>,
     /// Subscribers, clients: the nodes on the using side.
     pub users: Vec<String>,
+    /// Where the row comes from: `plan` (the launch model's wiring) or
+    /// `descriptor` (the image's sizing descriptor, which names the image on
+    /// its side rather than a node).
+    pub source: &'static str,
 }
+
+/// A row from the launch model's wiring.
+pub const FROM_PLAN: &str = "plan";
+/// A row only the image's sizing descriptor records.
+pub const FROM_DESCRIPTOR: &str = "descriptor";
 
 pub fn run(args: Args) -> Result<()> {
     match args {
@@ -331,8 +341,16 @@ fn plan_of(
 fn show(args: ShowArgs) -> Result<()> {
     let root = root(args.workspace)?;
     let (declared, plan) = plan_of(&root, Some(&args.image))?;
-    let model = if args.nodes || args.topics {
-        Some(planned_model(&declared)?)
+    let planned_nodes = if args.nodes {
+        Some(planned_nodes(&planned_model(&declared)?))
+    } else {
+        None
+    };
+    let planned_endpoints = if args.topics {
+        Some(planned_topics(
+            &declared,
+            plan.sizing_descriptor.as_deref(),
+        )?)
     } else {
         None
     };
@@ -343,11 +361,8 @@ fn show(args: ShowArgs) -> Result<()> {
     };
     let item = ImageShow {
         derived,
-        planned_nodes: model.as_ref().filter(|_| args.nodes).map(planned_nodes),
-        planned_endpoints: model
-            .as_ref()
-            .filter(|_| args.topics)
-            .map(planned_endpoints),
+        planned_nodes,
+        planned_endpoints,
         declared,
         platform: plan.platform,
         entry_package: plan.entry_package,
@@ -642,6 +657,7 @@ pub fn planned_endpoints(m: &ros_launch_manifest_model::SystemModel) -> Vec<Plan
         ty: w.msg_type.clone(),
         providers: nodes_of(&w.publishers),
         users: nodes_of(&w.subscribers),
+        source: FROM_PLAN,
     });
     let wired = |kind: &'static str,
                  map: &std::collections::BTreeMap<
@@ -655,6 +671,7 @@ pub fn planned_endpoints(m: &ros_launch_manifest_model::SystemModel) -> Vec<Plan
                 ty: w.srv_type.clone(),
                 providers: nodes_of(&w.server),
                 users: nodes_of(&w.client),
+                source: FROM_PLAN,
             })
             .collect::<Vec<_>>()
     };
@@ -662,6 +679,95 @@ pub fn planned_endpoints(m: &ros_launch_manifest_model::SystemModel) -> Vec<Plan
         .chain(wired("service", &st.services))
         .chain(wired("action", &st.actions))
         .collect()
+}
+
+/// The topics, services and actions an image's sizing descriptor records.
+/// The configure probe records the image's own endpoints, not which node
+/// holds each, so the image stands on its side.
+pub fn descriptor_endpoints(
+    image: &str,
+    desc: &nros_sizing_descriptor::SizingDescriptor,
+) -> Vec<PlannedEndpoint> {
+    use nros_sizing_descriptor::EndpointKind as K;
+    let side = vec![format!("image {image}")];
+    let mut out: Vec<PlannedEndpoint> = Vec::new();
+    for e in &desc.endpoints {
+        let (kind, provides) = match e.kind {
+            K::Publisher => ("topic", true),
+            K::Subscription => ("topic", false),
+            K::ServiceServer => ("service", true),
+            K::ServiceClient => ("service", false),
+            K::ActionServer => ("action", true),
+            K::ActionClient => ("action", false),
+        };
+        let at = match out.iter().position(|r| r.kind == kind && r.name == e.topic) {
+            Some(at) => at,
+            None => {
+                out.push(PlannedEndpoint {
+                    kind,
+                    name: e.topic.clone(),
+                    ty: e.type_name.clone(),
+                    providers: Vec::new(),
+                    users: Vec::new(),
+                    source: FROM_DESCRIPTOR,
+                });
+                out.len() - 1
+            }
+        };
+        let row = &mut out[at];
+        let to = if provides {
+            &mut row.providers
+        } else {
+            &mut row.users
+        };
+        if to.is_empty() {
+            *to = side.clone();
+        }
+    }
+    out
+}
+
+/// The plan's rows, then each descriptor row the plan does not wire, in
+/// topic, service, action order and by name within each.
+pub fn merged_endpoints(
+    plan: Vec<PlannedEndpoint>,
+    descriptor: Vec<PlannedEndpoint>,
+) -> Vec<PlannedEndpoint> {
+    let mut out = plan;
+    for d in descriptor {
+        if !out.iter().any(|p| p.kind == d.kind && p.name == d.name) {
+            out.push(d);
+        }
+    }
+    let rank = |k: &str| match k {
+        "topic" => 0,
+        "service" => 1,
+        _ => 2,
+    };
+    out.sort_by(|a, b| (rank(a.kind), &a.name).cmp(&(rank(b.kind), &b.name)));
+    out
+}
+
+/// What `--topics` prints: the plan's wiring and the endpoints the image's
+/// sizing descriptor records. An image that runs its own entry package has
+/// no plan, so its descriptor alone answers.
+fn planned_topics(d: &ImageItem, descriptor: Option<&Path>) -> Result<Vec<PlannedEndpoint>> {
+    let owned = d.entry.is_some() && d.launch.is_none();
+    let plan = if owned {
+        Vec::new()
+    } else {
+        planned_endpoints(&planned_model(d)?)
+    };
+    let recorded = match (descriptor.filter(|p| p.is_file()), owned) {
+        (Some(p), _) => descriptor_endpoints(&d.name, &fresh_descriptor(d, p)?),
+        (None, false) => Vec::new(),
+        (None, true) => bail!(
+            "image `{}` runs its own entry package, so only its sizing descriptor records its \
+             topics, and it has none yet. Run `nros configure` first",
+            d.name
+        ),
+    };
+    Ok(merged_endpoints(plan, recorded))
 }
 
 fn joined(v: &[String]) -> String {
@@ -685,8 +791,8 @@ pub fn render_planned_nodes(nodes: &[PlannedNode]) -> String {
 
 pub fn render_planned_endpoints(eps: &[PlannedEndpoint]) -> String {
     if eps.is_empty() {
-        return "The plan records no topic, service or action: the image's launch names its \
-                nodes, not what they wire.\n"
+        return "Neither the plan nor the image's sizing descriptor records a topic, service or \
+                action.\n"
             .to_string();
     }
     let mut t = Table::new(&["PLANNED", "KIND", "TYPE", "FROM", "TO"], "");
@@ -699,7 +805,15 @@ pub fn render_planned_endpoints(eps: &[PlannedEndpoint]) -> String {
             joined(&e.users),
         ]);
     }
-    t.footer("FROM is the publisher or server side, TO the subscriber or client side.");
+    let mut foot =
+        "FROM is the publisher or server side, TO the subscriber or client side.".to_string();
+    if eps.iter().any(|e| e.source == FROM_DESCRIPTOR) {
+        foot.push_str(
+            "\n`image <name>` marks an endpoint the image's sizing descriptor records without \
+             naming its node.",
+        );
+    }
+    t.footer(&foot);
     t.render()
 }
 
@@ -722,6 +836,18 @@ fn derived_of(d: &ImageItem, descriptor: Option<&Path>) -> Result<Derived> {
             path.display()
         );
     }
+    Ok(Derived {
+        descriptor: path.to_path_buf(),
+        values: derived_values(&fresh_descriptor(d, path)?),
+    })
+}
+
+/// The image's sizing descriptor at `path`, refused when the plan it was
+/// derived from is stale.
+fn fresh_descriptor(
+    d: &ImageItem,
+    path: &Path,
+) -> Result<nros_sizing_descriptor::SizingDescriptor> {
     // The descriptor is derived from the image's plan, so it is as fresh as
     // the plan: the gate refuses a plan older than its inputs. (Not the
     // descriptor's own mtime: it is written only when it changes.) An owned
@@ -735,12 +861,7 @@ fn derived_of(d: &ImageItem, descriptor: Option<&Path>) -> Result<Derived> {
             Err(r) => bail!("image `{}`: {}", d.name, with_configure(&r.to_string())),
         }
     }
-    let desc =
-        nros_sizing_descriptor::read(path).map_err(|e| eyre::eyre!("image `{}`: {e}", d.name))?;
-    Ok(Derived {
-        descriptor: path.to_path_buf(),
-        values: derived_values(&desc),
-    })
+    nros_sizing_descriptor::read(path).map_err(|e| eyre::eyre!("image `{}`: {e}", d.name))
 }
 
 /// The gate's refusal, with the remedy added unless it already names one.
@@ -902,7 +1023,49 @@ mod tests {
         assert_eq!(eps[0].providers, ["/talker"]);
         assert_eq!(eps[0].users, ["/listener"]);
         assert!(render_planned_endpoints(&eps).contains("/chatter"));
-        assert!(render_planned_endpoints(&[]).contains("no topic"));
+        assert!(render_planned_endpoints(&[]).contains("records a topic"));
+    }
+
+    /// phase-569 W7c part 2 — the descriptor's `[[endpoint]]` rows fill in
+    /// what the plan does not wire, with the image on their side.
+    #[test]
+    fn a_topic_only_the_descriptor_records_names_the_image() {
+        let desc = nros_sizing_descriptor::parse(
+            "schema_version = 3\n\n[meta]\nentry = \"e\"\nstatus = \"derived\"\nbasis = \
+             \"contract\"\n\n[[endpoint]]\nkind = \"publisher\"\ntype = \
+             \"std_msgs/msg/String\"\ntopic = \"/chatter\"\n\n[[endpoint]]\nkind = \
+             \"service_server\"\ntype = \"std_srvs/srv/Empty\"\ntopic = \"/reset\"\n",
+            Path::new("e.toml"),
+        )
+        .unwrap();
+        let recorded = descriptor_endpoints("linux", &desc);
+        assert_eq!(recorded.len(), 2);
+        assert_eq!(recorded[0].providers, ["image linux"]);
+        assert!(recorded[0].users.is_empty());
+
+        // The plan wires /chatter, so its row stays; /reset comes from the
+        // descriptor, after the topics.
+        let eps = merged_endpoints(planned_endpoints(&model()), recorded.clone());
+        let rows: Vec<_> = eps.iter().map(|e| (e.name.as_str(), e.source)).collect();
+        assert_eq!(rows, [("/chatter", FROM_PLAN), ("/reset", FROM_DESCRIPTOR)]);
+        let text = render_planned_endpoints(&eps);
+        assert!(text.contains("image linux"), "{text}");
+        assert!(text.contains("without naming its node"), "{text}");
+
+        // With no plan wiring, the descriptor's rows answer alone.
+        let eps = merged_endpoints(Vec::new(), recorded);
+        assert_eq!(eps[0].name, "/chatter");
+        assert_eq!(eps[0].source, FROM_DESCRIPTOR);
+    }
+
+    #[test]
+    fn an_owned_entry_image_with_no_descriptor_names_nros_configure() {
+        let mut i = item("linux", "linux", "b");
+        i.entry = Some("talker_entry".into());
+        i.launch = None;
+        let missing = std::env::temp_dir().join("nros-w7c-no-such/nros/sizing/linux.toml");
+        let e = planned_topics(&i, Some(&missing)).unwrap_err().to_string();
+        assert!(e.contains("nros configure"), "{e}");
     }
 
     #[test]
