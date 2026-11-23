@@ -341,4 +341,14 @@ SNTP never re-acquires. A consumer's board hook papers over that with
   thread, whose default stack fails the 64-bit floor, so a 64-bit image that
   names `sntp` stops at configure.
 
+- [Issue 2883](../issues/2883-zephyr-clock-halt-unreachable-after-platform.md):
+  `epoch_failure = "halt"` after a list ending in `platform` never applies on
+  a port whose `platform` is "none", and configure accepts the list. Sits on
+  RFC-0141 D1's 2026-11-22 amendment (in flight on #4619). Found by the island
+  (phase-478 I43).
+- [Issue 2884](../issues/2884-sntp-resync-paced-on-guest-time.md): the SNTP
+  re-sync interval runs on guest time, so on an FVP racing an idle guest a
+  10 s interval re-queries several times a real second. A ruling on D5's
+  "image monotonic time" wording, possibly a knob (phase-478 I44).
+
 - phase-575 W6: the shape was first agreed there; the design moved here.
