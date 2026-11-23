@@ -377,8 +377,7 @@ and sees it listed, with no CLI edit.
 
 ### W7 — images, and what an image will create
 
-- **Status:** OPEN (W7a done locally 2026-11-21, on top of W5a; W7b and
-  W7c open)
+- **Status:** OPEN (W7a and W7b done; W7c open for its Tutorial probe step)
 - **W7a, `nros image list` / `show`:**
   - `list` reads each bringup's `[image.*]` declarations (discover,
     `collect_images`, `all_images`) and never plans, so it works before
@@ -416,7 +415,8 @@ and sees it listed, with no CLI edit.
     and C++ images clean, and the `nros` binary's 16 findings the same 16.
   - Left for issue 2667: its acceptance's probed Book step on the Eigen
     talker. The own-library page names the verb in prose for now.
-- **W7c, open (part 1 done locally 2026-11-21):**
+- **W7c, open (part 1 done 2026-11-21, part 2 done 2026-11-23; the
+  Tutorial probe step left):**
   - `nros image show <image> --nodes` prints the nodes the plan starts
     (PLANNED NODE, PACKAGE, RUNS), and `--topics` the topics, services and
     actions with the nodes on each side, from the model the last `nros
@@ -428,12 +428,20 @@ and sees it listed, with no CLI edit.
   - Measured on a copy of `examples/linux/rust/talker`, configured: `/talker`
     is listed, and `--topics` finds none, because the model carries wiring
     only where a contract declares it.
-  - Part 2: `--topics` from the image's sizing descriptor, whose
-    `[[endpoint]]` rows the configure probe records (the talker's
-    `/chatter` is there). Locating that file for an image is W3's lookup
-    (`image show --derived` reads the same file), so part 2 lands with or
-    after W3, without a second path rule. Then the Tutorial probe step
-    against `ros2 node list` / `ros2 topic list`.
+  - Part 2, done: `--topics` also reads the image's sizing descriptor, at
+    W3's path (`ResolvedBuild::sizing_descriptor`, no second rule), behind
+    the same staleness gate as `--derived`. Each `[[endpoint]]` row the
+    plan does not wire is added; the descriptor names no node, so its side
+    reads `image <name>` and the row carries `source = "descriptor"` in
+    `--json` (`"plan"` for the model's rows). An image that runs its own
+    entry package has no plan, so its descriptor alone answers, and with
+    none it names `nros configure`.
+  - Measured on a fresh configured copy of `examples/linux/rust/talker`:
+    `nros image show linux --topics` lists `/chatter`, topic,
+    `std_msgs/msg/String`, FROM `image linux`; `--nodes` still lists
+    `/talker`.
+  - Left: the Tutorial probe step against `ros2 node list` /
+    `ros2 topic list`.
 
 `nros image list` prints the workspace's images and bringups (board, RMW,
 launch file). `nros image show <image>` adds its packages and, with
