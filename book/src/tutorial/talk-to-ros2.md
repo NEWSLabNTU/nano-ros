@@ -136,6 +136,114 @@ for a history of 10, the contract of chapter 8 reserved 1, and the board
 advertises 1. A ROS 2 tool that sizes its own queue from what a publisher
 offers sees the truth about the board.
 
+## Compare the plan with the graph
+
+`nros` can say which nodes and topics an image will create before it runs.
+Ask it about the image that is running now, then ask ROS 2 what it sees:
+
+```bash probe=1045 track=installed variant=qemu
+nros image show freertos --nodes --topics
+```
+
+<!-- tabs -->
+
+#### Rust
+
+```text
+freertos
+  image `freertos` of bringup `sensor_node_bringup`
+  ...
+
+PLANNED NODE         PACKAGE             RUNS
+/sensor_node         sensor_node         sensor_node
+/monitor_node        monitor_node        monitor_node
+/server_node         server_node         server_node
+/client_node         client_node         client_node
+/action_server_node  action_server_node  action_server_node
+/action_client_node  action_client_node  action_client_node
+
+PLANNED          KIND     TYPE                                 FROM                 TO
+/sensor/reading  topic    tutorial_msgs/msg/Reading            /sensor_node         /monitor_node
+/add_two_ints    service  example_interfaces/srv/AddTwoInts    /server_node         /client_node
+/fibonacci       action   example_interfaces/action/Fibonacci  /action_server_node  /action_client_node
+
+FROM is the publisher or server side, TO the subscriber or client side.
+```
+
+#### C
+
+```text
+freertos
+  image `freertos` of bringup `sensor_node_bringup`
+  ...
+
+PLANNED NODE         PACKAGE             RUNS
+/sensor_node         sensor_node         sensor_node
+/monitor_node        monitor_node        monitor_node
+/server_node         server_node         server_node
+/client_node         client_node         client_node
+/action_server_node  action_server_node  action_server_node
+/action_client_node  action_client_node  action_client_node
+
+PLANNED            KIND     TYPE                                 FROM                 TO
+/parameter_events  topic    rcl_interfaces/msg/ParameterEvent    image freertos       -
+/sensor/reading    topic    tutorial_msgs/msg/Reading            /sensor_node         /monitor_node
+/add_two_ints      service  example_interfaces/srv/AddTwoInts    /server_node         /client_node
+/fibonacci         action   example_interfaces/action/Fibonacci  /action_server_node  /action_client_node
+
+FROM is the publisher or server side, TO the subscriber or client side.
+`image <name>` marks an endpoint the image's sizing descriptor records without naming its node.
+```
+
+#### C++
+
+```text
+freertos
+  image `freertos` of bringup `sensor_node_bringup`
+  ...
+
+PLANNED NODE         PACKAGE             RUNS
+/sensor_node         sensor_node         sensor_node
+/monitor_node        monitor_node        monitor_node
+/server_node         server_node         server_node
+/client_node         client_node         client_node
+/action_server_node  action_server_node  action_server_node
+/action_client_node  action_client_node  action_client_node
+
+PLANNED          KIND     TYPE                                 FROM                 TO
+/sensor/reading  topic    tutorial_msgs/msg/Reading            /sensor_node         /monitor_node
+/add_two_ints    service  example_interfaces/srv/AddTwoInts    /server_node         /client_node
+/fibonacci       action   example_interfaces/action/Fibonacci  /action_server_node  /action_client_node
+
+FROM is the publisher or server side, TO the subscriber or client side.
+```
+
+<!-- /tabs -->
+
+```bash probe=1045 track=installed variant=qemu
+ros2 node list --no-daemon
+ros2 topic list --no-daemon
+```
+
+```text
+/action_client_node
+/action_server_node
+/client_node
+/monitor_node
+/sensor_node
+/server_node
+/parameter_events
+/rosout
+/sensor/reading
+```
+
+The six planned nodes are the six on the graph, and the planned topic
+`/sensor/reading` is there too. ROS 2 also lists `/parameter_events` and
+`/rosout`, which nodes create for themselves. The launch plan names
+neither. A C image's sizing descriptor records `/parameter_events`, so its
+table shows it, with `image freertos` where the node would be: the
+descriptor records what the image creates, not which node creates it.
+
 ## Publish to the board from ROS 2
 
 Messages go the other way just as well. From the second terminal:
