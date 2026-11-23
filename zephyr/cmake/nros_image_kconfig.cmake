@@ -204,6 +204,12 @@ endfunction()
 function(_nros_image_kconfig_refuse_retired overrides files)
     _nros_image_kconfig_retired_findings(_found "${overrides}" "${files}")
     if(NOT _found STREQUAL "")
+        # Issue 2906 -- the refused -D is removed from the cache first: the
+        # configure stops before `kconfig.cmake` would consume it, so a kept
+        # entry made every later configure refuse a value nobody passed again.
+        foreach(_sym IN LISTS NROS_KNOB_RETIRED_KCONFIG)
+            unset(CONFIG_${_sym} CACHE)
+        endforeach()
         message(FATAL_ERROR "nano-ros: a retired nano-ros setting is set:${_found}")
     endif()
 endfunction()
@@ -445,6 +451,11 @@ function(nros_image_kconfig_hook)
         endif()
     endforeach()
     if(NOT _cli_knobs STREQUAL "")
+        # Issue 2906 -- as for a retired symbol: the refused -D does not stay
+        # cached to refuse every later configure.
+        foreach(_sym IN LISTS _knob_syms)
+            unset(CONFIG_${_sym} CACHE)
+        endforeach()
         # History: RFC-0103 D2a, phase-484 W5b.
         message(FATAL_ERROR
             "nano-ros: ${_dir}/system.toml is this image's one source of its nano-ros "
