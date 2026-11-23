@@ -20,10 +20,16 @@
 /// Each transition callback prints one line, so a test can see that the
 /// node's own code ran. `NROS_SPIN_MS` bounds the run; unset, it spins until
 /// killed.
+/* `clock_gettime` and `CLOCK_MONOTONIC` under a strict C standard. */
+#ifndef _POSIX_C_SOURCE
+#define _POSIX_C_SOURCE 200809L
+#endif
+
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <time.h>
 
 #include <rclc/executor.h>
 #include <rclc/init.h>
@@ -77,6 +83,15 @@ static unsigned spin_ms(void) {
     return v > 0 ? (unsigned)v : 0u;
 }
 
+/* Milliseconds on the monotonic clock. The spin budget is wall time: a
+ * `spin_some` returns as soon as it has done work, so counting calls as
+ * 100 ms each ends a busy run early. */
+static uint64_t monotonic_ms(void) {
+    struct timespec ts;
+    (void)clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (uint64_t)ts.tv_sec * 1000u + (uint64_t)ts.tv_nsec / 1000000u;
+}
+
 static int run(void) {
     rcl_allocator_t allocator = rcl_get_default_allocator();
     RCLC_CHECK_RET(rclc_support_init(&app.support, 0, NULL, &allocator), 1);
@@ -110,7 +125,8 @@ static int run(void) {
 
     /* Each spin drains the lifecycle services, so `ros2 lifecycle` round-trips. */
     const unsigned budget = spin_ms();
-    for (unsigned waited = 0; budget == 0u || waited < budget; waited += 100) {
+    const uint64_t start = monotonic_ms();
+    while (budget == 0u || monotonic_ms() - start < budget) {
         (void)rclc_executor_spin_some(&app.executor, 100ULL * 1000ULL * 1000ULL);
     }
 

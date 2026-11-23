@@ -1,0 +1,1 @@
+The Linux C/C++ `lifecycle-pair`, `lifecycle-node` and `parameters` examples now treat `NROS_SPIN_MS` as wall time. They used to count each spin call as 100 ms, so a busy image exited long before its budget.

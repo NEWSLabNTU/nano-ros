@@ -31,6 +31,7 @@
 /// a non-zero exit code encodes which assertion failed. Consumed by the
 /// `parameters_roundtrip` test.
 
+#include <chrono>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -159,7 +160,11 @@ int run() {
     // Answer the parameter services for a while, so the `ros2 param` commands
     // in the file comment have something to talk to.
     const unsigned budget = spin_ms();
-    for (unsigned waited = 0; waited < budget && rclcpp::ok(); waited += 100) {
+    // The budget is wall time: `spin_once` returns as soon as it has done
+    // work, so counting calls as 100 ms each ends a busy run early.
+    const auto start = std::chrono::steady_clock::now();
+    while (std::chrono::steady_clock::now() - start < std::chrono::milliseconds(budget) &&
+           rclcpp::ok()) {
         (void)rclcpp::spin_once(100);
     }
 

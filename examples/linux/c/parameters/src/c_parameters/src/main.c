@@ -23,11 +23,17 @@
 /// passes; a non-zero exit code encodes which assertion failed. Consumed by
 /// the `parameters_roundtrip` test.
 
+/* `clock_gettime` and `CLOCK_MONOTONIC` under a strict C standard. */
+#ifndef _POSIX_C_SOURCE
+#define _POSIX_C_SOURCE 200809L
+#endif
+
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #include <rcl/time.h>
 #include <rclc/executor.h>
@@ -67,6 +73,15 @@ static unsigned spin_ms(void) {
     }
     long v = strtol(s, NULL, 10);
     return v > 0 ? (unsigned)v : 0u;
+}
+
+/* Milliseconds on the monotonic clock. The spin budget is wall time: a
+ * `spin_some` returns as soon as it has done work, so counting calls as
+ * 100 ms each ends a busy run early. */
+static uint64_t monotonic_ms(void) {
+    struct timespec ts;
+    (void)clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (uint64_t)ts.tv_sec * 1000u + (uint64_t)ts.tv_nsec / 1000000u;
 }
 
 static int run(void) {
@@ -171,7 +186,8 @@ static int run(void) {
 
     /* Answer the parameter services for a while. */
     const unsigned budget = spin_ms();
-    for (unsigned waited = 0; waited < budget; waited += 100) {
+    const uint64_t start = monotonic_ms();
+    while (monotonic_ms() - start < budget) {
         (void)rclc_executor_spin_some(&app.executor, 100ULL * 1000ULL * 1000ULL);
     }
 
