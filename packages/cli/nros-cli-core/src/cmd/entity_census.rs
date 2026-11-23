@@ -1486,8 +1486,8 @@ fn runs_nano_ros_misplaced(asked_q: &str, bringup_dir: &Path) -> eyre::Report {
 ///
 /// It is a census like any other to its readers: the wrapper schema, the
 /// recorder schema version, no nodes, and provenance naming the package's
-/// `CMakeLists.txt` and `src/` (when it has one), so a reader checks it fresh
-/// against the package as it does a taken one. `stated` says where the
+/// `CMakeLists.txt` and `src/` (when it has one) by absolute path, so every
+/// reader checks it fresh as it does a taken one. `stated` says where the
 /// statement is. The file is rewritten only when it changes, and its digest
 /// is write-if-changed, so a configure that re-reads it re-runs nothing.
 fn record_stated_empty_census(
@@ -1501,12 +1501,10 @@ fn record_stated_empty_census(
     let dir = out.parent().expect("the census path has a parent");
     std::fs::create_dir_all(dir).wrap_err_with(|| format!("create `{}`", dir.display()))?;
     let _census_lock = crate::file_lock::lock_exclusive_path(&out.with_extension("lock"))?;
-    let rel = |p: &Path| -> String {
-        p.strip_prefix(pkg)
-            .unwrap_or(p)
-            .to_string_lossy()
-            .into_owned()
-    };
+    // ABSOLUTE paths, as a taken owned census records its binary: readers
+    // resolve them against different roots (the package, the workspace the
+    // configure stamp checks), and an absolute path reads the same from each.
+    let rel = |p: &Path| -> String { p.to_string_lossy().into_owned() };
     let mut inputs = Vec::new();
     let src = pkg.join("src");
     if src.is_dir() {
@@ -4864,6 +4862,8 @@ executable=prog_b=/b/b
 
         let out = owned_census_path(ws, "bringup", "tx");
         assert!(matches!(census_freshness(&out, &pkg), Freshness::Fresh));
+        // The configure stamp checks it against the WORKSPACE, not the package.
+        assert!(matches!(census_freshness(&out, ws), Freshness::Fresh));
         assert!(census_digest_path(&out).is_file());
         assert!(!not_taken.exists(), "the not-taken record is retired");
         let doc: serde_json::Value =
