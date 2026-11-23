@@ -605,13 +605,13 @@ endfunction()
 # `_nros_carrier_board_clock_refusal(<carrier-target>)`: refuse a native
 # carrier image in a configure whose `[knobs.clock] source` names `board`.
 #
-# Issue 2841. Stating `board` gives an image its own configure, and in it every
-# TYPED component also builds its own carrier executable against that
-# board-selected runtime. The board's `nros_board_wall_clock_ns` belongs to the
-# IMAGE, not to those carriers, so each of them would fail to link, naming a
-# hook the reader never asked about. Until a configuration builds only its
-# image's targets, the configure says so instead. The value is the one the
-# image's cargo commands see (`nros_image_env_value`).
+# Issue 2841. The board's `nros_board_wall_clock_ns` belongs to the IMAGE, so
+# a component's own carrier built against a `board`-selected runtime fails to
+# link, naming a hook the reader never asked about. A workspace configure that
+# exists for an image's configuration no longer builds those carriers
+# (`NROS_CONFIGURE_BUILDS_IMAGES_ONLY`); this refusal stays for a configure
+# that does, a standalone leaf whose own carrier is its program. The value is
+# the one the image's cargo commands see (`nros_image_env_value`).
 function(_nros_carrier_board_clock_refusal _target)
     if(NOT COMMAND nros_image_env_value)
         return()
@@ -1472,6 +1472,13 @@ function(nano_ros_node_register)
        AND _NRC_TYPED
        AND COMMAND nros_platform_link_app)
         set(_nrc_carrier TRUE)
+    endif()
+    # Issue 2841 -- a configure that exists for its images' own configuration
+    # (`-cfg<hash>`) builds those images only. A component's own executable is
+    # not one of them, and an image-only link requirement (the board clock
+    # hook) would break it; the configure with the default runtime builds it.
+    if(_nrc_carrier AND NROS_CONFIGURE_BUILDS_IMAGES_ONLY)
+        set(_nrc_carrier FALSE)
     endif()
     _nros_carrier_claim(_nrc_carrier "native" "${_nrc_target}")
     if(_nrc_carrier)
