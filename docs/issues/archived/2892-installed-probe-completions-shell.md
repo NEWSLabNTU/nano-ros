@@ -1,7 +1,7 @@
 ---
 id: 2892
 title: "The installed-track book probe fails at `nros completions`: the runner's `$SHELL` names no shell it completes in"
-status: open
+status: resolved
 type: bug
 area: [book, cli, ci]
 severity: medium
@@ -32,4 +32,11 @@ situation would hit this too.
 
 `just probe installed` passes in a scheduled `host-tests` run, and the release rehearsal's
 installed-track probe passes on the candidate asset. A release blocker:
-[phase-590](../roadmap/phase-590-nros12-release-plan.md) W1.
+[phase-590](../../roadmap/phase-590-nros12-release-plan.md) W1.
+
+## Resolution
+
+Fixed by #4683 (`ff02a051e9`): the book side was wrong. Install step 5 now runs
+`nros completions bash`, and the text covers the other shells and what `$SHELL` decides. The
+acceptance run is the next scheduled `host-tests` installed-track probe, which phase-590 B7
+records.
