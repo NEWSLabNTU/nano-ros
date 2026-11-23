@@ -723,8 +723,9 @@ fn package_xml_version(path: &Path) -> Option<String> {
 /// board's provisioning list), and the digest of each image `nros run`
 /// last started.
 /// Issue 2394 -- a `system.toml` beside a package's code, under the current
-/// directory. Read-only: the finding names `nros configure --migrate`, which
-/// does the move and prints every file it moves. A warning, as configure's
+/// directory, and any contract or `system.toml` in a spelling the contract
+/// checker refuses. Read-only: the finding names `nros configure --migrate`,
+/// which does the move and the rewrite and prints each. A warning, as configure's
 /// own is, so it adds no problem to the count.
 fn report_bringup_layout() {
     let Ok(cwd) = std::env::current_dir() else {
@@ -746,6 +747,16 @@ fn report_bringup_layout() {
              a bringup package. `nros configure --migrate` moves it and says what it moved.",
             dir.join(nros_orchestration_ir::leaf_system::SYSTEM_TOML)
                 .display()
+        );
+    }
+    // A contract or `system.toml` still in a spelling the contract checker
+    // refuses: configure stops on it, and `--migrate` rewrites it.
+    for file in crate::rlm_migrate::pending_files(&cwd) {
+        eprintln!(
+            "nros doctor: warning: {} uses a spelling the contract checker no longer reads. \
+             `{}` rewrites it and prints every key it changed.",
+            file.display(),
+            crate::rlm_migrate::REMEDY
         );
     }
 }

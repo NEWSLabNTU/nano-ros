@@ -64,7 +64,7 @@ pub const RETIRED_SYSTEM_TABLES: &[RetiredTable] = &[
         by: "rlm v0.3.11",
         replacement: "the scheduling unit is a task in play_launch: write \
                       `[tasks.<name>]` (and `[tasks.<name>.<target>]`), or run \
-                      `play_launch migrate <system.toml> --write` to rewrite the file",
+                      `nros configure --migrate` to rewrite the file",
     },
     // RFC-0109 D6, phase-514.
     RetiredTable {
@@ -82,7 +82,7 @@ pub const RETIRED_SYSTEM_TABLES: &[RetiredTable] = &[
 // user-surface: table
 pub const RETIRED_GROUP_TIERS: &str = "`[[component]] group_tiers` is retired (rlm v0.3.11): \
     the scheduling unit is a task in play_launch: write `group_tasks`, \
-    or run `play_launch migrate <system.toml> --write` to rewrite the file";
+    or run `nros configure --migrate` to rewrite the file";
 
 /// One retired key of an `[image.<id>]` / `[image_defaults]` table.
 pub type RetiredImageKey = RetiredTable;
@@ -179,7 +179,7 @@ mod tests {
         let e = refuse_retired_tables(&old, p).unwrap_err();
         assert!(e.contains("`[[component]] group_tiers` is retired"), "{e}");
         assert!(e.contains("write `group_tasks`"), "{e}");
-        assert!(e.contains("play_launch migrate"), "{e}");
+        assert!(e.contains("nros configure --migrate"), "{e}");
         let new: toml::Table =
             toml::from_str("[[component]]\nname = \"n\"\ngroup_tasks = { g = \"a\" }\n").unwrap();
         assert!(refuse_retired_tables(&new, p).is_ok());

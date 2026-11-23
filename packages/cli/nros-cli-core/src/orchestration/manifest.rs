@@ -12,6 +12,7 @@ pub struct ManifestArtifact {
 
 pub fn load_manifest(path: &Path) -> Result<ManifestArtifact> {
     let manifest = ros_launch_manifest_types::parse_manifest(path)
+        .map_err(|e| eyre::eyre!(crate::rlm_migrate::name_nros_remedy(&e.to_string())))
         .wrap_err_with(|| format!("failed to parse ROS launch manifest {}", path.display()))?;
     let value = serde_json::to_value(manifest)?;
     Ok(ManifestArtifact {
