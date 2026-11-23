@@ -1,12 +1,14 @@
 ---
 id: 2810
 title: "A knob's environment rung reaches a Zephyr build only on its first configure: an already-configured dir keeps the old value"
-status: open
+status: resolved
 type: bug
 area: [zephyr, build, knobs]
 severity: medium
 found: 2026-11-21
-related: [2780, 0460, 0491, 0991]
+resolved: 2026-11-23
+resolved_in: \"825231f733 (the Zephyr knob refusal); the residue: b61082063c (#4656, issue 2869)"
+related: [2780, 0460, 0491, 0991, 2869]
 ---
 
 ## What fails
@@ -192,3 +194,18 @@ Still open after this fix:
   reads there, but no check is installed. Its env reaches cargo at build time,
   and the shared cargo dir key is its only configure-time use.
 - The non-knob reads listed under Reach.
+
+## Resolved (2026-11-23)
+
+Both residue items are answered by issue 2869 (#4656, merged as b61082063c):
+
+- **The non-knob reads** (`NROS_CARGO_PROFILE`, `NROS_INTERFACE_SEARCH_PATH`,
+  `NROS_PLATFORM_CFFI_INCLUDE`, `NROS_STACK_FLOOR`) are refused through
+  `nros_configure_env_watch`, on the host road and the Zephyr road. Every
+  other configure-time read is classified there, with the reason it is not
+  refused.
+- **The plain cmake road's registry knobs** are deliberately not compared.
+  Their environment reaches cargo at build time, where each build script's
+  `rerun-if-env-changed` sees a change, so a stale configure value cannot
+  reach the image. The host record holds the watched names only; comparing
+  the knobs there would refuse on ~90 names for no wrong output.
