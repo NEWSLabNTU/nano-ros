@@ -1419,9 +1419,19 @@ mod tests {
         let KnobDefault::Kconfig(d) = hs.default else {
             panic!("heap: {:?}", hs.default)
         };
+        // The lifecycle and parameter-services arms are the -1 derive
+        // sentinel: the configure derives them from the image's node and
+        // state-machine counts (`nros_heap_floor.cmake`).
         assert_eq!(
-            d.iter().map(|x| x.value).collect::<Vec<_>>(),
-            ["1048576", "196608", "114688", "131072", "65536"]
+            d.iter().map(|x| (x.value, x.when)).collect::<Vec<_>>(),
+            [
+                ("1048576", Some("NROS_RMW_CYCLONEDDS")),
+                ("-1", Some("NROS_CAPABILITY_LIFECYCLE")),
+                ("-1", Some("NROS_CAPABILITY_PARAM_SERVICES")),
+                ("114688", Some("NROS_PARAMS_STORE")),
+                ("131072", Some("RUST")),
+                ("65536", None),
+            ]
         );
         let ms = knob_by_toml("net.max_sockets").unwrap();
         assert_eq!(ms.surface, Some("[image.<id>.knobs.net] max_sockets"));
