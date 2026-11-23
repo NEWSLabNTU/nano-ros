@@ -1,19 +1,21 @@
 ---
 id: 2836
 title: "A link that overflows RAM or flash fails with the linker's bare `region overflowed` line; `nros build` never sees it, so it cannot say what the image reserves"
-status: open
+status: resolved
 type: enhancement
 severity: medium
 area: [cli, build, ux, stack-floor]
 related: [issue-2783, issue-2400, phase-557, phase-588, rfc-0065]
 found: 2026-11-22
+resolved: 2026-11-23
+resolved_in: "feat(cli, phase-588 W3): read a failed build's log and explain a region overflow"
 ---
 
-**Home: [phase-588](../roadmap/phase-588-build-output-pty-proxy.md)**, which
+**Home: [phase-588](../../roadmap/phase-588-build-output-pty-proxy.md)**, which
 implements the RFC-0065 D1 amendment the user ruled for it (2026-11-23,
 option (a): `nros build` stays the parent through a pty and keeps a log).
-First filed beside [issue 2783](2783-graph-discovery-overflows-rust-template-ram.md)
-on [phase-557](../roadmap/phase-557-stack-floor-measured-frames.md).
+First filed beside [issue 2783](../2783-graph-discovery-overflows-rust-template-ram.md)
+on [phase-557](../../roadmap/phase-557-stack-floor-measured-frames.md).
 
 ## What happens
 
@@ -71,3 +73,19 @@ linker's output passes through `nros build`, so there is nothing to scan.
   the explanation under the linker's line.
 - The terminal behaviour of a successful build is unchanged, measured: cargo's
   progress bar and colour still appear.
+
+## Resolved, 2026-11-23: the build reads its log and says what the image reserves
+
+phase-588 made `nros build` stay the parent of the native tool. It keeps
+the tool's output in `<tool>.log` in the image's build directory, and on a
+failed link it scans that log for a region overflow. On a match, the
+failed build ends with what the image reserves in that region: the main
+stack and its stack-floor row, the heap and its knob, and the knob to
+lower.
+
+Measured on a stock Rust zenoh talker for nucleo-f767zi-zephyr with
+`heap_bytes = 393216`, built with its output piped: ld.bfd failed with
+"region `RAM' overflowed by 122432 bytes", `west.log` held that line, and
+the explanation named the 33,368 B main stack, its floor row and the
+393,216 B heap. The book's Troubleshoot page quotes that message, and
+`reference/build-outputs.md` says where the log is.
