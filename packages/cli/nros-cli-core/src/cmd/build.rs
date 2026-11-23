@@ -3114,6 +3114,15 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
                 // Placing the user's options last is correct for every flag
                 // shape without this code having to model west's argparse
                 // arities, and west accepts options after the positional.
+                // Issue 2916 -- read before `west_extra` moves into the line.
+                let cache_check_dir = if names_west_build_dir(&west_extra) {
+                    crate::cmd::build_next::west_dir_from_args(&west_extra, &root)
+                } else {
+                    Some(west_build_dir(
+                        &root, &platform, &image, &bringup, &image_id,
+                    ))
+                };
+                let pristine_always = west_extra_pristine_always(&west_extra);
                 a.extend(west_extra);
                 let west_opts = crate::builder::zephyr::west_args(&overlays);
                 // RFC-0120 D2 (phase-530 W4) — no resolve path on the west
@@ -3266,6 +3275,35 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
                          ../nano-ros-workspace[-4.4]; <line> is \
                          $NROS_ZEPHYR_VERSION, default 3.7)"
                     );
+                }
+                // Issue 2916 -- a build dir configured against ANOTHER Zephyr
+                // tree (the other line) keeps that tree: Zephyr re-reads the
+                // cached `ZEPHYR_BASE` over the environment's, so the build
+                // ran the wrong line's checks (a 3.7 build asking for 4.4's
+                // Python 3.12) against the wrong tree. Refused here, before
+                // west, naming both trees and the one flag that rebuilds the
+                // dir for this one; west's own `-p auto` does not notice a
+                // different Zephyr.
+                if let (Some(z), Some(dir), false, false) =
+                    (&zbase, &cache_check_dir, pristine_always, args.dry_run)
+                {
+                    if let Some(cached) = west_cache_other_zephyr_base(dir, z) {
+                        eyre::bail!(
+                            "the build directory for `{image_id}` was configured \
+                             against a different Zephyr tree:\n\n    \
+                             build dir:      {}\n    \
+                             configured for: {}\n    \
+                             this build:     {}\n\n\
+                             Zephyr keeps the tree a build directory was first \
+                             configured with, so building on would mix the two. \
+                             Rebuild it from scratch for this tree:\n\n    \
+                             nros build {image_id} -- -p always\n\n\
+                             (or pass `-- -d <dir>` to keep both builds).",
+                            dir.display(),
+                            cached.display(),
+                            z.display()
+                        );
+                    }
                 }
                 // Run from the nros workspace with ZEPHYR_BASE set, which is
                 // exactly what `west-fixtures.sh` does and what makes a
@@ -9747,6 +9785,50 @@ pub(crate) fn west_build_dir(
         .join(format!("{bringup}__{image_id}_west"))
 }
 
+/// Issue 2916 -- whether the user's west options already ask for a pristine
+/// build (`-p`, `-p always`, `-palways`, `--pristine[=always]`), which rebuilds
+/// the dir and so clears another tree's cache by itself. `auto` and `never`
+/// do not: west's `auto` looks at the application source, not at Zephyr.
+pub(crate) fn west_extra_pristine_always(west_extra: &[String]) -> bool {
+    let mut it = west_extra.iter().peekable();
+    while let Some(a) = it.next() {
+        match a.as_str() {
+            "-p" | "--pristine" => match it.peek().map(|v| v.as_str()) {
+                Some("auto") | Some("never") => {}
+                _ => return true,
+            },
+            "-palways" | "--pristine=always" => return true,
+            _ => {}
+        }
+    }
+    false
+}
+
+/// Issue 2916 -- the Zephyr tree `build_dir` was configured against, when it
+/// is NOT `zephyr_base`. Read from the cache's `ZEPHYR_BASE:PATH=` line and
+/// compared by canonical path, so two spellings of one tree agree. No cache,
+/// no such line, or an unresolvable path answers `None`: a dir nothing
+/// configured has no other tree to keep.
+pub(crate) fn west_cache_other_zephyr_base(
+    build_dir: &std::path::Path,
+    zephyr_base: &std::path::Path,
+) -> Option<PathBuf> {
+    let cache = std::fs::read_to_string(build_dir.join("CMakeCache.txt")).ok()?;
+    let cached = cache.lines().find_map(|l| {
+        let (k, v) = l.split_once('=')?;
+        (k.split_once(':').map_or(k, |(n, _)| n) == "ZEPHYR_BASE").then(|| v.trim())
+    })?;
+    if cached.is_empty() {
+        return None;
+    }
+    let cached = PathBuf::from(cached);
+    let same = match (cached.canonicalize(), zephyr_base.canonicalize()) {
+        (Ok(a), Ok(b)) => a == b,
+        _ => cached == zephyr_base,
+    };
+    (!same).then_some(cached)
+}
+
 /// Whether a west application's own `CMakeLists.txt` layers its board package
 /// itself (`nano_ros_use_board(<board>)`), in which case `nros build` must not
 /// pass the same files again (issue 2177). A comment naming the function does
@@ -12557,6 +12639,60 @@ mod zephyr_base_tests {
         assert_eq!(zephyr_line(None), "3.7");
         assert_eq!(zephyr_line(Some(String::new())), "3.7");
         assert_eq!(zephyr_line(Some("4.4".into())), "4.4");
+    }
+
+    /// Issue 2916 -- a build dir configured against another Zephyr tree is
+    /// reported; the same tree (by another spelling), no cache, and a cache
+    /// without the entry are not.
+    #[test]
+    fn west_cache_reports_only_another_zephyr_tree() {
+        let td = tempfile::tempdir().unwrap();
+        let z37 = td.path().join("3.7/zephyr");
+        let z44 = td.path().join("4.4/zephyr");
+        std::fs::create_dir_all(&z37).unwrap();
+        std::fs::create_dir_all(&z44).unwrap();
+        let dir = td.path().join("b__fvp_west");
+        std::fs::create_dir_all(&dir).unwrap();
+
+        assert_eq!(west_cache_other_zephyr_base(&dir, &z37), None, "no cache");
+        std::fs::write(
+            dir.join("CMakeCache.txt"),
+            "CMAKE_GENERATOR:INTERNAL=Ninja\n",
+        )
+        .unwrap();
+        assert_eq!(west_cache_other_zephyr_base(&dir, &z37), None, "no entry");
+
+        std::fs::write(
+            dir.join("CMakeCache.txt"),
+            format!("ZEPHYR_BASE:PATH={}\n", z44.display()),
+        )
+        .unwrap();
+        assert_eq!(west_cache_other_zephyr_base(&dir, &z37), Some(z44.clone()));
+        assert_eq!(west_cache_other_zephyr_base(&dir, &z44), None);
+        let dotted = td.path().join("4.4/./zephyr");
+        assert_eq!(
+            west_cache_other_zephyr_base(&dir, &dotted),
+            None,
+            "same tree"
+        );
+    }
+
+    #[test]
+    fn west_pristine_always_is_only_the_rebuilding_spellings() {
+        let v = |a: &[&str]| a.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        for yes in [
+            &["-p"][..],
+            &["-p", "always"],
+            &["-palways"],
+            &["--pristine"],
+            &["--pristine=always"],
+            &["-t", "run", "-p"],
+        ] {
+            assert!(west_extra_pristine_always(&v(yes)), "{yes:?}");
+        }
+        for no in [&[][..], &["-p", "auto"], &["-p", "never"], &["-t", "run"]] {
+            assert!(!west_extra_pristine_always(&v(no)), "{no:?}");
+        }
     }
 }
 
