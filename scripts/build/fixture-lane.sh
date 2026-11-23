@@ -106,6 +106,14 @@ nros_retired_host_token_hint() {
 # (`doctor` and `setup` both do `${x#tier=}`); this is that idiom in one place
 # so a third copy does not appear here. Bare `tier2` works too, since both
 # spellings reach users through `just --list` and the docs.
+#
+# Issue 2893: EVERY helper here that takes a lane normalises through this at
+# entry, so a recipe may forward `{{lane}}` as it arrived. A dependency added to
+# `build-test-fixtures` forwarded `lane=tier2` to `nros_lane_modules`, which
+# validated it raw and refused, so every scheduled tier 2 run stopped before
+# building anything (`fixture-lane: unknown lane 'lane=tier2'`).
+# `tests/lane-arg-spelling-tests.sh` holds every helper that calls
+# `nros_lane_validate` to this.
 nros_lane_arg() {
     local lane="${1:-all}"
     lane="${lane#lane=}"
@@ -215,7 +223,8 @@ nros_fixture_coords_export() {
 }
 
 nros_lane_coords_file() {
-    local lane="$1"
+    local lane
+    lane="$(nros_lane_arg "$1")"
     nros_lane_validate "$lane" || return 2
     # `all` and `linux` are MODULE-level selections, not coordinate ones: they
     # build every row of what they select, so there is nothing to filter by.
@@ -327,7 +336,8 @@ nros_cell_isolation_file() {
 # reason as `nros_lane_build_lane` below; `CiLane::unclaimed` is the
 # declaration, and `tests/lane_build_covers_run.rs` asserts the two agree.
 nros_lane_unclaimed() {
-    local lane="$1"
+    local lane
+    lane="$(nros_lane_arg "$1")"
     nros_lane_validate "$lane" || return 2
     case "$lane" in
         # The tier runners carry the zenoh router and no ROS 2 CLI; their ROS 2
@@ -435,7 +445,8 @@ nros_scope_coords_file() {
 # and asserts the answer equals `CiLane::build_lane()`, so the second spelling
 # cannot drift the way `matches_filters` drifted from `matrix_fixture_coverage`.
 nros_lane_build_lane() {
-    local lane="$1"
+    local lane
+    lane="$(nros_lane_arg "$1")"
     nros_lane_validate "$lane" || return 2
     case "$lane" in
         # Module-level lanes are their own build lane.
@@ -481,7 +492,8 @@ nros_lane_build_lane() {
 # lane-coords: `nuttx` owns both arm and riscv, `zephyr` both native_sim and
 # fvp). For `all`, echoes nothing — callers treat that as "no filter".
 nros_lane_modules() {
-    local lane="$1"
+    local lane
+    lane="$(nros_lane_arg "$1")"
     nros_lane_validate "$lane" || return 2
     if [ "$lane" = "all" ]; then
         return 0
@@ -633,7 +645,8 @@ nros_fixtures_skipped_modules() {
 # Called only after a build succeeds. Records the lane AND the coordinate set,
 # so the reader can answer coverage rather than recency.
 nros_fixtures_stamp_write() {
-    local lane="${1:-all}"
+    local lane
+    lane="$(nros_lane_arg "${1:-all}")"
     nros_lane_validate "$lane" || return 2
     local coords=""
     if [ "$lane" != "all" ]; then
@@ -773,7 +786,8 @@ nros_lane_run_is_narrowed() {
 # (`linux`), and asking the wrong one is the whole defect: a `lane=tier2` build
 # satisfied a `ci-matrix` that then executed every test binary in the tree.
 nros_fixtures_stamp_require() {
-    local lane="${1:-all}"
+    local lane
+    lane="$(nros_lane_arg "${1:-all}")"
     nros_lane_validate "$lane" || return 2
 
     # What this RUN needs to EXIST. `$lane` is kept for the diagnostics, which
