@@ -99,7 +99,7 @@ stack nor whether it is spawned. So there are three parts:
 
 **Host boards (issue 2800).** On threadx-linux every ThreadX thread runs on
 a host pthread stack, so its pool-allocated stacks are dead weight there
-([issue 2800](../2800-threadx-linux-threads-run-on-host-pthread-stacks.md)).
+([issue 2800](2800-threadx-linux-threads-run-on-host-pthread-stacks.md)).
 Part (c) has to decide whether that board's derivation counts sched-task
 stacks at all, or keeps the target's terms so host and target derive the
 same pool.
@@ -116,7 +116,7 @@ thread's (`nros_threadx_create_task`), so the board computes
 sched-task stacks are not counted in the pool on that road. threadx-linux
 counts them too: that is the conservative choice, although its threads run
 on host pthread stacks and so never use them
-([issue 2800](../2800-threadx-linux-threads-run-on-host-pthread-stacks.md)).
+([issue 2800](2800-threadx-linux-threads-run-on-host-pthread-stacks.md)).
 
 **Why it is deferred.** The facts' producer has to be the SAME table the
 entry runs. On the Rust road, `nros::main!` builds that table inside the
