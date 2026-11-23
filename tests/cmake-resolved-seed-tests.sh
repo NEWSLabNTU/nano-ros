@@ -125,7 +125,7 @@ endif()
 set(_frag "\${CMAKE_BINARY_DIR}/frag.cmake")
 
 # ---- the READER, early in the configure -------------------------------------
-# Every configure, as `_nros_load_derived_entity_inventory` does since issue
+# Every configure, as \`_nros_load_derived_entity_inventory\` does since issue
 # 1729: the function itself decides whether the resolve moved.
 nros_resolved_seed_entity_inventory("\${_frag}")
 if(NOT EXISTS "\${_frag}")
@@ -138,7 +138,7 @@ nros_promise_read("\${_frag}")
 include("\${_frag}")
 message(STATUS "PROBE_READ=\${ANSWER}")
 # What the readers resolved, as the knob resolver caches it: the subject of
-# `scripts/check-knob-one-pass.py`.
+# \`scripts/check-knob-one-pass.py\`.
 set(NROS_RESOLVED_PROBE_ANSWER "\${ANSWER}" CACHE INTERNAL "")
 
 # ---- the PRODUCER, later in the same configure -------------------------------

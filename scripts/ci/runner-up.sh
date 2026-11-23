@@ -136,7 +136,7 @@ run. That is a ONE-OFF, not a per-start cost:
   just runner-bootstrap ${LABELS}
 
 To keep a runner available across jobs (an ephemeral one retires after each, and
-`L3 (cross build + link)` is a REQUIRED check that then waits forever):
+\`L3 (cross build + link)\` is a REQUIRED check that then waits forever):
   just runner-loop-container ${LABELS}
 
 Not done automatically, because it changes REPO-WIDE settings and wants a human:
