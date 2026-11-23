@@ -226,6 +226,32 @@ static inline uint32_t nros_test_domain(uint32_t fallback) {
     return first;
 }
 
+// Issue 2922 — a test that hands Cyclone its OWN config string bypasses the
+// loopback pin.
+//
+// `dds_create_domain(id, config)` with a non-null `config` reads that string
+// and nothing else, so the `CYCLONEDDS_URI` the ctest launcher exports
+// (`dds_loopback_exec.sh`, the committed loopback profile) never reaches it.
+// Every session-based test is pinned because `session.cpp` folds the variable
+// into its own composition; a test that calls `dds_create_domain` directly is
+// not. Measured: `nros_rmw_cyclonedds_config_compose`, whose fragments state
+// only `<Discovery>`, let Cyclone pick a multicast interface, and 12 runs in 40
+// hung in `dds_delete`, where Cyclone's shutdown joins its multicast receive
+// thread and that thread's wake-up packet never looped back.
+//
+// So a test's config is the pin FIRST, then the test's own fragments: Cyclone
+// takes a comma-separated list of `file://` URIs and inline documents, and a
+// later token overrides an earlier one, so the test still states everything it
+// asserts on. Unset (`NROS_DDS_ALLOW_LAN=1`, or no launcher) passes `config`
+// through unchanged. Returns false rather than truncating: a clipped config is
+// unterminated XML that Cyclone reports against a string nobody wrote.
+static inline bool nros_test_pinned_cyclone_config(char* out, size_t cap, const char* config) {
+    const char* pin = std::getenv("CYCLONEDDS_URI");
+    const int n = (pin != nullptr && pin[0] != '\0') ? std::snprintf(out, cap, "%s,%s", pin, config)
+                                                     : std::snprintf(out, cap, "%s", config);
+    return n >= 0 && static_cast<size_t>(n) < cap;
+}
+
 #endif // NROS_TEST_DOMAIN_H
 
 /* phase-406 W2 — the copying takes carry ONE `rmw_mut_byte_span_t` where they
