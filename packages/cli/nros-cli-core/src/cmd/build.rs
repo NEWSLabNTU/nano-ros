@@ -51,8 +51,10 @@ pub struct Args {
     /// The west workspace holding Zephyr — the directory that contains
     /// `zephyr/`. Zephyr images only.
     ///
-    /// The explicit rung of the resolution ladder, above `$ZEPHYR_BASE` and
-    /// `$NROS_ZEPHYR_WORKSPACE`. An environment variable is ambient state that
+    /// The explicit rung of the resolution ladder, above `$ZEPHYR_BASE`,
+    /// `$NROS_ZEPHYR_WORKSPACE`, the west workspace the project sits in (a
+    /// `.west/` at or above it whose manifest names `zephyr`) and the store's
+    /// workspace. An environment variable is ambient state that
     /// a user has to remember to set and cannot see in the command they ran;
     /// this makes the same fact reviewable in a script and in shell history.
     ///
@@ -10355,7 +10357,9 @@ fn cmake_deploy_token(text: &str) -> Option<String> {
 ///
 /// Below the two rungs only this command has (`--zephyr-workspace`, an
 /// exported `ZEPHYR_BASE`), the ladder is `scripts/lib/zephyr-workspace.sh`'s
-/// (RFC-0095 D4) — the ONE workspace ladder `just` and the fixture builds use:
+/// (RFC-0095 D4) — the ONE workspace ladder `just` and the fixture builds use —
+/// with one more rung of this command's own, the project's west workspace
+/// (issue 2877, [`project_west_zephyr`]), between the env var and the store:
 /// `$NROS_ZEPHYR_WORKSPACE` (wins outright), the store's
 /// `$NROS_HOME/workspaces/zephyr/<line>`, then the checkout-relative trees of
 /// the selected line (`$NROS_ZEPHYR_VERSION`, default `3.7`). This copy had no
@@ -10403,17 +10407,120 @@ fn west_toolchain(
 
 fn zephyr_base(root: &std::path::Path, flag: Option<&std::path::Path>) -> Option<PathBuf> {
     let line = zephyr_line(std::env::var("NROS_ZEPHYR_VERSION").ok());
-    zephyr_base_with(
+    let store = zephyr_store_workspace(&crate::orchestration::store::root(), &line);
+    let (base, rung) = zephyr_base_rung_with(
         flag,
         std::env::var_os("ZEPHYR_BASE"),
         std::env::var_os("NROS_ZEPHYR_WORKSPACE"),
-        Some(zephyr_store_workspace(
-            &crate::orchestration::store::root(),
-            &line,
-        )),
+        Some(store.clone()),
         &line,
         root,
+    )?;
+    if let ZephyrRung::Project { topdir } = &rung {
+        // Issue 2877 -- the rung a user did not type decided the tree, so say
+        // which one, once per process (the build asks more than once).
+        static SAID: std::sync::Once = std::sync::Once::new();
+        SAID.call_once(|| eprintln!("{}", project_rung_line(&base, topdir, &store)));
+    }
+    Some(base)
+}
+
+/// Which rung of [`zephyr_base_with`]'s ladder decided the tree.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum ZephyrRung {
+    /// `--zephyr-workspace`, `$ZEPHYR_BASE` or `$NROS_ZEPHYR_WORKSPACE`: a
+    /// tree the user named.
+    Named,
+    /// Issue 2877 -- the west workspace the project being built sits in,
+    /// whose top directory is `topdir`.
+    Project { topdir: PathBuf },
+    /// The store's workspace or a checkout-relative one.
+    Fallback,
+}
+
+/// Issue 2877 -- the one line `nros build` prints when the project's own west
+/// workspace decided the Zephyr tree, naming the store tree it passed over
+/// when there is one.
+fn project_rung_line(
+    base: &std::path::Path,
+    topdir: &std::path::Path,
+    store: &std::path::Path,
+) -> String {
+    let store_zephyr = store.join("zephyr");
+    let over = if store.join(".west").is_dir() && store_zephyr.is_dir() {
+        format!(", not the store's {}", store_zephyr.display())
+    } else {
+        String::new()
+    };
+    format!(
+        "nros build: Zephyr tree {} (the west workspace {} this project is in{over}; \
+         --zephyr-workspace or ZEPHYR_BASE names another)",
+        base.display(),
+        topdir.display()
     )
+}
+
+/// Issue 2877 -- the Zephyr tree of the west workspace the project at `root`
+/// sits in, with that workspace's top directory, or `None`.
+///
+/// West's own rule finds the workspace: the NEAREST directory at or above
+/// `root` holding `.west/` is the top directory, and a `.west/` further up is
+/// never consulted (west would not either). That workspace counts only when
+/// its manifest names Zephyr: `.west/config`'s `[manifest] path` and `file`
+/// (default `west.yml`) name the manifest, and either one of its `projects`
+/// is named `zephyr` (its `path:`, else `zephyr`, under the top directory) or
+/// the manifest repository is itself a Zephyr tree. The directory found must
+/// be a Zephyr tree (`Kconfig.zephyr`): a workspace not yet `west update`d is
+/// skipped, never handed to west half-made. Anything unreadable is a skip,
+/// and the ladder goes on to the store as before.
+fn project_west_zephyr(root: &std::path::Path) -> Option<(PathBuf, PathBuf)> {
+    let abs = std::fs::canonicalize(root).unwrap_or_else(|_| root.to_path_buf());
+    let topdir = abs.ancestors().find(|d| d.join(".west").is_dir())?;
+    let config = std::fs::read_to_string(topdir.join(".west/config")).ok()?;
+    let manifest_path = west_config_value(&config, "manifest", "path")?;
+    let manifest_file =
+        west_config_value(&config, "manifest", "file").unwrap_or_else(|| "west.yml".to_string());
+    let manifest_repo = topdir.join(&manifest_path);
+    let zephyr = if is_zephyr_tree(&manifest_repo) {
+        manifest_repo
+    } else {
+        let text = std::fs::read_to_string(manifest_repo.join(&manifest_file)).ok()?;
+        let doc: serde_yaml_ng::Value = serde_yaml_ng::from_str(&text).ok()?;
+        let project = doc
+            .get("manifest")?
+            .get("projects")?
+            .as_sequence()?
+            .iter()
+            .find(|p| p.get("name").and_then(|n| n.as_str()) == Some("zephyr"))?;
+        let rel = project
+            .get("path")
+            .and_then(|p| p.as_str())
+            .unwrap_or("zephyr");
+        topdir.join(rel)
+    };
+    is_zephyr_tree(&zephyr).then(|| (zephyr, topdir.to_path_buf()))
+}
+
+/// One `key = value` of one `[section]` of a west config file (INI).
+fn west_config_value(text: &str, section: &str, key: &str) -> Option<String> {
+    let mut in_section = false;
+    for line in text.lines() {
+        let line = line.trim();
+        if line.starts_with('#') || line.starts_with(';') || line.is_empty() {
+            continue;
+        }
+        if let Some(name) = line.strip_prefix('[').and_then(|l| l.strip_suffix(']')) {
+            in_section = name.trim() == section;
+            continue;
+        }
+        if in_section
+            && let Some((k, v)) = line.split_once('=')
+            && k.trim() == key
+        {
+            return Some(v.trim().to_string());
+        }
+    }
+    None
 }
 
 /// Issue 2312 — the `nros setup board` line that provisions a Zephyr board's
@@ -10457,6 +10564,7 @@ fn is_zephyr_tree(p: &std::path::Path) -> bool {
 
 /// [`zephyr_base`] with the flag and the two env reads passed IN, so the resolution is
 /// testable without touching process-global state.
+#[cfg(test)]
 fn zephyr_base_with(
     flag: Option<&std::path::Path>,
     base: Option<std::ffi::OsString>,
@@ -10465,6 +10573,26 @@ fn zephyr_base_with(
     line: &str,
     root: &std::path::Path,
 ) -> Option<PathBuf> {
+    zephyr_base_rung_with(flag, base, workspace, store_workspace, line, root).map(|(p, _)| p)
+}
+
+/// [`zephyr_base_with`], with the rung that decided.
+///
+/// The ladder: `--zephyr-workspace`, `$ZEPHYR_BASE`, `$NROS_ZEPHYR_WORKSPACE`,
+/// then the project's own west workspace ([`project_west_zephyr`], issue
+/// 2877), then the store's workspace and the checkout-relative trees. The
+/// project rung sits BELOW the env var on purpose: it adds a rung without
+/// moving any existing one, so a build that set `$NROS_ZEPHYR_WORKSPACE`
+/// keeps the tree it had, and the only builds that change are those that fell
+/// to the store while standing in a west workspace of their own.
+fn zephyr_base_rung_with(
+    flag: Option<&std::path::Path>,
+    base: Option<std::ffi::OsString>,
+    workspace: Option<std::ffi::OsString>,
+    store_workspace: Option<PathBuf>,
+    line: &str,
+    root: &std::path::Path,
+) -> Option<(PathBuf, ZephyrRung)> {
     // `--zephyr-workspace` first: it is the only rung the user states in the
     // command itself, so an env left over from another project must not win
     // over what this invocation says.
@@ -10476,16 +10604,16 @@ fn zephyr_base_with(
     if let Some(f) = flag {
         let nested = f.join("zephyr");
         if nested.is_dir() {
-            return Some(nested);
+            return Some((nested, ZephyrRung::Named));
         }
         if is_zephyr_tree(f) {
-            return Some(f.to_path_buf());
+            return Some((f.to_path_buf(), ZephyrRung::Named));
         }
     }
     if let Some(b) = base {
         let p = PathBuf::from(b);
         if p.is_dir() {
-            return Some(p);
+            return Some((p, ZephyrRung::Named));
         }
     }
     // From here on, `nros_zephyr_ws_candidates` rung for rung.
@@ -10498,6 +10626,12 @@ fn zephyr_base_with(
         // be silently replaced by another one.
         Some(w) => candidates.push(PathBuf::from(w)),
         None => {
+            // Issue 2877 -- the west workspace the project itself sits in,
+            // above the store's: that tree carries the project's own pins and
+            // patches, the store's only nano-ros's.
+            if let Some((zephyr, topdir)) = project_west_zephyr(root) {
+                return Some((zephyr, ZephyrRung::Project { topdir }));
+            }
             candidates.extend(store_workspace);
             // The checkout-relative trees of THIS line only: a workspace of
             // the other line is a west-manifest mismatch, not a fallback.
@@ -10517,11 +10651,17 @@ fn zephyr_base_with(
     // `zephyr/`), as in `nros_zephyr_ws_resolve`: CI's sparse header clone at
     // `zephyr-workspace/zephyr` is a source tree no build can use. The
     // override is the user's own choice and is taken on `zephyr/` alone.
+    let rung = if workspace_set {
+        ZephyrRung::Named
+    } else {
+        ZephyrRung::Fallback
+    };
     candidates
         .into_iter()
         .filter(|ws| workspace_set || ws.join(".west").is_dir())
         .map(|ws| ws.join("zephyr"))
         .find(|z| z.is_dir())
+        .map(|z| (z, rung))
 }
 
 /// Package directories a cargo root must NOT list as members.
@@ -11913,6 +12053,246 @@ mod zephyr_base_tests {
             zephyr_base_with(None, None, None, None, "3.7", &root),
             Some(root.join("zephyr-workspace/zephyr"))
         );
+    }
+
+    /// Issue 2877 -- a project that is its own west workspace: `.west/config`
+    /// naming `<manifest_dir>/west.yml`, whose `projects` is `projects_yaml`,
+    /// and (when `zephyr_at` is given) a Zephyr tree there.
+    fn project_ws(
+        top: &std::path::Path,
+        manifest_dir: &str,
+        projects_yaml: &str,
+        zephyr_at: Option<&str>,
+    ) -> PathBuf {
+        std::fs::create_dir_all(top.join(".west")).unwrap();
+        std::fs::write(
+            top.join(".west/config"),
+            format!(
+                "[manifest]\npath = {manifest_dir}\nfile = west.yml\n\n[zephyr]\nbase = zephyr\n"
+            ),
+        )
+        .unwrap();
+        std::fs::create_dir_all(top.join(manifest_dir)).unwrap();
+        std::fs::write(
+            top.join(manifest_dir).join("west.yml"),
+            format!("manifest:\n  projects:\n{projects_yaml}"),
+        )
+        .unwrap();
+        if let Some(z) = zephyr_at {
+            std::fs::create_dir_all(top.join(z)).unwrap();
+            std::fs::write(top.join(z).join("Kconfig.zephyr"), "").unwrap();
+        }
+        std::fs::canonicalize(top).unwrap()
+    }
+
+    /// A store workspace that exists (`.west/` beside `zephyr/`).
+    fn present_store(base: &std::path::Path) -> PathBuf {
+        let store = base.join("store");
+        std::fs::create_dir_all(store.join("zephyr")).unwrap();
+        std::fs::create_dir_all(store.join(".west")).unwrap();
+        store
+    }
+
+    const ZEPHYR_PROJECT: &str = "    - name: cmsis\n      path: modules/hal/cmsis\n    - name: zephyr\n      revision: v3.7.0\n";
+
+    /// Issue 2877 -- a nano-ros workspace nested in a west workspace whose
+    /// manifest names Zephyr resolves to that workspace's `zephyr/`, ahead of
+    /// a store tree that is present, and says it was the project rung.
+    #[test]
+    fn the_project_s_own_west_workspace_wins_over_the_store() {
+        let tmp = tempfile::tempdir().unwrap();
+        let top = project_ws(
+            &tmp.path().join("island"),
+            "actuation_module",
+            ZEPHYR_PROJECT,
+            Some("zephyr"),
+        );
+        let root = top.join("actuation_module");
+        let store = present_store(tmp.path());
+        assert_eq!(
+            zephyr_base_rung_with(None, None, None, Some(store.clone()), "3.7", &root),
+            Some((
+                top.join("zephyr"),
+                ZephyrRung::Project {
+                    topdir: top.clone()
+                }
+            ))
+        );
+        // A workspace deeper under the manifest dir walks up to the same top.
+        let deep = root.join("src/controller_bringup");
+        std::fs::create_dir_all(&deep).unwrap();
+        assert_eq!(
+            zephyr_base_with(None, None, None, Some(store.clone()), "3.7", &deep),
+            Some(top.join("zephyr"))
+        );
+        // The line names the tree, the workspace and the store tree passed over.
+        let said = project_rung_line(&top.join("zephyr"), &top, &store);
+        for want in [
+            top.join("zephyr").display().to_string(),
+            top.display().to_string(),
+            format!("not the store's {}", store.join("zephyr").display()),
+            "--zephyr-workspace".to_string(),
+        ] {
+            assert!(said.contains(&want), "{want}: {said}");
+        }
+    }
+
+    /// Issue 2877 -- what a user names still wins over the project rung: the
+    /// flag, `$ZEPHYR_BASE`, and `$NROS_ZEPHYR_WORKSPACE` (the project rung
+    /// sits below the env var, so a build that set it keeps its tree).
+    #[test]
+    fn a_named_tree_still_wins_over_the_project_west_workspace() {
+        let tmp = tempfile::tempdir().unwrap();
+        let top = project_ws(
+            &tmp.path().join("island"),
+            "actuation_module",
+            ZEPHYR_PROJECT,
+            Some("zephyr"),
+        );
+        let root = top.join("actuation_module");
+        let store = present_store(tmp.path());
+        let other = zdir(tmp.path(), "other");
+        assert_eq!(
+            zephyr_base_rung_with(Some(&other), None, None, Some(store.clone()), "3.7", &root),
+            Some((other.join("zephyr"), ZephyrRung::Named)),
+            "--zephyr-workspace"
+        );
+        assert_eq!(
+            zephyr_base_rung_with(
+                None,
+                Some(other.join("zephyr").into_os_string()),
+                None,
+                Some(store.clone()),
+                "3.7",
+                &root
+            ),
+            Some((other.join("zephyr"), ZephyrRung::Named)),
+            "$ZEPHYR_BASE"
+        );
+        assert_eq!(
+            zephyr_base_rung_with(
+                None,
+                None,
+                Some(other.clone().into_os_string()),
+                Some(store),
+                "3.7",
+                &root
+            ),
+            Some((other.join("zephyr"), ZephyrRung::Named)),
+            "$NROS_ZEPHYR_WORKSPACE"
+        );
+    }
+
+    /// Issue 2877, the controls -- the store still wins when there is no
+    /// project rung: no `.west/` above the workspace; a `.west/` whose
+    /// manifest names no `zephyr` project; one that names it before `west
+    /// update` made the tree; and a nearer `.west/` without Zephyr in front of
+    /// a farther one with it (west's nearest-`.west/` rule: the farther one is
+    /// not this project's workspace).
+    #[test]
+    fn without_a_zephyr_west_workspace_above_the_store_still_wins() {
+        let tmp = tempfile::tempdir().unwrap();
+        let store = present_store(tmp.path());
+        let fallback = Some((store.join("zephyr"), ZephyrRung::Fallback));
+
+        let plain = tmp.path().join("plain/ws");
+        std::fs::create_dir_all(&plain).unwrap();
+        assert_eq!(
+            zephyr_base_rung_with(None, None, None, Some(store.clone()), "3.7", &plain),
+            fallback,
+            "no .west/ above"
+        );
+
+        let no_zephyr = project_ws(
+            &tmp.path().join("no_zephyr"),
+            "app",
+            "    - name: cmsis\n      path: modules/hal/cmsis\n",
+            Some("zephyr"),
+        );
+        assert_eq!(
+            zephyr_base_rung_with(
+                None,
+                None,
+                None,
+                Some(store.clone()),
+                "3.7",
+                &no_zephyr.join("app")
+            ),
+            fallback,
+            "a manifest with no zephyr project, even beside a zephyr/ directory"
+        );
+
+        let not_updated = project_ws(&tmp.path().join("not_updated"), "app", ZEPHYR_PROJECT, None);
+        assert_eq!(
+            zephyr_base_rung_with(
+                None,
+                None,
+                None,
+                Some(store.clone()),
+                "3.7",
+                &not_updated.join("app")
+            ),
+            fallback,
+            "zephyr named but not checked out"
+        );
+
+        let outer = project_ws(
+            &tmp.path().join("outer"),
+            "app",
+            ZEPHYR_PROJECT,
+            Some("zephyr"),
+        );
+        let inner = project_ws(&outer.join("app/inner"), "m", "    - name: cmsis\n", None);
+        assert_eq!(
+            zephyr_base_rung_with(None, None, None, Some(store), "3.7", &inner.join("m")),
+            fallback,
+            "the nearest .west/ decides"
+        );
+    }
+
+    /// Issue 2877 -- the Zephyr project's own `path:`, and a manifest
+    /// repository that is itself Zephyr (`west init` of a Zephyr clone).
+    #[test]
+    fn the_project_rung_follows_the_manifest_s_zephyr_path() {
+        let tmp = tempfile::tempdir().unwrap();
+        let moved = project_ws(
+            &tmp.path().join("moved"),
+            "app",
+            "    - name: zephyr\n      path: deps/zephyr\n",
+            Some("deps/zephyr"),
+        );
+        assert_eq!(
+            zephyr_base_with(None, None, None, None, "3.7", &moved.join("app")),
+            Some(moved.join("deps/zephyr"))
+        );
+
+        let selfz = project_ws(
+            &tmp.path().join("selfz"),
+            "zephyr",
+            "    []\n",
+            Some("zephyr"),
+        );
+        std::fs::create_dir_all(selfz.join("zephyr/samples")).unwrap();
+        assert_eq!(
+            zephyr_base_with(None, None, None, None, "3.7", &selfz.join("zephyr/samples")),
+            Some(selfz.join("zephyr"))
+        );
+    }
+
+    /// The config reader takes a key from its own section only.
+    #[test]
+    fn a_west_config_value_is_read_from_its_section() {
+        let text = "[zephyr]\nbase = zephyr\n# path = no\n[manifest]\npath = actuation_module\nfile=west.yml\n";
+        assert_eq!(
+            west_config_value(text, "manifest", "path").as_deref(),
+            Some("actuation_module")
+        );
+        assert_eq!(
+            west_config_value(text, "manifest", "file").as_deref(),
+            Some("west.yml")
+        );
+        assert_eq!(west_config_value(text, "zephyr", "path"), None);
+        assert_eq!(west_config_value(text, "build", "path"), None);
     }
 
     /// The ladder is `west-fixtures.sh`'s, and what it produces is a

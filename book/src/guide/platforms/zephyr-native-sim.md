@@ -163,7 +163,18 @@ from the image's `board`, and `--sysbuild`, which comes from a
 `sysbuild.conf` beside the application.
 
 `nros build` finds your Zephyr through `--zephyr-workspace <dir>`,
-`$ZEPHYR_BASE` or `$NROS_ZEPHYR_WORKSPACE` (the starter exported the last).
+`$ZEPHYR_BASE` or `$NROS_ZEPHYR_WORKSPACE` (the starter exported the last),
+in that order. Next it looks for the west workspace your project sits in:
+the nearest `.west/` at or above the workspace, as `west` finds it, counts
+when its manifest names a `zephyr` project that is checked out. That tree
+carries your own manifest's pins and patches, so it comes before the store's
+workspace (`~/.nros/workspaces/zephyr/<line>`), and the build prints one line
+naming it:
+
+```text
+nros build: Zephyr tree /work/robot/zephyr (the west workspace /work/robot this project is in, not the store's /home/me/.nros/workspaces/zephyr/3.7/zephyr; --zephyr-workspace or ZEPHYR_BASE names another)
+```
+
 When it finds none it stops and prints the `west build` line and where to run
 it, rather than guess. nano-ros never writes into the west workspace.
 

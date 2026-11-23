@@ -501,7 +501,7 @@ Options:
       --zephyr-workspace <DIR>
           The west workspace holding Zephyr — the directory that contains `zephyr/`. Zephyr images only.
           
-          The explicit rung of the resolution ladder, above `$ZEPHYR_BASE` and `$NROS_ZEPHYR_WORKSPACE`. An environment variable is ambient state that a user has to remember to set and cannot see in the command they ran; this makes the same fact reviewable in a script and in shell history.
+          The explicit rung of the resolution ladder, above `$ZEPHYR_BASE`, `$NROS_ZEPHYR_WORKSPACE`, the west workspace the project sits in (a `.west/` at or above it whose manifest names `zephyr`) and the store's workspace. An environment variable is ambient state that a user has to remember to set and cannot see in the command they ran; this makes the same fact reviewable in a script and in shell history.
           
           Pointing it at the `zephyr/` directory itself also works — that is the commonest way to get this wrong, and both spellings name one place.
 

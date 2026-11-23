@@ -815,7 +815,7 @@ AN536) stay green.
 | owned west entry: `NROS_INTERFACE_SEARCH_PATH` (`asi_tests/asi_*_zephyr/CMakeLists.txt:39-40`) | fixed in nano-ros (2876 resolved); the island drops its lines next | issue 2876, I36 |
 | owned entry that never starts nano-ros on the host gets a census (`can_output_test_bringup` `[census] on_missing = "warn"`) | open, fix in flight (its fix branch, PR coming) | 2871 (`docs/issues/`; the fix archives it), I45 |
 | `nros run` `--forbid`, `--settle`, `--zephyr-workspace` | fixed; used on `nano-ros-next` | issue 2863 |
-| the Zephyr workspace ladder skips the project's west workspace (`run-zephyr-fvp-ci.sh:202-213`, `--zephyr-workspace` on every call) | NOT FILED until now | issue 2877, I37 |
+| the Zephyr workspace ladder skips the project's west workspace (`run-zephyr-fvp-ci.sh:202-213`, `--zephyr-workspace` on every call) | fixed in nano-ros (2877 resolved); the island drops its flag next | issue 2877, I37 |
 | the island's last Zephyr patch, an out-of-tree tracing backend (`patches/zephyr/0003-*`, `scripts/apply-zephyr-patches.sh`) | declined in 2766, NOT FILED as its own question | issue 2878, I38 |
 | S32Z network: board network file, VLAN, second interface (`network_config.cpp`, the last `PLATFORM_*` reader; the DHCP sleep in `board_network_hook.cpp`) | NOT FILED (2679 D5 cut it) | issue 2879, I39 |
 | S32Z Zephyr module pins (`actuation_module/west.yml`: `cmsis`, `hal_nxp`, `zephyr-lang-rust` by hand) | NOT FILED | issue 2880, I40 |
@@ -848,11 +848,14 @@ AN536) stay green.
 
 ### I37 -- the Zephyr ladder finds the project's west workspace
 
-- **Issue:** [2877](../issues/2877-zephyr-workspace-ladder-skips-project-west-workspace.md).
+- **Issue:** [2877](../issues/archived/2877-zephyr-workspace-ladder-skips-project-west-workspace.md).
 - **What:** a rung for the west workspace the nano-ros workspace sits in,
   above the store's; the build names the tree it took.
 - **Acceptance:** 2877's; the island's FVP lane runs `nros build` / `nros run`
   with no `--zephyr-workspace`.
+- **Status:** the nano-ros half is done: the ladder takes the project's west
+  workspace below `$NROS_ZEPHYR_WORKSPACE` and above the store, and says so
+  (issue 2877, resolved). The island's deletion waits on its pin.
 
 ### I38 -- a ruling on the out-of-tree tracing backend patch
 
@@ -1194,7 +1197,7 @@ Filed from the island port's inventory (its phase 15 on `nano-ros-next`
 unowned.
 
 - [issue 2876](../issues/archived/2876-owned-west-entry-no-interface-search-path.md): an owned Zephyr west entry gets no workspace `NROS_INTERFACE_SEARCH_PATH` (I36).
-- [issue 2877](../issues/2877-zephyr-workspace-ladder-skips-project-west-workspace.md): the Zephyr workspace ladder never looks at the project's own west workspace (I37).
+- [issue 2877](../issues/archived/2877-zephyr-workspace-ladder-skips-project-west-workspace.md): the Zephyr workspace ladder never looks at the project's own west workspace (I37).
 - [issue 2878](../issues/2878-zephyr-tracing-custom-backend-patch.md): Zephyr 3.7 cannot select an out-of-tree tracing backend; the island carries the patch (I38).
 - [issue 2879](../issues/2879-s32z270-rtu0-zephyr-no-board-network.md): `s32z270-rtu0-zephyr` declares no `[board.net]`, and no VLAN or second interface renders (I39).
 - [issue 2880](../issues/2880-s32z270-rtu0-zephyr-no-west-downstream.md): `s32z270-rtu0-zephyr` has no `west-downstream.yml` (I40).
