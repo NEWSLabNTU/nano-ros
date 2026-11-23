@@ -93,6 +93,14 @@ census-prepass-parallel:
 census-leaves-west-rows:
     @./tests/census-leaves-west-rows-tests.sh
 
+# issue 2911 -- the pre-pass's image list (`fixtures-manifest.py census-images`)
+# includes every compile-check row configured by `nros build` (the predicate
+# the west builder runs it on), so an owned entry sized by its census has the
+# census taken before its configure.
+[private]
+census-images-compile-check-rows:
+    @./tests/census-images-compile-check-rows-tests.sh
+
 # issue 2421 — under a FIFO pool, a fixture build dir is handed to
 # `nros dev jobserver repair-makes` before its build runs a cached make older
 # than 4.4 (cmake-cache-guard.sh rule 5); checked against a stub CLI.

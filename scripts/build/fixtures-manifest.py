@@ -606,6 +606,23 @@ def west_compile_check_rmw(entry):
     return rmw or WEST_KCONFIG_DEFAULT_RMW
 
 
+def compile_check_nros_image(entry):
+    """Issue 2911 -- the image a compile-check row's configure builds through
+    `nros build <bringup>:<image>`, or "" for a row configured another way.
+
+    ONE predicate, read by both halves of the build so they cannot disagree:
+    `compile_check_record` hands it to `west-fixtures.sh` (which runs `nros
+    build` exactly when the field is non-empty), and `census-images` lists
+    every row it names, so the census pre-pass takes the census each such
+    configure reads. Before 2911 `census-images` read only the
+    `[[workspace_fixture]]` table: a `west_nros_image` row whose image builds
+    an owned entry sized by its census (`west_owned_entry_census_*`) reached
+    its configure with no census, on every fresh tree."""
+    if entry.get("builder", "") not in WEST_COMPILE_CHECK_BUILDERS:
+        return ""
+    return entry.get("west_nros_image", "")
+
+
 def compile_check_record(entry):
     """One \x1f-separated record: id, builder, dir, pkg, manifest_dir, target,
     profiles, output, west_subdir, west_board, west_extra, west_nros_image,
@@ -628,7 +645,7 @@ def compile_check_record(entry):
             entry.get("west_subdir", ""),
             entry.get("west_board", ""),
             entry.get("west_extra", ""),
-            entry.get("west_nros_image", ""),
+            compile_check_nros_image(entry),
             ",".join(entry.get("zephyr_modules", [])),
         )
     )
@@ -2842,6 +2859,35 @@ def main():
                 continue
             bringup = Path(e.get("bringup", "")).name
             key = (e["dir"], f"{bringup}:{e['image']}")
+            if key in seen:
+                continue
+            seen.add(key)
+            sys.stdout.write(f"{key[0]}\t{key[1]}\n")
+        # Issue 2911 -- and every compile-check row whose configure runs `nros
+        # build <bringup>:<image>` (`compile_check_nros_image`, the predicate
+        # the west builder runs it on). Such a configure reads the census of
+        # an owned entry the image builds and REFUSES without it; `take`
+        # answers "nothing to take" for an image that needs none. Narrowed by
+        # the same rules `list-compile-checks` applies (platform by
+        # `compile_check_platform`, lane by `compile_check_in_coords`, job
+        # modules supplied), so the pre-pass covers exactly the rows the lane
+        # builds. A row states no `lang`, so `--lang` (a workspace narrowing)
+        # leaves them out.
+        for e in load_compile_check_fixtures(a.manifest):
+            image = compile_check_nros_image(e)
+            if not image or e.get("skip_build"):
+                continue
+            if a.platform and compile_check_platform(e) != a.platform:
+                continue
+            if a.lang or (a.id and e.get("id") != a.id):
+                continue
+            if a.rmw and west_compile_check_rmw(e) != a.rmw:
+                continue
+            if not compile_check_modules_supplied(e):
+                continue
+            if a.coords_from and not compile_check_in_coords(e, _coords_for(a.coords_from)):
+                continue
+            key = (e["dir"], image)
             if key in seen:
                 continue
             seen.add(key)
