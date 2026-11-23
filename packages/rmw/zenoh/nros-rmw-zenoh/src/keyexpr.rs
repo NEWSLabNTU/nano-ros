@@ -16,37 +16,56 @@ pub trait TopicKeyExpr {
     /// - Iron/Jazzy/Rolling (`ros-{iron,jazzy,rolling}`): `<domain_id>/<topic_name>/<type_name>/<type_hash>`
     fn to_key<const N: usize>(&self) -> heapless::String<N>;
 
+    /// [`Self::to_key`], or `None` when the key does not fit `N` bytes. A
+    /// key that does not fit is truncated by `to_key`, which names another
+    /// topic.
+    fn try_to_key<const N: usize>(&self) -> Option<heapless::String<N>>;
+
     /// Generate a wildcard topic key for subscribing
     /// Format: `<domain_id>/<topic_name>/<type_name>/*`
     fn to_key_wildcard<const N: usize>(&self) -> heapless::String<N>;
 }
 
+/// Issue 2694 -- write `t`'s full topic key into `key`, reporting overflow.
+fn write_topic_key<const N: usize>(
+    t: &TopicInfo<'_>,
+    key: &mut heapless::String<N>,
+) -> core::fmt::Result {
+    let topic_stripped = t.name.trim_matches('/');
+    #[cfg(not(any(feature = "ros-iron", feature = "ros-jazzy")))]
+    let r = core::fmt::write(
+        key,
+        format_args!(
+            "{}/{}/{}/TypeHashNotSupported",
+            t.domain_id,
+            topic_stripped,
+            DdsTypeName(t.type_name)
+        ),
+    );
+    #[cfg(any(feature = "ros-iron", feature = "ros-jazzy"))]
+    let r = core::fmt::write(
+        key,
+        format_args!(
+            "{}/{}/{}/{}",
+            t.domain_id,
+            topic_stripped,
+            DdsTypeName(t.type_name),
+            t.type_hash
+        ),
+    );
+    r
+}
+
 impl TopicKeyExpr for TopicInfo<'_> {
     fn to_key<const N: usize>(&self) -> heapless::String<N> {
         let mut key = heapless::String::new();
-        let topic_stripped = self.name.trim_matches('/');
-        #[cfg(not(any(feature = "ros-iron", feature = "ros-jazzy")))]
-        let _ = core::fmt::write(
-            &mut key,
-            format_args!(
-                "{}/{}/{}/TypeHashNotSupported",
-                self.domain_id,
-                topic_stripped,
-                DdsTypeName(self.type_name)
-            ),
-        );
-        #[cfg(any(feature = "ros-iron", feature = "ros-jazzy"))]
-        let _ = core::fmt::write(
-            &mut key,
-            format_args!(
-                "{}/{}/{}/{}",
-                self.domain_id,
-                topic_stripped,
-                DdsTypeName(self.type_name),
-                self.type_hash
-            ),
-        );
+        let _ = write_topic_key(self, &mut key);
         key
+    }
+
+    fn try_to_key<const N: usize>(&self) -> Option<heapless::String<N>> {
+        let mut key = heapless::String::new();
+        write_topic_key(self, &mut key).ok().map(|()| key)
     }
 
     fn to_key_wildcard<const N: usize>(&self) -> heapless::String<N> {
