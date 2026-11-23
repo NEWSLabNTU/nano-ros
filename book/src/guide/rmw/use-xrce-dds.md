@@ -101,12 +101,12 @@ open again ([When the Agent restarts](../platforms/bare-metal-own-main-loop.md#w
 
    ```toml
    [image.posix_xrce.knobs.xrce]
-   buffer_size = 256
+   buffer_bytes = 256
    stream_history = 4
    ```
 
    `stream_history` must be at least 4. A received sample larger than
-   `buffer_size` is refused on take.
+   `buffer_bytes` is refused on take.
 
 ## Example
 

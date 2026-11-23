@@ -237,7 +237,7 @@ data: 'Hello World: 3'
 - [Configure an image](../build/configure-an-image.md#the-middlewares-own-file):
   the session file, per-image files and the keys it takes.
 - [Environment variables](../../reference/environment-variables.md#runtime-configuration):
-  `NROS_LOCATOR`, `NROS_SESSION_MODE` and the TLS variables.
+  `NROS_LOCATOR`, `NROS_SESSION_MODE` and the retired names.
 - [CLI reference](../../reference/cli.md#nros-run): every `nros run` flag.
 - [Tune throughput and latency](tune-throughput-and-latency.md): zenoh-pico's
   transmit path and buffers.

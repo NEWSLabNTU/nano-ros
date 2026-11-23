@@ -180,7 +180,7 @@ with `nros build posix`.
 | Several concurrent service calls fail | raise `NROS_ZENOH_MAX_PENDING_GETS` |
 | An entity create fails at run time | a pool is full; the [Static pool inventory](../../reference/static-pool-inventory.md) names the knob that sizes it |
 | A benchmark listener counts far fewer messages than were sent | its receive ring is too shallow for a batch arriving at once; build the listener with `NROS_ZENOH_SUBSCRIBER_RING_DEPTH=1024` |
-| Batching made a timer-paced image slower | turn `batch` off: at one message per flush there is nothing to combine |
+| Batching made a timer-paced image slower | turn `tx_batch` off: at one message per flush there is nothing to combine |
 
 Do not flush from your own timers or executor threads. Flushing from a sched-task
 thread stalls the timers that produce the samples, and measured slower than
