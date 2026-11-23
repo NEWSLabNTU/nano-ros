@@ -430,6 +430,20 @@ pub const CELLS: &[InteropCell] = &[
     ic("native-lifecycle-pair-cpp-zenoh",
        c(Linux, Cpp, Zenoh, Lifecycle, Interop, Runtime),
        LinuxFixtures, RosEdition(Zenoh), BiDir, "lifecycle_pair_interop"),
+    // The same pair on the two DDS-shaped backends, where each managed node
+    // pays its own service entities.
+    ic("native-lifecycle-pair-c-cyclonedds",
+       c(Linux, C, Cyclonedds, Lifecycle, Interop, Runtime),
+       LinuxFixtures, RosEdition(Cyclonedds), BiDir, "lifecycle_pair_interop"),
+    ic("native-lifecycle-pair-cpp-cyclonedds",
+       c(Linux, Cpp, Cyclonedds, Lifecycle, Interop, Runtime),
+       LinuxFixtures, RosEdition(Cyclonedds), BiDir, "lifecycle_pair_interop"),
+    ic("native-lifecycle-pair-c-xrce",
+       c(Linux, C, Xrce, Lifecycle, Interop, Runtime),
+       LinuxFixtures, XrceAgent, BiDir, "lifecycle_pair_interop"),
+    ic("native-lifecycle-pair-cpp-xrce",
+       c(Linux, Cpp, Xrce, Lifecycle, Interop, Runtime),
+       LinuxFixtures, XrceAgent, BiDir, "lifecycle_pair_interop"),
 
     // ── Zephyr native_sim QoS interop ───────────────────────────────────
     // phase-441 W5 — this header read "Zephyr on-target QoS interop", which
@@ -1108,6 +1122,26 @@ pub const CASE_CELLS: &[CaseOwner] = &[
        "native-lifecycle-pair-c-zenoh"),
     co("lifecycle_pair_interop",
        "two_managed_nodes_are_silent_until_each_is_active::case_2_cpp",
+       "native-lifecycle-pair-cpp-zenoh"),
+    co("lifecycle_pair_interop",
+       "two_managed_nodes_are_silent_until_each_is_active::case_3_c_cyclonedds",
+       "native-lifecycle-pair-c-cyclonedds"),
+    co("lifecycle_pair_interop",
+       "two_managed_nodes_are_silent_until_each_is_active::case_4_cpp_cyclonedds",
+       "native-lifecycle-pair-cpp-cyclonedds"),
+    co("lifecycle_pair_interop",
+       "two_managed_nodes_are_silent_until_each_is_active::case_5_c_xrce",
+       "native-lifecycle-pair-c-xrce"),
+    co("lifecycle_pair_interop",
+       "two_managed_nodes_are_silent_until_each_is_active::case_6_cpp_xrce",
+       "native-lifecycle-pair-cpp-xrce"),
+    // The same image against stock `lifecycle_talker`: evidence for the same
+    // cell, since it is the same image on the same RMW.
+    co("lifecycle_pair_interop",
+       "lifecycle_cli_answers_as_stock_lifecycle_talker::case_1_c",
+       "native-lifecycle-pair-c-zenoh"),
+    co("lifecycle_pair_interop",
+       "lifecycle_cli_answers_as_stock_lifecycle_talker::case_2_cpp",
        "native-lifecycle-pair-cpp-zenoh"),
 ];
 

@@ -4572,6 +4572,26 @@ image = "linux"
 build_subdir = "build/posix-zenoh-linux-c_lifecycle_pair_bringup-linux/cmake"
 
 [[workspace_fixture]]
+id = "c-lifecycle-pair-xrce"
+platform = "linux"
+lang = "c"
+rmw = "xrce"
+dir = "examples/linux/c/lifecycle-pair"
+bringup = "src/c_lifecycle_pair_bringup"
+image = "linux_xrce"
+build_subdir = "build/posix-xrce-linux-cfg2a7ae0a7f8-c_lifecycle_pair_bringup-linux_xrce/cmake"
+
+[[workspace_fixture]]
+id = "c-lifecycle-pair-cyclonedds"
+platform = "linux"
+lang = "c"
+rmw = "cyclonedds"
+dir = "examples/linux/c/lifecycle-pair"
+bringup = "src/c_lifecycle_pair_bringup"
+image = "linux_cyclonedds"
+build_subdir = "build/posix-cyclonedds-linux-c_lifecycle_pair_bringup-linux_cyclonedds/cmake"
+
+[[workspace_fixture]]
 id = "cpp-lifecycle-pair"
 platform = "linux"
 lang = "cpp"
@@ -4580,6 +4600,26 @@ dir = "examples/linux/cpp/lifecycle-pair"
 bringup = "src/cpp_lifecycle_pair_bringup"
 image = "linux"
 build_subdir = "build/posix-zenoh-linux-cpp_lifecycle_pair_bringup-linux/cmake"
+
+[[workspace_fixture]]
+id = "cpp-lifecycle-pair-xrce"
+platform = "linux"
+lang = "cpp"
+rmw = "xrce"
+dir = "examples/linux/cpp/lifecycle-pair"
+bringup = "src/cpp_lifecycle_pair_bringup"
+image = "linux_xrce"
+build_subdir = "build/posix-xrce-linux-cfg2a7ae0a7f8-cpp_lifecycle_pair_bringup-linux_xrce/cmake"
+
+[[workspace_fixture]]
+id = "cpp-lifecycle-pair-cyclonedds"
+platform = "linux"
+lang = "cpp"
+rmw = "cyclonedds"
+dir = "examples/linux/cpp/lifecycle-pair"
+bringup = "src/cpp_lifecycle_pair_bringup"
+image = "linux_cyclonedds"
+build_subdir = "build/posix-cyclonedds-linux-cpp_lifecycle_pair_bringup-linux_cyclonedds/cmake"
 
 # Phase 275 W2 (#102 H3) — linux/cpp variant examples that shipped with zero
 # fixtures. Standard `-DNROS_RMW` path (default zenoh); `target=` mirrors the

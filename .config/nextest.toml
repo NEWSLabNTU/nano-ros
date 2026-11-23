@@ -394,6 +394,20 @@ max-threads = 1
 # the former serial `qemu-baremetal-shared` sub-group is retired and the
 # platform group is purely the QEMU host-load throttle.
 # Issue 1495 — see `[test-groups.graph-interop]`.
+# The lifecycle-pair interop cells drive a managed node through `ros2
+# lifecycle` and `ros2 topic echo` queries, each a fresh Python process, a
+# dozen per case. Measured two at a time on rebuilt fixtures: zenoh 56 s,
+# the stock-parity cases 89 s, XRCE 146 s, Cyclone 149 s — DDS discovery
+# costs every `ros2` call seconds that the router does not. Nine at once
+# killed three of them at the old 60 s cap. Two at a time, 180 s each.
+[test-groups.lifecycle-pair-interop]
+max-threads = 2
+
+[[profile.default.overrides]]
+filter = "binary(lifecycle_pair_interop)"
+test-group = "lifecycle-pair-interop"
+slow-timeout = { period = "60s", terminate-after = 3 }
+
 [[profile.default.overrides]]
 filter = "binary(graph_interop)"
 test-group = "graph-interop"

@@ -98,6 +98,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         ros-humble-std-msgs \
         ros-humble-unique-identifier-msgs \
         ros-humble-examples-rclcpp-minimal-action-client \
+        ros-humble-lifecycle \
         ros-humble-turtlesim \
     && rm -rf /var/lib/apt/lists/*
 ENV ROS_DISTRO=humble
