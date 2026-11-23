@@ -1147,6 +1147,14 @@ nuttx-links-snapshot:
 nuttx-export-machine:
     @python3 scripts/nuttx/check-export-machine.py
 
+# Issue 2915 — `build-nuttx.sh` reads a relative NUTTX_DEFCONFIG from the
+# caller's cwd, not from inside the NuttX tree, and names a missing one.
+# Self-test of the helpers it sources, with a negative control per case.
+# Buildless, <1 s.
+[private]
+nuttx-build-inputs:
+    @bash scripts/nuttx/check-build-inputs.sh
+
 # Issue 0525 — NuttX is built IN PLACE and one checkout serves both arches, so
 # `$NUTTX_DIR/include/nuttx/config.h` belongs to whichever arch was configured
 # LAST. A compile input taken from there silently gets the other arch (issue
