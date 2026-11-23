@@ -99,3 +99,31 @@ Test: `tests/zephyr-transient-overrides-tests.sh` case H configures a probe
 build dir with a retired symbol as an older tree would, then re-configures
 under the current module (no refusal, warning, entry gone), then passes the
 symbol live (refused). Making the helper a no-op fails four of H's checks.
+
+### Second sighting and the end-to-end check (host 142, 2026-11-23)
+
+An agent worktree that ran `just build-test-fixtures tier1` at an older base
+and then moved to current main got 120 refusals, and its zephyr stage
+returned rc=2. 23 of the 28 dirs under `build/zephyr-workspace-builds/3.7/`
+carried `CLI_CONFIG_NROS_ZENOH_LOCATOR`. `just reconfigure-stale` could not
+help: `scripts/nros-reconfigure-stale.sh` re-runs a bare `cmake <dir>`, which
+keeps the cache, so it reported the dirs as unrepairable. By hand,
+`cmake -U CLI_CONFIG_<X> <dir>` cleared one dir.
+
+With this fix's module in place, a bare `cmake <dir>` on two of those dirs:
+
+- `build-rust-talker-zenoh`: rc=0. It warned "dropped
+  CLI_CONFIG_NROS_ZENOH_LOCATOR=…" and "dropped CLI_CONFIG_NROS_PARAM_STORE=n",
+  then `Configuring done`, and both entries were gone from `CMakeCache.txt`.
+- `build-c-talker-xrce`: rc=0. It dropped `CLI_CONFIG_NROS_PARAM_STORE=n`.
+  `CLI_CONFIG_NROS_DOMAIN_ID` and `CLI_CONFIG_NROS_XRCE_AGENT_PORT`, which are
+  not retired, stayed and applied.
+- A live `-DCONFIG_NROS_ZENOH_LOCATOR=…` on the same dir was still refused
+  (rc=1).
+
+One residue is out of scope here: a refused live `-DCONFIG_<retired>` stays in
+the cache as `CONFIG_<SYM>:UNINITIALIZED`, because the configure aborts before
+`kconfig.cmake` moves it. Every later bare configure therefore reads it as
+live and refuses again, until the user runs `cmake -U CONFIG_<SYM> <dir>`.
+That user did pass the setting once, so the refusal is honest, but it does not
+name that remedy.
