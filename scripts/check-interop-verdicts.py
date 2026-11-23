@@ -2372,6 +2372,14 @@ def main(argv: list[str]) -> int:
         "ids those cells' tests resolve, directly or through a nros-tests helper",
     )
     ap.add_argument(
+        "--workspace-fixtures-of-test",
+        metavar="TEST",
+        help="the `[[workspace_fixture]]` ids one nros-tests test binary "
+        "resolves, directly or through a nros-tests helper, whatever the "
+        "ledger says: for a lane that runs one test outside the cell matrix "
+        "(host-tests' rt-sched job)",
+    )
+    ap.add_argument(
         "--assert-ran",
         metavar="DIR",
         help="phase-441 W4 — every junit in DIR, together: exit 3 naming the "
@@ -2386,6 +2394,19 @@ def main(argv: list[str]) -> int:
         return 0
     # Always, not behind a flag: a negative control nobody runs is a comment.
     self_test()
+
+    if args.workspace_fixtures_of_test:
+        test = args.workspace_fixtures_of_test
+        if not (TESTS_DIR / f"{test}.rs").is_file():
+            print(f"check-interop-verdicts: no test {test} in {_rel(TESTS_DIR)}", file=sys.stderr)
+            return 1
+        pseudo = [{"id": test, "test": test, "platform": HOST_PLATFORM}]
+        rows = host_rows_for(pseudo, [test], _table_ids("workspace_fixture"))
+        if not rows:
+            print(f"check-interop-verdicts: {test} resolves no workspace fixture", file=sys.stderr)
+            return 1
+        print("\n".join(rows))
+        return 0
 
     global LEDGER
     if args.ledger:
