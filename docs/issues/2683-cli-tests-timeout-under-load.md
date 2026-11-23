@@ -458,3 +458,25 @@ runs, reading the cache the warm-up filled. Measured on host 118:
 `CARGO_HOME`, where only the warm-up fills the cache, so a fresh host needs
 nothing extra. The test binary's other configure-driving files each run one
 configure, so a warm-up there would buy nothing.
+
+## Status against "Done when" (2026-11-23, host 118)
+
+- **Daily build-tier shards: met.** `host-tests` scheduled runs, `check / build
+  tier + no-std` shards [1/3], [2/3], [3/3]:
+
+  | run | date | [1/3] | [2/3] | [3/3] |
+  | --- | --- | --- | --- | --- |
+  | 44666000262 | 11-20 | 81 min | 79 min | 114 min |
+  | 44859792666 | 11-21 | 55 min | 67 min | 74 min |
+  | 44979478331 | 11-22 | 73 min | 80 min | 105 min |
+  | 45104661214 | 11-23 | 68 min | 70 min | running at 04:23Z |
+
+  All green, the longest at 114 min of the 240 min job limit. The reds in
+  those runs (`real-time levels`, `per-feature clippy`, the installed book
+  probe) are other jobs, not this class.
+- **Weights checked statically: met** by issue 2625 (archived).
+- **A red step 8 sampled: not met.** No red dev-host step 8 has been captured
+  with `NROS_GATE_WAITS=1` since the sampler landed. The issue stays open for
+  it.
+- One more sibling of the 2026-11-20 `--offline` fix was found: the
+  `dev bindings` test still pruned online. Issue 2627 (archived) has it.
