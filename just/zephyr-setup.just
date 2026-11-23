@@ -3,6 +3,10 @@ setup *ARGS:
     set -e
     WORKSPACE="{{ZEPHYR_WORKSPACE}}"
     ARGS="{{ARGS}}"
+    # Issue 2902 — refuse a missing line precondition (the 4.4 line's Python
+    # 3.12 venv) in seconds, before any source, tool or Zephyr fetch below.
+    # `NROS_ZEPHYR_CREATE_VENV=1` makes the venv instead of refusing.
+    bash scripts/zephyr/line-preflight.sh "{{ZEPHYR_MANIFEST}}" "$WORKSPACE"
     # Phase 197.1 — provision the in-tree sources the Zephyr build needs the way a
     # user/CI does (`nros setup --source`, index-driven), NOT a hand
     # `git submodule update`: zenoh-pico (zenoh examples), the cyclonedds fork (the

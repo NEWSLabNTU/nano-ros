@@ -41,6 +41,9 @@ ZEPHYR_C_PORT_DIR := shell("scripts/lib/zephyr-workspace.sh --version $1 build-r
 # Idempotent: skips if the workspace already exists.
 # Set $NROS_ZEPHYR_WORKSPACE to install elsewhere.
 # Extra args are forwarded: e.g. `just zephyr setup --force --skip-sdk`.
+# The 4.4 line (`NROS_ZEPHYR_VERSION=4.4`) needs a Python 3.12 venv in the
+# workspace and refuses before fetching without one; add
+# `NROS_ZEPHYR_CREATE_VENV=1` to have setup create it (needs uv or python3.12).
 
 import "zephyr-setup.just"
 import "zephyr-ci.just"
