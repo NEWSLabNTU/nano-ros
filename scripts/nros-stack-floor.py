@@ -3493,9 +3493,18 @@ def validate_table(doc: dict, issue_ids: set[str], root: Path | None = None) -> 
             problems.append(f"{where}: role must be one of {ROLES}")
         if not isinstance(o.get("peak"), int) or o.get("peak", 0) <= 0:
             problems.append(f"{where}: needs a positive integer `peak`")
-        if not isinstance(o.get("static"), int):
+        if "unwalked" in o:
+            # Issue 2834 -- a host image: sized from its peak, with no walk.
+            if not str(o.get("unwalked", "")).strip():
+                problems.append(f"{where}: `unwalked` needs the reason no walk covers it")
+            for f in ("static", "walk_floor", "upper_bound"):
+                if f in o:
+                    problems.append(f"{where}: `{f}` records a walk; an `unwalked` row is "
+                                    "sized from its peak alone")
+        elif not isinstance(o.get("static"), int):
             problems.append(f"{where}: needs `static`, the walk the peak was checked against "
-                            "(what `nros new` stamps a template's stack from)")
+                            "(what `nros new` stamps a template's stack from), or `unwalked` "
+                            "with the reason no walk covers it")
         elif isinstance(o.get("peak"), int) and o["static"] < o["peak"]:
             problems.append(f"{where}: static {o['static']} B is below the observed peak "
                             f"{o['peak']} B: the walk does not cover the run")
@@ -3987,6 +3996,62 @@ def apply_sched_tasks(args: argparse.Namespace, reserved: dict[int, int] | None 
         args.role = list(args.role or []) + [f"{role}={root}"]
         args.check_stack = list(args.check_stack or []) + [f"{role}={stack}"]
     return notes
+
+
+# Issue 2834 -- a host image has no walk: its deepest paths run through the
+# host libc, whose frames the walk has no sizes for, so a walk would read low.
+# Until a libc walk exists (deferred), a measured `[[observed]]` row marked
+# `unwalked` sizes the stack from its peak plus the margin, as a row whose
+# walk is only an upper bound is sized (issue 2783).
+def measured_only(args: argparse.Namespace) -> int:
+    """`--measured-only`: check a host image's stated stacks against its
+    `[[observed]]` peaks, with no walk. A role with no row is not checked, and
+    says so; a stack below its peak plus the margin fails, naming the knob."""
+    if not (args.table and args.stated_by_build and args.target):
+        raise SystemExit("nros-stack-floor: --measured-only needs --table, --target and "
+                         "--stated-by-build")
+    doc = load_table(Path(args.table))
+    margin = args.margin if args.margin is not None else int(doc.get("margin_pct", 0))
+    rows, files = stated_by_build(
+        Path(args.stated_by_build).read_text(errors="replace").splitlines())
+    if len(files) > 1:
+        raise SystemExit("nros-stack-floor: more than one build script states a stack ("
+                         + ", ".join(files) + "); one board states it")
+    if not rows:
+        print(f"nros-stack-floor: not checked: the board states no stack (no build "
+              f"script of this image wrote {STATED_FILE})", file=sys.stderr)
+        return 0
+    results: dict = {}
+    stacks: dict[str, int] = {}
+    knobs: dict[str, str] = {}
+    for r in rows:
+        role = r["role"].upper()
+        o = find_observed(doc, args.image, args.target, role)
+        if o is None:
+            print(f"nros-stack-floor: {role} stack of `{args.image}` ({args.target}) not "
+                  f"checked: a host image has no walk, and no measured peak is recorded. "
+                  "The image prints `nros: stack peak name=... used=N of=M` for each thread "
+                  "when it ends; record the app thread's as an [[observed]] row with "
+                  f"`unwalked` in {Path(args.table).with_suffix('.toml')}", file=sys.stderr)
+            continue
+        stacks[role] = int(r["bytes"])
+        knobs[role] = r["knob"]
+        floor = floor_formula(int(o["peak"]), 0, margin)
+        results[role] = {
+            "floor": floor, "floor_basis": "peak", "depth": None, "allowance": 0,
+            "allowance_issue": o.get("issue"), "measured": True, "unmeasured_reason": None,
+            "root": r["root"], "margin_pct": margin, "upper_bound_through": None,
+            "unwalked": o.get("unwalked"),
+        }
+        print(f"nros-stack-floor: note: {role}: no walk on a host image; the floor is the "
+              f"measured peak {o['peak']} B + {margin}%: {floor} B", file=sys.stderr)
+    rc, lines, raises = check_stacks(results, stacks, "the stack size", raise_=args.raise_,
+                                     knobs=knobs)
+    if args.report:
+        write_report(args.report, args, results, stacks, [], raises)
+    for line in lines:
+        print(line, file=sys.stderr)
+    return rc
 
 
 def run(args: argparse.Namespace) -> int:
@@ -5091,6 +5156,20 @@ def self_test() -> int:
     vo["observed"][0]["walk_floor"] = 150
     check("walk_floor not above static is refused",
           any("must be an integer above" in p for p in validate_table(vo, set())))
+    # Issue 2834 -- a host image's row: a peak, no walk.
+    vu = {"schema": 2, "margin_pct": 10, "drift_rise_pct": 2, "fallback_rust_main_stack": 32768, "max_frame": 4096,
+          "observed": [{"image": "h@threadx-linux", "rmw": "zenoh", "target": "x86_64-unknown-linux-gnu",
+                        "role": "OPEN", "peak": 20000, "unwalked": "host libc", "method": "m",
+                        "issue": "2834", "shape": {"NROS_MAX_PUBLISHERS": 1}}]}
+    check("unwalked: a host row with a peak and a reason validates", validate_table(vu, set()) == [])
+    vu["observed"][0]["static"] = 30000
+    check("unwalked: a host row that records a walk is refused",
+          any("sized from its peak alone" in p for p in validate_table(vu, set())))
+    del vu["observed"][0]["static"]
+    vu["observed"][0]["unwalked"] = " "
+    check("unwalked: a host row with no reason is refused",
+          any("needs the reason" in p for p in validate_table(vu, set())))
+    vu["observed"][0]["unwalked"] = "host libc"
 
     # A [[drift]] row: the walk alone, held by the drift check, enforced nowhere.
     vd = {"schema": 2, "margin_pct": 10, "drift_rise_pct": 2, "fallback_rust_main_stack": 32768, "max_frame": 4096,
@@ -5427,6 +5506,30 @@ def self_test() -> int:
               ns.role == ["OPEN=~app_task_entry_"] and ns.check_stack == ["OPEN=16384"]
               and ns.stack_knob == "NROS_MEMORY_APP_STACK_BYTES={bytes_kib}")
         check("stated stack: none written means not stated", stated_by_build(msgs[:1]) == ([], []))
+        # Issue 2834 -- a host image is checked against its peak, with no walk.
+        Path(d, "msgs.json").write_text("\n".join(msgs) + "\n")
+        Path(d, "t.json").write_text(json.dumps(vu))
+        mo = argparse.Namespace(table=str(Path(d, "t.json")), target="x86_64-unknown-linux-gnu",
+                                image="h@threadx-linux", stated_by_build=str(Path(d, "msgs.json")),
+                                margin=None, raise_=False, report=str(Path(d, "r.json")),
+                                rmw="zenoh")
+        import contextlib, io
+        with contextlib.redirect_stderr(io.StringIO()) as err:
+            rc = measured_only(mo)
+        check("measured-only: a stack below peak + margin fails, naming the knob",
+              rc == 1 and "NROS_MEMORY_APP_STACK_BYTES=22528" in err.getvalue()
+              and json.loads(Path(d, "r.json").read_text())["roles"]["OPEN"]["floor"] == 22000)
+        vu["observed"][0]["peak"] = 10000
+        Path(d, "t.json").write_text(json.dumps(vu))
+        with contextlib.redirect_stderr(io.StringIO()) as err:
+            rc = measured_only(mo)
+        check("measured-only: a stack that holds peak + margin passes",
+              rc == 0 and "holds the floor 11000 B (measured)" in err.getvalue())
+        mo.image = "other@threadx-linux"
+        with contextlib.redirect_stderr(io.StringIO()) as err:
+            rc = measured_only(mo)
+        check("measured-only: an image with no row is not checked, and says so",
+              rc == 0 and "not checked" in err.getvalue())
         Path(d, "a", STATED_FILE).write_text("{}")
         check("stated stack: two files are reported, not chosen between",
               len(stated_by_build(msgs)[1]) == 2)
@@ -6073,6 +6176,10 @@ def main() -> int:
                     help="cargo's --message-format=json output for the image: the roles, stated "
                     "stacks and knob come from the nros-stack-stated.json one of its build "
                     "scripts wrote; none means the board states no stack (not checked)")
+    ap.add_argument("--measured-only", action="store_true",
+                    help="a host image (no walk): check each stack --stated-by-build names "
+                    "against its [[observed]] peak plus the margin; a role with no row is "
+                    "not checked")
     ap.add_argument("--raise", dest="raise_", action="store_true",
                     help="the image opted in to a raise: a MEASURED role whose floor is above "
                     "its stack is not a failure but a raise, recorded in --report for the "
@@ -6192,6 +6299,8 @@ def main() -> int:
             print(f"  - {p}", file=sys.stderr)
         print(f"{args.validate_table}: {len(problems)} problem(s)")
         return 1 if problems else 0
+    if args.measured_only:
+        return measured_only(args)
     if args.table and not (args.rmw and args.target):
         ap.error("--table needs --rmw and --target (they select the policy and allowance)")
     if not (args.inputs or args.link_map) or not (args.role or args.stated_by_build):

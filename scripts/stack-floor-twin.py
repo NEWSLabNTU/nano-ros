@@ -599,8 +599,9 @@ def main() -> int:
                 raise SystemExit(f"stack-floor-twin: {k} already has a row; use --only")
             rows.append({"image": k, "role": "OPEN", "rmw": pk[2]})
     else:
+        # An `unwalked` row is a host image (issue 2834): no twin runs it.
         rows = [r for r in doc.get("allowance", []) + doc.get("observed", [])
-                if not args.only or r["image"] in args.only]
+                if (not args.only or r["image"] in args.only) and "unwalked" not in r]
     if args.only and len(rows) != len(set(args.only)):
         raise SystemExit(f"stack-floor-twin: --only names a key with no row: {args.only}")
     failed = 0

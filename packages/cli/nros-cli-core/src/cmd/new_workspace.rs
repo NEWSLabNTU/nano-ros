@@ -280,6 +280,8 @@ fn floor_formula(depth: i64, margin: i64) -> Option<u64> {
 /// * an `[[observed]]` row with `upper_bound` (issue 2783): its `peak`, then
 ///   `margin_pct` percent -- the walk crosses a loosely bound call, so it is
 ///   an upper bound and not a size;
+/// * an `[[observed]]` row with `unwalked` (a host image, issue 2834): its
+///   `peak`, then `margin_pct` percent -- there is no walk;
 /// * any other `[[observed]]` row (issue 2402: under `bind` the walk is the floor, a
 ///   heuristic one that is order-dependent pending an exact search, issue
 ///   2550): the recorded max, max(`static`, `walk_floor`), raised by the
@@ -322,7 +324,11 @@ pub fn recorded_floor(table: &str, key: &str) -> Option<u64> {
         // bound (`upper_bound`: it crosses a call bound looser than a vtable
         // slot) is sized from the peak it was measured at, plus the margin --
         // the build's own check takes its floor from the same peak.
-        if o.get("upper_bound").and_then(toml::Value::as_str).is_some() {
+        // Issue 2834: a host image's row (`unwalked`) has no walk at all, so
+        // its peak sizes it the same way.
+        if o.get("upper_bound").and_then(toml::Value::as_str).is_some()
+            || o.get("unwalked").is_some()
+        {
             return floor(o.get("peak")?.as_integer()?);
         }
         let stat = o.get("static")?.as_integer()?;
@@ -1138,6 +1144,15 @@ mod tests {
         assert_eq!(recorded_floor(t, "k"), Some(75224));
     }
 
+    /// Issue 2834: a host image's row has no walk, so it stamps its peak plus
+    /// the margin.
+    #[test]
+    fn an_unwalked_rows_stamp_is_its_peak() {
+        let t = "margin_pct = 10\ndrift_rise_pct = 2\n[[observed]]\nimage = \"k\"\n\
+                 role = \"OPEN\"\npeak = 20000\nunwalked = \"host libc\"\n";
+        assert_eq!(recorded_floor(t, "k"), Some(22000));
+    }
+
     /// Issue 2400 Ruling (C): the stamp carries the drift tolerance, read from
     /// the one `drift_rise_pct` key. For every committed observed row, a
     /// project stamped from it still holds the floor a build computes when its
@@ -1154,6 +1169,10 @@ mod tests {
         let mut seen = 0;
         for row in rows.iter().filter(|r| r["role"].as_str() == Some("OPEN")) {
             let key = row["image"].as_str().unwrap();
+            // Issue 2834 -- a host image's row records no walk to drift.
+            if row.get("unwalked").is_some() {
+                continue;
+            }
             // Issue 2783: a row whose walk is an upper bound is sized from its
             // peak, by the build's check and the stamp alike, so the walk's
             // drift moves neither.
