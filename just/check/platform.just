@@ -689,6 +689,14 @@ zephyr-kconfig-knobs:
 kconfig-overridden-values:
     @python3 scripts/check-kconfig-overridden-values.py
 
+# Issue 2847 — a test reads its evidence off the console, and on a deferred-log
+# Zephyr image every console line is a log-buffer message that a full buffer
+# drops. `zephyr/Kconfig` makes a thread's message wait for room instead; this
+# holds both defaults there and refuses a tracked `.conf` that turns them back.
+[group("checks")]
+zephyr-log-markers-lossless:
+    @python3 scripts/check/check-zephyr-log-markers-lossless.py
+
 # issue 0997 — a FreeRTOS board on an FPU-optional port (ARM_CRx/CR5/CA9/AArch64)
 # sets `configUSE_TASK_FPU_SUPPORT 2` in its FreeRTOSConfig.h and states
 # `configFPU_D32` as a compile definition portASM.S can see. Without the first,
