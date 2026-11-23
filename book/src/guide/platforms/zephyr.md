@@ -152,8 +152,9 @@ CONFIG_MY_MODE=y
 
 When a node package of the image `<depend>`s on `my_support`,
 directly or through other workspace packages, `nros build` adds it to
-`ZEPHYR_EXTRA_MODULES` in the application it generates, so its symbols are
-defined and the image's `os_config` fragment can set them.
+`ZEPHYR_EXTRA_MODULES` in the application it generates, or on the `west
+build` line of an entry you own, so its symbols are defined and the image's
+`os_config` fragment can set them.
 
 Who builds the package's `CMakeLists.txt` depends on the module's
 `build: cmake:` key:

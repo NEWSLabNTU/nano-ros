@@ -1,15 +1,17 @@
 ---
 id: 2876
 title: "An owned Zephyr west entry gets no workspace `NROS_INTERFACE_SEARCH_PATH`, so its own CMakeLists sets it by hand to find the workspace's message packages"
-status: open
+status: resolved
 type: bug
 severity: low
 area: [cli, zephyr, cmake]
 related: [phase-478, 2610, 2805, 2861]
 found: 2026-11-23
+resolved: 2026-11-23
+resolved_in: "fix(cli, issue 2876): an owned west entry gets the workspace interface search path"
 ---
 
-**Home:** [phase-478](../roadmap/phase-478-island-developer-experience-findings.md)
+**Home:** [phase-478](../../roadmap/phase-478-island-developer-experience-findings.md)
 I36. Consumer: the safety island (autoware-safety-island fork), branch
 `nano-ros-next`, nano-ros pin `8d4e70a382`.
 
@@ -64,3 +66,41 @@ runs.
   parity test 2861 added for modules).
 - The island drops the three `set(NROS_INTERFACE_SEARCH_PATH ...)` lines and
   its FVP lane stays green.
+
+## Resolved, 2026-11-23
+
+`nros build` passes the search path on the owned entry's west line, beside
+`ZEPHYR_EXTRA_MODULES` (the first of the two carriers "Wanted" named; the
+module hook was not touched).
+
+- **The value** is `configure::owned_interface_search_arg`: the workspace's
+  `src/` (`ws::interface_search_root`), then the caller's exported
+  `NROS_INTERFACE_SEARCH_PATH`, `;`-joined. That is the generated app's order
+  (`cmake_root::interface_search_path_cmake`), and it is the ONE derivation the
+  host census build of an owned program already used (issue 2805), which now
+  calls it too. A workspace with no interface root gets no `-D`.
+- **Where:** `cmd/build.rs`, the west arm, only for an image whose `entry =`
+  is hand-written (`image.entry.is_some() && generated.dir.is_none()`). A
+  generated app keeps writing its own line. The value is a cache entry, so a
+  `set(NROS_INTERFACE_SEARCH_PATH ...)` left in an entry's CMakeLists still
+  wins over it; the island's three lines keep working until it drops them.
+- **Why the west line and not the module hook:** the line already carries the
+  owned entry's other workspace facts (2861's modules, 2436's image
+  statement), and the CLI holds the workspace root; the hook would have to
+  re-derive it from the application directory.
+
+Tests:
+
+- `an_owned_west_entry_gets_the_interface_search_path_a_generated_app_gets`
+  (`cmd/build.rs`): the generated app's `interface_src` and the owned line's
+  first root are the same directory, followed by the exported value.
+- The control, `a_directory_with_no_interface_root_gets_no_search_path_arg`.
+- The 2861 west fixture `west_owned_entry_workspace_module` gains
+  `demo_msgs`, a workspace message package the entry `<depend>`s on and
+  `find_package`s, with no search-path line in its CMakeLists;
+  `an_owned_west_entry_gets_the_workspace_interface_search_path`
+  (`tests/west_hand_written_entry.rs`) asserts the cache holds the workspace's
+  `src/` first.
+
+The island's half (dropping the three `set(...)` lines, FVP lane green) is
+phase-478 I36's, on the island's `nano-ros-next` once its pin passes this fix.

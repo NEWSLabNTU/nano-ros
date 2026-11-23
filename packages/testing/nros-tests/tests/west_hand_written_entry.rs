@@ -100,6 +100,47 @@ fn an_owned_west_entry_gets_its_deploy_and_workspace_modules() -> nros_tests::Te
     Ok(())
 }
 
+/// Issue 2876 -- the same owned entry depends on `demo_msgs`, a workspace
+/// message package, and its CMakeLists sets no `NROS_INTERFACE_SEARCH_PATH`:
+/// `nros build` puts the workspace's `src/` on it, first, as a generated app
+/// does, so `find_package(demo_msgs)` resolves (the fixture's `build.ninja`
+/// exists only if the configure got that far). Before the fix the cache held
+/// no such entry and the configure stopped on `demo_msgs`.
+#[test]
+fn an_owned_west_entry_gets_the_workspace_interface_search_path() -> nros_tests::TestResult<()> {
+    let row = "west_owned_entry_workspace_module";
+    let cache = nros_tests::fixtures::require_west_fixture(row, "CMakeCache.txt")?;
+    let search = read(&cache)
+        .lines()
+        .find_map(|l| {
+            l.strip_prefix("NROS_INTERFACE_SEARCH_PATH:")
+                .and_then(|r| r.split_once('='))
+                .map(|(_, v)| v.to_string())
+        })
+        .expect("NROS_INTERFACE_SEARCH_PATH is cached");
+    let ws_src = nros_tests::project_root()
+        .join("packages/testing/nros-tests/fixtures")
+        .join(row)
+        .join("src");
+    let ws_src = std::fs::canonicalize(&ws_src).unwrap_or(ws_src);
+    assert_eq!(
+        search.split(';').next().map(std::path::PathBuf::from),
+        Some(ws_src),
+        "the workspace's src/ is not first on the search path: {search}"
+    );
+    let entry = read(
+        &nros_tests::project_root()
+            .join("packages/testing/nros-tests/fixtures")
+            .join(row)
+            .join("src/zephyr_entry/CMakeLists.txt"),
+    );
+    assert!(
+        !entry.contains("set(NROS_INTERFACE_SEARCH_PATH"),
+        "the fixture must not set the search path itself"
+    );
+    Ok(())
+}
+
 /// Issue 2862 -- an OWNED C west entry with no model is sized by the census of
 /// its own program, as the cmake road's owned entry is (issue 2433): the
 /// configure's entity inventory is the census's (1 publisher, 1 timer), its
