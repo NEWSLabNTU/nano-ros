@@ -1,7 +1,7 @@
 ---
 id: 2857
 title: "A C++ `rclcpp_lifecycle::LifecyclePublisher` drops a message published inside `on_activate`, though the node's publishers are open by then"
-status: open
+status: resolved
 type: bug
 severity: medium
 area: [cpp-api, lifecycle]
@@ -9,7 +9,7 @@ related: [phase-554, issue-2428, issue-2858]
 found: 2026-11-23
 ---
 
-**Home: [phase-554](../roadmap/phase-554-per-node-lifecycle.md) W6/W9.**
+**Home: [phase-554](../../roadmap/phase-554-per-node-lifecycle.md) W6/W9.**
 Found while landing W6 (#4634); batched with W9, whose C++ cell is what proves
 the fix.
 
@@ -56,3 +56,19 @@ second removes the duplicate state; keep `on_activate()` / `on_deactivate()` /
 
 Acceptance: W9's C++ cell publishes from `on_activate` and a host subscriber
 receives it.
+
+## Resolution (2026-11-23)
+
+The activate trampoline (`tramp_activate` in
+`include/rclcpp_lifecycle/lifecycle_node.hpp`) activates the node's managed
+entities BEFORE the user's `on_activate`, as the runtime gate does, and
+deactivates them again if the hook does not return `Success`. `deactivate`,
+`cleanup` and `shutdown` still close them after a hook that succeeded. That is
+the first option above; `LifecyclePublisher` keeps its flag, which now follows
+the node's state.
+
+Measured on W9's C++ cell (`lifecycle_pair_interop`, case `cpp`): a host
+`ros2 topic echo` receives `lc_alpha: activated`, which the example publishes
+from `on_activate`, on each activation. Negative control: with the entities
+activated after the hook, the same test fails and the topic carries only the
+timer's counts.

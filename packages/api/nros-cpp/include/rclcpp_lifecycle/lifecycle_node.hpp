@@ -1072,10 +1072,14 @@ class LifecycleEngine {
     // callback before committing the new state), then dispatch to the REGISTERED
     // callback if there is one and to the virtual otherwise.
     //
-    // A successful `activate` / `deactivate` also drives the managed entities,
-    // AFTER the user's hook and only when it succeeded — a publisher must not
-    // start sending because a callback that rolled the transition back happened
-    // to run first.
+    // The managed entities follow the node's state, as the runtime's publish
+    // gate does (RFC-0128 D3). `activate` opens them BEFORE the user's hook,
+    // because rclcpp's base `on_activate` activates them first and a publish
+    // inside the hook must go out, then closes them again if the hook did not
+    // succeed. `deactivate` / `cleanup` / `shutdown` close them after a hook
+    // that succeeded.
+    // Issue 2857 -- this was after the hook, so a `LifecyclePublisher` dropped
+    // what `on_activate` published although the runtime's gate was open.
     static CallbackReturn dispatch(LifecycleEngine* n, TransitionCallbackType cb, void* ctx,
                                    CallbackReturn (LifecycleEngine::*fallback)(LifecycleState)) {
         const LifecycleState previous = n->get_current_state();
@@ -1098,10 +1102,11 @@ class LifecycleEngine {
     }
     static uint8_t tramp_activate(void* self) {
         auto* n = static_cast<LifecycleEngine*>(self);
+        n->activate_managed_entities();
         CallbackReturn r =
             dispatch(n, n->cb_activate_, n->ctx_activate_, &LifecycleEngine::on_activate);
-        if (r == CallbackReturn::Success) {
-            n->activate_managed_entities();
+        if (r != CallbackReturn::Success) {
+            n->deactivate_managed_entities();
         }
         return static_cast<uint8_t>(r);
     }
