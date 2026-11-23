@@ -381,16 +381,18 @@ publisher never gated), which fail with the gate forced open. C and C++ are
 compile- and clippy-checked only: no lane runs a C or C++ image with a
 managed node yet, which is what W9's cells add.
 
-Still open:
+Closed since (2026-11-23, with W9's cells):
 
-- The C++ header's own `rclcpp_lifecycle::LifecyclePublisher` keeps its
-  per-entity flag, flipped only after the activate callback SUCCEEDS. So a
-  publish through it inside `on_activate` is still dropped by the header
-  even though the runtime gate is open. Retire the flag, or flip it before
-  the callback, when W9's C++ cell runs.
-- The C and C++ change-state shims read the executor-scoped machine, so with
-  several managed nodes they reach the wrong one. That is W1/W2's, not this
-  item's, and the gate follows whichever machine actually transitions.
+- The C++ header's own `rclcpp_lifecycle::LifecyclePublisher` flag was
+  flipped only after the activate callback SUCCEEDED, so a publish inside
+  `on_activate` was dropped although the runtime gate was open. The
+  trampoline now activates the entities first, and rolls them back if the
+  hook fails ([issue 2857](../issues/archived/2857-cpp-lifecycle-publisher-drops-publish-in-on-activate.md)).
+- The C and C++ change-state, get-state and register shims read the
+  executor-scoped machine. With several managed nodes they found NONE and
+  refused (`NOT_INIT`); they did not reach a wrong one, as this line used to
+  say. Node-scoped calls now reach each node's own machine
+  ([issue 2858](../issues/archived/2858-c-cpp-lifecycle-shims-read-executor-scoped-machine.md)).
 
 Acceptance: W9's silent-until-active cell. The book's
 [Run managed nodes](../../book/src/guide/deploy/run-managed-nodes.md) page
