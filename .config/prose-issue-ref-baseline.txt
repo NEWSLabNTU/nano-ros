@@ -59,6 +59,10 @@
 #         none). Issue 2377 cites it so the two cannot drift. REMOVE THIS ROW
 #         when the PR carrying `docs/issues/2376-*.md` merges.
 #
+#   2882  IN FLIGHT -- filed on PR #4672 (the phase-478 batch, I42: no release
+#         past nros11). Phase-590 is its release plan. REMOVE THIS ROW when
+#         #4672 merges.
+#
 docs/roadmap/archived/phase-431-ship-the-nros-binary.md:1110
 docs/roadmap/phase-590-nros12-release-plan.md:2882
 just/check/docs.just:1110
