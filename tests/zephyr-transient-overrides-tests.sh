@@ -194,20 +194,20 @@ else
     nros_grep_q "^CLI_CONFIG_$hsym:" "$WORK/hb/CMakeCache.txt" ||
         fail "H: the stand-in did not leave CLI_CONFIG_$hsym in the cache"
     hout="$(hconf -UPROBE_PRE_RETIREMENT -DPROBE_PRE_RETIREMENT=OFF)"
-    if printf '%s\n' "$hout" | nros_grep_q 'PROBE_REFUSED'; then
+    if nros_grep_q 'PROBE_REFUSED' <<<"$hout"; then
         fail "H: a re-configure refused a stale cache-only CLI_CONFIG_$hsym (issue 2906)"
     fi
-    printf '%s\n' "$hout" | tr -d '\n' | nros_grep_q "dropped CLI_CONFIG_$hsym=old .*is retired" ||
+    nros_grep_q "dropped CLI_CONFIG_$hsym=old .*is retired" <<<"${hout//$'\n'/}" ||
         fail "H: dropping CLI_CONFIG_$hsym printed no warning naming its replacement"
-    printf '%s\n' "$hout" | tr -d '\n' | nros_grep_q "dropped CLI_CONFIG_$hksym=7 .*knob-why" ||
+    nros_grep_q "dropped CLI_CONFIG_$hksym=7 .*knob-why" <<<"${hout//$'\n'/}" ||
         fail "H: a knob symbol's stale CLI_CONFIG_$hksym was not dropped with its reason"
     if nros_grep_q "^CLI_CONFIG_\($hsym\|$hksym\):" "$WORK/hb/CMakeCache.txt"; then
         fail "H: a dropped CLI_CONFIG_ entry is still in the cache"
     fi
     hout="$(hconf "-DCONFIG_$hsym=new")"
-    printf '%s\n' "$hout" | tr -d '\n' | nros_grep_q "PROBE_REFUSED .*-DCONFIG_$hsym: .*is retired" ||
+    nros_grep_q "PROBE_REFUSED .*-DCONFIG_$hsym: .*is retired" <<<"${hout//$'\n'/}" ||
         fail "H: -DCONFIG_$hsym passed on this configure was not refused"
-    if printf '%s\n' "$hout" | nros_grep_q "dropped CLI_CONFIG_$hsym"; then
+    if nros_grep_q "dropped CLI_CONFIG_$hsym" <<<"$hout"; then
         fail "H: a value this configure passed was dropped instead of refused"
     fi
     # The real refusal (a FATAL_ERROR, so the configure stops before Zephyr
