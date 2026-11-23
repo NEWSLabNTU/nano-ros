@@ -1,9 +1,9 @@
 ---
 id: 2891
-title: "Tier 2: the Zephyr connect-budget cells and the Rust action goal-completion rate fail"
+title: "Tier 2's real failures in run 44993007292: five tests across features, out-of-tree RMW, Zephyr C++, zero-copy and sched placement"
 status: open
 type: bug
-area: [zephyr, testing, rmw-zenoh]
+area: [testing, zephyr, ci]
 severity: medium
 found: 2026-11-23
 related: [phase-590]
@@ -11,24 +11,31 @@ related: [phase-590]
 
 ## What fails
 
-`run-matrix.yml` job `tier 2 (1-wise matrix)` (run 44993007292, 2026-11-22, main `98b5d8e0c7`):
-`Real failures: 6 / 6`. Outside issue 2815's Renode twin, they are:
+`run-matrix.yml` job `tier 2 (1-wise matrix)`, run 44993007292 (2026-11-22, main `98b5d8e0c7`),
+reports `Real failures: 6 / 6` in its `junit-real.xml`. Outside issue 2815's Renode twin, they are:
 
-```text
-nros-tests::zephyr_connect_budget zephyr_zenoh_open_against_no_listener_ends_at_its_budget
-nros-tests::zephyr_connect_budget zephyr_zenoh_open_against_a_syn_dropping_peer_ends_at_its_budget
-nros-tests::zephyr_connect_budget zephyr_zenoh_open_against_a_silent_listener_ends_at_its_budget
-nros-tests::zephyr zephyr_rust_zenoh_action_goal_completion_rate
-```
+| test | owner |
+| --- | --- |
+| `image_features_shared_configure` | nros 139 |
+| `out_of_tree_rmw_e2e` (the acme `pool_slots` knob) | nros wtf |
+| `zephyr_cortex_m_qemu::zephyr_cortex_m_cpp_zenoh_pubsub_e2e` (timeout) | nros 139 |
+| `zero_copy::test_zero_copy_message_info` | nros 139 |
+| `sched_dims_applied_e2e::sched_dims_applied` (CorePinPlacement, a53) | nros 241, after #4679 |
 
-The slowest-test list in the same run also shows `sched_dims_applied_e2e::sched_dims_applied`
-and `zephyr_cortex_m_qemu::zephyr_cortex_m_cpp_zenoh_pubsub_e2e` failing.
+This issue first named three `zephyr_connect_budget` cases and
+`zephyr_rust_zenoh_action_goal_completion_rate`. Those were `[SKIPPED:lane]` in that run, and the
+step's bare nextest summary counts a lane skip as a failure (CLAUDE.md, "Bare `cargo nextest`
+counts `lane_skip!` panics as FAILURES"). The real list is `junit-real.xml`, not the
+`FAIL` lines.
+
+From 2026-11-23 every scheduled tier 2 run stops before building, on
+`unknown lane 'lane=tier2'` (the fixture-lane regression #4685 fixes), so this list is from the last run
+that built.
 
 ## Next
 
-Read each test's output in the full job log. The three connect-budget cases fail together, which
-suggests one cause: the budget fixture, or its build, not the three peers. Split this issue per
-cause once known (CLAUDE.md, "Fix the CLASS").
+Once #4685 lands, dispatch `run-matrix.yml` on main and re-read `junit-real.xml`. Split this
+issue per cause where the causes differ (CLAUDE.md, "Fix the CLASS").
 
 ## Acceptance
 
