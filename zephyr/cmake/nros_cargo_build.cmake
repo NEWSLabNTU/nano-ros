@@ -2017,6 +2017,7 @@ function(nros_set_cargo_env_from_kconfig)
         # (Phase 202.7). CMAKE_CURRENT_FUNCTION_LIST_DIR = this cmake's dir
         # (<repo>/zephyr/cmake) → ../.. = the nano-ros module root. Guarded so
         # the .env value wins, which is what the fallback framing above intends.
+        nros_configure_env_watch(NROS_PLATFORM_CFFI_INCLUDE)  # issue 2869: before the fallback sets it
         if(NOT DEFINED ENV{NROS_PLATFORM_CFFI_INCLUDE})
             set(ENV{NROS_PLATFORM_CFFI_INCLUDE}
                 "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/../../packages/platform/nros-platform-api/include")

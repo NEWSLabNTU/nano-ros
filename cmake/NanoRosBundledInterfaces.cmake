@@ -4,6 +4,7 @@
 # the find modules' resolver (`find/_NrosFindRosMsgPackage.cmake`), which runs
 # before either generator is loaded. Functions only.
 include_guard(GLOBAL)
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosKnobEnv.cmake")  # issue 2869
 
 # --- the bundled interfaces are an opt-in (issue 2278) -----------------------
 #
@@ -58,6 +59,7 @@ function(_nros_bundled_interfaces_opted_in prefix out_var)
         string(REPLACE ":" ";" _e "${NROS_INTERFACE_SEARCH_PATH}")
         list(APPEND _entries ${_e})
     endif()
+    nros_configure_env_watch(NROS_INTERFACE_SEARCH_PATH)  # issue 2869
     if(DEFINED ENV{NROS_INTERFACE_SEARCH_PATH} AND NOT "$ENV{NROS_INTERFACE_SEARCH_PATH}" STREQUAL "")
         string(REPLACE ":" ";" _e "$ENV{NROS_INTERFACE_SEARCH_PATH}")
         list(APPEND _entries ${_e})

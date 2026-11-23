@@ -25,6 +25,7 @@ include_guard(GLOBAL)
 # Issue 1304 — `nros_rust_tool`, the one spelling of which cargo/rustc an
 # emitted command runs. FILE scope, like its neighbours.
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosRustTool.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosKnobEnv.cmake")  # issue 2869
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosMessageBounds.cmake")
 
 # phase-403 step 1 -- and its second input. `nros_find_interfaces()` below hands
@@ -637,6 +638,7 @@ endfunction()
 # nested-type lookup its bounds are derived with. One prefix, every call site.
 function(nros_codegen_env_prefix _out)
     set(_prefix "")
+    nros_configure_env_watch(NROS_INTERFACE_SEARCH_PATH)  # issue 2869
     if(NOT DEFINED ENV{NROS_INTERFACE_SEARCH_PATH}
        AND DEFINED NROS_INTERFACE_SEARCH_PATH
        AND NOT NROS_INTERFACE_SEARCH_PATH STREQUAL "")
@@ -691,6 +693,7 @@ function(nros_codegen_ament_stale _stale)
     # recomputes it outside cmake (the Zephyr fixture runner's ninja path):
     # without it a workspace that sets the path as a cmake VARIABLE would hash
     # a different closure there and read as moved on every run.
+    nros_configure_env_watch(NROS_INTERFACE_SEARCH_PATH)  # issue 2869
     if(DEFINED ENV{NROS_INTERFACE_SEARCH_PATH})
         set(_w_search "$ENV{NROS_INTERFACE_SEARCH_PATH}")
     elseif(DEFINED NROS_INTERFACE_SEARCH_PATH)

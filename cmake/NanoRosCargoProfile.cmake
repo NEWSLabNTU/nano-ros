@@ -61,9 +61,22 @@ function(nros_resolve_cargo_profile)
     # An explicit -DNROS_CARGO_PROFILE=<name> wins; a user profile is passed
     # through verbatim and NOT defined by us (see the ownership rule in
     # nros-cargo-profile).
+    #
+    # Issue 2869 -- otherwise the environment, then CMAKE_BUILD_TYPE, decide on
+    # EVERY configure. The cache holds what this function wrote last, and that
+    # value used to read as an explicit -D on the next configure, so a changed
+    # `NROS_CARGO_PROFILE` (or build type) never reached an existing build dir
+    # even when it was re-configured. `_NROS_CARGO_PROFILE_AUTO` remembers what
+    # was written here, so only a value someone else put in the cache wins. The
+    # environment's value is recorded for the build-time check: a build whose
+    # environment moved since the configure refuses rather than build with the
+    # old profile.
     set(_profile "${NROS_CARGO_PROFILE}")
-    if(_profile STREQUAL "")
-        set(_profile "$ENV{NROS_CARGO_PROFILE}")
+    set(_auto FALSE)
+    if(_profile STREQUAL "" OR _profile STREQUAL "${_NROS_CARGO_PROFILE_AUTO}")
+        set(_auto TRUE)
+        nros_configure_env_watch(NROS_CARGO_PROFILE)
+        string(STRIP "$ENV{NROS_CARGO_PROFILE}" _profile)
     endif()
     if(_profile STREQUAL "")
         execute_process(
@@ -94,6 +107,10 @@ function(nros_resolve_cargo_profile)
 
     set(NROS_CARGO_PROFILE "${_profile}" CACHE STRING
         "Cargo profile for every crate nano-ros builds (empty = derive from CMAKE_BUILD_TYPE)" FORCE)
+    if(_auto)
+        set(_NROS_CARGO_PROFILE_AUTO "${_profile}" CACHE INTERNAL
+            "the NROS_CARGO_PROFILE this file derived last (issue 2869)")
+    endif()
     set(NROS_CARGO_PROFILE_DIR "${_dir}" CACHE INTERNAL
         "target/ subdirectory for NROS_CARGO_PROFILE")
     set(NROS_CARGO_PROFILE_ENV "${_env}" CACHE INTERNAL

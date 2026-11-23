@@ -12,6 +12,9 @@
 #      inventory, the same harvest the shared cargo dir key uses) is read ONLY
 #      through `_nros_knob_env`: a bare `$ENV{<knob>}` anywhere under cmake/ or
 #      zephyr/ is refused, because it bypasses the record.
+#   1b. Issue 2869 -- the configure-time reads that are not knobs
+#      (`WATCHED`): every file that reads one calls
+#      `nros_configure_env_watch(<name>)`, which records it for the same check.
 #   2. The Zephyr module installs the check (`nros_knob_env_check_target`).
 #   3. Behaviour, on a small cmake + ninja project over the REAL helper (this
 #      gate's selftest, run on every invocation):
@@ -22,6 +25,10 @@
 #        - an unrelated variable never refuses;
 #        - after a re-configure the same build passes;
 #        - a second build with nothing changed re-runs only the check.
+#   3b. The real read sites of NROS_STACK_FLOOR and NROS_INTERFACE_SEARCH_PATH:
+#      a change or unset refuses naming both values, the refused HOST build
+#      builds nothing, and a registry knob a host configure only read never
+#      refuses (issue 2869).
 set -euo pipefail
 repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 mkdir -p "$repo/tmp"
@@ -49,6 +56,28 @@ if [ -n "$hits" ]; then
     bad "a resolved knob's environment is read outside _nros_knob_env (so the build-time check cannot see it):"
     sed 's/^/    /' <<<"$hits"
 fi
+
+# 1b. Issue 2869 -- the configure-time reads that are NOT knobs but decide
+#     what is built. Every file that reads one records it first
+#     (`nros_configure_env_watch(<name>)`), so the same check refuses a build
+#     whose environment moved. A `set(ENV{<name>} ...)` is a write, not a read.
+WATCHED=(NROS_CARGO_PROFILE NROS_INTERFACE_SEARCH_PATH NROS_PLATFORM_CFFI_INCLUDE NROS_STACK_FLOOR)
+watched_sites=0
+for name in "${WATCHED[@]}"; do
+    nros_git_grep reads -C "$repo" -n -E "ENV\\{$name\\}" -- \
+        'cmake/*.cmake' 'cmake/**/*.cmake' 'zephyr/*.txt' 'zephyr/*.cmake' 'zephyr/**/*.cmake'
+    reads="$(grep -v -E '^[^:]+:[0-9]+:[[:space:]]*#|set\(ENV\{' <<<"$reads" || true)"
+    [ -n "$reads" ] || { bad "$name: no configure-time read found; drop it from WATCHED"; continue; }
+    for f in $(cut -d: -f1 <<<"$reads" | sort -u); do
+        watched_sites=$((watched_sites + 1))
+        rc=0; nros_grep_q -E "^[^#]*nros_configure_env_watch\($name\)" "$repo/$f" || rc=$?
+        case $rc in
+            0) ;;
+            1) bad "$f reads \$ENV{$name} at configure but never calls nros_configure_env_watch($name), so a build after the environment moves uses the configure's value silently (issue 2869)" ;;
+            *) exit 2 ;;
+        esac
+    done
+done
 
 # 2. Installed on every Zephyr configure.
 rc=0; nros_grep_q -E '^[[:space:]]*nros_knob_env_check_target\(' "$repo/zephyr/CMakeLists.txt" || rc=$?
@@ -137,7 +166,49 @@ expect_refusal "knob exported after configure" "114688 (from kconfig)" 327680 "$
 }
 selftest
 
+# 3b. Issue 2869 -- a negative control on the REAL read site of each watched
+#     read that needs no CLI: configure, move the variable, build, refuse; and
+#     on the host road the refused build compiles nothing (the deferred
+#     ordering). NROS_CARGO_PROFILE and NROS_PLATFORM_CFFI_INCLUDE need the
+#     CLI and a Zephyr tree; they were measured on real builds (issue 2869).
+selftest_watched() {
+local name=$1 module=$2 val=$3 other=$4 call=${5:-}
+local src="$work/w-$name" wb="$work/wb-$name"
+mkdir -p "$src"
+cat > "$src/CMakeLists.txt" <<EOF
+cmake_minimum_required(VERSION 3.20)
+project(configure_env_watch NONE)
+include("\${NROS_REPO}/$module")
+$call
+# A registry knob read too, as a host configure does for the shared cargo dir
+# key: the host check must not refuse on it (only the Zephyr module asks).
+include("\${NROS_REPO}/cmake/NanoRosKnobEnv.cmake")
+_nros_knob_env(NROS_MEMORY_HEAP_BYTES _heap)
+add_custom_command(OUTPUT out.txt COMMAND sh -c "echo built > out.txt" VERBATIM)
+add_custom_target(app ALL DEPENDS out.txt)
+EOF
+local cfg=(cmake -S "$src" -B "$wb" -G Ninja "-DNROS_REPO=$repo")  # copy-out-root-ok: synthetic project, names NROS_REPO itself
+env "$name=$val" "${cfg[@]}" >"$work/cfg.log" 2>&1 \
+    || { bad "$name: configure failed: $(tail -3 "$work/cfg.log")"; return; }
+rc=0; env "$name=$val" ninja -C "$wb" >"$work/build.log" 2>&1 || rc=$?
+[ "$rc" -eq 0 ] || { bad "$name: refused with the configure's own value: $(tail -3 "$work/build.log")"; return; }
+rc=0; env "$name=$val" NROS_MEMORY_HEAP_BYTES=777 ninja -C "$wb" >"$work/build.log" 2>&1 || rc=$?
+[ "$rc" -eq 0 ] || bad "$name: a host build refused on a registry knob it only read: $(grep -m1 NROS_MEMORY "$work/build.log" || tail -2 "$work/build.log")"
+rm -f "$wb/out.txt"
+rc=0; env "$name=$other" ninja -C "$wb" >"$work/build.log" 2>&1 || rc=$?
+if [ "$rc" -eq 0 ]; then bad "$name: changed after configure, the build passed"; return; fi
+local r=0; nros_grep_q -F -- "$name: this build dir was configured with $val; the environment now says $other" "$work/build.log" || r=$?
+[ "$r" -eq 0 ] || bad "$name: the refusal does not name both values: $(grep -m2 -F "$name" "$work/build.log" || tail -2 "$work/build.log")"
+[ ! -e "$wb/out.txt" ] || bad "$name: the refused build still built a target (host ordering)"
+rc=0; env -u "$name" ninja -C "$wb" >"$work/build.log" 2>&1 || rc=$?
+[ "$rc" -ne 0 ] || bad "$name: unset after configure, the build passed"
+}
+selftest_watched NROS_STACK_FLOOR cmake/NanoRosStackFloor.cmake OFF ON
+mkdir -p "$work/isp-a" "$work/isp-b"
+selftest_watched NROS_INTERFACE_SEARCH_PATH cmake/NanoRosBundledInterfaces.cmake "$work/isp-a" "$work/isp-b" \
+    '_nros_bundled_interfaces_opted_in("${NROS_REPO}" _opted)'
+
 if [ "$fail" -ne 0 ]; then
     exit 1
 fi
-say "OK ($(wc -l <<<"$inventory") resolved knobs read through one helper; the refusal behaves)"
+say "OK ($(wc -l <<<"$inventory") resolved knobs read through one helper; $watched_sites configure-time read site(s) of ${#WATCHED[@]} non-knob variables watched; the refusal behaves)"
