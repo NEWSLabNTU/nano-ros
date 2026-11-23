@@ -574,6 +574,188 @@ mod service_backed {
     ) -> rcl_ret_t {
         unsafe { register_exec(executor, LifecycleCallbackSlot::Error, cb, context) }
     }
+
+    // ------------------------------------------------------------------
+    // Node-scoped: one managed node's OWN machine (RFC-0128 D1).
+    // ------------------------------------------------------------------
+    //
+    // Issue 2858 -- every managed node has its own machine, keyed by its
+    // node, and the executor-scoped calls above answer "the" machine: the
+    // only one there is. With two managed nodes they find none and return
+    // RCL_RET_NOT_INIT, so a C node that knows which node it is asks here.
+
+    /// The executor `node` is bound to, and its slot. `node` must be bound
+    /// with `rclc_executor_node_init` (`RCL_RET_INVALID_ARGUMENT` for NULL,
+    /// `RCL_RET_NOT_INIT` for an unbound node or a finalized executor).
+    unsafe fn node_scope(
+        node: *const crate::node::rcl_node_t,
+    ) -> Result<(*mut rclc_executor_t, nros_node::executor::NodeId), rcl_ret_t> {
+        if node.is_null() {
+            return Err(RCL_RET_INVALID_ARGUMENT);
+        }
+        let n = unsafe { &*node };
+        if !n.is_executor_bound() || !crate::executor::executor_context_is_valid(n.executor) {
+            return Err(RCL_RET_NOT_INIT);
+        }
+        Ok((
+            n.executor as *mut rclc_executor_t,
+            nros_node::executor::NodeId::from_raw(n.node_id),
+        ))
+    }
+
+    /// Register the five REP-2002 lifecycle services on `node`, served under
+    /// its own name (`/<node>/get_state` and so on), with a state machine of
+    /// its own. Call it once per managed node; drive and observe each with the
+    /// `rclc_node_lifecycle_*` calls below. A node that already has a machine
+    /// is refused (`RCL_RET_ERROR`, with the reason logged).
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn rclc_node_register_lifecycle_services(
+        node: *const crate::node::rcl_node_t,
+    ) -> rcl_ret_t {
+        let (executor, id) = match unsafe { node_scope(node) } {
+            Ok(v) => v,
+            Err(e) => return e,
+        };
+        let mut exec = unsafe { get_executor(&mut *executor) };
+        match exec.register_lifecycle_services_on(id) {
+            Ok(()) => RCL_RET_OK,
+            Err(e) => crate::support::report_node_refusal(
+                "rclc_node_register_lifecycle_services",
+                format_args!("the lifecycle services"),
+                e,
+            ),
+        }
+    }
+
+    /// The current lifecycle state of `node`'s own state machine:
+    /// `RCLC_LIFECYCLE_STATE_UNCONFIGURED` when `node` is NULL, unbound, or
+    /// not managed.
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn rclc_node_lifecycle_get_current_state(
+        node: *const crate::node::rcl_node_t,
+    ) -> u8 {
+        let Ok((executor, id)) = (unsafe { node_scope(node) }) else {
+            return RCLC_LIFECYCLE_STATE_UNCONFIGURED;
+        };
+        let exec = unsafe { get_executor(&mut *executor) };
+        match exec.lifecycle_state_machine_on(id) {
+            Some(sm) => sm.state() as u8,
+            None => RCLC_LIFECYCLE_STATE_UNCONFIGURED,
+        }
+    }
+
+    /// Trigger a lifecycle transition on `node`'s own state machine
+    /// (`RCL_RET_NOT_INIT` when the node is not managed). `transition_id` is
+    /// numbered as for `rclc_executor_lifecycle_change_state`.
+    ///
+    /// # Safety
+    /// Invokes the user's registered C callback through a raw function
+    /// pointer. The caller must ensure the callback and any context it
+    /// captures are live.
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn rclc_node_lifecycle_change_state(
+        node: *const crate::node::rcl_node_t,
+        transition_id: u8,
+    ) -> rcl_ret_t {
+        let (executor, id) = match unsafe { node_scope(node) } {
+            Ok(v) => v,
+            Err(e) => return e,
+        };
+        let mut exec = unsafe { get_executor(&mut *executor) };
+        let Some(sm) = exec.lifecycle_state_machine_on_mut(id) else {
+            return RCL_RET_NOT_INIT;
+        };
+        let Some(t) = LifecycleTransition::from_u8(transition_id) else {
+            return RCL_RET_INVALID_ARGUMENT;
+        };
+        // SAFETY: forwarded through this function's unsafe contract.
+        match unsafe { sm.trigger_transition(t) } {
+            Ok(_) => RCL_RET_OK,
+            Err(LifecycleError::NodeFinalized) => RCLC_RET_BAD_SEQUENCE,
+            Err(LifecycleError::InvalidTransition { .. }) => RCL_RET_INVALID_ARGUMENT,
+            Err(LifecycleError::CallbackFailed { .. }) => RCL_RET_ERROR,
+        }
+    }
+
+    #[inline]
+    unsafe fn register_node(
+        node: *const crate::node::rcl_node_t,
+        slot: LifecycleCallbackSlot,
+        cb: rclc_lifecycle_callback_t,
+        context: *mut c_void,
+    ) -> rcl_ret_t {
+        let (executor, id) = match unsafe { node_scope(node) } {
+            Ok(v) => v,
+            Err(e) => return e,
+        };
+        let mut exec = unsafe { get_executor(&mut *executor) };
+        let Some(sm) = exec.lifecycle_state_machine_on_mut(id) else {
+            return RCL_RET_NOT_INIT;
+        };
+        sm.register(slot, cb);
+        sm.set_context(context);
+        RCL_RET_OK
+    }
+
+    /// Register the on-configure callback on `node`'s own state machine.
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn rclc_node_lifecycle_register_on_configure(
+        node: *const crate::node::rcl_node_t,
+        cb: rclc_lifecycle_callback_t,
+        context: *mut c_void,
+    ) -> rcl_ret_t {
+        unsafe { register_node(node, LifecycleCallbackSlot::Configure, cb, context) }
+    }
+
+    /// Register the on-activate callback on `node`'s own state machine.
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn rclc_node_lifecycle_register_on_activate(
+        node: *const crate::node::rcl_node_t,
+        cb: rclc_lifecycle_callback_t,
+        context: *mut c_void,
+    ) -> rcl_ret_t {
+        unsafe { register_node(node, LifecycleCallbackSlot::Activate, cb, context) }
+    }
+
+    /// Register the on-deactivate callback on `node`'s own state machine.
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn rclc_node_lifecycle_register_on_deactivate(
+        node: *const crate::node::rcl_node_t,
+        cb: rclc_lifecycle_callback_t,
+        context: *mut c_void,
+    ) -> rcl_ret_t {
+        unsafe { register_node(node, LifecycleCallbackSlot::Deactivate, cb, context) }
+    }
+
+    /// Register the on-cleanup callback on `node`'s own state machine.
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn rclc_node_lifecycle_register_on_cleanup(
+        node: *const crate::node::rcl_node_t,
+        cb: rclc_lifecycle_callback_t,
+        context: *mut c_void,
+    ) -> rcl_ret_t {
+        unsafe { register_node(node, LifecycleCallbackSlot::Cleanup, cb, context) }
+    }
+
+    /// Register the on-shutdown callback on `node`'s own state machine.
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn rclc_node_lifecycle_register_on_shutdown(
+        node: *const crate::node::rcl_node_t,
+        cb: rclc_lifecycle_callback_t,
+        context: *mut c_void,
+    ) -> rcl_ret_t {
+        unsafe { register_node(node, LifecycleCallbackSlot::Shutdown, cb, context) }
+    }
+
+    /// Register the on-error callback on `node`'s own state machine.
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn rclc_node_lifecycle_register_on_error(
+        node: *const crate::node::rcl_node_t,
+        cb: rclc_lifecycle_callback_t,
+        context: *mut c_void,
+    ) -> rcl_ret_t {
+        unsafe { register_node(node, LifecycleCallbackSlot::Error, cb, context) }
+    }
 }
 
 // ============================================================================

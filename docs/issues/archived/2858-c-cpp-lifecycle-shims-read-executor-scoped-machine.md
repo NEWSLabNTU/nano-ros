@@ -1,7 +1,7 @@
 ---
 id: 2858
 title: "The C and C++ lifecycle change-state, get-state and register shims find no machine once an executor holds two managed nodes"
-status: open
+status: resolved
 type: bug
 severity: medium
 area: [c-api, cpp-api, lifecycle]
@@ -9,7 +9,7 @@ related: [phase-554, issue-2429, issue-2626, issue-2857]
 found: 2026-11-23
 ---
 
-**Home: [phase-554](../roadmap/phase-554-per-node-lifecycle.md) W9** (and the
+**Home: [phase-554](../../roadmap/phase-554-per-node-lifecycle.md) W9** (and the
 per-node machine of W1). Found while landing W6 (#4634); batched with W9,
 whose two-managed-nodes case is what proves the fix.
 
@@ -54,3 +54,22 @@ the single-machine image). Then the lookup is `lifecycle_state_machine_on(id)`.
 
 Acceptance: W9's "two managed nodes with independent states" cell, in C and
 C++.
+
+## Resolution (2026-11-23)
+
+- **C:** a node-scoped family beside the executor-scoped one, which stays for
+  the single-machine image: `rclc_node_register_lifecycle_services(node)`
+  (services under the node's own name, with a machine of its own),
+  `rclc_node_lifecycle_get_current_state`, `rclc_node_lifecycle_change_state`
+  and `rclc_node_lifecycle_register_on_*`. Each takes a node bound with
+  `rclc_executor_node_init` and acts on `lifecycle_state_machine_on(id)`.
+- **C++:** `nros_cpp_lifecycle_node_{change_state,get_current_state,bind}`
+  take the node's handle. `rclcpp_lifecycle::LifecycleNode` uses them whenever
+  it is bound to a node, which every constructor does; the executor-scoped
+  shims remain for an unbound engine.
+
+Measured on W9's cells (`lifecycle_pair_interop`, C and C++): two managed
+nodes in one image, each driven by `ros2 lifecycle` to its own state, each
+running its own callbacks. Negative control (C++): with the callbacks bound
+through the executor-scoped calls, the second node's `on_configure` never
+runs, because those calls find no single machine once the first node has one.

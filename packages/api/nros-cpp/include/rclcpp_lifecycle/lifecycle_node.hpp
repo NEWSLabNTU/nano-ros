@@ -540,6 +540,16 @@ class LifecycleEngine {
         if (!r) {
             return r;
         }
+        // A bound node's machine is its own (one per managed node), so its
+        // callbacks go there; the executor-scoped calls below find no machine
+        // once an executor holds two.
+        // Issue 2858 -- the executor-scoped shims lost a second node's machine.
+        if (bound != nullptr) {
+            return ::rclcpp::Result(nros_cpp_lifecycle_node_bind(
+                bound, &LifecycleEngine::tramp_configure, &LifecycleEngine::tramp_activate,
+                &LifecycleEngine::tramp_deactivate, &LifecycleEngine::tramp_cleanup,
+                &LifecycleEngine::tramp_shutdown, &LifecycleEngine::tramp_error, this));
+        }
         nros_cpp_lifecycle_register_on_configure(exec_, &LifecycleEngine::tramp_configure, this);
         nros_cpp_lifecycle_register_on_activate(exec_, &LifecycleEngine::tramp_activate, this);
         nros_cpp_lifecycle_register_on_deactivate(exec_, &LifecycleEngine::tramp_deactivate, this);
@@ -575,7 +585,10 @@ class LifecycleEngine {
 
     /// Current REP-2002 state.
     LifecycleState get_current_state() const {
-        return static_cast<LifecycleState>(nros_cpp_lifecycle_get_current_state(exec_));
+        const nros_cpp_node_t* bound = node_ != nullptr ? node_->ffi_handle() : nullptr;
+        return static_cast<LifecycleState>(bound != nullptr
+                                               ? nros_cpp_lifecycle_node_get_current_state(bound)
+                                               : nros_cpp_lifecycle_get_current_state(exec_));
     }
 
     // Programmatic transitions. Spelled with the enum, never a literal —
@@ -626,7 +639,10 @@ class LifecycleEngine {
     /// This was the `protected` `trigger(uint8_t)`, which a
     /// ported rclcpp node could not call at all.
     ::rclcpp::Result trigger_transition(uint8_t transition_id) {
-        return ::rclcpp::Result(nros_cpp_lifecycle_change_state(exec_, transition_id));
+        const nros_cpp_node_t* bound = node_ != nullptr ? node_->ffi_handle() : nullptr;
+        return ::rclcpp::Result(bound != nullptr
+                                    ? nros_cpp_lifecycle_node_change_state(bound, transition_id)
+                                    : nros_cpp_lifecycle_change_state(exec_, transition_id));
     }
 
     // ---- Clock ----------------------------------------------------------

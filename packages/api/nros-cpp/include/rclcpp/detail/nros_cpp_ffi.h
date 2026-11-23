@@ -6196,6 +6196,52 @@ nros_cpp_ret_t nros_cpp_lifecycle_register_on_error(void *executor,
                                                     void *ctx);
 
 /**
+ * Trigger a lifecycle transition on `node`'s OWN state machine.
+ *
+ * The node-scoped twin of [`nros_cpp_lifecycle_change_state`], which reads
+ * the executor's single machine and so finds none once an executor holds two
+ * managed nodes. `transition_id` is numbered as there.
+ *
+ * # Safety
+ * `node` must be a live `nros_cpp_node_t*` whose executor is a valid
+ * `CppContext*`. Registered transition callbacks run here, so they and their
+ * context must be live.
+ */
+nros_cpp_ret_t nros_cpp_lifecycle_node_change_state(const struct nros_cpp_node_t *node,
+                                                    uint8_t transition_id);
+
+/**
+ * The current REP-2002 state of `node`'s OWN state machine; `0` (`Unknown`)
+ * when `node` is null or has no machine. Numbered as
+ * [`nros_cpp_lifecycle_get_current_state`].
+ *
+ * # Safety
+ * `node` must be null or a live `nros_cpp_node_t*` whose executor is a valid
+ * `CppContext*`.
+ */
+uint8_t nros_cpp_lifecycle_node_get_current_state(const struct nros_cpp_node_t *node);
+
+/**
+ * Install all six transition callbacks on `node`'s OWN state machine, with
+ * one shared `ctx` -- what `rclcpp_lifecycle::LifecycleNode` binds once its
+ * services are registered under the node's name. A null callback clears that
+ * slot.
+ *
+ * # Safety
+ * `node` must be a live `nros_cpp_node_t*` whose executor is a valid
+ * `CppContext*`; every callback and `ctx` must stay live for as long as a
+ * transition can fire.
+ */
+nros_cpp_ret_t nros_cpp_lifecycle_node_bind(const struct nros_cpp_node_t *node,
+                                            uint8_t (*on_configure)(void*),
+                                            uint8_t (*on_activate)(void*),
+                                            uint8_t (*on_deactivate)(void*),
+                                            uint8_t (*on_cleanup)(void*),
+                                            uint8_t (*on_shutdown)(void*),
+                                            uint8_t (*on_error)(void*),
+                                            void *ctx);
+
+/**
  * Make one MANAGED node of the image a lifecycle node: register the five
  * REP-2002 services under the node's own name, then drive it to its boot
  * autostart.
