@@ -1282,7 +1282,10 @@ impl<'a, const TX_BUF: usize> PublishLoan<'a, TX_BUF> {
             .gate
             .drops(self.publisher.handle.topic_name())
         {
-            // Dropping the slot releases it unsent.
+            // Dropping the slot releases it unsent. A backend's slot releases
+            // in its Drop; the test mock's slot has none, which is what the
+            // lint sees in that build.
+            #[allow(clippy::drop_non_drop)]
             drop(slot);
             return Ok(());
         }
