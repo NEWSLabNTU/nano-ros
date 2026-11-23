@@ -6,7 +6,6 @@
 
 #include "clock_board_pkg/ClockBoard.hpp"
 
-#include <cinttypes>
 #include <cstdint>
 #include <cstdio>
 
@@ -32,8 +31,12 @@ void ClockBoard::on_tick() {
     const ::rclcpp::Clock clock(RCL_SYSTEM_TIME);
     const std::int64_t wall_ns = clock.now().nanoseconds();
     const nros_wall_clock_state_t st = ::rclcpp::Clock::wall_clock_state();
-    std::printf("clock-board: wall_ns=%" PRId64 " synced=%d source=%u steps=%" PRIu32 "\n", wall_ns,
-                st.synced ? 1 : 0, static_cast<unsigned>(st.source), st.steps);
+    // Casts, not <cinttypes>' PRId64/PRIu32: the workspace compiles this TU for
+    // every board's image, and an embedded C++ library may not define those
+    // macros at all.
+    std::printf("clock-board: wall_ns=%lld synced=%d source=%u steps=%lu\n",
+                static_cast<long long>(wall_ns), st.synced ? 1 : 0,
+                static_cast<unsigned>(st.source), static_cast<unsigned long>(st.steps));
 }
 
 ::rclcpp::Result ClockBoard::configure(::rclcpp::Node& node) {
