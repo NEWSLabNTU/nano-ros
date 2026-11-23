@@ -5,7 +5,7 @@ status: open
 type: bug
 severity: high
 area: [orchestration, zephyr, sizing]
-related: [phase-556, issue-2647, issue-2559, issue-1766]
+related: [phase-556, issue-2647, issue-2559, issue-1766, phase-590]
 found: 2026-11-21
 ---
 
