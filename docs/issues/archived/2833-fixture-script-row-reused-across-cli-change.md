@@ -1,12 +1,14 @@
 ---
 id: 2833
 title: "A `fixture-script` row that runs `nros build` is reused after a CLI change, because its signature hashes only the codegen fingerprint"
-status: open
+status: resolved
 type: bug
 severity: medium
 area: [fixtures, build, cli]
 related: [issue-0196, issue-1656, issue-2702]
 found: 2026-11-22
+resolved: 2026-11-23
+resolved_in: "the change that archives this issue"
 ---
 
 ## What happened
@@ -48,3 +50,29 @@ toward reuse.
 
 Sweep: every `builder = "fixture-script"` row in `examples/fixtures.toml`
 whose `build.sh` invokes `nros`.
+
+## Resolution (2026-11-23)
+
+`compile-check-signature.sh` folds the CLI's source stamp (`nros source-stamp`,
+the number `check cli-fresh` reads) into the signature of every
+`fixture-script` row, beside the codegen fingerprint. All four rows key on it,
+not only the ones whose `build.sh` names `nros`: the script is opaque, and the
+error is toward a rebuild. The test-side probe (`compile-check-stale.sh`)
+recomputes the same signature, so it calls such a row stale too.
+
+The sweep found one more builder with the same shape. A `cmake-configure` row
+over a workspace template (no root `CMakeLists.txt`, a `.colcon_workspace`) is
+built with `nros configure` + `nros build`, so it keys on the stamp as well:
+8 rows. A row over a plain `CMakeLists.txt` runs codegen only and keeps the
+fingerprint alone. The west rows already keyed on the stamp (issue 2439), and
+their signature bytes do not change.
+
+Measured, with a comment appended to `nros-cli-core/src/cmd/doctor.rs` (it
+moves the source stamp but not the codegen fingerprint):
+
+| row | builder | main | this change |
+| --- | --- | --- | --- |
+| `image_features_shared_configure_refused` | fixture-script | same signature (the bug) | moved |
+| `cpp_robot_entry` | cmake-configure, workspace template | | moved |
+| `cpp_port_minimal_publisher` | cmake-configure, plain CMakeLists | | same |
+
