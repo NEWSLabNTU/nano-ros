@@ -104,12 +104,12 @@ road phase-550 W3b took for NuttX.
   member is refused. Mutation-checked: the old rule refuses the assembly
   archive.
 
-Kept (retired by [issue 2709](../2709-duplicate-arch-cflags-carriers.md)), now redundant where an image is configured:
+Kept (retired by [issue 2709](2709-duplicate-arch-cflags-carriers.md)), now redundant where an image is configured:
 `nros_arm_r_fpu_cflags_env` / `nros_riscv64_rustflags_env`'s CFLAGS rows (the
 cmake corrosion env), and `nros-board-threadx-qemu-riscv64`'s
 `CFLAGS_riscv64gc_unknown_none_elf`. Both state the profile's own value, and
 where both apply the forced carrier row wins. Retiring them needs a build of
 every cmake/RISC-V road that no lane has measured yet.
 
-Follow-up: [issue 2709](../2709-duplicate-arch-cflags-carriers.md) retires the two
+Follow-up: [issue 2709](2709-duplicate-arch-cflags-carriers.md) retires the two
 kept duplicate carriers once a lane measures them.

@@ -1,11 +1,12 @@
 ---
 id: 2773
 title: "Switching the shared NuttX tree from arm to riscv can leave arm objects in the riscv export, because build-nuttx.sh discards distclean's failure"
-status: open
+status: resolved
 type: bug
 severity: medium
 area: [nuttx, build]
 found: 2026-11-21
+resolved: 2026-11-23
 related: [0433, 0525, 1249, 2617]
 ---
 
@@ -71,3 +72,14 @@ is gone.
   class whatever left the objects behind.
 - Reproduce it: configure and build arm, then build riscv in the same tree,
   keeping distclean's stderr.
+
+## Resolution
+
+Fixed 2026-11-23. `build-nuttx.sh` runs `make distclean` through one helper
+whose failure is fatal and prints the log, and before recording an export key
+it refuses any archive member whose ELF machine differs from the export's
+architecture (`scripts/nuttx/check-export-machine.py`, gate
+`just check nuttx-export-machine`). Measured on a shared tree, arm then riscv:
+main left 80 ARM members in the riscv export (`libboards.a(dummy.o)`,
+`libc.a(aeabi_memclr.o)`, ...); the fixed script left none, and switching back
+to arm was clean too.
