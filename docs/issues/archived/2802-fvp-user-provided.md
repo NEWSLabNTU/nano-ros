@@ -1,12 +1,14 @@
 ---
 id: 2802
 title: "The Arm FVP is user-provided: nano-ros stops provisioning and distributing it"
-status: open
+status: resolved
 type: chore
 area: [zephyr, boards, cli, tooling]
 severity: low
 found: 2026-11-21
-related: [1786, 0232, phase-478]
+related: [1786, 0232]
+resolved: 2026-11-22
+resolved_in: "chore(fvp): the Arm FVP is user-provided (issue 2802)"
 ---
 
 ## Decision
