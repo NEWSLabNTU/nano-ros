@@ -22,6 +22,11 @@
 #   G  every retired Kconfig symbol and -DNROS_OVERRIDE_<ID> is refused
 #      naming its replacement and, for a unit change, the factor (phase-581 W5;
 #      W6 adds the hand-written symbols and the locator statement's)
+#   H  a build dir configured with a since-retired -DCONFIG_<SYM> re-configures
+#      (issue 2906): Zephyr's cache-only `CLI_CONFIG_<SYM>` is dropped with a
+#      warning naming the replacement, while the same symbol passed on THIS
+#      configure's command line is still refused; a knob symbol's stale entry
+#      is dropped the same way
 #   F  the fixture runner's override listing (`fixtures-manifest.py
 #      west-overrides`) runs: it crashed with an `UnboundLocalError` from
 #      2865cc77c5, and the runner read it through a process substitution, so
@@ -148,6 +153,64 @@ nros_grep_q 'CONFIG_NROS_ZENOH_LOCATOR is retired: set CONFIG_NROS_LOCATOR .*`lo
     fail "G: CONFIG_NROS_ZENOH_LOCATOR does not name CONFIG_NROS_LOCATOR and the locator statement"
 nros_grep_q 'CONFIG_NROS_TRANSPORT_SERIAL is retired: .*CONFIG_NROS_ZENOH_LINK_SERIAL' "$WORK/g.log" ||
     fail "G: CONFIG_NROS_TRANSPORT_SERIAL does not say what to set instead"
+
+# H  issue 2906 -- the probe stands in for Zephyr: after the module's checks it
+#    does what `kconfig.cmake` does to a command-line symbol (CONFIG_<SYM> moves
+#    to a CLI_CONFIG_<SYM> cache entry that every later configure re-applies).
+#    PROBE_PRE_RETIREMENT models the tree that configured the dir before the
+#    symbol was retired, so it skips the refusal.
+mkdir -p "$WORK/h"
+printf '%s\n' \
+    'cmake_minimum_required(VERSION 3.22)' \
+    'project(probe NONE)' \
+    'include("${MODULE}")' \
+    'list(GET NROS_KNOB_RETIRED_KCONFIG 0 _sym)' \
+    'list(GET NROS_KNOB_KCONFIG_IDS 0 _kid)' \
+    'set(_ksym "${NROS_KNOB_KCONFIG_SYMBOL_${_kid}}")' \
+    'message(STATUS "PROBE_SYM ${_sym} ${_ksym}")' \
+    'if(NOT PROBE_PRE_RETIREMENT)' \
+    '    _nros_image_kconfig_drop_stale_cli("${NROS_KNOB_RETIRED_KCONFIG}" NROS_KNOB_RETIRED_KCONFIG_MSG_)' \
+    '    set(_why_${_ksym} "knob-why")' \
+    '    _nros_image_kconfig_drop_stale_cli("${_ksym}" _why_)' \
+    '    _nros_image_kconfig_retired_findings(_found "" "")' \
+    '    if(NOT _found STREQUAL "")' \
+    '        message(STATUS "PROBE_REFUSED ${_found}")' \
+    '    endif()' \
+    'endif()' \
+    'foreach(_s IN ITEMS ${_sym} ${_ksym})' \
+    '    if(DEFINED CACHE{CONFIG_${_s}})' \
+    '        set(CLI_CONFIG_${_s} "$CACHE{CONFIG_${_s}}" CACHE INTERNAL "")' \
+    '        unset(CONFIG_${_s} CACHE)' \
+    '    endif()' \
+    'endforeach()' \
+    > "$WORK/h/CMakeLists.txt"
+hconf() { cmake -S "$WORK/h" -B "$WORK/hb" "-DMODULE=$MODULE" "$@" 2>&1; }
+hout="$(hconf -DPROBE_PRE_RETIREMENT=ON)"
+read -r hsym hksym <<< "$(printf '%s\n' "$hout" | sed -n 's/.*PROBE_SYM //p')"
+if [ -z "$hsym" ] || [ -z "$hksym" ]; then
+    fail "H: the probe named no retired symbol or knob symbol"
+else
+    hconf -DPROBE_PRE_RETIREMENT=ON "-DCONFIG_$hsym=old" "-DCONFIG_$hksym=7" >/dev/null
+    nros_grep_q "^CLI_CONFIG_$hsym:" "$WORK/hb/CMakeCache.txt" ||
+        fail "H: the stand-in did not leave CLI_CONFIG_$hsym in the cache"
+    hout="$(hconf -UPROBE_PRE_RETIREMENT -DPROBE_PRE_RETIREMENT=OFF)"
+    if printf '%s\n' "$hout" | nros_grep_q 'PROBE_REFUSED'; then
+        fail "H: a re-configure refused a stale cache-only CLI_CONFIG_$hsym (issue 2906)"
+    fi
+    printf '%s\n' "$hout" | tr -d '\n' | nros_grep_q "dropped CLI_CONFIG_$hsym=old .*is retired" ||
+        fail "H: dropping CLI_CONFIG_$hsym printed no warning naming its replacement"
+    printf '%s\n' "$hout" | tr -d '\n' | nros_grep_q "dropped CLI_CONFIG_$hksym=7 .*knob-why" ||
+        fail "H: a knob symbol's stale CLI_CONFIG_$hksym was not dropped with its reason"
+    if nros_grep_q "^CLI_CONFIG_\($hsym\|$hksym\):" "$WORK/hb/CMakeCache.txt"; then
+        fail "H: a dropped CLI_CONFIG_ entry is still in the cache"
+    fi
+    hout="$(hconf "-DCONFIG_$hsym=new")"
+    printf '%s\n' "$hout" | tr -d '\n' | nros_grep_q "PROBE_REFUSED .*-DCONFIG_$hsym: .*is retired" ||
+        fail "H: -DCONFIG_$hsym passed on this configure was not refused"
+    if printf '%s\n' "$hout" | nros_grep_q "dropped CLI_CONFIG_$hsym"; then
+        fail "H: a value this configure passed was dropped instead of refused"
+    fi
+fi
 
 if [ "$FAILURES" -ne 0 ]; then
     echo "zephyr-transient-overrides: $FAILURES failure(s)" >&2
