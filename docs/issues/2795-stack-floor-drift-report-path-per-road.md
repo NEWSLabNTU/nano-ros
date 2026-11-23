@@ -5,7 +5,7 @@ status: open
 type: tech-debt
 severity: low
 area: [stack-floor, ci]
-related: [issue-2400]
+related: [issue-2400, phase-590]
 found: 2026-11-22
 ---
 
