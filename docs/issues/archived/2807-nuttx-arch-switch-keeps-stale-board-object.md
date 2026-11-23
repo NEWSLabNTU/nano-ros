@@ -1,12 +1,13 @@
 ---
 id: 2807
 title: "Switching the shared NuttX kernel tree from arm to riscv keeps arm objects (first `boards/dummy.o`), so every riscv image fails to link"
-status: open
+status: resolved
 type: bug
 severity: medium
 area: [nuttx, fixtures, build]
 related: [0456]
 found: 2026-11-21
+resolved: 2026-11-23
 ---
 
 ## What happens
@@ -131,3 +132,12 @@ git-ignored build output:
 then re-run the riscv build. Each step was found by the previous one's
 failure, which is the case for fix 2: a fatal `distclean` would have reached
 all three layers at once.
+
+## Resolution
+
+Fixed 2026-11-23, together with [issue 2773](2773-nuttx-arch-switch-distclean-failure-mixes-export.md):
+the integration Makefile's clean goals now parse without the ROS edition, so
+`distclean` runs to completion on an arch switch, and a distclean that still
+fails stops the build. The export-machine check refuses any foreign object
+that survives. Measured arm then riscv in one tree: the riscv build links and
+its export holds RISC-V objects only.

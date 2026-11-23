@@ -1,17 +1,18 @@
 ---
 id: 2709
 title: "Two older carriers still restate an arch profile's C flags beside issue 2692's one carrier"
-status: open
+status: resolved
 type: tech-debt
 severity: low
 area: [build, toolchain]
 related: [issue-2692, phase-575]
 found: 2026-11-18
+resolved: 2026-11-23
 ---
 
 ## What remains
 
-[Issue 2692](archived/2692-cc-rs-builds-skip-arch-profile.md) made the image's
+[Issue 2692](2692-cc-rs-builds-skip-arch-profile.md) made the image's
 `[arch.*]` profile the one source of `CFLAGS_<triple>` / `CXXFLAGS_<triple>`
 for every cc-rs build, written `force`d into the cargo config of every road.
 Two older spellings of the same flags were kept:
@@ -45,3 +46,15 @@ is not a C flag. Do it once a lane builds every cmake Cortex-R and RISC-V road
 board) and the archive-member check from 2692
 (`just check out-of-tree-board-images`) passes over them. Retire the
 toolchain files' "read by `nros_arm_r_fpu_cflags_env`" comments with them.
+
+## Resolution
+
+Fixed 2026-11-23. `nros_arm_r_fpu_cflags_env` is deleted with its two call
+sites, `nros_riscv64_rustflags_env` keeps only its RUSTFLAGS half (rustc's
+`+d` target feature is not a C flag), and the riscv64 ThreadX board drops its
+`[env] CFLAGS/CXXFLAGS` rows, so the arch profile is the one carrier of an
+image's C flags. Builds of the out-of-tree R5F board, `mps3-an536` and
+`threadx-riscv64` all succeeded on the fixed tree. Left alone on purpose:
+`scripts/build/riscv64-toolchain.sh` still exports the same value for the
+in-tree lane's process env; the profile's carrier merges it after the
+profile, so it is redundant but harmless.
