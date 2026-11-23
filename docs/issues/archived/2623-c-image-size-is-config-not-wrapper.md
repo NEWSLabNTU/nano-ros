@@ -1,11 +1,13 @@
 ---
 id: 2623
 title: "A C or C++ image is larger than a Rust one because of three build defaults, not because the C/C++ API wraps the Rust API"
-status: open
+status: resolved
 type: performance
 severity: medium
 area: [build, memory, api, freertos]
 found: 2026-11-16
+resolved: 2026-11-23
+resolved_in: \"4890d64037 (option 2), b8ba489406 (option 1), b43559a793 (option 3)"
 related: [0425, 1146, 1197, 1624, 1657, 2624]
 ---
 
@@ -192,9 +194,27 @@ client got its sum and the action client got its full Fibonacci result.
 Swept for the same pattern on the other platforms' cmake roads: none. ThreadX
 sizes its byte pool with one literal (`BYTE_POOL_BASE_SIZE`, 4 MiB) on BOTH
 roads. That is not a road split, but it is the same "fixed literal, not
-derived" shape, so it is filed as [issue 2624](archived/2624-threadx-byte-pool-base-is-a-literal.md)
+derived" shape, so it is filed as [issue 2624](2624-threadx-byte-pool-base-is-a-literal.md)
 and not changed here. Zephyr and NuttX take their
 heaps from Kconfig on every road, and freertos-posix uses heap_3 over the host
 `malloc`.
 
 Options 1 and 3 are still open.
+
+**Options 1 and 3 landed too (2026-11-16), so all three are in.** This
+section was not updated when they did; recorded 2026-11-23.
+
+- **Option 1**, b8ba489406: the surface anchors lose `#[used]`, and each
+  staticlib root references them from an exported function, so the surface
+  stays in the archive and an image drops what it does not call. Measured on
+  mps2-an385-freertos, zenoh talker, `release`: C 631,440 → 424,024 B flash,
+  C++ 621,456 → 419,512 B, Rust unchanged. The `check cpp` lane asserts the
+  case the anchors exist for (a C++ program calling `rcl_clock_init`, which
+  the C++ FFI never references), with a negative control.
+- **Option 3**, b43559a793: a cargo board image with no `profile` builds
+  `release`, and the generated entry's `[profile.release]` is opt-level 3,
+  fat LTO, one codegen unit. The default mps2-an385 FreeRTOS Rust talker went
+  from 914,880 to 500,204 B of flash.
+
+So a default C talker is now below the default Rust one on flash
+(424,024 B against 500,204 B), which is what this issue asked for.
