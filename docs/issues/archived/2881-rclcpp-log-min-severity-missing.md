@@ -1,15 +1,17 @@
 ---
 id: 2881
 title: "No compile-time log floor (`RCLCPP_LOG_MIN_SEVERITY`): a filtered-out `RCLCPP_DEBUG` still evaluates its arguments in the control loop"
-status: open
+status: resolved
 type: enhancement
 severity: low
 area: [cpp, logging, api]
 related: [phase-478, 2636]
 found: 2026-11-23
+resolved: 2026-11-24
+resolved_in: "feat(log): RCLCPP_LOG_MIN_SEVERITY and RCLC_LOG_MIN_SEVERITY compile-time floors"
 ---
 
-**Home:** [phase-478](../roadmap/phase-478-island-developer-experience-findings.md)
+**Home:** [phase-478](../../roadmap/phase-478-island-developer-experience-findings.md)
 I41. Consumer: the safety island (autoware-safety-island fork), branch
 `nano-ros-next`, nano-ros pin `8d4e70a382`.
 
@@ -58,3 +60,40 @@ it per image, so a board image does not need a `-D` in a package's CMake.
 - The book's rclcpp compatibility page lists the symbol.
 - The island maps `log_*` onto `RCLCPP_*` with the floor set from its image,
   and deletes `CONFIG_LOG_LEVEL` gating from `logger.hpp`.
+
+## Resolution
+
+- `packages/api/nros-cpp/include/rclcpp/logging.hpp` defines
+  `RCLCPP_LOG_MIN_SEVERITY_{DEBUG,INFO,WARN,ERROR,FATAL,NONE}` (0..5, upstream's
+  values) and defaults `RCLCPP_LOG_MIN_SEVERITY` to `_DEBUG`. Each level has
+  one gate, `NROS_RCLCPP_AT_<LEVEL>_(m)`, which is `m` at or above the floor
+  and an empty `do { } while (0)` below it; every family that exists here is
+  written through it: plain, `_ONCE`, `_SKIPFIRST`, `_THROTTLE`,
+  `_SKIPFIRST_THROTTLE` and `_STREAM`. Below the floor the logger, the clock,
+  the format arguments and the stream operands are not evaluated.
+- The C API gets the twin, `RCLC_LOG_MIN_SEVERITY` in `<rclc/log.h>`, values
+  `RCLC_LOG_MIN_SEVERITY_{TRACE,DEBUG,INFO,WARN,ERROR,FATAL,NONE}` = 0..6,
+  the numbering of `log.max_level` (`NROS_LOG_MAX_LEVEL`). It gates
+  `RCLC_LOG_<LEVEL>` (to `((void)0)`) and `RCLC_LOG_<LEVEL>_THROTTLE`; as
+  rcutils' floor does upstream, it also applies to `RCLCPP_*`, so a level
+  survives only at or above both. An out-of-range value is an `#error`.
+- How a project sets it: a compile definition, upstream's way, which a ported
+  package's CMake already carries (`target_compile_definitions`, or
+  `zephyr_compile_definitions`). No knob: the C/C++ headers have no per-image
+  carrier on every road (the CMake road hands image knobs to cargo only), and a
+  floor that worked on one road would differ by road. On Zephyr the image's
+  ceiling can be passed through unchanged, since the numbering matches:
+  `-DRCLC_LOG_MIN_SEVERITY=CONFIG_NROS_LOG_MAX_LEVEL`.
+- Not added: `_EXPRESSION` and `_FUNCTION` (not provided here at all; see
+  issue 2636).
+
+## Test
+
+`packages/api/nros-cpp/tests/compile/log_min_severity_runtime.cpp`, run by
+`just check cpp` (`cpp-runtime`) in four floor arms (unset,
+`RCLCPP_..._INFO`, `RCLCPP_..._NONE`, `RCLC_..._WARN`), each with and without
+`NROS_CPP_STD`, under `-Wall -Wextra -Werror`. Every operand goes through a
+counting function. For every level of every family it holds: below the floor
+nothing is evaluated and nothing reaches the sink; at or above it the operands
+are evaluated and one record arrives at its own severity. The issue's line,
+`RCLCPP_DEBUG(logger, "%d", f())`, is checked on its own.
