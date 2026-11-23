@@ -37,16 +37,16 @@ use crate::{
 /// The file a board's build script writes; `nros_board_common::stack_stated::FILE`.
 pub const STATED_FILE: &str = "nros-stack-stated.json";
 
-/// Platforms whose stated stack the walk cannot check yet, each with the
-/// reason its images are reported as not checked. ThreadX's Linux port runs
-/// each thread on its ThreadX stack since issue 2800, and its board states
-/// it, but a host image's deepest paths run through the host libc, whose
-/// frames the walk has no sizes for, so a walk would read low.
-// Issue 2834 -- walking a host image (and the plan skip for no cross triple).
-const UNCHECKABLE_PLATFORMS: &[(&str, &str)] = &[(
-    "threadx-linux",
-    "a host image's stack runs through the host libc, whose frames the walk does not size",
-)];
+/// Host-image platforms whose board states a stack the walk cannot reach.
+/// ThreadX's Linux port runs each thread on its ThreadX stack since issue
+/// 2800, and its board states it, but a host image's deepest paths run
+/// through the host libc, whose frames the walk has no sizes for, so a walk
+/// would read low. Such an image is checked against its measured peak alone
+/// (an `[[observed]]` row with `unwalked`), plus the margin; an image with no
+/// row is reported as not checked.
+// Issue 2834 -- the libc walk that would let these join STATING_PLATFORMS is
+// deferred; the measured peak sizes them until then.
+const HOST_MEASURED_PLATFORMS: &[&str] = &["threadx-linux"];
 
 /// Platforms whose boards state a stack on the cargo road. A platform joins
 /// when its board build scripts call `nros_board_common::stack_stated::emit`;
@@ -66,6 +66,9 @@ pub enum StackFloorStep {
     Check(Box<CargoStackFloor>),
     /// Say why the image's stack is not checked, after cargo.
     NotChecked(String),
+    /// A host image: check its stated stack against its measured peak,
+    /// after cargo, with no walk ([`HOST_MEASURED_PLATFORMS`]).
+    Measured(Box<CargoStackFloor>),
 }
 
 /// Everything the post-cargo walk needs, fixed at planning.
@@ -294,6 +297,68 @@ pub fn arm(
     }
 }
 
+/// The walker script and the table's json twin under a nano-ros checkout, or
+/// why the image cannot be checked without them.
+fn walker_files(nros_root: Option<&Path>) -> Result<(PathBuf, PathBuf), String> {
+    let Some(root) = nros_root else {
+        return Err("no nano-ros checkout was found to read the walker from".into());
+    };
+    let script = root.join("scripts/nros-stack-floor.py");
+    // The json twin, as the cmake road reads: stdlib `json` loads it on every
+    // Python the build supports.
+    let table = root.join("config/stack-floors.json");
+    if !script.is_file() || !table.is_file() {
+        return Err(format!(
+            "{} has no scripts/nros-stack-floor.py or config/stack-floors.json",
+            root.display()
+        ));
+    }
+    Ok((script, table))
+}
+
+/// A host image ([`HOST_MEASURED_PLATFORMS`]): no walk, so cargo's own
+/// command runs unchanged; afterwards its messages name the board's stated
+/// stack, which is held to the image's measured peak.
+fn plan_measured(p: &ResolvedBuild, nros_root: Option<&Path>) -> Option<StackFloorStep> {
+    let output = p.output.clone();
+    let Some(BuildOutput::Cargo {
+        target_dir,
+        triple,
+        profile_dir,
+        bin: Some(bin),
+    }) = output.clone()
+    else {
+        // A manifest with no single bin links no image to check.
+        return None;
+    };
+    let (script, table) = match walker_files(nros_root) {
+        Ok(f) => f,
+        Err(why) => return Some(StackFloorStep::NotChecked(why)),
+    };
+    let dir = output.as_ref().and_then(BuildOutput::stack_floor_dir)?;
+    let mut rerun = p.handoff.clone()?;
+    rerun.args.push("--message-format=json".into());
+    let exe = match &triple {
+        Some(t) => target_dir.join(t).join(&profile_dir).join(&bin),
+        None => target_dir.join(&profile_dir).join(&bin),
+    };
+    Some(StackFloorStep::Measured(Box::new(CargoStackFloor {
+        rerun,
+        exe,
+        dir,
+        key: image_key(p.stack_floor_image.as_deref(), &p.qualified, &p.board),
+        rmw: p.rmw.clone().unwrap_or_else(|| "zenoh".into()),
+        // A row is keyed by the host it was measured on: a peak on one host
+        // architecture says nothing about another's.
+        triple: triple.unwrap_or_else(crate::orchestration::metadata_build::host_triple),
+        script,
+        table,
+        raise: false,
+        name_token: None,
+        sched_tasks: None,
+    })))
+}
+
 fn plan_one(
     p: &mut ResolvedBuild,
     nros_root: Option<&Path>,
@@ -303,12 +368,8 @@ fn plan_one(
     if p.driver != Driver::Cargo {
         return None;
     }
-    if let Some(why) = UNCHECKABLE_PLATFORMS
-        .iter()
-        .find(|(plat, _)| *plat == p.platform)
-        .map(|(_, why)| why)
-    {
-        return Some(StackFloorStep::NotChecked((*why).into()));
+    if HOST_MEASURED_PLATFORMS.contains(&p.platform.as_str()) {
+        return plan_measured(p, nros_root);
     }
     let output = p.output.clone();
     let Some(BuildOutput::Cargo {
@@ -328,21 +389,10 @@ fn plan_one(
             p.platform, p.board
         )));
     }
-    let Some(root) = nros_root else {
-        return Some(StackFloorStep::NotChecked(
-            "no nano-ros checkout was found to read the walker from".into(),
-        ));
+    let (script, table) = match walker_files(nros_root) {
+        Ok(f) => f,
+        Err(why) => return Some(StackFloorStep::NotChecked(why)),
     };
-    let script = root.join("scripts/nros-stack-floor.py");
-    // The json twin, as the cmake road reads: stdlib `json` loads it on every
-    // Python the build supports.
-    let table = root.join("config/stack-floors.json");
-    if !script.is_file() || !table.is_file() {
-        return Some(StackFloorStep::NotChecked(format!(
-            "{} has no scripts/nros-stack-floor.py or config/stack-floors.json",
-            root.display()
-        )));
-    }
     let hand = p.handoff.as_mut()?;
     let profile = target_dir.join(&triple).join(&profile_dir);
     let dir = output.as_ref().and_then(BuildOutput::stack_floor_dir)?;
@@ -428,7 +478,7 @@ fn plan_one(
 
 /// Before cargo: the directory the link writes its map into.
 pub fn prepare(step: &StackFloorStep) -> Result<()> {
-    if let StackFloorStep::Check(c) = step {
+    if let StackFloorStep::Check(c) | StackFloorStep::Measured(c) = step {
         std::fs::create_dir_all(&c.dir)
             .wrap_err_with(|| format!("creating {}", c.dir.display()))?;
     }
@@ -540,15 +590,10 @@ pub fn walker_args(c: &CargoStackFloor, cargo_json: &Path) -> Vec<OsString> {
     a
 }
 
-/// After cargo: walk the image and check the stack its board stated.
-pub fn check(qualified: &str, step: &StackFloorStep) -> Result<()> {
-    let c = match step {
-        StackFloorStep::NotChecked(why) => {
-            eprintln!("nros build: stack floor of `{qualified}` not checked: {why}");
-            return Ok(());
-        }
-        StackFloorStep::Check(c) => c,
-    };
+/// Re-run the image's cargo command for its JSON messages, which name the
+/// build scripts that ran (and so the board's stated stack); saved beside the
+/// report.
+fn cargo_messages(c: &CargoStackFloor) -> Result<PathBuf> {
     let out = c
         .rerun
         .command()
@@ -566,6 +611,54 @@ pub fn check(qualified: &str, step: &StackFloorStep) -> Result<()> {
     let cargo_json = c.dir.join("cargo-messages.json");
     std::fs::write(&cargo_json, &out.stdout)
         .wrap_err_with(|| format!("writing {}", cargo_json.display()))?;
+    Ok(cargo_json)
+}
+
+/// The measured check's command line: the stated stack, the table and the
+/// key, and no walk inputs.
+pub fn measured_args(c: &CargoStackFloor, cargo_json: &Path) -> Vec<OsString> {
+    let mut a: Vec<OsString> = vec![c.script.clone().into(), "--measured-only".into()];
+    for (k, v) in [
+        ("--table", c.table.clone().into_os_string()),
+        ("--rmw", c.rmw.clone().into()),
+        ("--target", c.triple.clone().into()),
+        ("--image", c.key.clone().into()),
+        ("--stated-by-build", cargo_json.into()),
+        ("--report", c.dir.join("report.json").into()),
+    ] {
+        a.push(k.into());
+        a.push(v);
+    }
+    a
+}
+
+/// After cargo, for a host image: hold the stated stack to the measured peak.
+fn check_measured(qualified: &str, c: &CargoStackFloor) -> Result<()> {
+    let cargo_json = cargo_messages(c)?;
+    let st = std::process::Command::new("python3")
+        .args(measured_args(c, &cargo_json))
+        .status()
+        .wrap_err("running python3 for the stack-floor check")?;
+    if !st.success() {
+        eyre::bail!(
+            "`{qualified}`: the stack floor check failed (see above); \
+             NROS_STACK_FLOOR=OFF skips the check"
+        );
+    }
+    Ok(())
+}
+
+/// After cargo: walk the image and check the stack its board stated.
+pub fn check(qualified: &str, step: &StackFloorStep) -> Result<()> {
+    let c = match step {
+        StackFloorStep::NotChecked(why) => {
+            eprintln!("nros build: stack floor of `{qualified}` not checked: {why}");
+            return Ok(());
+        }
+        StackFloorStep::Measured(c) => return check_measured(qualified, c),
+        StackFloorStep::Check(c) => c,
+    };
+    let cargo_json = cargo_messages(c)?;
     let mut walker = std::process::Command::new("python3");
     walker.args(walker_args(c, &cargo_json));
     // The build's jobserver (`share_jobserver`): the walker runs its callee
@@ -808,12 +901,19 @@ mod tests {
             run_tables: Default::default(),
             package_depends: None,
         };
+        let mut host = image("threadx-linux");
+        host.output = Some(BuildOutput::Cargo {
+            target_dir: "/t".into(),
+            triple: None,
+            profile_dir: "release".into(),
+            bin: Some("e".into()),
+        });
         let mut v = vec![
             image("bare-metal"),
             image("threadx"),
             image("nuttx"),
             image("threadx-riscv64"),
-            image("threadx-linux"),
+            host,
         ];
         arm(&mut v, Some(&root), None, &|_| None);
         let _ = std::fs::remove_dir_all(&root);
@@ -839,13 +939,20 @@ mod tests {
             "{:?}",
             v[3].stack_floor
         );
-        // ThreadX on Linux: the host libc's frames are not walked.
-        assert!(
-            matches!(&v[4].stack_floor, Some(StackFloorStep::NotChecked(w))
-                if w.contains("host libc")),
-            "{:?}",
-            v[4].stack_floor
-        );
+        // ThreadX on Linux (issue 2834): no walk, so cargo's command is
+        // unchanged and the stated stack is held to the measured peak; a host
+        // image has no triple, so its row is keyed by the host's.
+        let Some(StackFloorStep::Measured(m)) = &v[4].stack_floor else {
+            panic!("{:?}", v[4].stack_floor);
+        };
+        let hand = v[4].handoff.as_ref().unwrap();
+        assert_eq!(m.rerun.env, hand.env, "a measured check adds no walk flags");
+        assert_eq!(m.rerun.args.last().unwrap(), "--message-format=json");
+        assert_eq!(m.exe, PathBuf::from("/t/release/e"));
+        assert!(!m.triple.is_empty() && !m.raise);
+        let a = measured_args(m, Path::new("/m.json"));
+        assert!(a.iter().any(|x| x == "--measured-only"), "{a:?}");
+        assert!(!a.iter().any(|x| x == "--link-map"), "{a:?}");
     }
 
     /// Phase-557 W5b -- NuttX links through a gcc driver, which rejects a

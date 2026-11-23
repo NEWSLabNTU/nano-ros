@@ -142,6 +142,24 @@
       "static": 72000,
       "target": "thumbv7em-none-eabi",
       "upper_bound": "_RNvMNtNtC9nros_node8executor4spinNtB2_8Executor7open_in -> zephyr_thread_wrapper (type)"
+    },
+    {
+      "image": "threadx_linux_rs_talker_bringup@threadx-linux",
+      "issue": "2834",
+      "method": "2026-11-23, x86_64 Linux: the board's exit report (`nros: stack peak name=`nros_app` used=N`, ThreadX stack fill) after 30 s of publishing to a router, ended by SIGINT, 3 runs, all 44,840 B of the 64 KiB default; release build of examples/threadx-linux/rust/talker",
+      "peak": 44840,
+      "rmw": "zenoh",
+      "role": "OPEN",
+      "shape": {
+        "NROS_EXECUTOR_ACTION_CLIENTS": 0,
+        "NROS_EXECUTOR_MAX_CBS": 2,
+        "NROS_EXECUTOR_MAX_NODES": 1,
+        "NROS_MAX_PUBLISHERS": 3,
+        "NROS_MAX_QUERYABLES": 7,
+        "NROS_MAX_SUBSCRIBERS": 1
+      },
+      "target": "x86_64-unknown-linux-gnu",
+      "unwalked": "a host image's app thread runs through the host libc, whose frames the walk does not size"
     }
   ],
   "policy": [

@@ -224,6 +224,28 @@ NROS_MAX_QUERYABLES = 0
 NROS_EXECUTOR_MAX_CBS = 1
 NROS_EXECUTOR_ACTION_CLIENTS = 0
 
+# A host image (issue 2834): its deepest paths run through the host libc,
+# whose frames the walk has no sizes for, so it is not walked. `unwalked`
+# states why; the build holds its stated stack to `peak` + margin_pct, and the
+# drift check and twin lane skip the row. `target` is the host it ran on.
+[[observed]]
+image = "threadx_linux_rs_talker_bringup@threadx-linux"
+rmw = "zenoh"
+target = "x86_64-unknown-linux-gnu"
+role = "OPEN"
+peak = 44840
+unwalked = "a host image's app thread runs through the host libc, whose frames the walk does not size"
+method = "2026-11-23, x86_64 Linux: the board's exit report (`nros: stack peak name=`nros_app` used=N`, ThreadX stack fill) after 30 s of publishing to a router, ended by SIGINT, 3 runs, all 44,840 B of the 64 KiB default; release build of examples/threadx-linux/rust/talker"
+issue = "2834"
+
+[observed.shape]
+NROS_EXECUTOR_MAX_NODES = 1
+NROS_MAX_PUBLISHERS = 3
+NROS_MAX_SUBSCRIBERS = 1
+NROS_MAX_QUERYABLES = 7
+NROS_EXECUTOR_MAX_CBS = 2
+NROS_EXECUTOR_ACTION_CLIENTS = 0
+
 # A walk the drift check holds and NOTHING ELSE reads: no build, no `nros
 # new` stamp, no twin lane. Its image stays UNMEASURED (the build warns, never
 # refuses), and `just zephyr stack-floor-drift` fails when the walk leaves

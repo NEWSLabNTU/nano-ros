@@ -375,9 +375,11 @@ def zephyr_of(cache: dict[str, str]) -> tuple[str, str | None] | None:
 
 
 def table_rows(doc: dict, only: list[str] | None) -> list[tuple[str, dict]]:
-    """Every row the check walks, with the table it came from."""
+    """Every row the check walks, with the table it came from. An `unwalked`
+    row (a host image, issue 2834) records no walk, so there is nothing to
+    re-walk."""
     return [(t, r) for t in ("observed", "drift") for r in doc.get(t, [])
-            if not only or r["image"] in only]
+            if (not only or r["image"] in only) and "unwalked" not in r]
 
 
 def self_test() -> int:
@@ -481,6 +483,8 @@ def self_test() -> int:
               == [("observed", "a"), ("drift", "b")]
               and [r["image"] for _, r in table_rows(
                   {"observed": [{"image": "a"}], "drift": [{"image": "b"}]}, ["b"])] == ["b"])
+        check("rows: an unwalked row has no walk to re-walk",
+              table_rows({"observed": [{"image": "h", "unwalked": "host libc"}]}, None) == [])
 
     # Issue 2688: a walk under another toolchain than the pins is NOT VERIFIED.
     idx = {"tool": {"arm-none-eabi-gcc": {"version": "13.2-nros5"},
