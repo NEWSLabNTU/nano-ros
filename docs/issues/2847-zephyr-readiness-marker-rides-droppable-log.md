@@ -59,11 +59,14 @@ Zephyr's `choice LOG_MODE` defaults to `LOG_MODE_IMMEDIATE` on `ARCH_POSIX`
 and to `LOG_MODE_DEFERRED` everywhere else. So every native_sim image is
 immediate and never had this channel, and every other board with
 `CONFIG_LOG=y` is deferred unless its conf says otherwise. In
-`examples/fixtures.toml` that is 18 Zephyr rows: 13 on mps2/an385, 4 on
-qemu_cortex_a53 SMP (the realtime entry, two log-sink cells and the
-dead-holder cell) and 1 on nucleo_f767zi. A first survey counted only the
-images one host had built, which were mostly native_sim, and understated
-this.
+`examples/fixtures.toml` there are 18 Zephyr rows off native_sim: 13 on
+mps2/an385, 4 on qemu_cortex_a53 SMP (the realtime entry, two log-sink cells
+and the dead-holder cell) and 1 on nucleo_f767zi. Building them shows 16 of
+the 18 are deferred. Two mps2 rows never had the channel: the C boot-report
+image has `CONFIG_LOG` off, so its `printk` goes straight to the console, and
+the C++ violation entry sets `CONFIG_LOG_MODE_IMMEDIATE=y`.
+A first survey counted only the images one host had built, which were mostly
+native_sim, and understated this.
 
 ## What had been done before the fix
 
