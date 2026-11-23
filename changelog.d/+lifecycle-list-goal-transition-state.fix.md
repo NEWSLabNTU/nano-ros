@@ -1,0 +1,1 @@
+`ros2 lifecycle list` and the transition graph of a nano-ros managed node now name the transition state as each transition's goal (`configuring`, `activating`, `shuttingdown`, ...), as stock ROS 2 does, instead of the primary state it settles in.

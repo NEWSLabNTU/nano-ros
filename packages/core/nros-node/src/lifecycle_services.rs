@@ -57,6 +57,11 @@ pub mod state_id {
     pub const PRIMARY_STATE_INACTIVE: u8 = 2;
     pub const PRIMARY_STATE_ACTIVE: u8 = 3;
     pub const PRIMARY_STATE_FINALIZED: u8 = 4;
+    pub const TRANSITION_STATE_CONFIGURING: u8 = 10;
+    pub const TRANSITION_STATE_CLEANINGUP: u8 = 11;
+    pub const TRANSITION_STATE_SHUTTINGDOWN: u8 = 12;
+    pub const TRANSITION_STATE_ACTIVATING: u8 = 13;
+    pub const TRANSITION_STATE_DEACTIVATING: u8 = 14;
     pub const TRANSITION_STATE_ERRORPROCESSING: u8 = 15;
 }
 
@@ -231,6 +236,30 @@ fn transition_start_state(t: InternalTransition) -> InternalState {
     t.source_state()
 }
 
+/// The `(id, label)` of the state a `TransitionDescription` names as `goal`.
+///
+/// Issue 2903 -- stock `rcl_lifecycle` registers each public transition as an
+/// edge from a primary state into its TRANSITION state (`configure`:
+/// unconfigured -> configuring), and the callback's result is a second,
+/// internal edge out of it. So `get_available_transitions` and
+/// `get_transition_graph` advertise `configuring`, not `inactive`, and
+/// `ros2 lifecycle list` prints `Goal: configuring`. `ErrorRecovery` IS that
+/// internal edge (`TRANSITION_ON_ERROR_SUCCESS`), so its goal stays primary.
+fn transition_goal_wire(t: InternalTransition) -> (u8, &'static str) {
+    match t {
+        InternalTransition::Configure => (state_id::TRANSITION_STATE_CONFIGURING, "configuring"),
+        InternalTransition::Cleanup => (state_id::TRANSITION_STATE_CLEANINGUP, "cleaningup"),
+        InternalTransition::Activate => (state_id::TRANSITION_STATE_ACTIVATING, "activating"),
+        InternalTransition::Deactivate => (state_id::TRANSITION_STATE_DEACTIVATING, "deactivating"),
+        InternalTransition::ShutdownUnconfigured
+        | InternalTransition::ShutdownInactive
+        | InternalTransition::ShutdownActive => {
+            (state_id::TRANSITION_STATE_SHUTTINGDOWN, "shuttingdown")
+        }
+        InternalTransition::ErrorRecovery => state_wire(transition_goal_state(t)),
+    }
+}
+
 fn transition_goal_state(t: InternalTransition) -> InternalState {
     // Assume the callback succeeds — that's the "goal" state the service
     // advertises. If it fails, apply_transition() will route to ErrorProcessing
@@ -306,7 +335,8 @@ fn write_transition(w: &mut CdrWriter<'_>, t: InternalTransition) -> Result<(), 
 fn write_transition_desc(w: &mut CdrWriter<'_>, t: InternalTransition) -> Result<(), SerError> {
     write_transition(w, t)?;
     write_state(w, transition_start_state(t))?;
-    write_state(w, transition_goal_state(t))
+    let (id, label) = transition_goal_wire(t);
+    write_id_label(w, id, label)
 }
 
 /// Stream a `lifecycle_msgs/TransitionEvent` — timestamp, transition, start
@@ -489,7 +519,16 @@ fn build_transition_desc(t: InternalTransition) -> MsgTransitionDesc {
     MsgTransitionDesc {
         transition: to_msg_transition(t),
         start_state: to_msg_state(transition_start_state(t)),
-        goal_state: to_msg_state(transition_goal_state(t)),
+        goal_state: {
+            let (id, label) = transition_goal_wire(t);
+            let mut msg = MsgState {
+                id,
+                ..Default::default()
+            };
+            let pushed = msg.label.push_str(label);
+            debug_assert!(pushed.is_ok(), "goal label {label:?} overflows State.label");
+            msg
+        },
     }
 }
 
@@ -1090,6 +1129,46 @@ mod tests {
             .collect();
         assert!(ids.contains(&transition_id::CONFIGURE));
         assert!(ids.contains(&transition_id::UNCONFIGURED_SHUTDOWN));
+    }
+
+    /// Issue 2903 -- a public transition's advertised goal is its TRANSITION
+    /// state, as stock `rcl_lifecycle` registers it (`ros2 lifecycle list`
+    /// prints `Goal: configuring`), never the primary state it settles in.
+    #[test]
+    fn available_transitions_advertise_the_transition_state_as_goal() {
+        let sm = LifecyclePollingNodeCtx::new();
+        let resp =
+            handle_get_available_transitions(&sm, &GetAvailableTransitionsRequest::default());
+        let check = |id: u8, goal_id: u8, goal_label: &str| {
+            let d = resp
+                .available_transitions
+                .iter()
+                .find(|d| d.transition.id == id)
+                .expect("transition offered from unconfigured");
+            assert_eq!(d.goal_state.id, goal_id);
+            assert_eq!(d.goal_state.label.as_str(), goal_label);
+        };
+        check(
+            transition_id::CONFIGURE,
+            state_id::TRANSITION_STATE_CONFIGURING,
+            "configuring",
+        );
+        check(
+            transition_id::UNCONFIGURED_SHUTDOWN,
+            state_id::TRANSITION_STATE_SHUTTINGDOWN,
+            "shuttingdown",
+        );
+        let expect = [
+            (InternalTransition::Cleanup, 11, "cleaningup"),
+            (InternalTransition::Activate, 13, "activating"),
+            (InternalTransition::Deactivate, 14, "deactivating"),
+            (InternalTransition::ShutdownInactive, 12, "shuttingdown"),
+            (InternalTransition::ShutdownActive, 12, "shuttingdown"),
+            (InternalTransition::ErrorRecovery, 1, "unconfigured"),
+        ];
+        for (t, id, label) in expect {
+            assert_eq!(transition_goal_wire(t), (id, label), "{t:?}");
+        }
     }
 
     #[test]
