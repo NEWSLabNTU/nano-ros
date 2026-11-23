@@ -597,7 +597,7 @@ inputs.
   0 failed).
 - **W5b:** ThreadX on riscv64 walks (issue 2514). ThreadX on Linux is
   reported not checked, with its reason: the port runs each thread on a host
-  pthread stack ([issue 2800](2800-threadx-linux-threads-run-on-host-pthread-stacks.md)).
+  pthread stack ([issue 2800](archived/2800-threadx-linux-threads-run-on-host-pthread-stacks.md)).
 - **The 32 KiB literal: ruled.** An unmeasured Rust Zephyr image gets a
   PER-BOARD MEASURED floor: the largest measured template peak on its board,
   plus the table's margin. A board with no twin keeps a fallback, named in
