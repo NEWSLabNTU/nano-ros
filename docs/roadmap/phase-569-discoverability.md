@@ -377,7 +377,8 @@ and sees it listed, with no CLI edit.
 
 ### W7 — images, and what an image will create
 
-- **Status:** OPEN (W7a and W7b done; W7c open for its Tutorial probe step)
+- **Status:** DONE (2026-11-24). Issue 2667's probed Book step on the
+  Eigen talker stays with that issue.
 - **W7a, `nros image list` / `show`:**
   - `list` reads each bringup's `[image.*]` declarations (discover,
     `collect_images`, `all_images`) and never plans, so it works before
@@ -415,8 +416,7 @@ and sees it listed, with no CLI edit.
     and C++ images clean, and the `nros` binary's 16 findings the same 16.
   - Left for issue 2667: its acceptance's probed Book step on the Eigen
     talker. The own-library page names the verb in prose for now.
-- **W7c, open (part 1 done 2026-11-21, part 2 done 2026-11-23; the
-  Tutorial probe step left):**
+- **W7c, done 2026-11-24:**
   - `nros image show <image> --nodes` prints the nodes the plan starts
     (PLANNED NODE, PACKAGE, RUNS), and `--topics` the topics, services and
     actions with the nodes on each side, from the model the last `nros
@@ -440,8 +440,22 @@ and sees it listed, with no CLI edit.
     `nros image show linux --topics` lists `/chatter`, topic,
     `std_msgs/msg/String`, FROM `image linux`; `--nodes` still lists
     `/talker`.
-  - Left: the Tutorial probe step against `ros2 node list` /
-    `ros2 topic list`.
+  - Tutorial probe step, done: Tutorial 10 (`talk-to-ros2.md`, step 1045)
+    runs `nros image show freertos --nodes --topics` on the running image,
+    then `ros2 node list` and `ros2 topic list`. Measured on the installed
+    track in all three languages (tutorial-10, tutorial-c, tutorial-cpp,
+    each PROBE PASS): the six planned nodes are the six on the graph, and
+    the planned topic `/sensor/reading` is listed. The C run first showed
+    each action's `_action` endpoints from the descriptor; `--topics` now
+    leaves out hidden names, as `ros2 topic list` does. C's descriptor
+    also records `/parameter_events`, so its table has that row; the page
+    shows each language's output in its own tab.
+  - Found on the way: the probes' closing `nros board show` check looked
+    for a `status` row, which W5b renamed `support` (fixed); and Tutorial
+    8's size steps named the debug binary a Rust board image no longer
+    builds (paths fixed; its RAM figures are held for the sizing owner,
+    because `bss` measured higher after the contract in all three
+    languages).
 
 `nros image list` prints the workspace's images and bringups (board, RMW,
 launch file). `nros image show <image>` adds its packages and, with
