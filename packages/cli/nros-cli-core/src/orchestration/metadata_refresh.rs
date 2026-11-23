@@ -3548,11 +3548,16 @@ mod tests {
         assert_ne!(a, b, "each writer stages under its own name");
 
         let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        // Issue 2870 -- the writers start only once the reader has read: under
+        // load the reader thread could be scheduled after both writers had
+        // finished, and then it never read at all.
+        let reading = std::sync::Arc::new(std::sync::Barrier::new(3));
         let reader = {
-            let (sidecar, stop) = (sidecar.clone(), stop.clone());
+            let (sidecar, stop, reading) = (sidecar.clone(), stop.clone(), reading.clone());
             std::thread::spawn(move || {
                 let mut reads = 0usize;
-                while !stop.load(std::sync::atomic::Ordering::Relaxed) {
+                let mut first = true;
+                while first || !stop.load(std::sync::atomic::Ordering::Relaxed) {
                     let raw =
                         std::fs::read_to_string(&sidecar).expect("the sidecar is never missing");
                     let parsed: SourceMetadata =
@@ -3562,6 +3567,10 @@ mod tests {
                         "the sidecar is never unstamped"
                     );
                     reads += 1;
+                    if first {
+                        first = false;
+                        reading.wait();
+                    }
                 }
                 reads
             })
@@ -3569,8 +3578,9 @@ mod tests {
         let writers: Vec<_> = [(a.clone(), "fnv1a64:a"), (b.clone(), "fnv1a64:b")]
             .into_iter()
             .map(|(staged, digest)| {
-                let sidecar = sidecar.clone();
+                let (sidecar, reading) = (sidecar.clone(), reading.clone());
                 std::thread::spawn(move || {
+                    reading.wait();
                     for _ in 0..200 {
                         std::fs::write(&staged, sidecar_body("demo_pkg::listener", false)).unwrap();
                         stamp_probe_from(&staged, &sidecar, digest, None).unwrap();
