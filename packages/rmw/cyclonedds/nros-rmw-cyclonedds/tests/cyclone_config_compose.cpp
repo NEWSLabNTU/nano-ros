@@ -91,12 +91,15 @@ std::vector<std::string> resolved_config(const char* config, uint32_t domain_id,
                                 "</Tracing></Domain></CycloneDDS>",
                                 config, path);
     std::vector<std::string> lines;
-    if (n < 0 || static_cast<size_t>(n) >= sizeof(full)) {
+    // The loopback pin goes FIRST, so `config` still overrides it (issue 2922).
+    char pinned[kCycloneConfigMax * 3];
+    if (n < 0 || static_cast<size_t>(n) >= sizeof(full) ||
+        !nros_test_pinned_cyclone_config(pinned, sizeof(pinned), full)) {
         fail("tracing fragment did not fit");
         return lines;
     }
 
-    const dds_entity_t domain = dds_create_domain(domain_id, full);
+    const dds_entity_t domain = dds_create_domain(domain_id, pinned);
     if (domain < 0) {
         std::fprintf(stderr, "dds_create_domain(%s) failed: %s\n", tag, dds_strretcode(-domain));
         return lines;
@@ -274,11 +277,18 @@ void test_verbosity_without_a_file_keeps_the_session(uint32_t domain_id) {
         return;
     }
 
-    const dds_entity_t control = dds_create_domain(domain_id, kUserVerbosityOnly);
+    // Both carry the loopback pin first (issue 2922); it states no <Tracing>, so
+    // the control still reaches the cannot-open path.
+    char control_cfg[kCycloneConfigMax];
+    const bool control_ok =
+        nros_test_pinned_cyclone_config(control_cfg, sizeof(control_cfg), kUserVerbosityOnly);
+    const dds_entity_t control = control_ok ? dds_create_domain(domain_id, control_cfg) : -1;
     const char* frags[2] = {kEmbeddedCycloneConfig, kUserVerbosityOnly};
     char composed[kCycloneConfigMax];
-    const bool ok = compose_cyclone_config(composed, sizeof(composed), frags, 2);
-    const dds_entity_t fixed = ok ? dds_create_domain(domain_id + 1, composed) : -1;
+    char fixed_cfg[kCycloneConfigMax * 2];
+    const bool ok = compose_cyclone_config(composed, sizeof(composed), frags, 2) &&
+                    nros_test_pinned_cyclone_config(fixed_cfg, sizeof(fixed_cfg), composed);
+    const dds_entity_t fixed = ok ? dds_create_domain(domain_id + 1, fixed_cfg) : -1;
 
     if (control > 0) (void)dds_delete(control);
     if (fixed > 0) (void)dds_delete(fixed);
@@ -286,6 +296,7 @@ void test_verbosity_without_a_file_keeps_the_session(uint32_t domain_id) {
     (void)rmdir(blocker);
     (void)rmdir(ro_dir);
 
+    check(control_ok, "verbosity: the control's pinned config did not fit");
     check(control < 0, "verbosity: CONTROL came up — the user fragment alone did not "
                        "reach the cannot-open path, so this proves nothing");
     check(ok, "verbosity: compose failed");

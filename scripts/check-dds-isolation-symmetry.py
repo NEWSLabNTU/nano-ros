@@ -56,6 +56,25 @@ Two things are structurally out of scope rather than allowlisted:
 
 Anything else legitimate is in ALLOWLIST, path-keyed, one reason each.
 
+The ctest arm -- the C++ suite, which neither arm above could see
+-----------------------------------------------------------------
+`nros-rmw-cyclonedds`'s own ctest suite starts Cyclone in every test, from
+CMake, so it is neither a Rust test nor a shell cell. It ran on Cyclone's own
+interface pick: on a host whose first interface does not loop multicast back
+to itself, `nros_rmw_cyclonedds_session_smoke` never finished discovery and the
+whole suite hit its 2400 s gate timeout, while the same binary on the loopback
+profile passed in under a second. So a tracked CMake file that names
+`nros_rmw_cyclonedds` and registers tests must register each one through
+`nros_rmw_cyclonedds_add_test`, the helper that runs it under
+`dds_loopback_exec.sh` (the committed loopback profile, the same file the Rust
+harness reads). A bare `add_test` there is refused.
+
+The launcher pins through `CYCLONEDDS_URI`, which Cyclone reads only when a
+domain is created WITHOUT a config. So a test source under `tests/` that calls
+`dds_create_domain(id, config)` with its own string must pass a buffer that
+`nros_test_pinned_cyclone_config` (nros_test_domain.h) filled, pin first.
+`config_compose` skipped it and hung 12 runs in 40 in `dds_delete`.
+
 Dependency-free Python 3.10, house style per `scripts/check-ros-env-spelling.py`.
 """
 
@@ -124,9 +143,56 @@ SHELL_INLINE_CONFIG = "<CycloneDDS"
 # The file that IS the procedure, same rule as SANCTIONED above.
 SHELL_SANCTIONED = {
     "packages/rmw/cyclonedds/nros-rmw-cyclonedds/tests/ros2_e2e_common.sh",
+    "packages/rmw/cyclonedds/nros-rmw-cyclonedds/tests/dds_loopback.sh",
 }
 
 SHELL_ALLOWLIST = {}
+
+# The ctest arm: a CMake file naming this token registers Cyclone tests.
+CTEST_STARTS_CYCLONE = "nros_rmw_cyclonedds"
+# The one sanctioned registration, and the launcher it must route through.
+CTEST_HELPER = "nros_rmw_cyclonedds_add_test"
+CTEST_LAUNCHER = "dds_loopback_exec.sh"
+BARE_ADD_TEST = re.compile(r"(?<![\w])add_test\s*\(")
+HELPER_BODY = re.compile(
+    r"function\s*\(\s*" + CTEST_HELPER + r"\b(.*?)endfunction\s*\(", re.S)
+CTEST_REMEDY = (
+    f"register the test with `{CTEST_HELPER}(NAME <n> COMMAND <cmd> ...)`, "
+    f"which runs it under `{CTEST_LAUNCHER}` (the committed loopback profile; "
+    "`NROS_DDS_ALLOW_LAN` or an operator's `CYCLONEDDS_URI` opts out)"
+)
+CTEST_CONSEQUENCE = (
+    "the test runs on Cyclone's own interface pick, so its result depends on "
+    "the host's network: measured, `session_smoke` hung in discovery on a host "
+    "whose first interface carries no multicast back, and the suite hit its "
+    "2400 s gate timeout; on the loopback profile it passed in under a second"
+)
+
+# The ctest arm's second half: a test SOURCE that hands Cyclone its own config.
+# `dds_create_domain(id, config)` with a non-null config reads that string and
+# nothing else, so the launcher's `CYCLONEDDS_URI` never reaches it. Such a call
+# must pass a buffer `nros_test_pinned_cyclone_config` filled (pin first, then
+# the test's fragments). A null config is fine: Cyclone reads the variable then.
+CTEST_SOURCE_SUFFIXES = (".c", ".cc", ".cpp")
+CTEST_SOURCE_DIR = "/tests/"
+CREATE_DOMAIN = re.compile(r"(?<![\w])dds_create_domain\s*\(")
+CREATE_DOMAIN_CONFIG = re.compile(
+    r"(?<![\w])dds_create_domain\s*\(\s*[^,;]+,\s*([A-Za-z_]\w*)\s*\)")
+NULL_CONFIGS = {"NULL", "nullptr"}
+SOURCE_PIN_HELPER = "nros_test_pinned_cyclone_config"
+SOURCE_PIN_FILLS = re.compile(
+    r"(?<![\w])" + SOURCE_PIN_HELPER + r"\s*\(\s*([A-Za-z_]\w*)\s*,")
+SOURCE_REMEDY = (
+    f"build the config with `{SOURCE_PIN_HELPER}(buf, sizeof(buf), config)` "
+    "(nros_test_domain.h) and pass `buf`: it puts the launcher's loopback pin "
+    "first, so the test's own fragments still override it"
+)
+SOURCE_CONSEQUENCE = (
+    "the domain comes up on Cyclone's own interface pick even under the "
+    "launcher: measured, `config_compose` hung 12 runs in 40 in `dds_delete`, "
+    "joining a multicast receive thread whose wake-up never looped back, and "
+    "took the whole suite to its 2400 s gate timeout"
+)
 
 ALLOWLIST = {
     TESTS
@@ -297,6 +363,79 @@ def shell_pin_finding(text):
     return None
 
 
+def tracked_cmake_files():
+    """Tracked CMake sources (`CMakeLists.txt`, `*.cmake`)."""
+    out = subprocess.run(
+        ["git", "ls-files", "*CMakeLists.txt", "*.cmake"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    return out.stdout.splitlines()
+
+
+def ctest_pin_findings(text):
+    """Why this CMake text registers an unpinned Cyclone test, one per site.
+
+    `text` has comments stripped. Empty when the file registers no Cyclone
+    test, or registers each through the pinned helper.
+    """
+    if CTEST_STARTS_CYCLONE not in text or not BARE_ADD_TEST.search(text):
+        return []
+    out = []
+    helper = HELPER_BODY.search(text)
+    allowed = None
+    if helper is not None:
+        if CTEST_LAUNCHER not in text or "_nros_dds_loopback_exec" not in helper.group(1):
+            out.append(f"`{CTEST_HELPER}` does not run its test under `{CTEST_LAUNCHER}`")
+        allowed = helper.span()
+    for m in BARE_ADD_TEST.finditer(text):
+        if allowed and allowed[0] <= m.start() < allowed[1]:
+            continue
+        line = text.count("\n", 0, m.start()) + 1
+        out.append(f"line {line}: a bare `add_test`")
+    return out
+
+
+def tracked_test_sources():
+    """Tracked C/C++ sources under a `tests/` directory."""
+    out = subprocess.run(
+        ["git", "ls-files", *(f"*{s}" for s in CTEST_SOURCE_SUFFIXES)],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    return [p for p in out.stdout.splitlines() if CTEST_SOURCE_DIR in "/" + p]
+
+
+def source_pin_findings(text):
+    """Why this test source starts a Cyclone domain off the pin, one per call.
+
+    `text` has comments stripped. A call passes when its config is null or a
+    buffer `nros_test_pinned_cyclone_config` fills in the same file. A config
+    the regex cannot read as one identifier (an expression, a literal) is
+    refused: the rule is about where the string came from, and an expression
+    hides that.
+    """
+    pinned = set(SOURCE_PIN_FILLS.findall(text))
+    out = []
+    for m in CREATE_DOMAIN.finditer(text):
+        line = text.count("\n", 0, m.start()) + 1
+        arg = CREATE_DOMAIN_CONFIG.match(text, m.start())
+        if arg is None:
+            out.append(f"line {line}: `dds_create_domain` with a config that is not "
+                       "a single buffer name")
+            continue
+        name = arg.group(1)
+        if name in NULL_CONFIGS or name in pinned:
+            continue
+        out.append(f"line {line}: `dds_create_domain(..., {name})`, and `{name}` is "
+                   f"not filled by `{SOURCE_PIN_HELPER}`")
+    return out
+
+
 def self_test(quiet=False):
     bad = []
     per_item.self_test()  # the shared helper's own controls (phase-472 W6)
@@ -395,6 +534,63 @@ def self_test(quiet=False):
     if shell_starts_a_dds_peer(no_peer_sh) is not None:
         bad.append("a script that runs no ros2 CLI was read as a peer")
 
+    # --- the ctest arm ---
+    helper_ok = (
+        'set(_nros_dds_loopback_exec "${D}/dds_loopback_exec.sh")\n'
+        "function(nros_rmw_cyclonedds_add_test)\n"
+        '  add_test(NAME ${n} COMMAND bash "${_nros_dds_loopback_exec}" ${c})\n'
+        "endfunction()\n"
+    )
+    pinned = helper_ok + "nros_rmw_cyclonedds_add_test(NAME t COMMAND nros_rmw_cyclonedds_x)\n"
+    if ctest_pin_findings(pinned):
+        bad.append(f"a suite registered through the helper was reported: {ctest_pin_findings(pinned)}")
+    # The negative control: the shape the suite had, one bare registration.
+    bare = pinned + "add_test(NAME u COMMAND nros_rmw_cyclonedds_y)\n"
+    if ctest_pin_findings(bare) != ["line 6: a bare `add_test`"]:
+        bad.append(f"a bare Cyclone add_test was not refused: {ctest_pin_findings(bare)}")
+    # A helper that does not route through the launcher pins nothing.
+    unrouted = pinned.replace('bash "${_nros_dds_loopback_exec}" ', "")
+    if not ctest_pin_findings(unrouted):
+        bad.append("a helper that skips the launcher was accepted")
+    # A commented-out registration is not one.
+    commented_ct = comments.strip_comments(pinned + "# add_test(NAME v COMMAND w)\n", "cmake")
+    if ctest_pin_findings(commented_ct):
+        bad.append("a commented-out add_test was reported")
+    # A suite of another backend is out of scope.
+    other = "add_test(NAME x COMMAND nros_rmw_xrce_x)\n"
+    if ctest_pin_findings(other):
+        bad.append("a non-Cyclone suite was asked for a Cyclone pin")
+
+    # --- the ctest arm, test sources (the config_compose shape) ---
+    src_ok = (
+        "char cfg[64];\n"
+        "nros_test_pinned_cyclone_config(cfg, sizeof(cfg), frag);\n"
+        "dds_entity_t d = dds_create_domain(id, cfg);\n"
+    )
+    if source_pin_findings(src_ok):
+        bad.append(f"a pinned dds_create_domain was reported: {source_pin_findings(src_ok)}")
+    # The negative control: the shape the test had, its own string straight in.
+    src_bad = src_ok + "dds_entity_t e = dds_create_domain(id + 1, frag);\n"
+    want_bad = (
+        "line 4: `dds_create_domain(..., frag)`, and `frag` is not filled by "
+        "`nros_test_pinned_cyclone_config`"
+    )
+    if source_pin_findings(src_bad) != [want_bad]:
+        bad.append(f"an unpinned dds_create_domain was not refused: {source_pin_findings(src_bad)}")
+    # A null config reads CYCLONEDDS_URI itself, so it is pinned already.
+    if source_pin_findings("dds_create_domain(id, NULL);\ndds_create_domain(id, nullptr);\n"):
+        bad.append("a null-config dds_create_domain was reported")
+    # An expression hides where the string came from: refused, not guessed.
+    if not source_pin_findings("dds_create_domain(id, ok ? cfg : frag);\n"):
+        bad.append("an expression config was accepted")
+    # A commented-out call is not one.
+    if source_pin_findings(comments.strip_comments("// dds_create_domain(id, frag);\n", "c")):
+        bad.append("a commented-out dds_create_domain was reported")
+    # Nor is one named in a string (a diagnostic that prints the call).
+    msg = 'fprintf(stderr, "dds_create_domain(%s) failed", tag);\n'
+    if source_pin_findings(comments.strip_comments(msg, "c", strings=True)):
+        bad.append("a dds_create_domain inside a string literal was reported")
+
     # Every allowlisted / sanctioned path still exists — a stale entry is a hole
     # that reads like a decision.
     for path in sorted(SANCTIONED | set(ALLOWLIST) | SHELL_SANCTIONED | set(SHELL_ALLOWLIST)):
@@ -406,7 +602,7 @@ def self_test(quiet=False):
             sys.stderr.write("check-dds-isolation-symmetry --self-test: " + b + "\n")
         return 2
     if not quiet:
-        print("check-dds-isolation-symmetry --self-test: OK (8 case(s), "
+        print("check-dds-isolation-symmetry --self-test: OK (19 case(s), "
               f"{len(SANCTIONED) + len(SHELL_SANCTIONED)} sanctioned, "
               f"{len(ALLOWLIST) + len(SHELL_ALLOWLIST)} allowlisted)")
     return 0
@@ -463,10 +659,44 @@ def main():
         if why is not None:
             shell_findings.append((path, why))
 
+    ctest_findings = []
+    ctest_files = 0
+    for path in tracked_cmake_files():
+        full = ROOT / path
+        if not full.is_file():
+            continue
+        try:
+            text = comments.strip_comments(full.read_text(encoding="utf-8"), "cmake")
+        except (OSError, UnicodeDecodeError):
+            continue
+        if CTEST_STARTS_CYCLONE in text and BARE_ADD_TEST.search(text):
+            ctest_files += 1
+        for why in ctest_pin_findings(text):
+            ctest_findings.append((path, why))
+
+    source_findings = []
+    source_files = 0
+    for path in tracked_test_sources():
+        full = ROOT / path
+        if not full.is_file():
+            continue
+        lang = "c" if path.endswith(".c") else "cpp"
+        try:
+            text = comments.strip_comments(full.read_text(encoding="utf-8"), lang, strings=True)
+        except (OSError, UnicodeDecodeError):
+            continue
+        if not CREATE_DOMAIN.search(text):
+            continue
+        source_files += 1
+        for why in source_pin_findings(text):
+            source_findings.append((path, why))
+
     print(
         f"DDS isolation symmetry: {peers} file(s) start a pinned host ROS 2 DDS "
         f"peer, {len(ALLOWLIST)} allowlisted; {shell_cells} shell cell(s) start "
-        f"a DDS `ros2` peer, {len(SHELL_ALLOWLIST)} allowlisted"
+        f"a DDS `ros2` peer, {len(SHELL_ALLOWLIST)} allowlisted; "
+        f"{ctest_files} CMake file(s) register Cyclone ctests; "
+        f"{source_files} test source(s) create a Cyclone domain directly"
     )
 
     if findings:
@@ -489,7 +719,27 @@ def main():
         print(f"\n  WHAT TO DO: {SHELL_REMEDY}", file=sys.stderr)
         print(f"\n  WHY IT MATTERS: {SHELL_CONSEQUENCE}", file=sys.stderr)
 
-    if findings or shell_findings:
+    if ctest_findings:
+        print(
+            "\n[FAIL] a Cyclone ctest registered without the loopback pin:",
+            file=sys.stderr,
+        )
+        for path, why in ctest_findings:
+            print(f"  - {path}: {why}", file=sys.stderr)
+        print(f"\n  WHAT TO DO: {CTEST_REMEDY}", file=sys.stderr)
+        print(f"\n  WHY IT MATTERS: {CTEST_CONSEQUENCE}", file=sys.stderr)
+
+    if source_findings:
+        print(
+            "\n[FAIL] a test source that starts a Cyclone domain off the loopback pin:",
+            file=sys.stderr,
+        )
+        for path, why in source_findings:
+            print(f"  - {path}: {why}", file=sys.stderr)
+        print(f"\n  WHAT TO DO: {SOURCE_REMEDY}", file=sys.stderr)
+        print(f"\n  WHY IT MATTERS: {SOURCE_CONSEQUENCE}", file=sys.stderr)
+
+    if findings or shell_findings or ctest_findings or source_findings:
         return 1
 
     print("Every pinned peer has a pinned partner.")

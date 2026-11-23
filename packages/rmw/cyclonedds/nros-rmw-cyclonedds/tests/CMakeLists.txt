@@ -21,7 +21,34 @@ target_include_directories(nros_rmw_cyclonedds_register_smoke
 set(_nros_rmw_test_env
     "LD_LIBRARY_PATH=${CMAKE_PREFIX_PATH}/lib:$ENV{LD_LIBRARY_PATH}")
 
-add_test(
+# Every test here starts Cyclone, so every test runs through the loopback
+# launcher (issue 1009's pin, the road it had not reached): the C++ suite ran on
+# Cyclone's own interface pick, and on a host whose first interface does not
+# loop multicast back, `session_smoke` never finished discovery and the suite
+# hit its gate timeout. The profile is the committed one the Rust harness reads
+# (packages/testing/nros-tests/dds/cyclone-loopback.xml); `NROS_DDS_ALLOW_LAN`
+# or an operator's `CYCLONEDDS_URI` opts out, as in `nros_tests::dds_isolation`.
+# A bare `add_test` in this file is refused by `check-dds-isolation-symmetry`.
+set(_nros_dds_loopback_exec "${CMAKE_CURRENT_SOURCE_DIR}/dds_loopback_exec.sh")
+function(nros_rmw_cyclonedds_add_test)
+    cmake_parse_arguments(_t "" "NAME" "COMMAND" ${ARGN})
+    if(NOT _t_NAME OR NOT _t_COMMAND OR _t_UNPARSED_ARGUMENTS)
+        message(FATAL_ERROR
+            "nros_rmw_cyclonedds_add_test(NAME <n> COMMAND <cmd> [args...]) only; "
+            "got: ${ARGN}")
+    endif()
+    list(GET _t_COMMAND 0 _exe)
+    list(REMOVE_AT _t_COMMAND 0)
+    # add_test resolves a target name only as the FIRST word; behind the
+    # launcher it is an argument, so name its file.
+    if(TARGET "${_exe}")
+        set(_exe "$<TARGET_FILE:${_exe}>")
+    endif()
+    add_test(NAME ${_t_NAME}
+        COMMAND bash "${_nros_dds_loopback_exec}" "${_exe}" ${_t_COMMAND})
+endfunction()
+
+nros_rmw_cyclonedds_add_test(
     NAME nros_rmw_cyclonedds_register_smoke
     COMMAND nros_rmw_cyclonedds_register_smoke
 )
@@ -38,7 +65,7 @@ target_include_directories(nros_rmw_cyclonedds_session_smoke
     PRIVATE
         ${NROS_RMW_CFFI_DIR}
 )
-add_test(
+nros_rmw_cyclonedds_add_test(
     NAME nros_rmw_cyclonedds_session_smoke
     COMMAND nros_rmw_cyclonedds_session_smoke
 )
@@ -76,7 +103,7 @@ target_include_directories(nros_rmw_cyclonedds_codegen_smoke
         ${NROS_RMW_CFFI_DIR}
         "${CMAKE_CURRENT_BINARY_DIR}/types"
 )
-add_test(
+nros_rmw_cyclonedds_add_test(
     NAME nros_rmw_cyclonedds_codegen_smoke
     COMMAND nros_rmw_cyclonedds_codegen_smoke
 )
@@ -96,7 +123,7 @@ target_include_directories(nros_rmw_cyclonedds_pubsub_smoke
         ${NROS_RMW_CFFI_DIR}
         "${CMAKE_CURRENT_BINARY_DIR}/types"
 )
-add_test(
+nros_rmw_cyclonedds_add_test(
     NAME nros_rmw_cyclonedds_pubsub_smoke
     COMMAND nros_rmw_cyclonedds_pubsub_smoke
 )
@@ -117,13 +144,13 @@ target_include_directories(nros_rmw_cyclonedds_entity_wake
         ${NROS_RMW_CFFI_DIR}
         "${CMAKE_CURRENT_BINARY_DIR}/types"
 )
-add_test(
+nros_rmw_cyclonedds_add_test(
     NAME nros_rmw_cyclonedds_entity_wake
     COMMAND nros_rmw_cyclonedds_entity_wake
 )
 # Issue 1963 — the same properties with the session wake installed after the
 # entities exist.
-add_test(
+nros_rmw_cyclonedds_add_test(
     NAME nros_rmw_cyclonedds_entity_wake_late
     COMMAND nros_rmw_cyclonedds_entity_wake late
 )
@@ -143,7 +170,7 @@ target_include_directories(nros_rmw_cyclonedds_status_events
         ${NROS_RMW_CFFI_DIR}
         "${CMAKE_CURRENT_BINARY_DIR}/types"
 )
-add_test(
+nros_rmw_cyclonedds_add_test(
     NAME nros_rmw_cyclonedds_status_events
     COMMAND nros_rmw_cyclonedds_status_events
 )
@@ -171,7 +198,7 @@ target_include_directories(nros_rmw_cyclonedds_matched_events
         ${NROS_RMW_CFFI_DIR}
         "${CMAKE_CURRENT_BINARY_DIR}/types"
 )
-add_test(
+nros_rmw_cyclonedds_add_test(
     NAME nros_rmw_cyclonedds_matched_events
     COMMAND nros_rmw_cyclonedds_matched_events
 )
@@ -192,7 +219,7 @@ target_include_directories(nros_rmw_cyclonedds_assert_liveliness
         ${NROS_RMW_CFFI_DIR}
         "${CMAKE_CURRENT_BINARY_DIR}/types"
 )
-add_test(
+nros_rmw_cyclonedds_add_test(
     NAME nros_rmw_cyclonedds_assert_liveliness
     COMMAND nros_rmw_cyclonedds_assert_liveliness
 )
@@ -212,7 +239,7 @@ target_include_directories(nros_rmw_cyclonedds_graph_counts
         ${NROS_RMW_CFFI_DIR}
         "${CMAKE_CURRENT_BINARY_DIR}/types"
 )
-add_test(
+nros_rmw_cyclonedds_add_test(
     NAME nros_rmw_cyclonedds_graph_counts
     COMMAND nros_rmw_cyclonedds_graph_counts
 )
@@ -230,7 +257,7 @@ target_include_directories(nros_rmw_cyclonedds_session_config_property
         ${NROS_RMW_CFFI_DIR}
         "${CMAKE_CURRENT_BINARY_DIR}/types"
 )
-add_test(
+nros_rmw_cyclonedds_add_test(
     NAME nros_rmw_cyclonedds_session_config_property
     COMMAND nros_rmw_cyclonedds_session_config_property
 )
@@ -249,7 +276,7 @@ target_include_directories(nros_rmw_cyclonedds_graph_node_set
         "${CMAKE_CURRENT_BINARY_DIR}/types"
         "${_NROS_GRAPH_TYPES_DIR}"
 )
-add_test(
+nros_rmw_cyclonedds_add_test(
     NAME nros_rmw_cyclonedds_graph_node_set
     COMMAND nros_rmw_cyclonedds_graph_node_set
 )
@@ -269,7 +296,7 @@ target_include_directories(nros_rmw_cyclonedds_graph_query
         ${NROS_RMW_CFFI_DIR}
         "${CMAKE_CURRENT_BINARY_DIR}/types"
 )
-add_test(
+nros_rmw_cyclonedds_add_test(
     NAME nros_rmw_cyclonedds_graph_query
     COMMAND nros_rmw_cyclonedds_graph_query
 )
@@ -291,7 +318,7 @@ target_include_directories(nros_rmw_cyclonedds_actual_qos
         ${NROS_RMW_CFFI_DIR}
         "${CMAKE_CURRENT_BINARY_DIR}/types"
 )
-add_test(
+nros_rmw_cyclonedds_add_test(
     NAME nros_rmw_cyclonedds_actual_qos
     COMMAND nros_rmw_cyclonedds_actual_qos
 )
@@ -309,7 +336,7 @@ target_include_directories(nros_rmw_cyclonedds_log_severity
     PRIVATE
         ${NROS_RMW_CFFI_DIR}
 )
-add_test(
+nros_rmw_cyclonedds_add_test(
     NAME nros_rmw_cyclonedds_log_severity
     COMMAND nros_rmw_cyclonedds_log_severity
 )
@@ -328,7 +355,7 @@ target_include_directories(nros_rmw_cyclonedds_data_roundtrip
         ${NROS_RMW_CFFI_DIR}
         "${CMAKE_CURRENT_BINARY_DIR}/types"
 )
-add_test(
+nros_rmw_cyclonedds_add_test(
     NAME nros_rmw_cyclonedds_data_roundtrip
     COMMAND nros_rmw_cyclonedds_data_roundtrip
 )
@@ -348,7 +375,7 @@ target_include_directories(nros_rmw_cyclonedds_take_sequence_pending_status
         ${NROS_RMW_CFFI_DIR}
         "${CMAKE_CURRENT_BINARY_DIR}/types"
 )
-add_test(
+nros_rmw_cyclonedds_add_test(
     NAME nros_rmw_cyclonedds_take_sequence_pending_status
     COMMAND nros_rmw_cyclonedds_take_sequence_pending_status
 )
@@ -397,7 +424,7 @@ if(_addtwoints_sources)
         PRIVATE
             ${NROS_RMW_CFFI_DIR}
     )
-    add_test(
+    nros_rmw_cyclonedds_add_test(
         NAME nros_rmw_cyclonedds_service_smoke
         COMMAND nros_rmw_cyclonedds_service_smoke
     )
@@ -462,7 +489,7 @@ if(_addtwoints_sources)
         PRIVATE
             ${NROS_RMW_CFFI_DIR}
     )
-    add_test(
+    nros_rmw_cyclonedds_add_test(
         NAME nros_rmw_cyclonedds_service_roundtrip
         COMMAND nros_rmw_cyclonedds_service_roundtrip
     )
@@ -482,7 +509,7 @@ if(_addtwoints_sources)
         PRIVATE
             ${NROS_RMW_CFFI_DIR}
     )
-    add_test(
+    nros_rmw_cyclonedds_add_test(
         NAME nros_rmw_cyclonedds_service_refused_len
         COMMAND nros_rmw_cyclonedds_service_refused_len
     )
@@ -502,7 +529,7 @@ if(_addtwoints_sources)
         PRIVATE
             ${NROS_RMW_CFFI_DIR}
     )
-    add_test(
+    nros_rmw_cyclonedds_add_test(
         NAME nros_rmw_cyclonedds_service_large_request
         COMMAND nros_rmw_cyclonedds_service_large_request
     )
@@ -524,7 +551,7 @@ if(_addtwoints_sources)
         PRIVATE
             ${NROS_RMW_CFFI_DIR}
     )
-    add_test(
+    nros_rmw_cyclonedds_add_test(
         NAME nros_rmw_cyclonedds_service_two_outstanding
         COMMAND nros_rmw_cyclonedds_service_two_outstanding
     )
@@ -546,7 +573,7 @@ if(_addtwoints_sources)
         PRIVATE
             ${NROS_RMW_CFFI_DIR}
     )
-    add_test(
+    nros_rmw_cyclonedds_add_test(
         NAME nros_rmw_cyclonedds_service_request_slots_exhausted
         COMMAND nros_rmw_cyclonedds_service_request_slots_exhausted
     )
@@ -568,7 +595,7 @@ if(_addtwoints_sources)
         PRIVATE
             ${NROS_RMW_CFFI_DIR}
     )
-    add_test(
+    nros_rmw_cyclonedds_add_test(
         NAME nros_rmw_cyclonedds_service_server_available
         COMMAND nros_rmw_cyclonedds_service_server_available
     )
@@ -602,7 +629,7 @@ if(_addtwoints_sources)
            "Run the cross-client correlation test (flaky on Cyclone 0.10.5)"
            OFF)
     if(NROS_RMW_CYCLONEDDS_RUN_SERVICE_CONCURRENT)
-        add_test(
+        nros_rmw_cyclonedds_add_test(
             NAME nros_rmw_cyclonedds_service_concurrent
             COMMAND nros_rmw_cyclonedds_service_concurrent
         )
@@ -621,7 +648,7 @@ target_link_libraries(nros_rmw_cyclonedds_dynamic_bridge_smoke
     PRIVATE
         nros_rmw_cyclonedds
 )
-add_test(
+nros_rmw_cyclonedds_add_test(
     NAME nros_rmw_cyclonedds_dynamic_bridge_smoke
     COMMAND nros_rmw_cyclonedds_dynamic_bridge_smoke
 )
@@ -637,7 +664,7 @@ target_link_libraries(nros_rmw_cyclonedds_appendable_extensibility
     PRIVATE
         nros_rmw_cyclonedds
 )
-add_test(
+nros_rmw_cyclonedds_add_test(
     NAME nros_rmw_cyclonedds_appendable_extensibility
     COMMAND nros_rmw_cyclonedds_appendable_extensibility
 )
@@ -655,7 +682,7 @@ target_link_libraries(nros_rmw_cyclonedds_dynamic_bridge_seq_nested
     PRIVATE
         nros_rmw_cyclonedds
 )
-add_test(
+nros_rmw_cyclonedds_add_test(
     NAME nros_rmw_cyclonedds_dynamic_bridge_seq_nested
     COMMAND nros_rmw_cyclonedds_dynamic_bridge_seq_nested
 )
@@ -678,7 +705,7 @@ target_include_directories(nros_rmw_cyclonedds_feedback_roundtrip
     PRIVATE
         ${NROS_RMW_CFFI_DIR}
 )
-add_test(
+nros_rmw_cyclonedds_add_test(
     NAME nros_rmw_cyclonedds_feedback_roundtrip
     COMMAND nros_rmw_cyclonedds_feedback_roundtrip
 )
@@ -693,7 +720,7 @@ target_include_directories(nros_rmw_cyclonedds_topic_prefix_test
     PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/../src"
 )
-add_test(
+nros_rmw_cyclonedds_add_test(
     NAME nros_rmw_cyclonedds_topic_prefix_test
     COMMAND nros_rmw_cyclonedds_topic_prefix_test
 )
@@ -727,7 +754,7 @@ if(NROS_RMW_CYCLONEDDS_MSG_TO_IDL)
         PRIVATE
             ${NROS_RMW_CFFI_DIR}
     )
-    add_test(
+    nros_rmw_cyclonedds_add_test(
         NAME nros_rmw_cyclonedds_from_msg_smoke
         COMMAND nros_rmw_cyclonedds_from_msg_smoke
     )
@@ -765,7 +792,7 @@ if(NROS_RMW_CYCLONEDDS_MSG_TO_IDL)
             ${NROS_RMW_CFFI_DIR}
     )
 
-    add_test(
+    nros_rmw_cyclonedds_add_test(
         NAME nros_rmw_cyclonedds_ros2_pubsub_e2e
         COMMAND bash "${CMAKE_CURRENT_SOURCE_DIR}/ros2_pubsub_e2e.sh"
     )
@@ -816,7 +843,7 @@ if(NROS_RMW_CYCLONEDDS_MSG_TO_IDL)
             PRIVATE
                 ${NROS_RMW_CFFI_DIR}
         )
-        add_test(
+        nros_rmw_cyclonedds_add_test(
             NAME nros_rmw_cyclonedds_ros2_srv_e2e
             COMMAND bash "${CMAKE_CURRENT_SOURCE_DIR}/ros2_srv_e2e.sh"
         )
@@ -841,7 +868,7 @@ if(NROS_RMW_CYCLONEDDS_MSG_TO_IDL)
             PRIVATE
                 nros_rmw_cyclonedds
         )
-        add_test(
+        nros_rmw_cyclonedds_add_test(
             NAME nros_rmw_cyclonedds_mangling_test
             COMMAND nros_rmw_cyclonedds_mangling_test
         )
@@ -902,7 +929,7 @@ if(TARGET ddsc)
         PRIVATE
             $<TARGET_PROPERTY:ddsc,INCLUDE_DIRECTORIES>
     )
-    add_test(
+    nros_rmw_cyclonedds_add_test(
         NAME nros_rmw_cyclonedds_addrset_striped_lock_concurrency
         COMMAND nros_rmw_cyclonedds_addrset_striped_lock_concurrency
     )
@@ -959,7 +986,7 @@ if(NROS_CYCLONEDDS_PROVENANCE STREQUAL "source")
         "${NROS_CYCLONEDDS_SOURCE_BUILD_DIR}/src/ddsrt/include")
 endif()
 
-add_test(
+nros_rmw_cyclonedds_add_test(
     NAME nros_rmw_cyclonedds_sertype_sample_cxx11
     COMMAND nros_rmw_cyclonedds_sertype_sample_cxx11
 )
@@ -984,7 +1011,7 @@ target_include_directories(nros_rmw_cyclonedds_config_compose
         ${CMAKE_CURRENT_SOURCE_DIR}/../src
         ${NROS_RMW_CFFI_DIR}
 )
-add_test(
+nros_rmw_cyclonedds_add_test(
     NAME nros_rmw_cyclonedds_config_compose
     COMMAND nros_rmw_cyclonedds_config_compose
 )
@@ -1009,7 +1036,7 @@ target_include_directories(nros_rmw_cyclonedds_heap_budget
         ${CMAKE_CURRENT_SOURCE_DIR}/../src
         ${NROS_RMW_CFFI_DIR}
 )
-add_test(
+nros_rmw_cyclonedds_add_test(
     NAME nros_rmw_cyclonedds_heap_budget
     COMMAND nros_rmw_cyclonedds_heap_budget
 )
@@ -1032,7 +1059,7 @@ target_include_directories(nros_rmw_cyclonedds_descriptor_table_capacity
         ${CMAKE_CURRENT_SOURCE_DIR}/../src
         ${NROS_RMW_CFFI_DIR}
 )
-add_test(
+nros_rmw_cyclonedds_add_test(
     NAME nros_rmw_cyclonedds_descriptor_table_capacity
     COMMAND nros_rmw_cyclonedds_descriptor_table_capacity
 )
@@ -1052,7 +1079,7 @@ target_include_directories(nros_rmw_cyclonedds_descriptor_table_cargo_road
         ${CMAKE_CURRENT_SOURCE_DIR}/../src
         ${NROS_RMW_CFFI_DIR}
 )
-add_test(
+nros_rmw_cyclonedds_add_test(
     NAME nros_rmw_cyclonedds_descriptor_table_cargo_road
     COMMAND nros_rmw_cyclonedds_descriptor_table_cargo_road
 )
@@ -1098,6 +1125,6 @@ target_include_directories(nros_rmw_cyclonedds_user_config
 # came from rather than against a copy of itself.
 target_compile_definitions(nros_rmw_cyclonedds_user_config
     PRIVATE NROS_W2_FIXTURE_PATH="${_w2_bringup}/rmw/cyclonedds.xml")
-add_test(NAME nros_rmw_cyclonedds_user_config COMMAND nros_rmw_cyclonedds_user_config)
+nros_rmw_cyclonedds_add_test(NAME nros_rmw_cyclonedds_user_config COMMAND nros_rmw_cyclonedds_user_config)
 set_tests_properties(nros_rmw_cyclonedds_user_config PROPERTIES
     ENVIRONMENT "${_nros_rmw_test_env}")

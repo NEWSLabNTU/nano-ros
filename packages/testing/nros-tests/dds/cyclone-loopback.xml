@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!-- The ONE CycloneDDS loopback profile for tests (issues 1009, 1139, and the
+     C++ ctest suite). Read by nros_tests::dds_isolation (include_str!) and by
+     packages/rmw/cyclonedds/nros-rmw-cyclonedds/tests/dds_loopback.sh, which the
+     ctest launcher and the ros2 e2e scripts source. Edit here only. -->
+<CycloneDDS xmlns="https://cdds.io/config">
+  <Domain id="any">
+    <General>
+      <Interfaces>
+        <NetworkInterface address="127.0.0.1" priority="default" multicast="false" />
+      </Interfaces>
+      <AllowMulticast>false</AllowMulticast>
+    </General>
+    <Discovery>
+      <ParticipantIndex>auto</ParticipantIndex>
+      <Peers>
+        <Peer address="localhost"/>
+      </Peers>
+    </Discovery>
+  </Domain>
+</CycloneDDS>
