@@ -659,6 +659,25 @@ fn take_census(args: TakeArgs) -> Result<()> {
             .is_some_and(|d| d.platform == PlatformKind::Posix)
     };
 
+    // Issue 2433 -- an image whose program is an OWNED C/C++ entry (RFC-0071
+    // D19) has no launch and no model: the census is of THAT entry, a host
+    // build of its package run once, the way a standalone leaf's is
+    // (maintainer ruling 2026-11-11). Only when the bringup declares no
+    // component: an owned entry that boots the bringup's `[[component]]` rows
+    // has a model, and its entities are the components', which the model
+    // road below takes (`owned_entry_census_applies`).
+    let owned = if is_host(&image) {
+        None
+    } else {
+        crate::cmd::build::owned_entry_dir(&root, &image_id, &image)?
+            .filter(|d| owned_entry_census_applies(&bringup_dir, d))
+    };
+    // Issue 2871 -- `runs_nano_ros = false` is a statement about an owned
+    // entry's census; on any other image it states something false.
+    if image.runs_nano_ros == Some(false) && owned.is_none() {
+        return Err(runs_nano_ros_misplaced(&asked_q, &bringup_dir));
+    }
+
     if is_host(&image) {
         crate::build_notes::detail_out(format!(
             "entity-census take {asked_q}: a host image is the census PRODUCER, and its own \
@@ -667,57 +686,23 @@ fn take_census(args: TakeArgs) -> Result<()> {
         return Ok(());
     }
 
-    // Issue 2433 -- an image whose program is an OWNED C/C++ entry (RFC-0071
-    // D19) has no launch and no model: the census is of THAT entry, a host
-    // build of its package run once, the way a standalone leaf's is
-    // (maintainer ruling 2026-11-11). Only when the bringup declares no
-    // component: an owned entry that boots the bringup's `[[component]]` rows
-    // has a model, and its entities are the components', which the model
-    // road below takes (`owned_entry_census_applies`).
-    if let Some(pkg) = crate::cmd::build::owned_entry_dir(&root, &image_id, &image)?
-        .filter(|d| owned_entry_census_applies(&bringup_dir, d))
-    {
+    if let Some(pkg) = owned {
         if args.plan {
             // Not a `producer` line: no host IMAGE is built, the package is.
             println!("owned-entry {}", pkg.display());
             return Ok(());
         }
-        let taken = take_owned_census(
+        return take_owned_entry(
             &root,
             &pkg,
             &bringup,
+            &bringup_dir,
             &image_id,
+            &image,
             args.timeout_secs,
             args.build_step,
             &HostSteps::real(),
         );
-        let not_taken = owned_census_not_taken_path(&root, &bringup, &image_id);
-        let Err(err) = taken else {
-            // Issue 2806 -- a census now taken retires the record of one that
-            // was not.
-            if not_taken.is_file() {
-                std::fs::remove_file(&not_taken)
-                    .wrap_err_with(|| format!("remove `{}`", not_taken.display()))?;
-            }
-            return Ok(());
-        };
-        // The bringup's `[census] on_missing` decides what a census that
-        // could not be taken means, as it does for every other census.
-        let system_toml = bringup_dir.join("system.toml");
-        let policy = read_system_toml(Some(&system_toml))?
-            .and_then(|s| s.census)
-            .unwrap_or_default();
-        let cause = format!("{err:#}").lines().next().unwrap_or("").to_string();
-        let warning = owned_census_fallback(policy.on_missing, &asked_q, &pkg, &system_toml, err)?;
-        // Issue 2806 -- why, for the descriptor that refuses every count the
-        // census would have stated (`sizing-descriptor --census-not-taken`).
-        if let Some(dir) = not_taken.parent() {
-            std::fs::create_dir_all(dir).wrap_err_with(|| format!("create `{}`", dir.display()))?;
-        }
-        crate::atomic_file::atomic_write(&not_taken, &format!("{cause}\n"))
-            .map_err(|e| eyre::eyre!("cannot write `{}`: {e}", not_taken.display()))?;
-        eprintln!("{warning}");
-        return Ok(());
     }
 
     // RFC-0071 D19 — an image that boots an OWNED entry from a bringup with no
@@ -1424,6 +1409,157 @@ fn bringup_declares_components(bringup_dir: &Path) -> bool {
         .is_some_and(|rows| !rows.is_empty())
 }
 
+/// Issue 2433 -- take the census of the owned entry `pkg` that image
+/// `<bringup>:<image_id>` builds, and apply the bringup's `[census]
+/// on_missing` to a take that fails.
+///
+/// Issue 2871 -- an image stating `runs_nano_ros = false` is not run: its
+/// census is recorded EMPTY by statement ([`record_stated_empty_census`]).
+/// Every other image keeps the refusal of a program that exits 0 in census
+/// mode and writes nothing.
+#[allow(clippy::too_many_arguments)]
+fn take_owned_entry(
+    root: &Path,
+    pkg: &Path,
+    bringup: &str,
+    bringup_dir: &Path,
+    image_id: &str,
+    image: &crate::orchestration::image::ImageBlock,
+    timeout_secs: u64,
+    build_step: bool,
+    host: &HostSteps<'_>,
+) -> Result<()> {
+    let asked_q = crate::builder::plan::qualified(bringup, image_id);
+    let system_toml = bringup_dir.join("system.toml");
+    let not_taken = owned_census_not_taken_path(root, bringup, image_id);
+    let taken = if image.runs_nano_ros == Some(false) {
+        record_stated_empty_census(root, pkg, bringup, image_id, &system_toml)
+    } else {
+        take_owned_census(root, pkg, bringup, image_id, timeout_secs, build_step, host)
+    };
+    let Err(err) = taken else {
+        // Issue 2806 -- a census now taken retires the record of one that
+        // was not.
+        if not_taken.is_file() {
+            std::fs::remove_file(&not_taken)
+                .wrap_err_with(|| format!("remove `{}`", not_taken.display()))?;
+        }
+        return Ok(());
+    };
+    // The bringup's `[census] on_missing` decides what a census that
+    // could not be taken means, as it does for every other census.
+    let policy = read_system_toml(Some(&system_toml))?
+        .and_then(|s| s.census)
+        .unwrap_or_default();
+    let cause = format!("{err:#}").lines().next().unwrap_or("").to_string();
+    let warning = owned_census_fallback(policy.on_missing, &asked_q, pkg, &system_toml, err)?;
+    // Issue 2806 -- why, for the descriptor that refuses every count the
+    // census would have stated (`sizing-descriptor --census-not-taken`).
+    if let Some(dir) = not_taken.parent() {
+        std::fs::create_dir_all(dir).wrap_err_with(|| format!("create `{}`", dir.display()))?;
+    }
+    crate::atomic_file::atomic_write(&not_taken, &format!("{cause}\n"))
+        .map_err(|e| eyre::eyre!("cannot write `{}`: {e}", not_taken.display()))?;
+    eprintln!("{warning}");
+    Ok(())
+}
+
+/// Issue 2871 -- the refusal of `runs_nano_ros = false` on an image that is
+/// not sized by the census of an owned entry: a host image, a generated
+/// entry, or an owned entry whose bringup declares components all run
+/// nano-ros, so the statement would be false.
+fn runs_nano_ros_misplaced(asked_q: &str, bringup_dir: &Path) -> eyre::Report {
+    eyre::eyre!(
+        "`{asked_q}` states `runs_nano_ros = false` in `{}`, but the image is not sized by the \
+         census of an owned entry: only a hand-written entry (`entry` or \
+         `nano_ros_add_executable`) on a cross board, in a bringup that declares no \
+         `[[component]]`, may state that its program never initialises nano-ros. A host \
+         image, a generated entry and an entry that boots the bringup's components all run \
+         nano-ros. Remove the line from `[image.<id>]`.",
+        bringup_dir.join("system.toml").display()
+    )
+}
+
+/// Issue 2871 (option (a), ruled 2026-11-23) -- record the EMPTY census of an
+/// owned entry whose image states `runs_nano_ros = false`, without building
+/// or running its program.
+///
+/// It is a census like any other to its readers: the wrapper schema, the
+/// recorder schema version, no nodes, and provenance naming the package's
+/// `CMakeLists.txt` and `src/` (when it has one), so a reader checks it fresh
+/// against the package as it does a taken one. `stated` says where the
+/// statement is. The file is rewritten only when it changes, and its digest
+/// is write-if-changed, so a configure that re-reads it re-runs nothing.
+fn record_stated_empty_census(
+    root: &Path,
+    pkg: &Path,
+    bringup: &str,
+    image: &str,
+    system_toml: &Path,
+) -> Result<()> {
+    let out = owned_census_path(root, bringup, image);
+    let dir = out.parent().expect("the census path has a parent");
+    std::fs::create_dir_all(dir).wrap_err_with(|| format!("create `{}`", dir.display()))?;
+    let _census_lock = crate::file_lock::lock_exclusive_path(&out.with_extension("lock"))?;
+    let rel = |p: &Path| -> String {
+        p.strip_prefix(pkg)
+            .unwrap_or(p)
+            .to_string_lossy()
+            .into_owned()
+    };
+    let mut inputs = Vec::new();
+    let src = pkg.join("src");
+    if src.is_dir() {
+        inputs.push(Input {
+            role: "source_tree",
+            path: rel(&src),
+            digest: crate::orchestration::metadata_refresh::source_digest(&src)?,
+        });
+    }
+    let cml = pkg.join("CMakeLists.txt");
+    inputs.push(Input {
+        role: "build_file",
+        path: rel(&cml),
+        digest: file_digest(&cml)?,
+    });
+    let pkg_name = pkg
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let census = Census {
+        schema: CENSUS_SCHEMA,
+        entry: pkg_name.clone(),
+        provenance: Provenance {
+            tool: format!("nros-cli {}", env!("CARGO_PKG_VERSION")),
+            inputs,
+        },
+        stated: Some(format!(
+            "`runs_nano_ros = false` under `[image.{image}]` in `{}`: the program never \
+             initialises nano-ros, so it was not run",
+            system_toml.display()
+        )),
+        incomplete: None,
+        census: serde_json::json!({
+            "version": crate::orchestration::metadata_refresh::RECORDER_SCHEMA_VERSION,
+            "nodes": [],
+        }),
+    };
+    let json = serde_json::to_string_pretty(&census).wrap_err("serialize census")?;
+    if std::fs::read_to_string(&out).ok().as_deref() != Some(json.as_str()) {
+        crate::atomic_file::atomic_write(&out, &json)
+            .wrap_err_with(|| format!("cannot write `{}`", out.display()))?;
+    }
+    write_census_digest(&out)?;
+    // One program, so any per-program list a past take left goes.
+    record_owned_programs(root, bringup, image, &out, None)?;
+    println!(
+        "entity-census take {bringup}:{image}: `{pkg_name}` states `runs_nano_ros = false`, so \
+         its census is empty and its program is not run -> {}",
+        out.display()
+    );
+    Ok(())
+}
+
 /// Issue 2433 -- what an owned entry's census that could not be taken means.
 /// `[census] on_missing = "refuse"` (the default) keeps the error. `"warn"`
 /// turns it into the returned warning: the image builds without census sizing,
@@ -1916,7 +2052,9 @@ pub(crate) fn take_owned_census(
                     "`{q}`: the census RUN of the owned entry `{pkg_name}`'s host build failed \
                      (the run's own error is below). A census runs the program on the host and \
                      records the ROS entities it registers, so its `main` has to reach its first \
-                     blocking call there."
+                     blocking call there. A program that never initialises nano-ros has no \
+                     census to write: state `runs_nano_ros = false` under `[image.{image}]` and \
+                     its census is recorded empty without running it (issue 2871)."
                 )
             },
         },
@@ -2621,6 +2759,11 @@ struct Census {
     /// census (see [`INCOMPLETE_KEY`]).
     #[serde(skip_serializing_if = "Option::is_none")]
     incomplete: Option<String>,
+    /// Issue 2871 -- present when the census was not taken but STATED: the
+    /// image says its owned entry runs no nano-ros, so the census is empty
+    /// and the program was never run. Names the statement.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    stated: Option<String>,
     census: serde_json::Value,
 }
 
@@ -2734,6 +2877,7 @@ fn run_census(args: RunArgs) -> Result<()> {
             inputs: collect_inputs(&ws, &binary, args.model.as_deref())?,
         },
         incomplete,
+        stated: None,
         census: recorded,
     };
     let json = serde_json::to_string_pretty(&census).wrap_err("serialize census")?;
@@ -3937,6 +4081,7 @@ executable=prog_b=/b/b
                 inputs: collect_inputs(leaf, &bin, None).unwrap(),
             },
             incomplete: None,
+            stated: None,
             census: recorded,
         };
         std::fs::write(&out, serde_json::to_string(&census).unwrap()).unwrap();
@@ -4034,6 +4179,7 @@ executable=prog_b=/b/b
                     inputs: collect_inputs(leaf, &bin, None).unwrap(),
                 },
                 incomplete: None,
+                stated: None,
                 census: recorded.clone(),
             };
             std::fs::write(&out, serde_json::to_string(&census).unwrap()).unwrap();
@@ -4641,5 +4787,188 @@ executable=prog_b=/b/b
         std::fs::write(ws2.path().join("src/comp/node.cpp"), "// PUB /b\n").unwrap();
         take_model_in_build_with(&model2, ws2.path(), 5, false, false, &Default::default())
             .unwrap();
+    }
+
+    /// Issue 2871 -- a workspace with one owned entry `entry` (a program,
+    /// `nano_ros_add_executable`) and a bringup `bringup` whose image `tx`
+    /// (board `threadx-linux`) builds it, declaring no component.
+    fn owned_entry_ws(ws: &Path, image_extra: &str) -> (PathBuf, PathBuf) {
+        let pkg_xml = |name: &str| {
+            format!(
+                "<?xml version=\"1.0\"?>\n<package format=\"3\">\n  <name>{name}</name>\n  \
+                 <version>0.1.0</version>\n</package>\n"
+            )
+        };
+        let write = |rel: &str, text: &str| {
+            let p = ws.join(rel);
+            std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+            std::fs::write(p, text).unwrap();
+        };
+        write("src/entry/package.xml", &pkg_xml("entry"));
+        write(
+            "src/entry/CMakeLists.txt",
+            "project(entry C)\nnano_ros_add_executable(entry src/main.c)\n",
+        );
+        write("src/entry/src/main.c", "int main(void) { return 0; }\n");
+        write("src/bringup/package.xml", &pkg_xml("bringup"));
+        write(
+            "src/bringup/system.toml",
+            &format!(
+                "[system]\nname = \"b\"\nrmw = \"zenoh\"\ndomain_id = 0\n\n[image.tx]\nboard = \
+                 \"threadx-linux\"\nentry = \"entry\"\n{image_extra}"
+            ),
+        );
+        (ws.join("src/bringup"), ws.join("src/entry"))
+    }
+
+    /// Issue 2871 -- an owned entry whose image states `runs_nano_ros =
+    /// false` gets an EMPTY census without its program being built or run:
+    /// the census is fresh against the package, names the statement, retires
+    /// a past not-taken record, and sizes the image for zero entities (a
+    /// census-backed declaration with an empty inventory, not the refused
+    /// counts of a census not taken, issue 2806).
+    #[test]
+    fn an_entry_stating_it_runs_no_nano_ros_gets_an_empty_census_unrun() {
+        use super::*;
+        let td = tempfile::tempdir().unwrap();
+        let ws = td.path();
+        let (bringup_dir, pkg) = owned_entry_ws(ws, "runs_nano_ros = false\n");
+        assert!(owned_entry_census_applies(&bringup_dir, &pkg));
+        let image = crate::orchestration::image::ImageBlock {
+            board: Some("threadx-linux".into()),
+            entry: Some("entry".into()),
+            runs_nano_ros: Some(false),
+            ..Default::default()
+        };
+        let not_taken = owned_census_not_taken_path(ws, "bringup", "tx");
+        std::fs::create_dir_all(not_taken.parent().unwrap()).unwrap();
+        std::fs::write(&not_taken, "an earlier take failed\n").unwrap();
+        let host = HostSteps {
+            missing: &|_, _| panic!("a stated empty census checks no host toolchain"),
+            run: &|cmd| panic!("a stated empty census runs nothing: {cmd:?}"),
+        };
+        take_owned_entry(
+            ws,
+            &pkg,
+            "bringup",
+            &bringup_dir,
+            "tx",
+            &image,
+            5,
+            false,
+            &host,
+        )
+        .unwrap();
+
+        let out = owned_census_path(ws, "bringup", "tx");
+        assert!(matches!(census_freshness(&out, &pkg), Freshness::Fresh));
+        assert!(census_digest_path(&out).is_file());
+        assert!(!not_taken.exists(), "the not-taken record is retired");
+        let doc: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&out).unwrap()).unwrap();
+        assert!(
+            doc["stated"]
+                .as_str()
+                .unwrap()
+                .contains("runs_nano_ros = false"),
+            "{doc}"
+        );
+        assert!(incomplete_reason(&doc).is_none());
+        let nodes = crate::leaf_entity_env::census_node_entities_at(&out, &pkg)
+            .unwrap()
+            .unwrap();
+        assert!(nodes.is_empty(), "{nodes:?}");
+
+        let decl =
+            crate::cmd::sizing_descriptor::owned_declaration(&bringup_dir, "tx", &pkg, Some(ws))
+                .unwrap();
+        assert!(decl.census_backed);
+        assert!(decl.census_refused.is_none(), "{:?}", decl.census_refused);
+        assert!(decl.inventory.expect("an inventory").is_empty());
+
+        // A second configure rewrites nothing: the census and its digest keep
+        // their bytes.
+        let before = std::fs::read_to_string(&out).unwrap();
+        take_owned_entry(
+            ws,
+            &pkg,
+            "bringup",
+            &bringup_dir,
+            "tx",
+            &image,
+            5,
+            false,
+            &host,
+        )
+        .unwrap();
+        assert_eq!(std::fs::read_to_string(&out).unwrap(), before);
+    }
+
+    /// Issue 2871, the negative control -- the same entry WITHOUT the
+    /// statement: its host build runs, the program exits 0 in census mode and
+    /// writes nothing, and the take still refuses with the message it always
+    /// had, recording no census.
+    #[test]
+    fn an_unstated_entry_that_writes_no_census_still_refuses() {
+        use super::*;
+        use std::os::unix::process::ExitStatusExt;
+        let td = tempfile::tempdir().unwrap();
+        let ws = td.path();
+        let (bringup_dir, pkg) = owned_entry_ws(ws, "");
+        let image = crate::orchestration::image::ImageBlock {
+            board: Some("threadx-linux".into()),
+            entry: Some("entry".into()),
+            ..Default::default()
+        };
+        // A program that exits 0 and writes nothing: `true`, linked where
+        // the host build would have left `entry` (no file is written and
+        // executed, so no ETXTBSY race with other tests).
+        let truth = ["/usr/bin/true", "/bin/true"]
+            .into_iter()
+            .map(Path::new)
+            .find(|p| p.is_file())
+            .expect("a `true` program");
+        let ran = std::cell::RefCell::new(0usize);
+        let host = HostSteps {
+            missing: &|_, _| Vec::new(),
+            run: &|cmd| {
+                *ran.borrow_mut() += 1;
+                let args: Vec<String> = cmd
+                    .get_args()
+                    .map(|a| a.to_string_lossy().into_owned())
+                    .collect();
+                if args.first().map(String::as_str) == Some("--build") {
+                    let exe = Path::new(&args[1]).join("entry");
+                    std::fs::create_dir_all(exe.parent().unwrap()).unwrap();
+                    let _ = std::fs::remove_file(&exe);
+                    std::os::unix::fs::symlink(truth, &exe).unwrap();
+                }
+                Ok(std::process::ExitStatus::from_raw(0))
+            },
+        };
+        let err = take_owned_entry(
+            ws,
+            &pkg,
+            "bringup",
+            &bringup_dir,
+            "tx",
+            &image,
+            5,
+            false,
+            &host,
+        )
+        .expect_err("an unstated entry that writes no census refuses");
+        let msg = format!("{err:#}");
+        assert!(
+            msg.contains("exited 0 in census mode but wrote no census"),
+            "{msg}"
+        );
+        assert!(
+            msg.contains("runs_nano_ros = false"),
+            "the remedy is named: {msg}"
+        );
+        assert_eq!(*ran.borrow(), 2, "the host configure and build ran");
+        assert!(!owned_census_path(ws, "bringup", "tx").exists());
+        assert!(!owned_census_not_taken_path(ws, "bringup", "tx").exists());
     }
 }

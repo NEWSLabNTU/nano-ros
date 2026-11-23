@@ -7866,6 +7866,16 @@ fn resolve_image(
             owned_entry_dir(root, image_id, image),
             Ok(Some(pkg)) if crate::cmd::entity_census::owned_entry_census_applies(bringup_dir, &pkg)
         );
+    // Issue 2871 -- `runs_nano_ros = false` states an owned entry's census
+    // empty; any other image runs nano-ros, so the statement is false.
+    if image.runs_nano_ros == Some(false) && !owned_census_road {
+        eyre::bail!(
+            "`{image_id}` states `runs_nano_ros = false`, but it is not sized by the census of \
+             an owned entry: only a hand-written entry on a cross board, in a bringup that \
+             declares no `[[component]]`, may state that its program never initialises \
+             nano-ros. Remove the line from `[image.{image_id}]`."
+        );
+    }
     let inventory: Result<Composed, NotDerived> = (|| {
         if leaf_road {
             return Err(NotDerived::LeafRoad(
@@ -15816,6 +15826,22 @@ mod not_derived_verdict_tests {
             ProbeFailurePolicy::Warn,
         ));
         assert!(err.contains("DO derive"), "{err}");
+    }
+
+    /// Issue 2871 -- `runs_nano_ros = false` on an image that is not sized
+    /// by an owned entry's census (here a generated entry with a model) is
+    /// false, and refused.
+    #[test]
+    fn runs_no_nano_ros_on_an_image_without_an_owned_census_is_refused() {
+        let (ws, bringup, mut image) = deriving();
+        image.runs_nano_ros = Some(false);
+        let err = refusal(resolve(
+            ws.path(),
+            &bringup,
+            &image,
+            ProbeFailurePolicy::Warn,
+        ));
+        assert!(err.contains("runs_nano_ros = false"), "{err}");
     }
 
     /// A stated reason on a nothing-declared image is accepted.

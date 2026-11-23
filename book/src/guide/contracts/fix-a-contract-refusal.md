@@ -196,6 +196,13 @@ row.
 - **`[census] on_missing = "warn"` or `on_stale = "warn"` is set.** The bringup
   has opted out of the refusal, and the build prints a `census missing
   (WARNING` line instead. Remove the key to make it a refusal again.
+- **A hand-written entry's configure stops with `exited 0 in census mode but
+  wrote no census`.** The entry's program never reached a census writer. If
+  it never initialises nano-ros at all (a test program that drives a device
+  directly), say so with `runs_nano_ros = false` under its `[image.<id>]`:
+  its census is recorded empty without running it, and the image is sized
+  for zero entities. Otherwise the program returns before it creates its
+  first node on the host; make its `main` reach that point.
 
 ## See also
 

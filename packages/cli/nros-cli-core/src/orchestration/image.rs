@@ -372,6 +372,22 @@ pub struct ImageBlock {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub producers: Option<bool>,
 
+    /// Issue 2871 -- `runs_nano_ros = false`: this image's OWNED entry never
+    /// initialises nano-ros (a test program that drives a device directly),
+    /// so its census is EMPTY by statement. The configure records an empty
+    /// census without building or running the program on the host, and the
+    /// image is sized for zero entities.
+    ///
+    /// Without it, such a program exits 0 in census mode and writes nothing,
+    /// which cannot be told apart from a program whose census writer was
+    /// never reached, so the take refuses. The statement is what tells them
+    /// apart. Only an image sized by its owned entry's census
+    /// (`entity_census::owned_entry_census_applies`) may state `false`; any
+    /// other image is refused, since its program does run nano-ros. `true` is
+    /// the default and changes nothing. Never folded from `[image_defaults]`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub runs_nano_ros: Option<bool>,
+
     /// Capability axes for this image, over the system's own list.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub features: Vec<String>,
@@ -601,6 +617,8 @@ impl ImageBlock {
             // declarations, and a shared one would state it for images that
             // derive (which is refused).
             no_inventory: self.no_inventory.clone(),
+            // Issue 2871 -- never inherited: it is about THIS image's program.
+            runs_nano_ros: self.runs_nano_ros,
             launch: pick(&self.launch, &base.launch),
             // Maps MERGE (base first, so the specific block overwrites a key it
             // also sets); scalars replace. A base `args` is a default binding

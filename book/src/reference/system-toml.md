@@ -49,6 +49,7 @@ Precedence, highest first: a command-line or build flag, `[image.<id>]`,
 | `env` | `{ NAME = "value" }` for an application's own build variable. A registry knob here is an error naming its `knobs` spelling |
 | `entry` | The workspace package that is this image's application, when it cannot be derived |
 | `producers` | `false` builds without the host board's census recorder and profiler |
+| `runs_nano_ros` | `false` states that this image's hand-written entry never initialises nano-ros (a test program that drives a device directly). Its census is then recorded empty without building or running the program on the host, and the image is sized for zero entities. Only an image sized by its owned entry's census may state it (a hand-written entry on a cross board, in a bringup with no `[[component]]`); on any other image it is refused. Without it, such a program exits 0 in census mode with no census, and the configure refuses. `true` is the default. Never folded from `[image_defaults]` |
 | `params_files`, `ros_args` | Parameters and ROS arguments baked into the image for `rclcpp::init` |
 | `no_inventory` | `"<reason>"`: why this image declares nothing to derive its pool sizes from (no contract wiring, no parameters), so it keeps the configured defaults by design. Optional: such an image gets a note either way, and this line records the reason in its place. An empty reason is refused, and so is the line on an image whose declarations DO derive its sizes. It never excuses a declaration that fails to derive: under `NROS_PROBE_FAILURE=refuse` (every fixture lane), that stops the build. Never folded from `[image_defaults]` |
 | `stack_floor_image` | The key its measured stack peak (an `[[observed]]` row) is filed under in `config/stack-floors.toml`, `<template>/<lang>/<rmw>@<board>`. `nros new` writes it; unset, the image is keyed `<bringup>@<board>` |
@@ -64,7 +65,7 @@ Retired and refused by name: `ip`, `gateway`, `netmask`, `transport`,
 | scalars (`board`, `rmw`, `profile`, …) | replaced |
 | `node_features` | replaced as a whole when the image states it |
 | `args` | merged |
-| `no_inventory` | never folded: each image states its own |
+| `no_inventory`, `runs_nano_ros` | never folded: each image states its own |
 | `os_config`, `features` | concatenated, defaults first |
 
 `[system] default_images = ["<id>", …]` is what a bare `nros build` builds.
