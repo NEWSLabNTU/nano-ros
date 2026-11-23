@@ -336,5 +336,9 @@ SNTP never re-acquires. A consumer's board hook papers over that with
 - [Issue 2841](../issues/2841-c-configure-builds-component-exes-against-image-runtime.md):
   W1d's C stub-board image cannot build until a C image's configure stops
   building every component's executable against the image's runtime.
+- [Issue 2875](../issues/2875-sntp-dns-socket-service-stack-64bit.md):
+  the SNTP source's `select DNS_RESOLVER` pulls in Zephyr's socket service
+  thread, whose default stack fails the 64-bit floor, so a 64-bit image that
+  names `sntp` stops at configure.
 
 - phase-575 W6: the shape was first agreed there; the design moved here.
