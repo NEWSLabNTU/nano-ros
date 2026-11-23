@@ -513,6 +513,36 @@ NROS_TESTS_SRC = ROOT / "packages" / "testing" / "nros-tests" / "src"
 _FN = re.compile(r"^\s*(?:pub(?:\([^)]*\))?\s+)?fn\s+([A-Za-z_][A-Za-z0-9_]*)", re.M)
 
 
+_CFG_TEST_MOD = re.compile(r"#\[cfg\(test\)\]\s*(?:pub(?:\([^)]*\))?\s+)?mod\s+\w+\s*\{")
+
+
+def _strip_cfg_test_mods(text: str) -> str:
+    """`text` without its `#[cfg(test)] mod … { … }` blocks.
+
+    A unit test inside the nros-tests library is not a helper any test binary
+    calls, but its functions have ordinary names: `evidence.rs`'s test fixture
+    `fn row()` names `threadx-linux-c-zenoh-talker`, and every cell test that
+    says `row` then "reached" it, so live-peer's host job tried to build a
+    threadx-linux row as `linux` and stopped (run 45110360962). Braces are
+    matched by count, which a brace inside a string can fool; that errs toward
+    keeping text, i.e. toward naming more rows, never fewer.
+    """
+    out, pos = [], 0
+    for m in _CFG_TEST_MOD.finditer(text):
+        if m.start() < pos:
+            continue
+        depth, i = 1, m.end()
+        while i < len(text) and depth:
+            depth += {"{": 1, "}": -1}.get(text[i], 0)
+            i += 1
+        if depth:  # unbalanced: keep the rest rather than guess
+            break
+        out.append(text[pos:m.start()])
+        pos = i
+    out.append(text[pos:])
+    return "".join(out)
+
+
 def _helper_bodies(src_dir: Path = NROS_TESTS_SRC) -> dict[str, str]:
     """{fn name: its text} for every function in the nros-tests library.
 
@@ -533,7 +563,7 @@ def _helper_bodies(src_dir: Path = NROS_TESTS_SRC) -> dict[str, str]:
     for f in sorted(ROOT / p for p in listed.split("\0") if p.endswith(".rs")):
         if not f.is_file():  # tracked, but deleted in this worktree
             continue
-        text = f.read_text(encoding="utf-8")
+        text = _strip_cfg_test_mods(f.read_text(encoding="utf-8"))
         marks = list(_FN.finditer(text))
         for i, m in enumerate(marks):
             end = marks[i + 1].start() if i + 1 < len(marks) else len(text)
@@ -1892,6 +1922,11 @@ def _self_test_runner_split(
         helpers={"build_ws_a_entry": 'fn build_ws_a_entry() { x("ws_a") }',
                  "build_ws_b_entry": 'fn build_ws_b_entry() { x("ws_b") }'},
     ) == ["ws_a"], "selftest: helper-hop derivation"
+    # A `#[cfg(test)]` module's functions are not helpers: its `fn row()`
+    # naming a row must not reach a test that merely says `row`.
+    assert _strip_cfg_test_mods(
+        'fn keep() { "a" }\n#[cfg(test)]\nmod tests {\n fn row() { "b" { } }\n}\nfn after() {}'
+    ) == 'fn keep() { "a" }\n\nfn after() {}', "selftest: cfg(test) module stripped"
     # And on the real tree, the workspace half: the qos cell reaches its row
     # only through `build_native_workspace_rust_qos_entry`.
     _q = [c for c in runtime_cells() if c["id"] == "native-qos-override-rust-zenoh"]
@@ -2473,10 +2508,22 @@ def main(argv: list[str]) -> int:
         by_id = {c["id"]: c for c in cells}
         if args.host_workspace_fixtures:
             try:
-                print("\n".join(host_workspace_fixtures_for(cells, passing)))
+                rows = host_workspace_fixtures_for(cells, passing)
+                platform = {r["id"]: r.get("platform") for r in tomllib.loads(
+                    FIXTURES_TOML.read_text()).get("workspace_fixture", [])}
             except (LedgerError, OSError, tomllib.TOMLDecodeError) as e:
                 print(f"check-interop-verdicts: {e}", file=sys.stderr)
                 return 1
+            # The host job builds every row as `linux`, so a row of another
+            # platform here is a derivation that over-reached (run
+            # 45110360962: a unit test's fixture in nros-tests). Say which,
+            # rather than letting the builder stop 70 rows in.
+            foreign = [f"{i} ({platform.get(i)})" for i in rows if platform.get(i) != "linux"]
+            if foreign:
+                print("check-interop-verdicts: the host cells' derivation names workspace "
+                      f"rows of another platform: {', '.join(foreign)}", file=sys.stderr)
+                return 1
+            print("\n".join(rows))
             return 0
         if args.host_compile_checks:
             try:
