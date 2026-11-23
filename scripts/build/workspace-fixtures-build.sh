@@ -759,17 +759,53 @@ done
 # Serial and in the parent, mirroring the pre-pass in `fixtures-build.sh`: a
 # user runs `nros configure` once and then builds, which is what this lane is
 # supposed to be simulating.
+#
+# B16 -- and only the IMAGES these rows build, in a workspace. A bare
+# `nros configure` configures every image the workspace declares (RFC-0120 D2),
+# and an image that cannot configure on this host is left UNSTAMPED so the next
+# configure retries it (`cmd/configure.rs`, Ruling R22). On a host with no
+# Zephyr SDK the rust workspace's Zephyr images never stamp, so a caller running
+# this script once per row (live-peer's host job) re-ran the whole workspace's
+# configure for every row: 91-133 s a language-workspace row, 106-121 min of
+# run 44456527279's 226-min loop, for rows whose own build took 3-45 s.
+# Naming the image (`--image <bringup>:<id>`) scopes the currency check and
+# stages 2-4 to it; C1 (the workspace's sync) still runs. `--image` takes ONE
+# image, so only an invocation building exactly one image of a workspace names
+# it -- which is the per-row caller this cost; a run over many rows of one
+# workspace configures once anyway. A single-package LEAF (1-2 s) keeps the
+# bare form, as does a workspace row that names no image.
+nros_dir_is_leaf() {
+    [ -f "$1/system.toml" ] && { [ -f "$1/Cargo.toml" ] || [ -f "$1/CMakeLists.txt" ]; }
+}
+configure_images_for() {
+    local want="$1" record id lang dir bringup entry build_subdir target_dir codegen_out
+    local defs envstr cargo_extra board conf_files image builder out=()
+    for record in "${live_records[@]}"; do
+        IFS=$'\x1f' read -r id lang dir bringup entry build_subdir target_dir codegen_out defs envstr cargo_extra board conf_files image builder <<< "$record"
+        [ "$dir" = "$want" ] || continue
+        [ -n "$image" ] || return 1
+        out+=("$(basename "$bringup"):$image")
+    done
+    [ "${#out[@]}" -gt 0 ] || return 1
+    printf '%s\n' "${out[@]}" | sort -u
+}
 for dir in "${group_dirs[@]:-}"; do
     [ -n "$dir" ] || continue
     [ -d "$repo_root/$dir" ] || continue
-    echo "  -> nros configure $dir"
+    configure_named=()
+    if ! nros_dir_is_leaf "$repo_root/$dir" \
+        && images="$(configure_images_for "$dir")" \
+        && [ "$(printf '%s\n' "$images" | wc -l)" -eq 1 ]; then
+        configure_named=(--image "$images")
+    fi
+    echo "  -> nros configure $dir${configure_named[*]:+ ${configure_named[*]}}"
 # phase-367 W5 — `--no-provider-index`: this driver never READS
 # `<ws>/build/nros/providers.json`. cmake keeps its own index at
 # `${CMAKE_BINARY_DIR}/nros-providers.json` and reads it THROUGH the CLI, and
 # no caller points `nano_ros_load_providers(INDEX …)` at the sync-written one.
 # Writing it costs the underlay scan — 28 %% of a warm sync after W1/W2
 # (0.095 s -> 0.068 s), across ~101 syncs a build.
-    ( cd "$repo_root/$dir" && "$nros_cli" configure --no-provider-index >/dev/null )
+    ( cd "$repo_root/$dir" && "$nros_cli" configure --no-provider-index "${configure_named[@]}" >/dev/null )
 done
 
 # Issue 1419 -- every census this platform's cross configures will check,
