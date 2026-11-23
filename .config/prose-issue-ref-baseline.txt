@@ -61,4 +61,5 @@
 #
 docs/roadmap/archived/phase-431-ship-the-nros-binary.md:1110
 just/check/docs.just:1110
+packages/cli/nros-cli-core/src/orchestration/metadata_probe_cmake.rs:2890
 scripts/build/rustdoc-set.sh:1110
