@@ -80,10 +80,18 @@ comment = '''
 // phase-582 W1d (RFC-0141 D2) -- the linux talker with the board's
 // wall-clock source, its hook a stub board answering one fixed instant:
 // `Clock::system()`, the state query and the samples' source stamps all
-// follow it, in Rust and C++. The `linux_talker_clock_board` image of each
+// follow it, in Rust, C and C++. The `linux_talker_clock_board` image of each
 // workspace's pubsub bringup; `tests/linux_board_clock.rs` runs it.
 '''
 at = ["Linux", "Rust", "Zenoh", "Pubsub", "Example"]
+status = 'Runtime'
+with = '&[Config::ClockBoard]'
+
+[[cell]]
+comment = '''
+// Issue 2841 -- and C, now that its configure builds the image only.
+'''
+at = ["Linux", "C", "Zenoh", "Pubsub", "Example"]
 status = 'Runtime'
 with = '&[Config::ClockBoard]'
 
