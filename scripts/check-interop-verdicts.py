@@ -89,6 +89,7 @@ import contextlib
 import datetime
 import importlib.util
 import io
+import json
 import re
 import subprocess
 import sys
@@ -571,6 +572,18 @@ def _helper_bodies(src_dir: Path = NROS_TESTS_SRC) -> dict[str, str]:
     return out
 
 
+_IDENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+
+
+def _one_hop(text: str, helpers: "dict[str, str]") -> str:
+    """`text` plus the body of every helper it names. A helper name is an
+    identifier, so naming one is an identifier token of `text` -- the same
+    test as a `\\b<name>\\b` search, at one tokenisation instead of a regex
+    per helper (that was 100,000 searches, 30 s, per invocation)."""
+    named = set(_IDENT.findall(text))
+    return text + "".join(body for name, body in helpers.items() if name in named)
+
+
 def host_rows_for(cells, ids, known, read=None, helpers=None) -> list[str]:
     """Row ids (from `known`) the HOST cells' test binaries resolve.
 
@@ -587,10 +600,7 @@ def host_rows_for(cells, ids, known, read=None, helpers=None) -> list[str]:
             text = read(test)
         except OSError:
             continue
-        reached = text + "".join(
-            body for name, body in helpers.items()
-            if re.search(rf"\b{re.escape(name)}\b", text)
-        )
+        reached = _one_hop(text, helpers)
         out |= {i for i in known if f'"{i}"' in reached}
     return sorted(out)
 
@@ -612,7 +622,7 @@ def host_workspace_fixtures_for(cells, ids, known=None, read=None, helpers=None,
     leaves = _linux_migrated_leaf_rows() if leaves is None else leaves
     out = set(host_rows_for(cells, ids, known, read, helpers))
     out |= _pair_rows_for_cells(cells, ids, pairs)
-    out |= _pair_rows_for_cells(cells, ids, leaves)
+    out |= _leaf_rows_named(cells, ids, leaves, read, helpers)
     out |= _pair_rows_named(cells, ids, pairs, read, helpers)
     return sorted(out)
 
@@ -666,17 +676,30 @@ def _linux_pair_rows(rows=None) -> "list[dict]":
 # `nros dev migrate-bringup` turned into a one-package workspace becomes
 # `[[workspace_fixture]]` rows, so `fixtures-build.sh linux <lang> <rmw>` stops
 # building it and the live-peer bridge cells came up UNMET for the linux Rust
-# talker (run 42911987237, after #3473). Same rule as the pairs, by COORDINATE:
-# a host cell on (lang, rmw) gets every migrated linux row of that (lang, rmw),
-# which is what the leaf build gave it. A migrated row is any linux workspace
+# talker (run 42911987237, after #3473). A migrated row is any linux workspace
 # row outside `examples/workspaces/` -- those are the language workspaces,
 # reached by the pair and named-id rules above.
+#
+# By NAME, not by coordinate (B16). The coordinate rule gave a host cell on
+# (lang, rmw) EVERY migrated leaf of that pair -- 80 of the 141 rows the host
+# job built on 2026-11-23, 74 of them reached by nothing else -- because the
+# leaf build it replaced was one build per pair. A test resolves a migrated
+# leaf through its DIRECTORY (`migrated_leaf::select` keys on it, called from
+# `build_example*`), so a row is derived when that directory is spelled in the
+# test or in any helper it reaches: in full, without its `examples/` prefix
+# (`build_example_cmake_rmw("linux/cpp/talker", ...)`), or without the
+# nros-tests prefix (`bins/int32-sink`). Helpers are followed TRANSITIVELY here
+# (`_reached`), unlike the one-hop id rule, because a leaf directory sits in
+# the resolver at the bottom of a chain of `build_*` wrappers. A row this
+# misses is refused after the run by `--check-resolved` (the evidence ledger
+# names every workspace row a test resolved), never a silent drop.
 def _linux_migrated_leaf_rows(rows=None) -> "list[dict]":
-    """[{id, lang, rmw}] for every migrated linux leaf row in the manifest."""
+    """[{id, lang, rmw, dir}] for every migrated linux leaf row in the manifest."""
     if rows is None:
         rows = tomllib.loads(FIXTURES_TOML.read_text()).get("workspace_fixture", [])
     return [
-        {"id": r["id"], "lang": r.get("lang"), "rmw": r.get("rmw", "zenoh")}
+        {"id": r["id"], "lang": r.get("lang"), "rmw": r.get("rmw", "zenoh"),
+         "dir": r.get("dir", "")}
         for r in rows
         if r.get("platform") == "linux"
         and not r.get("dir", "").startswith("examples/workspaces/")
@@ -705,10 +728,7 @@ def _pair_rows_named(cells, ids, pairs, read=None, helpers=None) -> set[str]:
             text = read(test)
         except OSError:
             continue
-        reached = text + "".join(
-            body for name, body in helpers.items()
-            if re.search(rf"\b{re.escape(name)}\b", text)
-        )
+        reached = _one_hop(text, helpers)
         for m in _PAIR_CALL.finditer(reached):
             rmw = m["rmw"] and HOST_BUILD_RMW.get(m["rmw"], m["rmw"].lower())
             out |= {p["id"] for p in pairs
@@ -716,6 +736,90 @@ def _pair_rows_named(cells, ids, pairs, read=None, helpers=None) -> set[str]:
                     and (m["role"] is None or p["role"] == m["role"])
                     and (rmw is None or p["rmw"] == rmw)}
     return out
+
+
+# B16 — the most workspace rows the host cells may derive (`self_test`).
+HOST_WORKSPACE_ROWS_CEILING = 100
+
+_CALLS: "dict[int, dict[str, set[str]]]" = {}
+
+
+def _reached(text: str, helpers: "dict[str, str]") -> str:
+    """`text` plus the body of every helper it reaches, TRANSITIVELY.
+
+    The call graph is the identifiers each body mentions that are helper
+    names, so a whole closure costs one tokenisation per body (cached per
+    helper table).
+    """
+    names = set(helpers)
+    calls = _CALLS.get(id(helpers))
+    if calls is None or set(calls) != names:
+        calls = _CALLS[id(helpers)] = {
+            n: set(_IDENT.findall(b)) & names for n, b in helpers.items()}
+    seen = set(_IDENT.findall(text)) & names
+    todo = list(seen)
+    while todo:
+        for c in calls[todo.pop()] - seen:
+            seen.add(c)
+            todo.append(c)
+    return text + "".join(helpers[n] for n in sorted(seen))
+
+
+_NROS_TESTS_PREFIX = "packages/testing/nros-tests/"
+
+
+def _leaf_spellings(d: str) -> "list[str]":
+    """The ways a test names a migrated leaf directory (see above)."""
+    forms = [d]
+    for prefix in ("examples/", _NROS_TESTS_PREFIX):
+        if d.startswith(prefix):
+            forms.append(d[len(prefix):])
+    return forms
+
+
+# A path-shaped run of characters, maximal on both sides, so
+# `linux/rust/talker` never matches inside `linux/rust/talker-rtic` or
+# `examples/threadx-linux/rust/talker`: one pass over the text, then set
+# membership, instead of a search per directory.
+_PATHISH = re.compile(r"[\w./-]+")
+
+
+def _leaf_rows_named(cells, ids, leaves, read=None, helpers=None) -> set[str]:
+    by_id = {c["id"]: c for c in cells}
+    read = (lambda t: (TESTS_DIR / f"{t}.rs").read_text()) if read is None else read
+    helpers = _helper_bodies() if helpers is None else helpers
+    form_dir = {f: d for d in {l["dir"] for l in leaves if l["dir"]}
+                for f in _leaf_spellings(d)}
+    out: set[str] = set()
+    for test in sorted({by_id[c]["test"] for c in set(ids)
+                        if c in by_id and runner_of(by_id[c]["platform"]) == "host"}):
+        try:
+            text = read(test)
+        except OSError:
+            continue
+        reached = _reached(text, helpers)
+        dirs = {form_dir[w] for w in set(_PATHISH.findall(reached)) if w in form_dir}
+        out |= {l["id"] for l in leaves if l["dir"] in dirs}
+    return out
+
+
+def resolved_rows_outside(evidence_dir: Path, derived: "set[str]") -> "list[str]":
+    """`row (test)` for every workspace row the evidence ledger in
+    `evidence_dir` says a test resolved that `derived` does not hold.
+
+    The ledger line is written at the resolver's lane check, BEFORE the binary
+    is looked for, so a row the derivation dropped is still named here.
+    """
+    out = set()
+    for f in sorted(evidence_dir.glob("*.jsonl")):
+        for line in f.read_text(encoding="utf-8").splitlines():
+            try:
+                o = json.loads(line)
+            except ValueError:
+                continue
+            if o.get("kind") == "workspace_fixture" and o.get("row") not in derived:
+                out.add(f'{o.get("row")} ({o.get("binary") or "?"}::{o.get("test") or "?"})')
+    return sorted(out)
 
 
 # Issue 1800 — ROS 2 tests that are not interop cells. Tiers 1, 2 and the
@@ -1976,24 +2080,67 @@ def _self_test_runner_split(
         _b, [_b[0]["id"]]
     ), "selftest: bridge_zenoh_to_cyclonedds resolves the C Cyclone listener pair image"
 
-    # phase-531 W6 — migrated linux leaves, by coordinate; the language
-    # workspaces and other platforms are not.
+    # phase-531 W6 — migrated linux leaves; the language workspaces and other
+    # platforms are not. B16 — by NAME: a host cell on the leaf's own
+    # coordinate whose test never names the leaf gets nothing (the coordinate
+    # rule built 80 rows for 41 cells), a leaf named two helpers down is
+    # reached, and a sibling directory sharing the prefix is not.
     _leaves = _linux_migrated_leaf_rows([
         {"id": "rt", "platform": "linux", "lang": "rust", "dir": "examples/linux/rust/talker"},
         {"id": "rt-x", "platform": "linux", "lang": "rust", "rmw": "xrce",
          "dir": "examples/linux/rust/talker"},
+        {"id": "rt-rtic", "platform": "linux", "lang": "rust",
+         "dir": "examples/linux/rust/talker-rtic"},
+        {"id": "sink", "platform": "linux", "lang": "rust",
+         "dir": "packages/testing/nros-tests/bins/int32-sink"},
         {"id": "ws", "platform": "linux", "lang": "rust", "dir": "examples/workspaces/rust"},
         {"id": "tx", "platform": "threadx-linux", "lang": "rust", "dir": "examples/threadx-linux/rust/talker"},
     ])
-    assert [l["id"] for l in _leaves] == ["rt", "rt-x"], _leaves
+    assert [l["id"] for l in _leaves] == ["rt", "rt-x", "rt-rtic", "sink"], _leaves
     assert host_workspace_fixtures_for(
         _pc, ["rz"], known=set(), pairs=[], leaves=_leaves, helpers={},
         read={"t_rz": ""}.__getitem__,
-    ) == ["rt"], "selftest: a migrated leaf row by coordinate"
+    ) == [], "selftest: a migrated leaf is NOT derived by coordinate (B16)"
+    _hops = {
+        "talker_pair": "fn talker_pair() { let t = build_talker()?; }",
+        "build_talker": 'fn build_talker() { build_example_cmake_rmw("linux/rust/talker", "t") }',
+        "build_sink": 'fn build_sink() { let dir = "packages/testing/nros-tests/bins/int32-sink"; }',
+        "build_rtic": 'fn build_rtic() { x("examples/linux/rust/talker-rtic") }',
+    }
+    assert host_workspace_fixtures_for(
+        _pc, ["rz", "bz"], known=set(), pairs=[], leaves=_leaves, helpers=_hops,
+        read={"t_rz": "talker_pair(); build_sink();", "t_bz": "build_rtic();"}.__getitem__,
+    ) == ["rt", "rt-x", "sink"], "selftest: a migrated leaf by name, through helpers"
+    assert _reached("a()", {"a": "fn a() { b() }", "b": "fn b() { c() }",
+                            "c": "fn c() {}", "d": "fn d() {}"}) == \
+        "a()fn a() { b() }fn b() { c() }fn c() {}", "selftest: helper reach is transitive"
+    # The guard: a resolved row the derivation did not build is named, and a
+    # row of another kind (a group row, a west leaf) is not its business.
+    with tempfile.TemporaryDirectory() as _ev:
+        Path(_ev, "1.jsonl").write_text(
+            '{"test": "t1", "binary": "b", "row": "rt", "kind": "workspace_fixture"}\n'
+            '{"test": "t2", "binary": "b", "row": "rt-rtic", "kind": "workspace_fixture"}\n'
+            '{"test": "t3", "binary": "b", "row": "grp", "kind": "fixture"}\n'
+            'not json\n', encoding="utf-8")
+        assert resolved_rows_outside(Path(_ev), {"rt"}) == ["rt-rtic (b::t2)"], \
+            "selftest: the guard names a resolved row the derivation dropped"
     # And on the real tree: the cell that was UNMET for this reason.
     assert "native-rust-talker" in host_workspace_fixtures_for(
         _b, [_b[0]["id"]]
     ), "selftest: bridge_zenoh_to_cyclonedds builds the migrated linux Rust talker"
+    # And the size of the whole host set, pinned so a rule that re-widens it
+    # shows up here and not as a cancelled 350-min job. 97 on 2026-11-23,
+    # against 141 under the coordinate rule. Raise it deliberately when cells
+    # are added, with the new count.
+    _real_cells = runtime_cells()
+    _passing = in_runner(_real_cells, sorted(
+        e["cell"] for e in load_ledger(read_ledger(
+            ROOT / ".config" / "interop-verdicts.toml", required=True))
+        if e.get("verdict") == "pass"), "host")
+    _n = len(host_workspace_fixtures_for(_real_cells, _passing))
+    assert _n <= HOST_WORKSPACE_ROWS_CEILING, (
+        f"selftest: the host cells derive {_n} workspace rows, over the ceiling "
+        f"{HOST_WORKSPACE_ROWS_CEILING} (B16: each is a from-scratch build in a 350-min job)")
 
     # And on the real tree: the cell that was red for this reason.
     _real = [c for c in runtime_cells() if c["id"] == "native-multinode-cpp-zenoh"]
@@ -2407,6 +2554,14 @@ def main(argv: list[str]) -> int:
         "ids those cells' tests resolve, directly or through a nros-tests helper",
     )
     ap.add_argument(
+        "--check-resolved",
+        metavar="DIR",
+        help="with --list-passing --runner host --host-workspace-fixtures, "
+        "after the cells ran: exit 1 naming every workspace row the evidence "
+        "ledger in DIR says a test resolved that the derivation did not "
+        "build, so a narrowed derivation can never drop a row silently",
+    )
+    ap.add_argument(
         "--workspace-fixtures-of-test",
         metavar="TEST",
         help="the `[[workspace_fixture]]` ids one nros-tests test binary "
@@ -2523,6 +2678,17 @@ def main(argv: list[str]) -> int:
                 print("check-interop-verdicts: the host cells' derivation names workspace "
                       f"rows of another platform: {', '.join(foreign)}", file=sys.stderr)
                 return 1
+            if args.check_resolved:
+                missed = resolved_rows_outside(Path(args.check_resolved), set(rows))
+                if missed:
+                    print("check-interop-verdicts: the host cells resolved workspace rows "
+                          "their derivation did not build (B16 -- teach the derivation "
+                          "the spelling, never re-widen it):\n  " + "\n  ".join(missed),
+                          file=sys.stderr)
+                    return 1
+                print(f"check-interop-verdicts: every resolved workspace row was derived "
+                      f"({len(rows)} built)")
+                return 0
             print("\n".join(rows))
             return 0
         if args.host_compile_checks:
