@@ -965,6 +965,7 @@ fn create_param_event_pub(
             <Event as RosMessage>::TYPE_NAME,
             <Event as RosMessage>::TYPE_HASH,
             qos,
+            super::node::ProfileOrigin::Runtime,
         );
     }
     let node_name = exec.node_name.clone();
@@ -980,12 +981,11 @@ fn create_param_event_pub(
         topic = topic.with_node_name(&node_name);
     }
     let session = &mut *exec.session;
-    super::node::validate_qos_or_report(
-        &qos,
-        Session::supported_qos_policies(session),
-        "publisher",
-        TOPIC,
-    )?;
+    // Issue 2920 -- the runtime's own profile: fitted, never refused for a
+    // policy the backend cannot carry.
+    let supported = Session::supported_qos_policies(session);
+    let qos = super::node::fit_runtime_qos(qos, supported, "publisher", TOPIC);
+    super::node::validate_qos_or_report(&qos, supported, "publisher", TOPIC)?;
     session
         .create_publisher(&topic, qos)
         .map_err(|_| NodeError::Transport(TransportError::PublisherCreationFailed))
@@ -1012,6 +1012,7 @@ fn create_rosout_pub(
         <Log as RosMessage>::TYPE_NAME,
         <Log as RosMessage>::TYPE_HASH,
         crate::rosout::qos_bounded(),
+        super::node::ProfileOrigin::Runtime,
     )
 }
 
@@ -1058,7 +1059,7 @@ fn report_rosout_refused(node: &str, e: NodeError) {
     nros_log::log_error!(
         nros_log::get_logger("nros"),
         "/rosout could not be created for node {} ({:?}); its log records are not \
-         published. A publisher slot the image did not size for is the usual cause.",
+         published.",
         node,
         e
     );
@@ -6360,6 +6361,7 @@ impl<'s> Executor<'s> {
             <M as RosMessage>::TYPE_NAME,
             <M as RosMessage>::TYPE_HASH,
             qos,
+            super::node::ProfileOrigin::Application,
         )?;
         // RFC-0052 W3b.4 — attach the contracted endpoint's counter cell.
         let monitor = self
@@ -6388,8 +6390,14 @@ impl<'s> Executor<'s> {
         type_hash: &str,
         qos: QoSProfile,
     ) -> Result<crate::executor::handles::EmbeddedRawPublisher, NodeError> {
-        let handle =
-            self.create_raw_publisher_handle_on(node_id, topic_name, type_name, type_hash, qos)?;
+        let handle = self.create_raw_publisher_handle_on(
+            node_id,
+            topic_name,
+            type_name,
+            type_hash,
+            qos,
+            super::node::ProfileOrigin::Application,
+        )?;
         Ok(crate::executor::handles::EmbeddedRawPublisher {
             handle,
             gate: self.publisher_gate(node_id),
@@ -6436,6 +6444,7 @@ impl<'s> Executor<'s> {
         type_name: &str,
         type_hash: &str,
         qos: QoSProfile,
+        origin: super::node::ProfileOrigin,
     ) -> Result<session::RmwPublisher, NodeError> {
         let (node_name, ns, session_idx, overrides) = {
             let r = self
@@ -6448,6 +6457,20 @@ impl<'s> Executor<'s> {
                 r.session_idx,
                 r.qos_overrides,
             )
+        };
+        // Issue 2920 -- the runtime's own base profile is a preference, so it
+        // is fitted to the backend FIRST; the overrides and the declared
+        // contract folded on after it are what a person wrote, and those are
+        // still refused below when the backend cannot honour them.
+        let qos = match origin {
+            super::node::ProfileOrigin::Application => qos,
+            super::node::ProfileOrigin::Runtime => {
+                let supported = Session::supported_qos_policies(
+                    self.session_at_mut(session_idx)
+                        .ok_or(NodeError::BackendMismatch)?,
+                );
+                super::node::fit_runtime_qos(qos, supported, "publisher", topic_name)
+            }
         };
         // Issue #52 — fold the node's baked overrides for this topic BEFORE
         // `validate_against`, so an override the backend cannot honour errors
@@ -15063,8 +15086,16 @@ impl<'s> Executor<'s> {
             // server ran on a depth-10 queue while ROS 2 gives them 1000 — which
             // matters exactly when a tool sets many parameters at once, the case
             // the deep queue is for.
+            // Issue 2920 -- the runtime's own profile: fitted, never refused.
+            let supported = Session::supported_qos_policies(&*session);
+            let qos = super::node::fit_runtime_qos(
+                QoSProfile::parameter_services_default(),
+                supported,
+                "service",
+                &name,
+            );
             session
-                .create_service(&info, QoSProfile::parameter_services_default())
+                .create_service(&info, qos)
                 .map_err(|e| (NodeError::Transport(e), suffix))
         }
 
@@ -15363,8 +15394,16 @@ impl<'s> Executor<'s> {
             if !node_name.is_empty() {
                 info = info.with_node_name(node_name);
             }
+            // Issue 2920 -- the runtime's own profile: fitted, never refused.
+            let supported = Session::supported_qos_policies(&*session);
+            let qos = super::node::fit_runtime_qos(
+                QoSProfile::services_default(),
+                supported,
+                "service",
+                &name,
+            );
             session
-                .create_service(&info, QoSProfile::services_default())
+                .create_service(&info, qos)
                 .map_err(NodeError::Transport)
         }
 
@@ -15401,6 +15440,9 @@ impl<'s> Executor<'s> {
             if !node_name.is_empty() {
                 info = info.with_node_name(node_name);
             }
+            // Issue 2920 -- the runtime's own profile: fitted, never refused.
+            let supported = Session::supported_qos_policies(&*session);
+            let qos = super::node::fit_runtime_qos(qos, supported, "publisher", &name);
             session
                 .create_publisher(&info, qos)
                 .map_err(NodeError::Transport)

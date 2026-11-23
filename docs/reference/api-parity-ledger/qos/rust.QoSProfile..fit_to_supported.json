@@ -1,0 +1,5 @@
+{
+  "key": "rust:QoSProfile::fit_to_supported",
+  "verdict": "extension",
+  "why": "issue 2920. Steps a profile the RUNTIME chose for one of its own endpoints (`/rosout`, `/parameter_events`, the parameter and lifecycle services, `transition_event`) down to the backend's `supported_qos_policies`, by the same rule `resolve_best_available` clamps with, and returns the policies it dropped. rclrs has no counterpart because upstream has no backend that refuses a policy rcl's own profiles ask for: Fast DDS and Cyclone honour all of them. Ours does (XRCE has no lifespan), and the runtime's own endpoints must still exist there, while an application's profile stays a request `validate_against` refuses. Public on the shared `QoSProfile` so nros-node, nros-c and nros-cpp apply one rule. No allocation, no `std`."
+}
