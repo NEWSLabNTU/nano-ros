@@ -21,6 +21,11 @@
 # The image's arch profile reaches every cc-rs build through ONE carrier
 # (`CFLAGS_<triple>` in the image's cargo config); the C build also runs with a
 # user `CFLAGS` exported, and must say it merged it.
+# Issue 2687 -- the board package states its facts and includes the FreeRTOS
+# family's configuration BY NAME, the family directory being on every FreeRTOS
+# C build's include path on both roads. Its config dir must hold no copy of the
+# family's files: a copy goes stale (this one had), and a build that only works
+# with one means the seam broke.
 # Selftest, every run: the same attribute check is handed a SOFT-float object
 # (the fixture's C compiled -mfloat-abi=softfp) and must refuse it, so a check
 # that read the wrong file or an empty attribute set could not pass.
@@ -37,6 +42,20 @@ mkdir -p "$repo/tmp"
 work="$(mktemp -d "$repo/tmp/out-of-tree-board.XXXXXX")"
 trap 'rm -rf "$work"' EXIT
 say() { echo "check-out-of-tree-board-images: $*"; }
+
+# Issue 2687 -- no copy of the family configuration in the board package.
+fx_config="$fixture/boards/nros-board-fixture-r5f-freertos/config"
+for pair in "FreeRTOSConfig.h:nros_freertos_family_config.h:configUSE_PREEMPTION" \
+            "lwipopts.h:nros_freertos_family_lwipopts.h:LWIPOPTS_H" \
+            "arch/cc.h:nros_freertos_family_cc.h:LWIP_ARCH_CC_H"; do
+    IFS=: read -r f fam body <<<"$pair"
+    if ! nros_grep_q -F "#include \"$fam\"" "$fx_config/$f" \
+        || nros_grep_q -F "$body" "$fx_config/$f"; then
+        say "$fx_config/$f must include \"$fam\" and hold none of its body" \
+            "($body): an out-of-tree board states only its facts (issue 2687)"
+        exit 1
+    fi
+done
 # shellcheck source=../build/cargo.sh
 . "$repo/scripts/build/cargo.sh"
 if ! nros="$(nros_cli_bin)" || [ -z "$nros" ]; then

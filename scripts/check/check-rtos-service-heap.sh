@@ -53,7 +53,7 @@ need "nano_ros_entry no longer applies the extra" \
     cmake/NanoRosEntry.cmake \
     'nros_rtos_service_heap_apply(${_NRA_NAME} "${_nra_service_heap_fragment}")'
 need "FreeRTOSConfig.h's zenoh default no longer carries the extra" \
-    packages/boards/nros-board-freertos/config/FreeRTOSConfig.h \
+    packages/boards/nros-board-freertos/config/nros_freertos_family_config.h \
     '((NROS_FREERTOS_ZENOH_HEAP_KB) + (NROS_FREERTOS_HEAP_RAISE_KB) +'
 need "threadx_hooks.c's default pool no longer carries the extra" \
     packages/boards/nros-board-common/c/threadx_hooks.c \

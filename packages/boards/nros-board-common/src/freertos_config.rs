@@ -462,6 +462,11 @@ mod tests {
         let slicing = |header: &std::path::Path, level: bool| -> String {
             let mut cmd = std::process::Command::new("cc");
             cmd.args(["-E", "-dM", "-x", "c"]);
+            // Issue 2687 — a board includes the family's config by name, from
+            // the directory every FreeRTOS build puts after the board's.
+            let root = nros_build_paths::checkout_root_of(&boards).expect("inside a checkout");
+            cmd.arg("-I")
+                .arg(root.join(nros_build_paths::FREERTOS_FAMILY_CONFIG_DIR));
             if level {
                 cmd.arg("-DNROS_FREERTOS_LEVEL_IMAGE=1");
             }
@@ -504,7 +509,7 @@ mod tests {
     /// project, 251,496 bytes, with the zenoh term's margin.
     #[test]
     fn the_header_states_the_derived_zenoh_default() {
-        let header = include_str!("../../nros-board-freertos/config/FreeRTOSConfig.h");
+        let header = include_str!("../../nros-board-freertos/config/nros_freertos_family_config.h");
         let kb: usize = header
             .lines()
             .find_map(|l| {
@@ -533,7 +538,7 @@ mod tests {
 
     #[test]
     fn the_header_states_the_derived_dds_default() {
-        let header = include_str!("../../nros-board-freertos/config/FreeRTOSConfig.h");
+        let header = include_str!("../../nros-board-freertos/config/nros_freertos_family_config.h");
         let kb: usize = header
             .lines()
             .find_map(|l| {

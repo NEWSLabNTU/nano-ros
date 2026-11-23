@@ -97,6 +97,8 @@ fn main() {
             .flag("-fdata-sections")
             .warnings(false)
             .include(&config_dir)
+            // Issue 2687 — the family's headers, by name, after the board's.
+            .include(nros_build_paths::freertos_family_config_dir())
             .include(freertos_dir.join("include"))
             .include(&port_dir)
             .include(port_dir.join("utils"));

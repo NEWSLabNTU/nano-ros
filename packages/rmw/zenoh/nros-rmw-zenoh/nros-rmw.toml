@@ -207,6 +207,8 @@ include_paths = [
   # path; the token maps it through upstream's own `portable/` table.
   "{freertos_port_dir}",
   "{envpath:FREERTOS_CONFIG_DIR}",
+  # issue 2687 — the family's headers, which a board's config includes by name.
+  "{freertos_family_config_dir}",
   # Phase 154 — `nros-platform-api/include` carries
   # `<nros/platform_net.h>` (the canonical `nros_platform_*` ABI).
   # `zpico.c` includes it unconditionally.

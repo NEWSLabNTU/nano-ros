@@ -20,7 +20,7 @@
  * (cmake/board/nano-ros-board-s32z270-freertos.cmake). */
 #define configUSE_TASK_FPU_SUPPORT 2
 
-#include "../../nros-board-freertos/config/FreeRTOSConfig.h"
+#include "nros_freertos_family_config.h"
 
 /* GCC/ARM_CRx_No_GIC tick seam — board hooks, weak-stubbed in
  * c/board_s32z270.c, strong-overridden by the consumer. */

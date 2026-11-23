@@ -93,7 +93,8 @@ fn require_freertos() {
 /// The KiB `FreeRTOSConfig.h` states for a non-zenoh (Cyclone / XRCE) image —
 /// read from the header, because the header is what the image compiles.
 fn shared_header_dds_heap_bytes() -> usize {
-    let header = include_str!("../../../boards/nros-board-freertos/config/FreeRTOSConfig.h");
+    let header =
+        include_str!("../../../boards/nros-board-freertos/config/nros_freertos_family_config.h");
     let kb: usize = header
         .lines()
         .find_map(|l| {
@@ -162,7 +163,7 @@ fn an536_cyclonedds_cpp_entry_delivers_within_the_dds_heap_default() {
     assert!(
         peak <= budget,
         "the AN536 Cyclone entry peaks at {peak} bytes of heap, above the {budget}-byte \
-         non-zenoh default in nros-board-freertos/config/FreeRTOSConfig.h — re-derive \
+         non-zenoh default in nros-board-freertos/config/nros_freertos_family_config.h — re-derive \
          `default_dds_heap_bytes` (nros-board-common) from this line (issue 1624).\n\
          qemu: {cmdline}"
     );

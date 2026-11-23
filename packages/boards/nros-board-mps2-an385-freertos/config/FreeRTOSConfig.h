@@ -12,4 +12,4 @@
 #define NROS_BOARD_TASK_STACK_GUARD 1
 #endif
 
-#include "../../nros-board-freertos/config/FreeRTOSConfig.h"
+#include "nros_freertos_family_config.h"

@@ -900,6 +900,26 @@ fn located_or_checkout(name: &str, rel: &str) -> PathBuf {
     locate::try_source(name).unwrap_or_else(|_| repo_root().join(rel))
 }
 
+/// The FreeRTOS family's configuration directory, on the include path of every
+/// FreeRTOS C build after the board's own `FREERTOS_CONFIG_DIR`.
+///
+/// Issue 2687 — a board's `FreeRTOSConfig.h`, `lwipopts.h` and `arch/cc.h`
+/// state its facts and include the family's by NAME
+/// (`nros_freertos_family_config.h`, `nros_freertos_family_lwipopts.h`,
+/// `nros_freertos_family_cc.h`). A relative path to the family could not be
+/// spelled by a board package outside nano-ros, which therefore had to copy
+/// all three files. Every cargo-road compile that reads `FREERTOS_CONFIG_DIR`
+/// adds this too (`add_freertos_includes`, the descriptor token
+/// `{freertos_family_config_dir}`, the POSIX board, the zpico size probe); the
+/// CMake road's twin is `nros_freertos_family_config_dir()`. The headers here
+/// carry names no board file has, so the directory can never shadow one.
+pub fn freertos_family_config_dir() -> PathBuf {
+    repo_root().join(FREERTOS_FAMILY_CONFIG_DIR)
+}
+
+/// [`freertos_family_config_dir`] relative to the checkout root.
+pub const FREERTOS_FAMILY_CONFIG_DIR: &str = "packages/boards/nros-board-freertos/config";
+
 pub fn freertos_dir() -> PathBuf {
     located_or_checkout("freertos-kernel", "third-party/freertos/kernel")
 }
@@ -2660,4 +2680,36 @@ macro_rules! link_script {
     ($source:literal => $dest:literal) => {
         $crate::link_script::emit($source, $dest, include_bytes!($source))
     };
+}
+
+#[cfg(test)]
+mod freertos_family_config_tests {
+    use super::FREERTOS_FAMILY_CONFIG_DIR;
+    use std::path::Path;
+
+    /// Issue 2687 — the family directory is on EVERY FreeRTOS C build's
+    /// include path, so it must hold the three family headers by their own
+    /// names and none of the names a board's config dir supplies: one of those
+    /// here would silently stand in for a board that forgot its own.
+    #[test]
+    fn the_family_dir_holds_only_names_no_board_has() {
+        let root = super::checkout_root_of(Path::new(env!("CARGO_MANIFEST_DIR")))
+            .expect("nros-build-paths tests run inside a nano-ros checkout");
+        let dir = root.join(FREERTOS_FAMILY_CONFIG_DIR);
+        for name in [
+            "nros_freertos_family_config.h",
+            "nros_freertos_family_lwipopts.h",
+            "nros_freertos_family_cc.h",
+        ] {
+            assert!(dir.join(name).is_file(), "{} lacks {name}", dir.display());
+        }
+        for name in ["FreeRTOSConfig.h", "lwipopts.h", "arch/cc.h"] {
+            assert!(
+                !dir.join(name).exists(),
+                "{} holds {name}: it is on every FreeRTOS build's include path, so it would \
+                 shadow a board that has none (issue 2687)",
+                dir.display()
+            );
+        }
+    }
 }

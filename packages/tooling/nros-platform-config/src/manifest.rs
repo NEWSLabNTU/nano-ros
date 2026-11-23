@@ -722,6 +722,13 @@ pub fn interpolate(input: &str, ctx: &InterpContext<'_>) -> Result<String, Inter
             nros_build_paths::nuttx_include_root(&dir)
                 .display()
                 .to_string()
+        } else if token == "freertos_family_config_dir" {
+            // Issue 2687 — the FreeRTOS family's configuration directory, which
+            // a board's `FreeRTOSConfig.h` / `lwipopts.h` / `arch/cc.h` include
+            // by name. The one resolver the board build scripts use too.
+            nros_build_paths::freertos_family_config_dir()
+                .display()
+                .to_string()
         } else if token == "freertos_port_dir" {
             // phase-349 W3 — the directory of the port `FREERTOS_PORT` names.
             // The port is upstream's ENUM (`GCC_ARM_CM3`), which is not a path:

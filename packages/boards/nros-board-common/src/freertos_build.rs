@@ -152,6 +152,11 @@ pub fn port_dir(crate_name: &str, freertos_dir: &Path, port: &str) -> PathBuf {
 }
 
 /// FreeRTOS kernel + port + `FreeRTOSConfig.h` include dirs.
+///
+/// The board's config dir, then the family's: a board's headers include the
+/// family's by name, and a board package outside nano-ros has no other way to
+/// reach them.
+// Issue 2687.
 pub fn add_freertos_includes(
     build: &mut cc::Build,
     freertos_dir: &Path,
@@ -160,6 +165,7 @@ pub fn add_freertos_includes(
 ) {
     build
         .include(config_dir)
+        .include(nros_build_paths::freertos_family_config_dir())
         .include(freertos_dir.join("include"))
         .include(port_dir);
 }
@@ -622,8 +628,7 @@ fn resolve_overlay_env(default_port: &str) -> OverlayEnv {
     // sits beside `nros-board-freertos`, and this function runs from four
     // different board crates. Naming the family crate from the repo root is
     // the same fact with nothing about the caller in it.
-    let shared_config_dir =
-        nros_build_paths::repo_root().join("packages/boards/nros-board-freertos/config");
+    let shared_config_dir = nros_build_paths::freertos_family_config_dir();
 
     let freertos_dir = nros_build_paths::freertos_dir();
     let freertos_port = env::var("FREERTOS_PORT").unwrap_or_else(|_| default_port.to_string());
