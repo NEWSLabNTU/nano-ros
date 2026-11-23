@@ -1,12 +1,14 @@
 ---
 id: 2804
 title: "A fixture resolver for a board that only one Zephyr line supports reports UNMET on the other line"
-status: open
+status: resolved
 type: test-gap
 severity: low
 area: [zephyr, testing]
 related: [issue-1016, issue-1758, issue-2793]
 found: 2026-11-21
+resolved: 2026-11-23
+resolved_in: \"the change that archives this issue\"
 ---
 
 ## What
@@ -82,9 +84,7 @@ STATES its lines, once, and gates keep the statement present and consistent:
 - Unit tests in `fixtures::lane`: a 3.7-only leaf is deselected on 4.4 and not
   on 3.7, and the live table puts the Nucleo leaf on 3.7 only.
 
-Still to run (the batch's Zephyr cell): the acceptance pair on a real run. On
-4.4 the Nucleo cell must read `[SKIPPED:lane]`; on 3.7, with the artifact
-removed, it must read UNMET.
+The acceptance pair ran on 2026-11-23; the result is under Verification.
 
 ## Verification (to run on a host with Zephyr headroom)
 
@@ -117,4 +117,11 @@ mv "$elf.aside" "$elf"
 ```
 
 Both greps printing the wanted tag is the acceptance's negative-control pair.
-After that, this issue can be archived.
+
+**Run 2026-11-23 on host 243, at 2b9325d549 over main 1affea9051:**
+
+- `west-leaves --line 4.4` counted 0, and `--line 3.7` counted 1.
+- 4.4: `[SKIPPED:lane]` once, no UNMET (nextest's column read FAIL, as a bare
+  run counts a lane skip).
+- 3.7: the leaf built (rc=0) and the witness passed (0.27 s).
+- 3.7 with the ELF moved aside: `[UNMET PRECONDITION]` once, no SKIPPED.
