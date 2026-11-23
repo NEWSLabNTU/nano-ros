@@ -37,6 +37,9 @@
 #               board,platform with an unanswered hook reaches epoch_failure,
 #               because a bare-metal `platform` has no wall clock;
 #   bare-default   the bare-metal arm, no list: 0, unsynced (unchanged).
+# Every case that resolves a list also prints "nros: clock resolution took <n> ms"
+# once, as Zephyr does; board-late and board-never hold its number to a lower
+# bound (the hook's delay, the window).
 # Negative controls, each against a mutated port that must FAIL:
 #   - a point that resolves nothing fails board-late;
 #   - resolving lazily on the first read (the shape this replaced, which ran
@@ -104,6 +107,18 @@ once() {
     echo "  ok   the verdict \"$2\" went through the log writer once"
 }
 
+# took <name> [<min-ms>]: the resolution-time line appears once, as on
+# Zephyr, and when a minimum is given the time it reports is at least that
+# (a lower bound, so a point that returned without waiting fails it).
+took() {
+    once "$1" "nros: clock resolution took "
+    [ -n "${2:-}" ] || return 0
+    local ms
+    ms="$(sed -n 's/.*nros: clock resolution took \([0-9][0-9]*\) ms.*/\1/p' "$tmp/$1.out" | head -1)"
+    [ -n "$ms" ] && [ "$ms" -ge "$2" ] || fail "case $1: resolution took '${ms}' ms, want >= $2"
+    echo "  ok   the resolution took ${ms} ms (>= $2)"
+}
+
 echo "clock-board-freertos: against the FreeRTOS port (POSIX kernel port)"
 echo "== board-late"
 build board-late CASE_BOARD_LATE 2 OFF NROS_CLOCK_SOURCE=board NROS_CLOCK_FALLBACK_SETTLE_MS=1000
@@ -111,6 +126,7 @@ nros_grep_q -F 'resolves the wall clock from `board`' "$tmp/board-late.log"; m=$
 [ "$m" -eq 0 ] || fail "board-late: the configure did not apply the selection"
 run board-late
 once board-late "nros: wall clock from board"
+took board-late 180
 
 echo "== board-net"
 build board-net CASE_BOARD_NET 3 OFF NROS_CLOCK_SOURCE=board NROS_CLOCK_FALLBACK_SETTLE_MS=300
@@ -126,6 +142,7 @@ echo "== board-never"
 build board-never CASE_BOARD_NEVER 0 OFF NROS_CLOCK_SOURCE=board NROS_CLOCK_FALLBACK_SETTLE_MS=300
 run board-never
 once board-never "nros: no wall-clock source answered (board); stamps are unset"
+took board-never 280
 
 echo "== board-halt"
 build board-halt CASE_BOARD_NEVER 0 OFF NROS_CLOCK_SOURCE=board NROS_CLOCK_FALLBACK_SETTLE_MS=300 \
@@ -150,6 +167,7 @@ build host-platform CASE_PLATFORM_HOST 0 OFF NROS_CLOCK_SOURCE=board,platform \
     NROS_CLOCK_FALLBACK_SETTLE_MS=0
 run host-platform
 once host-platform "nros: wall clock from platform"
+took host-platform
 
 echo "== host-default (freertos-posix)"
 build host-default CASE_DEFAULT_HOST 1 OFF
@@ -162,6 +180,7 @@ build bare-platform CASE_PLATFORM_NONE 0 ON NROS_CLOCK_SOURCE=board,platform \
     NROS_CLOCK_FALLBACK_SETTLE_MS=0
 run bare-platform
 once bare-platform "nros: no wall-clock source answered (board, platform); stamps are unset"
+took bare-platform
 
 echo "== bare-default (bare-metal arm)"
 build bare-default CASE_DEFAULT_NONE 1 ON

@@ -1553,6 +1553,32 @@ static void nros_freertos_clock_report(const char *msg, size_t len, void *ctx) {
     }
 }
 
+/* What the boot paid for the resolution, on the image's own monotonic clock,
+ * in the same words Zephyr prints: the whole of a source's settle time when it
+ * never answered, so an operator sizing clock.fallback_settle_ms reads the cost
+ * rather than guessing it. Formatted by hand: the bare-metal port links no
+ * stdio. */
+static void nros_freertos_clock_report_took(uint64_t start_ns) {
+    static const char prefix[] = "nros: clock resolution took ";
+    static const char suffix[] = " ms";
+    char line[sizeof(prefix) - 1 + 20 + sizeof(suffix)];
+    uint64_t ms = (nros_platform_clock_ns() - start_ns) / 1000000ULL;
+    char digits[20];
+    size_t n = 0;
+    do {
+        digits[n++] = (char) ('0' + (ms % 10ULL));
+        ms /= 10ULL;
+    } while (ms != 0ULL && n < sizeof(digits));
+    size_t len = sizeof(prefix) - 1;
+    memcpy(line, prefix, len);
+    while (n > 0) {
+        line[len++] = digits[--n];
+    }
+    memcpy(line + len, suffix, sizeof(suffix) - 1);
+    len += sizeof(suffix) - 1;
+    nros_freertos_clock_report(line, len, NULL);
+}
+
 /* Whether the boot point has resolved the list. A read never resolves. */
 static bool nros_freertos_clock_resolved(void) {
     return __atomic_load_n(&s_wall_clock_phase, __ATOMIC_ACQUIRE) == NROS_FREERTOS_CLOCK_RESOLVED;
@@ -1579,8 +1605,10 @@ void nros_platform_freertos_clock_resolve_point(void) {
         uint8_t sources[NROS_CLOCK_MAX_SOURCES];
         nros_clock_policy_t policy;
         nros_clock_policy_from_build(&policy, sources);
+        uint64_t start_ns = nros_platform_clock_ns();
         s_wall_clock_latched = nros_clock_resolve(&policy, nros_freertos_clock_try,
                                                   nros_freertos_clock_report, NULL);
+        nros_freertos_clock_report_took(start_ns);
         __atomic_store_n(&s_wall_clock_phase, NROS_FREERTOS_CLOCK_RESOLVED, __ATOMIC_RELEASE);
         return;
     }

@@ -1,0 +1,1 @@
+A FreeRTOS image that states a clock source list now prints how long its wall-clock resolution took at boot (`nros: clock resolution took <n> ms`), as Zephyr images already do, so `clock.fallback_settle_ms` can be sized from what the board paid.
