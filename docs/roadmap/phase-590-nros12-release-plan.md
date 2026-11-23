@@ -1,6 +1,6 @@
 # Phase 590 -- the next release past nros11 (0.6.0-nros12): plan
 
-**Status (2026-11-23). OPEN: plan only, drafted for the user to pick a date. No tag, no publish, no
+**Status (2026-11-23). OPEN: plan approved by the user (blockers first); W1 live, tracked below. The date stays tentative and the user confirms before the cut and before publish. No tag, no publish, no
 dispatch with `publish=true` until the user names the day.** Tracks issue 2882 (filed in the
 phase-478 batch as item I42 of
 [phase-478](phase-478-island-developer-experience-findings.md)); release rules are
@@ -80,8 +80,27 @@ descendant of such a commit also counts (`scripts/release/release-lanes-green.py
 | `run-matrix` tier 1 + tier 2 (06:00) | none since nros11: red every night from 2026-11-16 | **tier 1 and tier 2-nightly builds**: the `linux` fixture stage stops at `features/src/demo_bringup`, `the parameter store cannot be sized: the entity inventory REFUSED`. This is likely a consequence of the parameter-capacity breaking changes above, with a feature-demo image not stating a capacity. **tier 2**: 6 real failures, including `zephyr_connect_budget` (3 cases), `zephyr_rust_zenoh_action_goal_completion_rate` and `zephyr_nucleo_renode_c_zenoh_serial_pubsub_e2e` (possibly issue 2815) |
 
 `run-matrix` is the critical path: no run of it has been green since the last release.
-Apart from the stack-floor row, none of these reds has an open issue yet. Filing each one
-(`just issue-new`) and owning it is W1.
+
+### Blocker tracker
+
+This table is the W1 tracker. Each row gets its owner and pull request as they are routed, and
+its state as it lands. The state is closed only when a scheduled run of its lane is green after
+the fix.
+
+| # | lane | blocker | issue | owner | PR | state |
+| --- | --- | --- | --- | --- | --- | --- |
+| B1 | tier 1, tier 2-nightly | linux fixture stage: `features/demo_bringup` parameter store refused | [2885](../issues/2885-linux-features-demo-param-store-refused.md) | to route | -- | open |
+| B2 | tier 2 | Zephyr connect-budget (3) and Rust action goal-completion rate | [2891](../issues/2891-tier2-zephyr-connect-budget-and-action-rate.md) | to route | -- | open |
+| B3 | tier 2 | Renode twin: the nucleo C talker faults in logging | [2815](../issues/2815-zephyr-nucleo-c-talker-faults-in-logging.md) | to route | -- | open |
+| B4 | nightly | island-shaped Zephyr snapshot stale | [2886](../issues/2886-island-shaped-zephyr-snapshot-stale.md) | to route | -- | open |
+| B5 | nightly | stack-floor row: Rust action server on nucleo-f767zi-zephyr overflows RAM by 77,440 B | [2887](../issues/2887-stack-floor-nucleo-action-server-rust-ram-overflow.md) | to route | -- | open |
+| B6 | nightly | ThreadX-Linux `session_open_outlasts_a_late_router` | [2888](../issues/2888-threadx-linux-late-router-session-open.md) | to route | -- | open |
+| B7 | host-tests | installed-track probe: `nros completions` with an unnamed `$SHELL` | [2892](../issues/2892-installed-probe-completions-shell.md) | 139 AUO book | -- | open |
+| B8 | host-tests | feature-sweep: `nros-node [alloc,rmw-lending]` clippy | (PR only) | 241 | #4679 | in review |
+| B9 | host-tests | rt-sched: `levels-cpp` Zephyr bound table missing; census test | [2890](../issues/2890-levels-cpp-zephyr-bound-table-probe.md) | to route | -- | open |
+| B10 | live-peer | Zephyr Cortex-M publisher to `ros2 topic echo`; runner-board fixture build | [2889](../issues/2889-live-peer-zephyr-cortex-m-ros2-echo.md) | to route | -- | open |
+
+The 118 session owns the `host-tests` / `live-peer` lane wiring itself.
 
 The release workflow path itself is not a blocker. W3 of phase-567 rehearses it end to end
 (the island-shaped workspace job, both starter images, `verify-starter-image.sh` and the
