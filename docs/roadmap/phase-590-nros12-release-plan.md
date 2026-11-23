@@ -90,7 +90,7 @@ the fix.
 | # | lane | blocker | issue | owner | PR | state |
 | --- | --- | --- | --- | --- | --- | --- |
 | B1 | tier 1, tier 2-nightly | linux fixture stage: `features/demo_bringup` parameter store refused | [2885](../issues/2885-linux-features-demo-param-store-refused.md) | nros 175 | -- | open: may be gone after issue 2702's per-image configure; 175 is re-checking with a linux fixture build |
-| B2 | tier 2 | Zephyr connect-budget (3) and Rust action goal-completion rate | [2891](../issues/2891-tier2-zephyr-connect-budget-and-action-rate.md) | nros 139 | -- | open |
+| B2 | tier 2 | Zephyr connect-budget (3) and Rust action goal-completion rate | [2891](../issues/2891-tier2-zephyr-connect-budget-and-action-rate.md) | nros 139 | -- | open: the real list is re-read from a tier 2 dispatch after #4685 lands; 139 rewrites 2891 then |
 | B3 | tier 2 | Renode twin: the nucleo C talker faults in logging | [2815](../issues/2815-zephyr-nucleo-c-talker-faults-in-logging.md) | nros 118 | `9974ca0fc9` (on main) | likely fixed: the red run (44993007292 at `98b5d8e0c7`) predates the frames fix; three runs on current main decide, then 118 archives 2815 |
 | B4 | nightly | island-shaped Zephyr snapshot stale | [2886](../issues/2886-island-shaped-zephyr-snapshot-stale.md) | NXP 175 | -- | open |
 | B5 | nightly | stack-floor row: Rust action server on nucleo-f767zi-zephyr overflows RAM by 77,440 B | [2887](../issues/2887-stack-floor-nucleo-action-server-rust-ram-overflow.md) | nros 175 | `617e65bd94`, `ba2fca6ee4` (on main) | fixed: the 2026-11-23 nightly links and walks the row (90,708 B); archive after this plan lands |
@@ -99,7 +99,7 @@ the fix.
 | B8 | host-tests | feature-sweep: `nros-node [alloc,rmw-lending]` clippy | (PR only) | nros 241 | #4679 | in review |
 | B9 | host-tests | rt-sched: `levels-cpp` Zephyr bound table missing; census test | [2890](../issues/2890-levels-cpp-zephyr-bound-table-probe.md) | nros 133 (probe), nros 118 (lane) | #4682 (lane half: workflow + script option, draft) | open: the code half, the bound-table probe, is 133's |
 | B10 | live-peer | Zephyr Cortex-M publisher to `ros2 topic echo`; runner-board fixture build | [2889](../issues/2889-live-peer-zephyr-cortex-m-ros2-echo.md) | nros 118 | #4684 (lane half, armed); #4631 (the cell failure, [2825](../issues/2825-test-wait-outlasts-nextest-kill.md)) | open: verify with a `live-peer` dispatch once both land |
-| B11 | tier 1, tier 2-nightly | `fixture-lane: unknown lane 'lane=tier1'`, from `07db836b34`: this, not B1, stopped the 2026-11-23 run | 2893 (in flight with its fix) | nros 175 | branch `fix/nros12-blockers-2885-2887` (not yet a PR), with a new `lane-arg-spelling` gate | fix ready |
+| B11 | tier 1, tier 2, tier 2-nightly | `fixture-lane: unknown lane 'lane=tier1'` (and `lane=tier2`): every scheduled tier 1/2 run stops here. This, not B1, stopped the 2026-11-23 run | 2893 (in flight; a duplicate of #4685's fix) | nros 139 | #4685 (`lane-arg-spelling` test) | fix in review; first in the 12:00Z gate queue |
 
 Owners are the sessions the manager routed each blocker to (2026-11-23). B5 is in the same family as
 issue 2772. The 118 session owns the `host-tests` / `live-peer` lane wiring itself.
