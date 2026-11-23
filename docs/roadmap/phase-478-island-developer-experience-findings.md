@@ -5,10 +5,10 @@ port").** Since 2026-11-23 this is THE island phase: every nano-ros issue and
 missing feature the safety island (autoware-safety-island fork) needs for its
 migration to nano-ros is a row of
 [The island port's needs](#the-island-ports-needs-2026-11-23) below, either a
-work item here (I36-I49, T4) or a "tracked by" line naming where it lives.
-The open items, in order: I45 (in flight), I36, I37, I38, I41, I49, I43,
-I44, I40, I39, I46, I47, I48; I42 and then I26's island switch; T4 after
-each. T2, T3 and D4's on-board check below are older and stay open. Done
+work item here (I36-I52, T4) or a "tracked by" line naming where it lives.
+I45 landed on the island (2026-11-23). The open items, in order: I50, I51,
+I52, I36, I37, I38, I41, I49, I43, I44, I40, I39, I46, I47, I48; I42 and
+then I26's island switch; T4 after each. T2, T3 and D4's on-board check below are older and stay open. Done
 means the island's branch `nano-ros-next` drops the workaround each row
 names. Items claim with `just claim phase-478-<item>`.
 
@@ -813,7 +813,10 @@ AN536) stay green.
 | Zephyr root adds packages in `<depend>` order (the Autoware add-once guards) | fixed; the island dropped the guards | issue 2756 |
 | owned west entry: deploy, workspace modules, nested bringup census, `os_config` base | fixed; used on `nano-ros-next` | issues 2861, 2862, 2864 |
 | owned west entry: `NROS_INTERFACE_SEARCH_PATH` (`asi_tests/asi_*_zephyr/CMakeLists.txt:39-40`) | fixed in nano-ros (2876 resolved); the island drops its lines next | issue 2876, I36 |
-| owned entry that never starts nano-ros on the host gets a census (`can_output_test_bringup` `[census] on_missing = "warn"`) | open, fix in flight (its fix branch, PR coming) | 2871 (`docs/issues/`; the fix archives it), I45 |
+| owned entry that never starts nano-ros on the host gets a census (`can_output_test_bringup` `[census] on_missing = "warn"`) | fixed, PR #4671; the island states `runs_nano_ros = false` on `nano-ros-next` `56b9971` | 2871 (archived), I45 (done) |
+| owned entry census adds the entry's workspace `<depend>`s (FreeRTOS `asi_unit_test` / `asi_dds_loopback_test` `add_subdirectory(asi_common)` fallback) | open; issue 2680 fixed the probe only | issue 2899, I50 |
+| owned census goes stale when the entry's CMakeLists changes (a stale census masked issue 2899 locally) | open | issue 2900, I51 |
+| the probe seeds the parameters instances agree on when they disagree on others (controller's 148 `declare_parameter` defaults, P3) | open | issue 2901, I52 |
 | `nros run` `--forbid`, `--settle`, `--zephyr-workspace` | fixed; used on `nano-ros-next` | issue 2863 |
 | the Zephyr workspace ladder skips the project's west workspace (`run-zephyr-fvp-ci.sh:202-213`, `--zephyr-workspace` on every call) | fixed in nano-ros (2877 resolved); the island drops its flag next | issue 2877, I37 |
 | the island's last Zephyr patch, an out-of-tree tracing backend (`patches/zephyr/0003-*`, `scripts/apply-zephyr-patches.sh`) | declined in 2766, NOT FILED as its own question | issue 2878, I38 |
@@ -897,7 +900,7 @@ AN536) stay green.
   (contents, blockers, steps, a recommended window) is
   [phase-590](phase-590-nros12-release-plan.md), owned by its release
   planner; the user sets the date. This phase supplies its island-shaped
-  blocker (phase-590's B4).
+  blocker (phase-590's B4, PR #4688).
 - **Acceptance:** a published release; the island folds `nano-ros-next` into
   its default branch on it, then I26's island switch (a commit pin) is
   possible.
@@ -923,6 +926,9 @@ AN536) stay green.
   false`). Left: the island's swap on its next pin.
 - **Acceptance:** 2871's; the island's `can_output_test_bringup` drops
   `[census] on_missing = "warn"`.
+- **Done (2026-11-23):** the island's `nano-ros-next` `56b9971` states
+  `runs_nano_ros = false` on the CAN image (`can_output_test_bringup`) and
+  drops `on_missing = "warn"`.
 
 ### I46 -- the s32z270-freertos RTD variant, finished
 
@@ -965,6 +971,34 @@ AN536) stay green.
 - **Acceptance:** 0758, 0772 and 2865 resolved and archived, or each names
   its remaining gap.
 
+### I50 -- an owned entry's census adds its workspace `<depend>`s
+
+- **Issue:** [2899](../issues/2899-owned-census-omits-entry-workspace-depends.md).
+- **What:** the owned census host build adds the entry's workspace
+  `<depend>` closure, through the helper issue 2680 gave the probe.
+- **Acceptance:** 2899's; the island's FreeRTOS test entries
+  `asi_unit_test` and `asi_dds_loopback_test` drop their
+  `add_subdirectory(asi_common)` fallback.
+
+### I51 -- an owned census reads stale when the entry's CMakeLists changes
+
+- **Issue:** [2900](../issues/2900-owned-census-freshness-ignores-entry-cmakelists.md).
+- **What:** the entry's `CMakeLists.txt` and `package.xml` are freshness
+  inputs of its owned census, by content digest.
+- **Acceptance:** 2900's test. Land with or before I50, so its island
+  check runs on a fresh census.
+
+### I52 -- probe seeds per parameter when instances disagree
+
+- **Issue:** [2901](../issues/2901-probe-seeds-all-or-nothing-on-disagreement.md).
+- **What:** a ruling between (a) seed the agreed keys and leave only the
+  disagreeing ones on declaration defaults, and (b) one probe per model;
+  then the build.
+- **Acceptance:** 2901's; the island's controller drops its declaration
+  defaults except where the ruling still needs them (today the
+  `wheel_base`, `max_pitch_rad`, `min_pitch_rad` split between
+  `system_model.yaml` and `system_carla_model.yaml` keeps all 148).
+
 ### T4 -- the island drops each workaround
 
 - **What:** for every row above marked fixed, and for each item as it lands,
@@ -977,6 +1011,16 @@ AN536) stay green.
 - **Acceptance:** each deletion is a commit on the island's `nano-ros-next`
   with a green CI run, recorded in its phase-15 doc; a row whose deletion
   fails gets a new issue here.
+- **Progress (2026-11-23):** on the island's `nano-ros-next` `eaa89c5` (CI
+  run 45151249929 green at `ebb1924`): the P9 `add_subdirectory` probe
+  fallbacks are gone (2680); the trace marker is `rclcpp::trace_marker`
+  (2641); the `NROS_BRINGUP_DIR` guards are gone (2754); `--plan` replaces
+  `nros_run_program`'s hand-added ELF (2752); I45's swap at `56b9971`.
+  Kept: the FreeRTOS test entries' `asi_common` fallback (fails without it,
+  issue 2899 / I50; masked locally by issue 2900 / I51); the P3 C++
+  parameter defaults (issue 2901 / I52). Nothing to drop for 2629: the
+  remaining `test/zephyr_app` builds still take `ARMFVP_EXTRA_FLAGS`, and
+  turning them into images is the island's own work.
 
 ## Test / check
 
@@ -1052,7 +1096,8 @@ D1 before I1 and I2; D2 before I3; D3 before I4; I3 and I4 before T3. D4,
 I5, I6, I7 and I8 are independent. I8's second half waits on 474 T3.
 
 The island port's items (2026-11-23), in this order, each followed by its T4
-deletion on the island: I45 (in flight); I36 and I37 (the FVP lane's last
+deletion on the island: I45 (done); I51 then I50 (the island's
+last test-entry fallback); I52 (the controller's defaults); I36 and I37 (the FVP lane's last
 flags and CMake lines); I38 (after I37, so the ladder decides which tree a
 carried patch lands in); I41; I49; I43; I44 (after PR #4632 merges); I40;
 I39; I46, then I47 (both need a host with the NXP trees; hardware runs under
@@ -1155,8 +1200,9 @@ island switch.
 - [ ] I43: tracked by phase-582 (issue 2883).
 - [ ] I44: tracked by phase-582 (issue 2884); the island's FVP images set a
       non-zero interval once it rules.
-- [ ] I45: an image states that its owned entry runs no nano-ros and gets an
-      empty census; the island drops `on_missing = "warn"` (2871).
+- [x] I45: an image states that its owned entry runs no nano-ros and gets an
+      empty census; the island drops `on_missing = "warn"` (2871; island
+      `nano-ros-next` `56b9971`).
 - [ ] I46: the s32z270-freertos RTD variant has its NETC netif, the port
       patch question answered, and a full link; the island names the variant
       (issue 2632).
@@ -1167,6 +1213,14 @@ island switch.
       (archived). 0758 waits on PR #4632 and the island's SNTP-step
       measurement; 0772 waits on issue 2866 (phase-582 owner's verdicts,
       2026-11-23).
+- [ ] I50: an owned entry's census adds its workspace `<depend>`s; the
+      island's FreeRTOS test entries drop the `asi_common` fallback (issue
+      2899).
+- [ ] I51: an owned census is stale when the entry's `CMakeLists.txt` or
+      `package.xml` changes (issue 2900).
+- [ ] I52: the probe seeds the agreed parameters when instances disagree on
+      others, or probes per model; the island drops the controller's
+      declaration defaults (issue 2901).
 - [ ] T4: every fixed row of "The island port's needs" has its island
       workaround deleted on `nano-ros-next` with a green CI run.
 - [x] T1: every row of the status table matches its issue file (1120 archived).
@@ -1206,6 +1260,9 @@ unowned.
 - [issue 2883](../issues/2883-zephyr-clock-halt-unreachable-after-platform.md): `halt` after `platform` on a "none" port is unreachable and accepted (I43; homed in phase-582).
 - [issue 2884](../issues/2884-sntp-resync-paced-on-guest-time.md): the SNTP re-sync interval runs on guest time (I44; homed in phase-582).
 - [issue 2871](../issues/archived/2871-census-for-entry-without-nano-ros.md): an owned entry that never starts nano-ros gets no census (I45; resolved by PR #4671).
+- [issue 2899](../issues/2899-owned-census-omits-entry-workspace-depends.md): an owned entry's census builds its package without the workspace packages it `<depend>`s on (I50).
+- [issue 2900](../issues/2900-owned-census-freshness-ignores-entry-cmakelists.md): an owned census reads fresh after the entry's CMakeLists changes (I51).
+- [issue 2901](../issues/2901-probe-seeds-all-or-nothing-on-disagreement.md): the probe drops every launch seed when instances disagree on one key (I52).
 - [issue 2632](../issues/2632-s32z270-freertos-rtd-variant.md): the s32z270-freertos RTD variant's NETC netif, port patch and full link (I46; phase-524 W3 stays its descriptor home).
 - [issue 2633](../issues/2633-board-owned-can-frame-driver.md): the S32Z2 CAN frame driver's vendor backend and the `board`-stack hand-off (I47; phase-560 W9 stays its design home).
 - [issue 2769](../issues/2769-zenoh-can-link-over-frame-driver.md): the zenoh-pico CAN link over the frame driver (I48).
