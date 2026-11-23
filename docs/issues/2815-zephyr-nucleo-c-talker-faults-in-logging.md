@@ -6,7 +6,7 @@ type: bug
 area: [zephyr, logging, boards]
 severity: high
 found: 2026-11-22
-related: [552, 2387, 1726]
+related: [552, 2387, 1726, phase-590]
 ---
 
 ## What fails

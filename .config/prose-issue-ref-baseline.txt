@@ -60,5 +60,6 @@
 #         when the PR carrying `docs/issues/2376-*.md` merges.
 #
 docs/roadmap/archived/phase-431-ship-the-nros-binary.md:1110
+docs/roadmap/phase-590-nros12-release-plan.md:2882
 just/check/docs.just:1110
 scripts/build/rustdoc-set.sh:1110
