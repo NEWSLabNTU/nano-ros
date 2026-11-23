@@ -44,7 +44,11 @@ here="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
 remedy() {
     cat >&2 <<EOF
 
-  nano-ros does not create this venv. Either of these makes one:
+  nano-ros does not create this venv unless asked. To have setup make it:
+
+      NROS_ZEPHYR_CREATE_VENV=1 NROS_ZEPHYR_VERSION=4.4 just zephyr setup
+
+  (that needs uv or a python3.12 on PATH). Or make it yourself, with either of:
 
       uv venv --python 3.12 "$VENV"
       "$VENV/bin/python" -m pip install west pyelftools PyYAML pykwalify packaging jsonschema anytree
@@ -54,8 +58,8 @@ remedy() {
       python3.12 -m venv "$VENV"
       "$VENV/bin/python" -m pip install west pyelftools PyYAML pykwalify packaging jsonschema anytree
 
-  4.4 builds run west THROUGH it:
-      $VENV/bin/python -m west build ...    (or prepend $VENV/bin to PATH)
+  nano-ros's own 4.4 builds find this venv by themselves. A hand-run build
+  runs west through it:  $VENV/bin/python -m west build ...
 EOF
 }
 
@@ -141,5 +145,5 @@ if ! python3 "$here/scripts/check-python-deps.py" --python "$PY" --quiet cyclone
     echo "[py312]   install it:  uv pip install --python \"$PY\" catkin_pkg 'empy==3.3.4' lark" >&2
 fi
 
-echo "[py312] ready. 4.4 builds run west THROUGH this venv:"
-echo "[py312]   $VENV/bin/python -m west build ...   (or prepend $VENV/bin to PATH)"
+echo "[py312] ready. nano-ros's 4.4 builds use this venv by themselves; a hand-run"
+echo "[py312]   build runs west through it: $VENV/bin/python -m west build ..."

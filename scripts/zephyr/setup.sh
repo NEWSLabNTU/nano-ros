@@ -554,6 +554,12 @@ cd "$WORKSPACE_DIR"
 mkdir -p "$WORKSPACE_DIR/$NANO_ROS_NAME"
 cp "$NROS_REPO_DIR/$MANIFEST" "$WORKSPACE_DIR/$NANO_ROS_NAME/$MANIFEST"
 
+# Issue 2902 — the line's host preconditions (the 4.4 line's Python 3.12 venv)
+# are checked HERE, before `west init` / `west update`, because they need
+# nothing from the fetch. The patch set further down checks them again; that
+# used to be the first check, after a ~6 min fetch.
+bash "$NROS_REPO_DIR/scripts/zephyr/line-preflight.sh" "$MANIFEST" "$WORKSPACE_DIR"
+
 # Initialize west (--mf selects the 3.7 vs 4.4 manifest)
 west init -l --mf "$MANIFEST" "$WORKSPACE_DIR/$NANO_ROS_NAME"
 

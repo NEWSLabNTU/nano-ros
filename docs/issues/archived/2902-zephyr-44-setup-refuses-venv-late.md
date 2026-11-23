@@ -1,11 +1,12 @@
 ---
 id: 2902
 title: "`just zephyr setup` on the 4.4 line refuses a missing Python 3.12 venv only after `west update`, and its remedy omits the opt-in that would create it"
-status: open
+status: resolved
 type: bug
 area: [zephyr, tooling]
 severity: low
 found: 2026-11-23
+resolved: 2026-11-24
 related: [issue-0093, issue-1870, issue-2821]
 ---
 
@@ -64,3 +65,26 @@ nowhere else. `git grep NROS_ZEPHYR_CREATE_VENV` finds only `patches/4.4.sh`.
 Acceptance: on a host without `.venv312`, `NROS_ZEPHYR_VERSION=4.4 just zephyr
 setup` refuses in seconds with no fetch, names both remedies, and with the
 opt-in set it provisions the venv and completes.
+
+## Resolution
+
+Fixed 2026-11-24. `scripts/zephyr/line-preflight.sh` checks a line's host
+preconditions from its west manifest, the one per-line fact known before the
+tree is fetched. For the 4.4 line that is the Python 3.12 venv, checked through
+`provision-py312-venv.sh`. Both entry points call it first: the
+`just zephyr setup` recipe before any source, tool or Zephyr fetch, and
+`scripts/zephyr/setup.sh` before `west init`. `NROS_ZEPHYR_CREATE_VENV=1` passes
+`--create`, so the venv is still made only on request. The patch set keeps its
+own check.
+
+The remedy text names `NROS_ZEPHYR_CREATE_VENV=1 NROS_ZEPHYR_VERSION=4.4 just
+zephyr setup` first. The PATH sentence is replaced: nano-ros's own builds find
+the venv through issue 2821's resolver, and a hand-run build runs
+`<venv>/bin/python -m west build`. The recipe's doc comment in
+`just/zephyr.just` names the opt-in too.
+
+Measured on host 241, against an empty workspace dir with no venv:
+`NROS_ZEPHYR_VERSION=4.4 just zephyr setup` refused in 1 s, fetched nothing,
+and named both remedies. With the opt-in set, the preflight created the venv
+(Python 3.12.14) and the dependency check passed. The 3.7 manifest is a no-op.
+A full opt-in setup through `west update` was not re-run here.
