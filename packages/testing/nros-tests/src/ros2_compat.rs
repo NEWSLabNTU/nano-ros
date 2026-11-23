@@ -471,8 +471,12 @@ pub fn compare(
     stock: CliAnswer,
     stock_node: &str,
 ) -> Compared {
-    let nano_text = normalise(&nano.output, nano_node);
-    let stock_text = normalise(&stock.output, stock_node);
+    let mut nano_text = normalise(&nano.output, nano_node);
+    let mut stock_text = normalise(&stock.output, stock_node);
+    if is_list_query(query) {
+        nano_text = sorted_lines(&nano_text);
+        stock_text = sorted_lines(&stock_text);
+    }
     Compared {
         query: query.to_string(),
         nano,
@@ -480,6 +484,26 @@ pub fn compare(
         nano_text,
         stock_text,
     }
+}
+
+/// True for a `<noun> list` query whose answer is one name per line
+/// (`service list -t`, `topic list`, `action list`, `node list`); `param
+/// list` nests names under each node and is compared as printed.
+/// The `ros2` CLI prints such a list sorted by the RAW name, and [`normalise`]
+/// renames each side's node to one placeholder, so a line's position is a
+/// property of the node's name, not of the answer: `/add_two_ints` sorts
+/// before `/add_two_ints_server/...` and after `/add_server/...`. A list is
+/// therefore compared sorted again, after the rename.
+pub fn is_list_query(query: &str) -> bool {
+    let mut words = query.split_whitespace();
+    matches!(words.next(), Some("service" | "topic" | "action" | "node"))
+        && words.next() == Some("list")
+}
+
+fn sorted_lines(text: &str) -> String {
+    let mut lines: Vec<&str> = text.lines().collect();
+    lines.sort_unstable();
+    lines.join("\n")
 }
 
 /// Replace `node` (fully qualified, `/alpha`) and its bare name (`alpha`,
@@ -656,20 +680,49 @@ pub fn line_diff(nano: &str, stock: &str) -> Option<String> {
     }
     let (mut i, mut j) = (0, 0);
     let mut out = Vec::new();
+    let (mut only_nano, mut only_stock) = (Vec::new(), Vec::new());
     while i < n || j < m {
         if i < n && j < m && a[i] == b[j] {
-            out.push(format!("  {}", a[i]));
+            out.push(format!("  {}", visible(a[i])));
             i += 1;
             j += 1;
         } else if i < n && (j == m || lcs[i + 1][j] >= lcs[i][j + 1]) {
-            out.push(format!("- {}", a[i]));
+            out.push(format!("- {}", visible(a[i])));
+            only_nano.push(a[i]);
             i += 1;
         } else {
-            out.push(format!("+ {}", b[j]));
+            out.push(format!("+ {}", visible(b[j])));
+            only_stock.push(b[j]);
             j += 1;
         }
     }
+    // A line both sides printed, at different positions: say so, since `-`
+    // and `+` of one text otherwise read as a difference nobody can see.
+    let moved = only_nano.iter().filter(|l| only_stock.contains(l)).count();
+    if moved > 0 {
+        out.push(format!(
+            "({moved} line(s) marked both - and + are byte-identical: the answers differ in ORDER there)"
+        ));
+    }
     Some(out.join("\n"))
+}
+
+/// `line` with every character a terminal would not show escaped
+/// (`\u{feff}`, `\r`, `\t`, a no-break space), so a difference the diff
+/// reports is one a reader can see. A plain space stays a space.
+pub fn visible(line: &str) -> String {
+    let mut out = String::with_capacity(line.len());
+    for c in line.chars() {
+        let hidden = c.is_control()
+            || (c.is_whitespace() && c != ' ')
+            || matches!(c, '\u{200b}'..='\u{200f}' | '\u{2060}' | '\u{feff}');
+        if hidden {
+            out.extend(c.escape_unicode());
+        } else {
+            out.push(c);
+        }
+    }
+    out
 }
 
 /// The changed lines of a [`line_diff`], without the context lines.
@@ -841,5 +894,81 @@ mod tests {
         assert!(!is_parameter_service_line(
             "/add_two_ints [example_interfaces/srv/AddTwoInts]"
         ));
+    }
+
+    // Run 44864729982's real answers: one service and the six parameter
+    // services, from nodes named `/add_server` and `/add_two_ints_server`.
+    // Sorted by raw name, `/add_two_ints` is last on one side and first on the
+    // other; both are right.
+    const PARAMS: [&str; 6] = [
+        "describe_parameters [rcl_interfaces/srv/DescribeParameters]",
+        "get_parameter_types [rcl_interfaces/srv/GetParameterTypes]",
+        "get_parameters [rcl_interfaces/srv/GetParameters]",
+        "list_parameters [rcl_interfaces/srv/ListParameters]",
+        "set_parameters [rcl_interfaces/srv/SetParameters]",
+        "set_parameters_atomically [rcl_interfaces/srv/SetParametersAtomically]",
+    ];
+    const SERVICE: &str = "/add_two_ints [example_interfaces/srv/AddTwoInts]";
+
+    fn service_list(node: &str, service_first: bool) -> String {
+        let params = PARAMS.iter().map(|p| format!("{node}/{p}"));
+        let mut lines: Vec<String> = params.collect();
+        if service_first {
+            lines.insert(0, SERVICE.to_string());
+        } else {
+            lines.push(SERVICE.to_string());
+        }
+        lines.join("\n") + "\n"
+    }
+
+    #[test]
+    fn a_list_differing_only_by_the_nodes_sort_position_is_the_same_answer() {
+        let q = "service list -t";
+        let c = compare(
+            q,
+            answer(q, &service_list("/add_server", false), 0),
+            "/add_server",
+            answer(q, &service_list("/add_two_ints_server", true), 0),
+            "/add_two_ints_server",
+        );
+        assert_eq!(c.diff(), None, "{}", c.report());
+    }
+
+    #[test]
+    fn a_list_still_reports_a_missing_line() {
+        let q = "service list -t";
+        let stock = service_list("/add_two_ints_server", true);
+        let nano = service_list("/add_server", false).replace(&format!("{SERVICE}\n"), "");
+        let c = compare(
+            q,
+            answer(q, &nano, 0),
+            "/add_server",
+            answer(q, &stock, 0),
+            "/add_two_ints_server",
+        );
+        let diff = c.diff().expect("a missing service is a difference");
+        assert_eq!(changed_lines(&diff), vec![format!("+ {SERVICE}")]);
+    }
+
+    #[test]
+    fn only_flat_name_lists_are_compared_sorted() {
+        assert!(is_list_query("service list -t"));
+        assert!(is_list_query("topic list -t --include-hidden-topics"));
+        assert!(is_list_query("node list"));
+        assert!(!is_list_query("param list"));
+        assert!(!is_list_query("service type /add_two_ints"));
+    }
+
+    #[test]
+    fn the_diff_names_a_reordering_it_cannot_otherwise_show() {
+        let diff = line_diff("b\na", "a\nb").expect("the order differs");
+        assert!(diff.contains("byte-identical"), "{diff}");
+    }
+
+    #[test]
+    fn the_diff_escapes_characters_a_terminal_hides() {
+        let diff = line_diff("a\u{feff}\r", "a").expect("they differ");
+        assert!(diff.contains("- a\\u{feff}\\u{d}"), "{diff}");
+        assert!(!diff.contains("byte-identical"), "{diff}");
     }
 }
