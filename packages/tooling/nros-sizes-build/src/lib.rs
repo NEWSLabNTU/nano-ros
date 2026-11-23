@@ -1083,8 +1083,9 @@ const KNOBS_KEYED_BY_CONTENT: &[&str] = &["NROS_SIZING_DESCRIPTOR"];
 fn content_identity(path: &str) -> String {
     match std::fs::read(path) {
         Ok(bytes) => {
+            let keyed = descriptor_class_text(path, &bytes);
             let mut h: u64 = 0xcbf2_9ce4_8422_2325;
-            for b in &bytes {
+            for b in keyed.as_deref().unwrap_or(&bytes) {
                 h ^= u64::from(*b);
                 h = h.wrapping_mul(0x0000_0100_0000_01b3);
             }
@@ -1093,6 +1094,32 @@ fn content_identity(path: &str) -> String {
         // Unreadable: the path is all there is to key on.
         Err(_) => path.to_string(),
     }
+}
+
+/// Issue 2838 -- a sizing descriptor keys the probe by its BUILD CLASS text
+/// (`nros_sizing_descriptor::as_build_class`), not by its bytes.
+///
+/// Since each C/C++ image got its own configure (issue 2702), each image names
+/// its own descriptor, and `[meta] entry` -- the image's own name -- made every
+/// one of them a different probe, however identical the facts. `entry` names
+/// the image rather than describing it, and no consumer reads it: that is the
+/// argument RFC-0100 D13 already made for the cargo road's shared target dirs,
+/// and the class copy is its one spelling, so the probe takes it rather than
+/// growing a second list of "fields that do not size anything". Every OTHER
+/// field still keys the probe. The ones that look like names are not: the
+/// readers join endpoints to the sub arena by `topic`, gate on `[meta] basis`
+/// and count `sched_tasks` (nros-node's `build/sub_arena.rs`, nros-rmw-xrce-cffi's
+/// build script), so a key that dropped them could hand one image another's
+/// sizes. `a_sizing_descriptor_reader_never_reads_the_entry_name` holds the
+/// premise.
+///
+/// `None` when the bytes are not a descriptor this reader can parse: the raw
+/// bytes key then, which never shares wrongly.
+fn descriptor_class_text(path: &str, bytes: &[u8]) -> Option<Vec<u8>> {
+    let text = std::str::from_utf8(bytes).ok()?;
+    let desc = nros_sizing_descriptor::parse(text, Path::new(path)).ok()?;
+    let (_, class) = nros_sizing_descriptor::as_build_class(&desc, "class").ok()?;
+    Some(class.into_bytes())
 }
 
 /// Whole FAMILIES that cannot change a probed size.
@@ -2242,6 +2269,15 @@ mod tests {
         restore_knob_env(prior);
     }
 
+    /// The probe key with `NROS_SIZING_DESCRIPTOR` naming `p`. Callers hold
+    /// `env_lock` and a cleared knob env.
+    fn key_for_descriptor(p: &std::path::Path) -> String {
+        unsafe { env::set_var("NROS_SIZING_DESCRIPTOR", p) }
+        let k = probe_key("x86_64-unknown-linux-gnu", &[]);
+        unsafe { env::remove_var("NROS_SIZING_DESCRIPTOR") }
+        k
+    }
+
     /// phase-543 — the gate harness's own variables and a copied-out leaf's
     /// descriptor path vary every run and must not split the key; a changed
     /// descriptor must.
@@ -2270,12 +2306,7 @@ mod tests {
         std::fs::write(&a, "[pools]\nx = 1\n").unwrap();
         std::fs::write(&b, "[pools]\nx = 1\n").unwrap();
         std::fs::write(&c, "[pools]\nx = 2\n").unwrap();
-        let key_for = |p: &std::path::Path| {
-            unsafe { env::set_var("NROS_SIZING_DESCRIPTOR", p) }
-            let k = probe_key("x86_64-unknown-linux-gnu", &[]);
-            unsafe { env::remove_var("NROS_SIZING_DESCRIPTOR") }
-            k
-        };
+        let key_for = key_for_descriptor;
         assert_eq!(
             key_for(&a),
             key_for(&b),
@@ -2288,6 +2319,93 @@ mod tests {
         );
         let _ = std::fs::remove_dir_all(&d);
         restore_knob_env(prior);
+    }
+
+    /// Issue 2838 -- two images whose descriptors differ only in `[meta] entry`
+    /// share a probe; a descriptor that differs in a fact (an endpoint's topic,
+    /// which the readers join on) still splits it.
+    #[test]
+    fn descriptors_differing_only_in_entry_share_the_probe_key() {
+        use nros_sizing_descriptor::{
+            Basis, Endpoint, EndpointKind, Image, SizingDescriptor, Status,
+        };
+        let _g = env_lock();
+        let prior = clear_knob_env();
+        let d = std::env::temp_dir().join(format!("nros-sizes-class-{}", std::process::id()));
+        std::fs::create_dir_all(&d).unwrap();
+        let desc = |entry: &str, topic: &str| {
+            let mut x = SizingDescriptor::new(entry, Status::Partial, Basis::Contract);
+            x.endpoints.push(Endpoint::new(
+                EndpointKind::Publisher,
+                "std_msgs/msg/String",
+                topic,
+            ));
+            x.image = Image::new(Some(1), Some(0), Some(1));
+            nros_sizing_descriptor::render(&x)
+        };
+        let (talker, listener, other) = (
+            d.join("talker.toml"),
+            d.join("listener.toml"),
+            d.join("other.toml"),
+        );
+        std::fs::write(&talker, desc("talker", "/chatter")).unwrap();
+        std::fs::write(&listener, desc("listener", "/chatter")).unwrap();
+        std::fs::write(&other, desc("talker", "/other")).unwrap();
+        let key_for = key_for_descriptor;
+        assert_ne!(
+            std::fs::read(&talker).unwrap(),
+            std::fs::read(&listener).unwrap(),
+            "the two descriptors must differ in bytes, or this proves nothing"
+        );
+        assert_eq!(
+            key_for(&talker),
+            key_for(&listener),
+            "the entry name split the probe key"
+        );
+        assert_ne!(
+            key_for(&talker),
+            key_for(&other),
+            "a different topic did not split the probe key"
+        );
+        let _ = std::fs::remove_dir_all(&d);
+        restore_knob_env(prior);
+    }
+
+    /// Issue 2838 -- the premise the class key rests on: nothing that reads a
+    /// sizing descriptor at build time reads `[meta] entry`. Scans every Rust
+    /// source in the trees whose crates a probe can compile; the descriptor
+    /// crate itself is left out, because it writes and names the field.
+    #[test]
+    fn a_sizing_descriptor_reader_never_reads_the_entry_name() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
+        let out = Command::new("git")
+            .arg("-C")
+            .arg(&root)
+            .args([
+                "grep",
+                "-n",
+                "-E",
+                r"meta\s*\.\s*entry\b",
+                "--",
+                "packages/*.rs",
+            ])
+            .output()
+            .expect("run git grep");
+        let hits: Vec<String> = String::from_utf8_lossy(&out.stdout)
+            .lines()
+            .filter(|l| {
+                !l.starts_with("packages/tooling/nros-sizing-descriptor/")
+                    && !l.starts_with("packages/cli/")
+                    && !l.starts_with("packages/tooling/nros-sizes-build/")
+            })
+            .map(str::to_owned)
+            .collect();
+        assert!(
+            hits.is_empty(),
+            "a build-time reader reads `[meta] entry`, so the probe may no longer \
+             share across entry names (nros-sizes-build `descriptor_class_text`):\n{}",
+            hits.join("\n")
+        );
     }
 
     /// The other half, and the one that keeps issue 0528 shut: a knob NOT on the
