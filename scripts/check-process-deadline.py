@@ -36,7 +36,9 @@ What this checks
    worse, an unbounded command — so the old names are refused, not left to rot.
 4. The grace is ONE number in two languages (held equal), and the image's own
    termination grace is BELOW it, so an image ends by its own hand before any
-   harness escalation has to fire.
+   harness escalation has to fire. `nros run`'s teardown (`TEARDOWN_GRACE`) is
+   an escalator too, and its grace is held above the image's the same way
+   (issue 2868: it was equal, and the image's exit report was lost).
 
 Use the one spelling for the language and shape:
 
@@ -67,6 +69,7 @@ ROOT = Path(__file__).resolve().parent.parent
 RUST_HELPER = "packages/testing/nros-tests/src/process.rs"
 SHELL_HELPER = "scripts/lib/deadline.sh"
 IMAGE_GUARD = "packages/boards/nros-board-threadx-linux/c/board_threadx_linux.c"
+VERB_TEARDOWN = "packages/cli/nros-cli-core/src/target_session.rs"
 
 SCANNED_SUFFIXES = (".rs", ".sh", ".bash", ".py", ".just", ".yml", ".yaml")
 SCANNED_NAMES = ("justfile", "Dockerfile")
@@ -206,6 +209,13 @@ def scan_text(text, rust=False):
                 break
 
 
+def verb_teardown_grace():
+    """`nros run`'s SIGTERM-to-SIGKILL grace, in seconds, or None."""
+    src = (ROOT / VERB_TEARDOWN).read_text(encoding="utf-8")
+    m = re.search(r"pub const TEARDOWN_GRACE:\s*Duration\s*=\s*Duration::from_secs\((\d+)\)", src)
+    return int(m.group(1)) if m else None
+
+
 def grace_values():
     """(Rust harness grace s, shell harness grace s, image grace ms)."""
     rs = (ROOT / RUST_HELPER).read_text(encoding="utf-8")
@@ -315,6 +325,7 @@ def self_test(quiet=False):
     assert rs is not None, f"{RUST_HELPER}: no `pub const KILL_GRACE` found"
     assert sh is not None, f"{SHELL_HELPER}: no `NROS_KILL_GRACE_S` found"
     assert img is not None, f"{IMAGE_GUARD}: no `NROS_THREADX_LINUX_TERM_GRACE_MS` found"
+    assert verb_teardown_grace() is not None, f"{VERB_TEARDOWN}: no `pub const TEARDOWN_GRACE` found"
     assert ALLOW.check(ALLOW_NEIGHBOURS) == [], ALLOW.check(ALLOW_NEIGHBOURS)
     if not quiet:
         print("check-process-deadline self-test: OK")
@@ -358,8 +369,16 @@ def main():
                          f"the harness kill grace ({rs} s), so an image ends by its own "
                          f"hand before any escalation fires"))
 
+    verb = verb_teardown_grace()
+    if img is None or verb is None or img >= verb * 1000:
+        findings.append((VERB_TEARDOWN, 0, "-",
+                         f"the image's own termination grace ({img} ms) must be BELOW "
+                         f"`nros run`'s TEARDOWN_GRACE ({verb} s), or the verb's SIGKILL "
+                         f"lands before the image reports and ends (issue 2868)"))
+
     print(f"process deadlines: {scanned} tracked source files scanned, "
-          f"kill grace {rs}s (Rust) / {sh}s (shell), image grace {img} ms")
+          f"kill grace {rs}s (Rust) / {sh}s (shell), verb teardown {verb}s, "
+          f"image grace {img} ms")
     if findings:
         print("\n[FAIL] a process bounded by a deadline that does not escalate:",
               file=sys.stderr)
