@@ -1,13 +1,13 @@
 //! A linux image whose wall clock is the BOARD's (phase-582 W1d, RFC-0141 D2):
 //! a stub board's hook answering one fixed instant reaches `Clock::system()`
-//! and the samples' source stamps, in Rust and C++.
+//! and the samples' source stamps, in Rust, C and C++.
 //!
 //! **Bucket (phase-329 W4): matrix consumer.** The configured cells
-//! `(Linux, {Rust, Cpp}, Zenoh, Pubsub, Example) + [ClockBoard]` and
+//! `(Linux, {Rust, C, Cpp}, Zenoh, Pubsub, Example) + [ClockBoard]` and
 //! `(Linux, Rust, {Cyclonedds, Xrce}, Pubsub, Example) + [ClockBoard]` of
 //! `matrix::CELLS`.
 //!
-//! The images are the Rust and C++ workspaces' `linux_talker_clock_board`
+//! The images are the Rust, C and C++ workspaces' `linux_talker_clock_board`
 //! (the pubsub bringup): `[knobs.clock] source = "board"`, and a launch running the
 //! ordinary talker beside `clock_board_pkg`'s node. That package is the stub
 //! board: it defines `nros_board_wall_clock_ns`, answering
@@ -38,16 +38,14 @@
 //! `board_clock_source_stamp_per_backend`: Cyclone stamps host time, XRCE
 //! delivers no stamp (0), while the talker's own wall clock is the board's.
 //!
-//! C has no board image yet: the image's knob gives it its own configure, and
-//! that configure also builds every TYPED C component's native carrier
-//! executable (`pkg/<pkg>/<exe>`) against the same `board`-selected runtime.
-//! Those carriers have no hook, so the talker's and listener's carriers fail
-//! to link, naming `nros_board_wall_clock_ns` (issue 2841).
-//! C++ components register no native carrier, so the C++ configure builds.
+//! The image's knob gives it its own configure, and that configure builds the
+//! image only (issue 2841). It used to also build every TYPED C component's
+//! native carrier executable against the same `board`-selected runtime, and
+//! those carriers, having no hook, failed to link.
 //!
 //! ## Prerequisites
 //!
-//! - the rows `workspace-{rust,cpp}-native-talker-clock-board`,
+//! - the rows `workspace-{rust,c,cpp}-native-talker-clock-board`,
 //!   `workspace-{rust,c,cpp}-native-talker` and the MessageInfo observer (`just build-test-fixtures lane=linux`)
 //! - for the per-backend case, the rows
 //!   `workspace-rust-native-talker-{cyclonedds,xrce}-clock-board` and
@@ -75,7 +73,7 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
-/// The instant `clock_board_pkg`'s hook answers, in both languages:
+/// The instant `clock_board_pkg`'s hook answers, in every language:
 /// 2023-11-14T22:13:20Z.
 const BOARD_INSTANT_NS: i64 = 1_700_000_000_000_000_000;
 
@@ -204,6 +202,7 @@ fn run_pair(image: &Path, label: &str, expect_clock_line: bool) -> (String, Stri
 
 #[rstest]
 #[case::rust(Lang::Rust)]
+#[case::c(Lang::C)]
 #[case::cpp(Lang::Cpp)]
 fn board_clock_reaches_the_wall_clock_and_the_source_stamp(#[case] lang: Lang) {
     let image = talker(lang, &[Config::ClockBoard]);
@@ -425,6 +424,7 @@ fn cases_bound_to_matrix_cells() {
         Consumer::LinuxBoardClock,
         &[
             (cell(L::Rust), &[Config::ClockBoard]),
+            (cell(L::C), &[Config::ClockBoard]),
             (cell(L::Cpp), &[Config::ClockBoard]),
             (
                 (P::Linux, L::Rust, R::Cyclonedds, W::Pubsub, K::Example),

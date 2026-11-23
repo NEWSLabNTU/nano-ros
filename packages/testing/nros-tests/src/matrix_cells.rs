@@ -29,9 +29,11 @@ const CELLS_GENERATED: &[Cell] = &[
     // phase-582 W1d (RFC-0141 D2) -- the linux talker with the board's
     // wall-clock source, its hook a stub board answering one fixed instant:
     // `Clock::system()`, the state query and the samples' source stamps all
-    // follow it, in Rust and C++. The `linux_talker_clock_board` image of each
+    // follow it, in Rust, C and C++. The `linux_talker_clock_board` image of each
     // workspace's pubsub bringup; `tests/linux_board_clock.rs` runs it.
     cell(Linux, Rust, Zenoh, Pubsub, Example, Runtime).with(&[Config::ClockBoard]),
+    // Issue 2841 -- and C, now that its configure builds the image only.
+    cell(Linux, C, Zenoh, Pubsub, Example, Runtime).with(&[Config::ClockBoard]),
     cell(Linux, Cpp, Zenoh, Pubsub, Example, Runtime).with(&[Config::ClockBoard]),
     // phase-582 W4 -- the same configuration on the other two backends, in
     // Rust: each backend stamps its own samples, so these measure whether its

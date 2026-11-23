@@ -20,6 +20,14 @@ pkg = "listener_pkg"
 class = "listener_pkg::Listener"
 name = "listener"
 
+# The stub board of the `clock-board` configuration (issue 2841): its
+# wall-clock hook and a node printing the wall clock. Only
+# `linux_talker_clock_board` launches it.
+[[component]]
+pkg = "clock_board_pkg"
+class = "clock_board_pkg::ClockBoard"
+name = "clock_board"
+
 [image.freertos_talker]
 board = "mps2-an385-freertos"
 launch = "talker.launch.xml"
@@ -50,6 +58,18 @@ os_config = ["board-net-11.toml"]
 [image.linux_talker]
 board = "linux"
 launch = "talker.launch.xml"
+
+# The `clock-board` configuration of the linux talker (RFC-0141 D2): the wall
+# clock comes from the board's hook, which `clock_board_pkg` defines as a stub
+# answering one fixed instant. The stated knob gives the image its own
+# configure, which builds this image only, never a component's own executable
+# (issue 2841). `tests/linux_board_clock.rs` runs it.
+[image.linux_talker_clock_board]
+board = "linux"
+launch = "talker_clock_board.launch.xml"
+
+[image.linux_talker_clock_board.knobs.clock]
+source = "board"
 
 [image.linux_talker_xrce]
 board = "linux"
