@@ -340,12 +340,22 @@ jobs:
           nros setup --system --sudo
           just setup linux
 
-      - name: Build the levels-cpp fixtures
+      # The fixture set is DERIVED from the test (and the nros-tests helpers
+      # it calls), never listed here: a hand list of the four levels-cpp rows
+      # missed `workspace-rust-native-realtime` when issue 2617 added the Rust
+      # census test, so the job ran it against no fixture ([UNMET
+      # PRECONDITION], run 45104661214).
+      - name: Build the fixtures rt_sched_levels_e2e resolves
         run: |
           source ./activate.sh
-          for id in workspace-cpp-native-levels workspace-cpp-native-levels-s1 \
-                    workspace-cpp-native-levels-s1-flat workspace-cpp-native-levels-budget; do
-            NROS_FIXTURE_ID="$id" scripts/build/workspace-fixtures-build.sh linux cpp
+          if ! ids="$(python3 scripts/check-interop-verdicts.py \
+                      --workspace-fixtures-of-test rt_sched_levels_e2e)"; then
+            echo "::error::could not derive rt_sched_levels_e2e's workspace fixtures"
+            exit 1
+          fi
+          printf '  %s\n' $ids
+          for id in $ids; do
+            bash scripts/build/workspace-fixtures-build.sh linux --id "$id"
           done
 
       - name: Probe the granted scheduling
