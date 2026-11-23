@@ -108,3 +108,37 @@ entrypoint runs comes from main:
 
 The user has chosen, the choice is applied, and the next pairwise nightly
 on main reaches its cells.
+
+## Applied (2026-11-20), and what the nightly does since (2026-11-23)
+
+Both changes landed: the labels, then the pin (0d9429d990, 2026-11-20).
+`tier 2` and the pairwise nightly request `nros-heavy` and run on
+`nano-ros-runner-newslab-118-server`. The two scheduled pairwise nightlies
+since:
+
+| run | date | checkout | `just setup` | `just build tier2-nightly` | sweep | job |
+| --- | --- | ---: | ---: | ---: | ---: | --- |
+| 44874748326 | 11-21 | 0.5 min | 0.7 min | 36 min, **red** | 60 min | 98 min |
+| 44993007292 | 11-22 | 0.6 min | 0.7 min | 35 min, **red** | 56 min | 93 min |
+
+So the timeout is gone: the checkout that took 15 min on host 241 takes
+under a minute, and both jobs ended in about a fifth of the 490 min limit.
+Neither reached its cells, though, for a different reason. The build stops
+at a configure refusal in `examples/workspaces/features`:
+
+```
+Error: the parameter store cannot be sized: the entity inventory REFUSED
+...
+this configure links one runtime for several images, and 1 declare
+parameters while 16 declare none
+```
+
+That refusal belongs to the shared configure of the 17 `features` images.
+Issue 2702's change (2a83e9aa61, merged 2026-11-22 21:08Z, after both runs)
+gives each C/C++ workspace image its own configure, so it should no longer
+fire. That is read from the change, not yet seen in a nightly.
+
+Still open: "Done when" asks for a nightly on main that reaches its cells.
+The first nightly at or after 2a83e9aa61 answers it. Separately, the sweep
+step now takes about an hour, longer than the build it follows; not measured
+further here.
