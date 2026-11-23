@@ -13,10 +13,14 @@ setup *ARGS:
     # patches below operate on the in-tree submodule), and px4-rs (the root
     # workspace's cargo load path-deps px4-sitl-tests). Mirrors the CI workflow so
     # local == CI. nros resolved from $NROS_CLI / PATH / ~/.nros (install.sh).
+    # Issue 2917 -- and the vendored rosidl (~3 MB): a Cyclone image's msg->IDL
+    # step needs `rosidl_adapter` importable by the build's interpreter, and on
+    # the 4.4 line (Python >=3.12) a humble host's ROS copy (3.10) never is.
     source scripts/build/cargo.sh
     nros_bin="$(nros_cli_bin)"
     echo "[zephyr setup] provisioning sources via nros ($nros_bin)..."
     "$nros_bin" setup --source zenoh-pico --source cyclonedds-src --source px4-rs \
+        --source rosidl \
         --index "$(pwd)/nros-sdk-index.toml"
     # The HOST tools of every backend this lane builds, the way the freertos
     # and threadx setups already get theirs (`nros_setup_board_rmws`). Zephyr's
