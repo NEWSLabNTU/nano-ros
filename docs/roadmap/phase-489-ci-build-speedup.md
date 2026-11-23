@@ -1591,6 +1591,12 @@ pairwise nightly) onto the role label `nros-heavy`, which the operator gives
 to `newslab-118-server`, so they no longer land on host 241. It lands after
 the operator has re-registered (issue 2663, "Order").
 
+**Update (2026-11-23).** Host 241's two runners are re-registered with
+`NROS_RUNNER_HOST=241`, and both carry `nros-host-241`. Their supervision
+loops are transient systemd user units, so a reboot loses them and the
+variable with them: issue 2874 records each unit's command, working directory,
+log and environment, for persistent unit files.
+
 ## Self-hosted runner cache observations (2026-10-09..14)
 
 From the runner-sweep logs of the three self-hosted runners:
