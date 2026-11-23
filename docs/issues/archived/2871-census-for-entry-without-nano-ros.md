@@ -8,7 +8,7 @@ area: [cli, census, zephyr]
 found: 2026-11-23
 resolved: 2026-11-23
 resolved_in: "fix/issue-2871-no-nano-ros-entry"
-related: [2431, 2806, 2861, 2862]
+related: [2431, 2806, 2861, 2862, phase-478]
 ---
 
 ## What happened

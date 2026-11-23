@@ -1,12 +1,14 @@
 ---
 id: 2865
 title: "FreeRTOS resolves the wall clock on its first read, which runs before the network is up"
-status: open
+status: resolved
 type: bug
 severity: medium
 area: [freertos, platform]
 related: [rfc-0141, phase-582, phase-478]
 found: 2026-11-23
+resolved: 2026-11-23
+resolved_in: "fix(freertos): resolve the wall clock at a boot point after the network is up (issue 2865)"
 ---
 On a bare-metal FreeRTOS image the port resolved the `[knobs.clock] source`
 list on the first `nros_platform_time_now_ns` read from a task. That read is
@@ -73,3 +75,14 @@ cases:
 Every list case first checks that a read before the point reads 0, not
 synced, and asks the hook nothing. Two negative controls: an inert point
 fails `board-late`, and a lazy-on-first-read port fails both new cases.
+
+## Resolved, 2026-11-23
+
+Fixed in a10b403187 (PR #4639): FreeRTOS resolves the clock at
+`nros_platform_freertos_clock_resolve_point()`, after network bring-up, in
+every C, C++ and Rust entry and on freertos-posix. Tests: `just check
+clock-board-freertos` (board-late and early-read cases, with negative
+controls). Confirmed done by the phase-582 owner. Consumer evidence: the
+island's AN536 image logs "nros: wall clock from board" (its CI run
+45075448610). The "clock resolution took N ms" log line is a phase-582
+follow-up, not part of this issue.
