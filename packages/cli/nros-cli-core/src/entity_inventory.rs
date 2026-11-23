@@ -3770,6 +3770,12 @@ impl EntityInventory {
         &self.param_prose
     }
 
+    /// Issue 2650 -- the leaf road states what its probe sidecars watched
+    /// (`leaf_entity_env::inventory_for_leaf`).
+    pub fn set_param_prose(&mut self, prose: ParamProse) {
+        self.param_prose = prose;
+    }
+
     /// Issue 2768 -- what the probe recorded of every launched node's declared
     /// parameters, or `None` when some launched node has no single fresh
     /// sidecar. [`ParamDeclarations::from_model_with`] takes it, so a store is

@@ -11,7 +11,7 @@ resolved_in: "fix(nros-params, issue 2686): a truncated constraints text is repo
 related: [2650, phase-446, phase-417, phase-478]
 ---
 
-Found while capturing descriptor prose lengths for [issue 2650](../2650-param-descriptor-description-per-slot.md).
+Found while capturing descriptor prose lengths for [issue 2650](2650-param-descriptor-description-per-slot.md).
 
 ## What happened
 
