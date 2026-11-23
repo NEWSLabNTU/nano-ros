@@ -6,7 +6,7 @@ type: bug
 area: [stack-floor, zephyr, memory]
 severity: high
 found: 2026-11-23
-related: [phase-590]
+related: [2772, phase-590]
 ---
 
 ## What fails
@@ -29,6 +29,10 @@ The talker row on the same board (69,648 B recorded) still links.
 node-interfaces default and its parameter store (fragments `+phase-556-w13-*`) are the first
 suspects. `nros build` now explains a link overflow (phase-588), so a local build of the row
 names what the image reserves. Issue 2795 is the separate report-path item for this job.
+
+## Related
+
+Same family as issue 2772 (nucleo parameter-service heap overflowing RAM).
 
 ## Acceptance
 

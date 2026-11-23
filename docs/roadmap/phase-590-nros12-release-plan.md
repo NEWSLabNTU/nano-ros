@@ -89,18 +89,19 @@ the fix.
 
 | # | lane | blocker | issue | owner | PR | state |
 | --- | --- | --- | --- | --- | --- | --- |
-| B1 | tier 1, tier 2-nightly | linux fixture stage: `features/demo_bringup` parameter store refused | [2885](../issues/2885-linux-features-demo-param-store-refused.md) | to route | -- | open |
-| B2 | tier 2 | Zephyr connect-budget (3) and Rust action goal-completion rate | [2891](../issues/2891-tier2-zephyr-connect-budget-and-action-rate.md) | to route | -- | open |
-| B3 | tier 2 | Renode twin: the nucleo C talker faults in logging | [2815](../issues/2815-zephyr-nucleo-c-talker-faults-in-logging.md) | to route | -- | open |
-| B4 | nightly | island-shaped Zephyr snapshot stale | [2886](../issues/2886-island-shaped-zephyr-snapshot-stale.md) | to route | -- | open |
-| B5 | nightly | stack-floor row: Rust action server on nucleo-f767zi-zephyr overflows RAM by 77,440 B | [2887](../issues/2887-stack-floor-nucleo-action-server-rust-ram-overflow.md) | to route | -- | open |
-| B6 | nightly | ThreadX-Linux `session_open_outlasts_a_late_router` | [2888](../issues/2888-threadx-linux-late-router-session-open.md) | to route | -- | open |
-| B7 | host-tests | installed-track probe: `nros completions` with an unnamed `$SHELL` | [2892](../issues/2892-installed-probe-completions-shell.md) | 139 AUO book | -- | open |
-| B8 | host-tests | feature-sweep: `nros-node [alloc,rmw-lending]` clippy | (PR only) | 241 | #4679 | in review |
-| B9 | host-tests | rt-sched: `levels-cpp` Zephyr bound table missing; census test | [2890](../issues/2890-levels-cpp-zephyr-bound-table-probe.md) | to route | -- | open |
-| B10 | live-peer | Zephyr Cortex-M publisher to `ros2 topic echo`; runner-board fixture build | [2889](../issues/2889-live-peer-zephyr-cortex-m-ros2-echo.md) | to route | -- | open |
+| B1 | tier 1, tier 2-nightly | linux fixture stage: `features/demo_bringup` parameter store refused | [2885](../issues/2885-linux-features-demo-param-store-refused.md) | nros 175 | -- | open |
+| B2 | tier 2 | Zephyr connect-budget (3) and Rust action goal-completion rate | [2891](../issues/2891-tier2-zephyr-connect-budget-and-action-rate.md) | nros 139 | -- | open |
+| B3 | tier 2 | Renode twin: the nucleo C talker faults in logging | [2815](../issues/2815-zephyr-nucleo-c-talker-faults-in-logging.md) | nros 118 | -- | open |
+| B4 | nightly | island-shaped Zephyr snapshot stale | [2886](../issues/2886-island-shaped-zephyr-snapshot-stale.md) | NXP 175 | -- | open |
+| B5 | nightly | stack-floor row: Rust action server on nucleo-f767zi-zephyr overflows RAM by 77,440 B | [2887](../issues/2887-stack-floor-nucleo-action-server-rust-ram-overflow.md) | nros 175 | -- | open |
+| B6 | nightly | ThreadX-Linux `session_open_outlasts_a_late_router` | [2888](../issues/2888-threadx-linux-late-router-session-open.md) | nros 133 | -- | open |
+| B7 | host-tests | installed-track probe: `nros completions` with an unnamed `$SHELL` | [2892](../issues/2892-installed-probe-completions-shell.md) | nros 139 AUO book | -- | open |
+| B8 | host-tests | feature-sweep: `nros-node [alloc,rmw-lending]` clippy | (PR only) | nros 241 | #4679 | in review |
+| B9 | host-tests | rt-sched: `levels-cpp` Zephyr bound table missing; census test | [2890](../issues/2890-levels-cpp-zephyr-bound-table-probe.md) | nros 133 | -- | open |
+| B10 | live-peer | Zephyr Cortex-M publisher to `ros2 topic echo`; runner-board fixture build | [2889](../issues/2889-live-peer-zephyr-cortex-m-ros2-echo.md) | nros 118 | -- | open |
 
-The 118 session owns the `host-tests` / `live-peer` lane wiring itself.
+Owners are the sessions the manager routed each blocker to (2026-11-23). B5 is in the same family as
+issue 2772. The 118 session owns the `host-tests` / `live-peer` lane wiring itself.
 
 The release workflow path itself is not a blocker. W3 of phase-567 rehearses it end to end
 (the island-shaped workspace job, both starter images, `verify-starter-image.sh` and the
