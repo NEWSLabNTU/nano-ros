@@ -164,8 +164,8 @@ endif()
 # `#include "lwipopts.h"` and the FreeRTOS port needs `arch/cc.h`. Both are
 # per-deployment files (buffer counts, which protocols, MEM_SIZE …), so they
 # are yours, not nano-ros's. Reference pair:
-#   packages/boards/nros-board-freertos/config/lwipopts.h
-#   packages/boards/nros-board-freertos/config/arch/cc.h
+#   packages/boards/nros-board-freertos/config/nros_freertos_family_lwipopts.h
+#   packages/boards/nros-board-freertos/config/nros_freertos_family_cc.h
 if(NOT LWIP_CONFIG_DIR)
     message(FATAL_ERROR
         "nros-s32ds: -DLWIP_CONFIG_DIR=<dir> is required — a directory "

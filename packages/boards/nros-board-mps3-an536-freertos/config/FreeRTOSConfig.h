@@ -57,7 +57,7 @@
  * (cmake/board/nano-ros-board-mps3-an536-freertos.cmake). */
 #define configUSE_TASK_FPU_SUPPORT 2
 
-#include "../../nros-board-freertos/config/FreeRTOSConfig.h"
+#include "nros_freertos_family_config.h"
 
 /* GCC/ARM_CRx_No_GIC tick seam — implemented in c/board_an536.c against the
  * ARM generic timer (PPI 30) routed through the GICv3 redistributor. */

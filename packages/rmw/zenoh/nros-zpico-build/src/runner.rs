@@ -2836,6 +2836,8 @@ fn probe_net_type_sizes(
         }
         if let Some(dir) = nros_build_paths::env_path("FREERTOS_CONFIG_DIR") {
             build.include(dir);
+            // Issue 2687 — the board's config includes the family's by name.
+            build.include(nros_build_paths::freertos_family_config_dir());
         }
         if lwip && let Ok(lwip) = nros_build_paths::locate::try_source("lwip") {
             build.include(lwip.join("src/include"));

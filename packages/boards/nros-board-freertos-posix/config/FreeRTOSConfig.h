@@ -6,7 +6,7 @@
  *
  *     #define NROS_BOARD_CPU_CLOCK_HZ 25000000
  *     #define NROS_BOARD_PRIO_BITS    3
- *     #include "../../nros-board-freertos/config/FreeRTOSConfig.h"
+ *     #include "../../nros-board-freertos/config/nros_freertos_family_config.h"
  *
  * That is RFC-0064 ladder rung 3, taken deliberately. The shared family file's
  * two board facts are `configCPU_CLOCK_HZ` and `configPRIO_BITS`, and on the
@@ -90,7 +90,7 @@
 #define configUSE_TIMERS                        1
 /* The kernel's timer service task is a FOREIGN task to the priority plan:
  * `reserved.foreign = [4, 4]`, beside the transport, as on the hardware boards
- * (nros-board-freertos/config/FreeRTOSConfig.h). */
+ * (nros-board-freertos/config/nros_freertos_family_config.h). */
 #define configTIMER_TASK_PRIORITY               4
 #define configTIMER_QUEUE_LENGTH                20
 #define configTIMER_TASK_STACK_DEPTH            (configMINIMAL_STACK_SIZE * 2)

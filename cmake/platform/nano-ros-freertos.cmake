@@ -207,9 +207,11 @@ if(NROS_RMW STREQUAL "cyclonedds" AND NROS_FREERTOS_BOARD_HAS_LWIP
     else()
         nros_freertos_port_dir(_cyc_port_dir PORT "${FREERTOS_PORT}")
     endif()
+    nros_freertos_family_config_dir(_cyc_family_config_dir)
     set(_cyc_freertos_inc
         "-I${FREERTOS_CONFIG_DIR}"
         "-I${FREERTOS_CONFIG_DIR}/arch"
+        "-I${_cyc_family_config_dir}"
         "-I${FREERTOS_DIR}/include"
         "-I${_cyc_port_dir}"
         "-I${LWIP_DIR}/src/include"

@@ -182,6 +182,7 @@ pass through `manifest::interpolate`:
 | `{source:NAME}` | A vendored source tree by name, located through `nros locate` (RFC-0103 D4). |
 | `{nuttx_include}` | The NuttX include root for this arch's export. |
 | `{freertos_port_dir}` | The FreeRTOS port directory `FREERTOS_PORT` names, mapped through upstream's `portable/CMakeLists.txt` table (phase-349 W3). |
+| `{freertos_family_config_dir}` | The FreeRTOS family's configuration directory, which a board's `FreeRTOSConfig.h`, `lwipopts.h` and `arch/cc.h` include by name (`nros_freertos_family_*.h`), so a board package outside nano-ros states only its facts. |
 
 ## The compile
 

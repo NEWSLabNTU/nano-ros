@@ -8,15 +8,20 @@
  *
  *     #define NROS_BOARD_CPU_CLOCK_HZ 25000000
  *     #define NROS_BOARD_PRIO_BITS    3
- *     #include "../../nros-board-freertos/config/FreeRTOSConfig.h"
+ *     #include "nros_freertos_family_config.h"
  *
- * The include is RELATIVE ON PURPOSE. `FREERTOS_CONFIG_DIR` is a single
- * directory read by six build scripts plus the CMake lane, so making it a
- * search PATH would have been a cross-cutting change; a relative `#include "…"`
- * resolves against the including file's own directory and therefore works
- * identically in both lanes with no include-path edit at all. An out-of-tree
- * board that cannot spell that path takes RFC-0064 ladder rung 3 and owns the
- * whole file — the rung-3 rule is why that is an acceptable fallback.
+ * Issue 2687 — this directory is on the include path of EVERY FreeRTOS C
+ * build, after the board's own `FREERTOS_CONFIG_DIR`: the cargo road through
+ * `nros_build_paths::freertos_family_config_dir()` (and the `{freertos_family_
+ * config_dir}` descriptor token), the CMake road through
+ * `nros_freertos_family_config_dir()`. So a board package OUTSIDE nano-ros
+ * includes the family by name too, and owns only its facts. The relative
+ * `#include "../../nros-board-freertos/config/FreeRTOSConfig.h"` it replaces
+ * could not be spelled from outside the tree, so such a board used to copy
+ * all three family files (and its copies went stale). The headers here carry
+ * names no board file has (`nros_freertos_family_*.h`), so being always
+ * present can never shadow a board's own `FreeRTOSConfig.h`, `lwipopts.h` or
+ * `arch/cc.h`.
  *
  * Tuned for nros + zenoh-pico + lwIP:
  *   - Recursive mutexes (zenoh-pico)

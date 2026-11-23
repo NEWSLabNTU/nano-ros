@@ -78,7 +78,7 @@ def cross_reference(plans, errors):
                 f"places it at {m.group(1)} ({src.relative_to(ROOT)}) — the plan does "
                 "not describe what the port does")
 
-    hdr = ROOT / "packages/boards/nros-board-freertos/config/FreeRTOSConfig.h"
+    hdr = ROOT / "packages/boards/nros-board-freertos/config/nros_freertos_family_config.h"
     # phase-472 W6 — the definition the COMPILER keeps (the last unconditional
     # one), and a duplicate is itself an error; a first-match read answered a
     # question about a line nothing compiles. Absent is an error too, not a skip.
@@ -101,7 +101,7 @@ def cross_reference(plans, errors):
     # moves out of the band makes the plan false with nothing at run time to
     # say so, so the gate compares them. Absent or unparsable is an error.
     lo, hi = plan["reserved"].get("foreign", (None, None))
-    lwip = ROOT / "packages/boards/nros-board-freertos/config/lwipopts.h"
+    lwip = ROOT / "packages/boards/nros-board-freertos/config/nros_freertos_family_lwipopts.h"
     posix_hdr = ROOT / "packages/boards/nros-board-freertos-posix/config/FreeRTOSConfig.h"
     # The POSIX simulator board shares the platform's plan, so its kernel
     # config is held to the same range and band.

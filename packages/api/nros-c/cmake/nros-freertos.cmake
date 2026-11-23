@@ -23,6 +23,11 @@
 #       heap_4). Upstream's target
 #       is `freertos_kernel`. Optimised with -O2 -w (vendored code).
 #
+#   nros_freertos_family_config_dir(<out_var>)
+#       The FreeRTOS family's configuration directory (issue 2687), on
+#       the include path of every FreeRTOS C build after
+#       FREERTOS_CONFIG_DIR.
+#
 #   nros_freertos_port_dir(<out_var> PORT <enum-or-path>
 #                          [FREERTOS_DIR <dir>] [OUT_ENUM <var>])
 #       The `portable/` directory a port names (phase-349 W3). PORT is
@@ -81,6 +86,27 @@ include("${CMAKE_CURRENT_LIST_DIR}/nros-rtos-helpers.cmake")
 define_property(GLOBAL PROPERTY NROS_FREERTOS_NETIFS
     BRIEF_DOCS "FreeRTOS netif driver targets"
     FULL_DOCS  "Set of STATIC libs created by nros_freertos_build_netif")
+
+# ----------------------------------------------------------------------
+# nros_freertos_family_config_dir(<out_var>)
+#
+# Issue 2687 — the FreeRTOS family's configuration directory. A board's
+# FreeRTOSConfig.h, lwipopts.h and arch/cc.h state its facts and include the
+# family's by NAME (nros_freertos_family_config.h, _lwipopts.h, _cc.h), so every
+# FreeRTOS C build puts this directory after the board's FREERTOS_CONFIG_DIR. A
+# relative path to the family could not be spelled by a board package outside
+# nano-ros, which had to copy all three files instead. The cargo road's twin is
+# `nros_build_paths::freertos_family_config_dir()`. Captured CACHE INTERNAL at
+# include time: an include() inside a function drops the file's normal vars.
+# ----------------------------------------------------------------------
+get_filename_component(_NROS_FREERTOS_FAMILY_CONFIG_DIR
+    "${CMAKE_CURRENT_LIST_DIR}/../../../boards/nros-board-freertos/config" ABSOLUTE)
+set(_NROS_FREERTOS_FAMILY_CONFIG_DIR "${_NROS_FREERTOS_FAMILY_CONFIG_DIR}"
+    CACHE INTERNAL "The FreeRTOS family's configuration directory (issue 2687)")
+
+function(nros_freertos_family_config_dir out_var)
+    set(${out_var} "${_NROS_FREERTOS_FAMILY_CONFIG_DIR}" PARENT_SCOPE)
+endfunction()
 
 # ----------------------------------------------------------------------
 # nros_freertos_validate
@@ -353,10 +379,11 @@ function(nros_freertos_build_kernel)
         enable_language(ASM)
     endif()
 
+    nros_freertos_family_config_dir(_family_config_dir)
     if(NOT TARGET freertos_config)
         add_library(freertos_config INTERFACE)
         target_include_directories(freertos_config SYSTEM INTERFACE
-            "${FREERTOS_CONFIG_DIR}" ${_NFBK_EXTRA_INCLUDES})
+            "${FREERTOS_CONFIG_DIR}" "${_family_config_dir}" ${_NFBK_EXTRA_INCLUDES})
     endif()
 
     if(_enum STREQUAL "A_CUSTOM_PORT")
@@ -387,6 +414,7 @@ function(nros_freertos_build_kernel)
 
     set(NROS_FREERTOS_INCLUDES
         "${FREERTOS_CONFIG_DIR}"
+        "${_family_config_dir}"
         "${FREERTOS_DIR}/include"
         "${_port_dir}"
         ${_NFBK_EXTRA_INCLUDES}

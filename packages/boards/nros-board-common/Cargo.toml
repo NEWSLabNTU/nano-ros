@@ -73,3 +73,6 @@ deploy-overlay = ["dep:nros-platform"]
 [dev-dependencies]
 # phase-290 — platform_config tree tests build sandboxed config trees.
 tempfile = "3"
+# issue 2687 — the FreeRTOS family's config dir, for the tests that preprocess
+# a board's FreeRTOSConfig.h the way a build does.
+nros-build-paths = { path = "../../tooling/nros-build-paths" }

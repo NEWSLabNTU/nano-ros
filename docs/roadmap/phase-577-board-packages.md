@@ -256,4 +256,4 @@ is already a package. What is missing is measured in RFC-0135's Motivation:
 
 | issue | why it belongs here |
 | --- | --- |
-| issue 2687 | An out-of-tree FreeRTOS board package must copy the family's FreeRTOSConfig.h, lwipopts.h and arch/cc.h; found by W8's fixture board. |
+| issue 2687 | An out-of-tree FreeRTOS board package had to copy the family's FreeRTOSConfig.h, lwipopts.h and arch/cc.h; found by W8's fixture board. **Resolved 2026-11-23** (ruled shape (a)): the family dir is on every FreeRTOS C build's include path on both roads, its headers named , and W8's fixture board states only its facts. |
