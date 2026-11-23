@@ -97,20 +97,46 @@ IFS=$'\x1f' read -r id builder dir _pkg _mdir _target _profiles _output <<< "$re
         # as current for 4.4.
         sig_paths=("$dir" zephyr cmake)
         printf 'zephyr-line\0%s\0' "$(nros_zephyr_fixture_line)"
-        # Issue 2439 -- and the CLI's PLANNING, not only what it emits. Every
-        # west configure runs `nros configure` (the module hook) and a
-        # `west_nros_image` row runs `nros build`; the seeds and the image
-        # statement they hand the configure are no codegen output, so a change
-        # to them moved nothing above and the row was REUSED over it. The
-        # source stamp is wider than needed (a doctor.rs edit moves it), which
-        # costs six rows a re-configure: the safe direction, and cheap here.
+    else
+        sig_paths=("$dir")
+    fi
+
+    # Issue 2439 -- and the CLI's PLANNING, not only what it emits. Every
+    # west configure runs `nros configure` (the module hook) and a
+    # `west_nros_image` row runs `nros build`; the seeds and the image
+    # statement they hand the configure are no codegen output, so a change
+    # to them moved nothing above and the row was REUSED over it. The
+    # source stamp is wider than needed (a doctor.rs edit moves it), which
+    # costs six rows a re-configure: the safe direction, and cheap here.
+    #
+    # Issue 2833 -- a `fixture-script` row too. Its `build.sh` is opaque and
+    # may run any `nros` verb (`image_features_shared_configure_refused`
+    # runs `nros build`), so a CLI change that left the codegen fingerprint
+    # alone left every such row fresh and its recorded verdict was the old
+    # CLI's. Every fixture-script row keys on the stamp, not only the ones a
+    # grep finds calling `nros`: a script can reach the CLI through a helper,
+    # and the error is toward a rebuild, never toward reuse. The sweep found
+    # the same shape in one more builder: a `cmake-configure` row over a
+    # WORKSPACE template is built by `nros configure` + `nros build`
+    # (`build_cmake_fixture`, same predicate: no root `CMakeLists.txt`, a
+    # `.colcon_workspace`), so it keys on the stamp as well. A row over a plain
+    # `CMakeLists.txt` runs only codegen, which the fingerprint above covers.
+    _sig_cli_planning=0
+    case "$builder" in
+        west-build | west-configure | fixture-script) _sig_cli_planning=1 ;;
+        cmake-configure)
+            if [ ! -f "$repo_root/$dir/CMakeLists.txt" ] &&
+                [ -f "$repo_root/$dir/.colcon_workspace" ]; then
+                _sig_cli_planning=1
+            fi
+            ;;
+    esac
+    if [ "$_sig_cli_planning" = 1 ]; then
         if ss="$(nros_cli_source_stamp "$repo_root")"; then
             printf 'tool:nros-source-stamp\0%s\0' "$ss"
         else
             printf 'tool:nros-source-stamp-absent\0'
         fi
-    else
-        sig_paths=("$dir")
     fi
 
     # Issue 2801 -- and the BUILDER. `compile-check-fixtures.sh` is what stages
