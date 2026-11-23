@@ -142,8 +142,17 @@ nros_zephyr_activate() {
     py="$(nros_zephyr_python)"
     [ -n "$py" ] || return 0
     bindir="$(dirname "$py")"
-    case ":$PATH:" in
-        *":$bindir:"*) ;;
-        *) PATH="$bindir:$PATH"; export PATH ;;
-    esac
+    # FIRST, not merely present (issue 2921). The root justfile exports
+    # `~/.local/bin` ahead of the caller's PATH, and a host's own `west` lives
+    # there, on the system Python. With the venv already further down, a
+    # presence test left PATH alone, `west` resolved to the system one, and a
+    # 4.4 build configured with `-DWEST_PYTHON=/usr/bin/python3` and refused
+    # Python 3.10 — even with the venv first in the caller's PATH.
+    local rest="" entry
+    local IFS=:
+    for entry in $PATH; do
+        [ "$entry" = "$bindir" ] || rest="${rest:+$rest:}$entry"
+    done
+    PATH="$bindir${rest:+:$rest}"
+    export PATH
 }
