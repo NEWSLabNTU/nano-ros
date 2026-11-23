@@ -18,7 +18,7 @@
 #   - NUTTX_DIR — NuttX source (default: third-party/nuttx/nuttx)
 #   - NUTTX_APPS_DIR — NuttX apps source (default: third-party/nuttx/nuttx-apps)
 #   - NUTTX_DEFCONFIG — board defconfig (the board overlay supplies this; default
-#     is the qemu-arm board)
+#     is the qemu-arm board). A relative path is taken from the caller's cwd.
 #   - NUTTX_BOARD_MAKEDEFS — board Make.defs path relative to NUTTX_DIR (the board
 #     overlay supplies this; default = the qemu-arm board's
 #     boards/arm/qemu/qemu-armv7a/scripts/Make.defs)
@@ -37,6 +37,10 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 DEFCONFIG="${NUTTX_DEFCONFIG:-$PROJECT_ROOT/packages/boards/nros-board-nuttx-qemu/nuttx-config/arm/defconfig}"
+# Issue 2915 — the defconfig, resolved once, before any `cd`.
+# shellcheck source=scripts/nuttx/build-inputs.sh
+. "$SCRIPT_DIR/build-inputs.sh"
+DEFCONFIG="$(nros_nuttx_resolve_defconfig "$DEFCONFIG" "$PWD")" || exit 1
 
 # --- Auto-resolve paths from project root if not set ---
 
@@ -195,9 +199,10 @@ BOARD_MAKEDEFS="$(pwd)/${NUTTX_BOARD_MAKEDEFS:-boards/arm/qemu/qemu-armv7a/scrip
 #
 # Derived from the DEFCONFIG, never from `.config` — at decision time the tree
 # may still hold the other architecture, which is exactly the case this fixes.
-# `|| true` so the "declares no CONFIG_ARCH" message below can be reached:
-# grep spells "no match" as exit 1 (issue 1249).
-NUTTX_ARCH=$(grep -E '^CONFIG_ARCH=' "$DEFCONFIG" 2>/dev/null | cut -d'"' -f2 || true)
+# The file exists (resolved and checked at the top, issue 2915), so an empty
+# value here is a defconfig that states none, never a path read from the wrong
+# directory.
+NUTTX_ARCH="$(nros_nuttx_defconfig_value "$DEFCONFIG" ARCH)"
 if [ -z "$NUTTX_ARCH" ]; then
     echo "build-nuttx.sh: $DEFCONFIG declares no CONFIG_ARCH — cannot key the export" >&2
     exit 1

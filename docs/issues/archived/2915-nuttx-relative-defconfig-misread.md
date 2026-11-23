@@ -1,11 +1,12 @@
 ---
 id: 2915
 title: "A relative NUTTX_DEFCONFIG is read from inside the NuttX tree, and build-nuttx.sh reports the missing file as \"declares no CONFIG_ARCH\""
-status: open
+status: resolved
 type: bug
 severity: low
 area: [nuttx, build, ux]
 found: 2026-11-23
+resolved: 2026-11-24
 related: [2914]
 ---
 
@@ -36,3 +37,7 @@ Resolve `DEFCONFIG` to an absolute path against the caller's cwd before the
 given and as resolved. Then the `2>/dev/null` reads can only meet a file that
 exists. Acceptance: a relative path from the repo root builds; a missing one
 fails naming the file.
+
+## Resolution
+
+Fixed 2026-11-24. `build-nuttx.sh` resolves `NUTTX_DEFCONFIG` against the caller's cwd before any `cd` (`nros_nuttx_resolve_defconfig` in `scripts/nuttx/build-inputs.sh`) and refuses a path that is not a file, naming it as given and as resolved, so the `CONFIG_ARCH` read only meets a file that exists. Gate: `just check nuttx-build-inputs`, whose negative control is the same relative path resolved from inside a NuttX tree.
