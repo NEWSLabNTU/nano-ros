@@ -1,11 +1,12 @@
 ---
 id: 2914
 title: "build-nuttx.sh pairs any defconfig with the ARM board Make.defs unless NUTTX_BOARD_MAKEDEFS is also set, so a riscv defconfig alone compiles with host gcc and -mfloat-abi=soft"
-status: open
+status: resolved
 type: bug
 severity: low
 area: [nuttx, build]
 found: 2026-11-23
+resolved: 2026-11-24
 related: [2773, 2807]
 ---
 
@@ -46,3 +47,7 @@ override, and refuse an override whose path does not sit under
 `boards/<CONFIG_ARCH>/`, naming both files. One computation, used by both call
 sites. Acceptance: a run with only the riscv defconfig set configures the
 rv-virt Make.defs; a mismatched override is refused before `configure.sh`.
+
+## Resolution
+
+Fixed 2026-11-24. The board Make.defs is derived from the defconfig's `CONFIG_ARCH` / `CONFIG_ARCH_CHIP` / `CONFIG_ARCH_BOARD` (`nros_nuttx_board_makedefs` in `scripts/nuttx/build-inputs.sh`), at both sites in `build-nuttx.sh`. `NUTTX_BOARD_MAKEDEFS` is kept as an override only under `boards/<arch>/` for the defconfig's arch, and refused otherwise, naming both files. The riscv recipes in `just/nuttx.just` no longer pass it. Gate: `just check nuttx-build-inputs`, whose negative control is a riscv defconfig with the qemu-arm Make.defs.
