@@ -39,3 +39,33 @@ node, with the once-per-process mismatch warning of RFC-0140 D8, or the row
 becomes IGNORE with a notice naming the authoring place, never a read whose
 result is dropped. Acceptance in W12 is a run per road with the variable set
 that observes the new name (liveliness token and boot line), not a read.
+
+## Where the read is dropped (2026-11-23)
+
+`nros::env::env_rung` reads both variables into `EnvRung::node_name` /
+`namespace`, and `ExecutorConfig::try_resolve_with` takes them over the baked
+rung. That answers ONE name: the executor's configured node (the lazy node the
+executor creates when an entity needs one). A Rust component's
+`create_node("talker")` and a C/C++ application's named node never consult it,
+so on every image whose nodes are named in code or by the launch file, the
+value is read and discarded. There is a second reason a plain "env wins" cannot
+be the rule: an image with several nodes has several names, and one variable
+cannot rename them all without making them collide.
+
+## Recommendation for W12 (manager-endorsed, 2026-11-23)
+
+Not landed ahead of W12: the fix belongs on `nros-env` (W10), under RFC-0140.
+
+- **One node in the image:** `NROS_NODE_NAME` renames that node, whatever
+  named it (component, application, launch), and a mismatch with the stated
+  name warns once per process (RFC-0140 D8).
+- **Two or more nodes:** `NROS_NODE_NAME` is IGNOREd, with a once-per-process
+  notice that names where a node's name is authored (`system.toml` or a launch
+  remap), never a silent drop.
+- **`NROS_NODE_NAMESPACE`:** applies to every node of the image, warning once
+  when it differs from a stated namespace. A namespace does not collide, so
+  the node count does not matter.
+
+Acceptance stays as above: a Linux run per road (Rust, C, C++), single-node
+and multi-node, with the variable set, observing the liveliness token and the
+boot line.
