@@ -12,11 +12,16 @@
 #include <sys/types.h> /* clockid_t: newlib has it via time.h, TI Arm Clang's libc only here */
 #include <time.h>
 
+/* The ARM EABI thread-pointer helper. It exists only on an ARM EABI target,
+ * whose linker script defines `__tls_base`; on any other target the compiler
+ * never calls it, and defining it only demands a symbol nothing provides. */
+#if defined(__ARM_EABI__)
 extern char __tls_base[];
 
 void *__aeabi_read_tp(void) {
     return __tls_base;
 }
+#endif
 
 int gethostname(char *name, size_t len) {
     static const char hostname[] = "nano-ros";

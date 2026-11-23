@@ -1,0 +1,1 @@
+A hosted FreeRTOS build (the POSIX port) no longer links the bare-metal compatibility shims, which shadowed the C library's `clock_gettime` and failed on an ARM-only symbol; a bare-metal build still gets them.
