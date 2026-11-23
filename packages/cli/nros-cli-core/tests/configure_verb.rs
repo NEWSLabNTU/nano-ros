@@ -61,19 +61,51 @@ fn configure_outcome_as(full: &[&str]) -> configure::Outcome {
     configure::configure(args).unwrap_or_else(|e| panic!("configure failed: {e:?}"))
 }
 
-/// Issue 2683 -- `argv` with `--offline` after a verb that resolves the
-/// leaf's lock (`configure`, its `sync` alias, `build`). Seeding a leaf's lock
-/// ends in `cargo update --workspace`, which refreshes the crates.io index and
-/// fetches the git dependencies: measured 11.5 s of a 16 s test, and the part
-/// a loaded host or a slow network stretches toward the gate's timeout.
-/// Nothing here tests the network, so [`setup`] resolves online ONCE per
-/// process and every verb after that reads the cache it filled.
+/// Issue 2683 -- `argv` with `--offline`, for every verb whose grammar takes
+/// it. Seeding a leaf's lock ends in `cargo update --workspace`, which
+/// refreshes the crates.io index and fetches the git dependencies: measured
+/// 11.5 s of a 16 s test, and the part a loaded host or a slow network
+/// stretches toward the gate's timeout. Nothing here tests the network, so
+/// [`setup`] resolves online ONCE per process and every verb after that reads
+/// the cache it filled.
+///
+/// Which verbs take the flag is asked of the parser, not listed here.
+// Issue 2627: a list of first words (`configure`, `sync`, `build`) missed
+// `dev bindings`, which flattens the same sync arguments, so that one test
+// still pruned online and failed once under a loaded gate.
 fn offline<'a>(argv: &[&'a str]) -> Vec<&'a str> {
-    let mut out = argv.to_vec();
-    if matches!(argv.first(), Some(&("configure" | "sync" | "build"))) {
-        out.insert(1, "--offline");
+    if argv.contains(&"--offline") {
+        return argv.to_vec();
     }
-    out
+    let mut out = argv.to_vec();
+    let at = argv.iter().position(|a| *a == "--").unwrap_or(argv.len());
+    out.insert(at, "--offline");
+    let mut full = vec!["nros"];
+    full.extend_from_slice(&out);
+    if Cli::try_parse_from(&full).is_ok() {
+        out
+    } else {
+        argv.to_vec()
+    }
+}
+
+/// [`offline`] reaches every verb in this file that resolves a lock, and
+/// leaves an argv the grammar refuses with the flag as written.
+#[test]
+fn offline_is_added_wherever_the_grammar_takes_it() {
+    for argv in [
+        &["configure", "x"][..],
+        &["sync", "x"],
+        &["build", "--dry-run", "x"],
+        &["dev", "bindings", "x"],
+    ] {
+        assert!(
+            offline(argv).contains(&"--offline"),
+            "`{}` takes --offline and did not get it",
+            argv.join(" ")
+        );
+    }
+    assert_eq!(offline(&["no-such-verb"]), ["no-such-verb"]);
 }
 
 fn repo_root() -> PathBuf {
