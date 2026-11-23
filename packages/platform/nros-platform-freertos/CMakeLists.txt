@@ -74,9 +74,21 @@ set(_nros_freertos_sources src/platform.c src/timer.c)
 # reference to __tls_base`: there is no linker script defining it) and the other
 # two would shadow glibc's. Same opt-out shape as `net.c` above, and the same
 # reason: a source that answers a question the host already answered.
+#
+# So the DEFAULT is a property of the target, never of who remembered to say
+# OFF: a hosted system (CMake names it — Linux, Darwin, ...) has a C library,
+# a bare-metal one is `Generic`. Each hosted caller used to opt out by hand,
+# and the one that did not (the C-port smoke) linked this TU's
+# `clock_gettime` over glibc's the moment `platform.c` first called it, and
+# with it `__aeabi_read_tp` and its missing `__tls_base`.
+if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
+    set(_nros_freertos_compat_default ON)
+else()
+    set(_nros_freertos_compat_default OFF)
+endif()
 option(NROS_PLATFORM_FREERTOS_WITH_BAREMETAL_COMPAT
        "Include cyclonedds_compat.c (bare-metal fill-ins for Cyclone's ddsrt: \
-__aeabi_read_tp/__tls_base, gethostname, clock_gettime)" ON)
+__aeabi_read_tp/__tls_base, gethostname, clock_gettime)" ${_nros_freertos_compat_default})
 if(NROS_PLATFORM_FREERTOS_WITH_BAREMETAL_COMPAT)
     list(APPEND _nros_freertos_sources src/cyclonedds_compat.c)
 endif()
