@@ -64,6 +64,13 @@ fn main() -> Result<()> {
         // reading the environment while it is written.
         unsafe { std::env::set_var(k, v) };
     }
+    // A refusal is for the user: it names what to do, not the line of nros
+    // that raised it. eyre's default report ends with `Location:
+    // nros-cli-core/src/...`, so it is replaced unless the user asked for a
+    // backtrace, where the location is wanted.
+    if std::env::var_os("RUST_BACKTRACE").is_none() {
+        let _ = eyre::set_hook(Box::new(|_| Box::new(UserReport)));
+    }
     // phase-552 W2 (RFC-0129 D2) — a refusal built from its diagnostic code is
     // already three finished lines (`error[NROS-…]`, `help`, `explain`), so it
     // prints as it is, without eyre's `Error: ` in front. Anything else, and a
@@ -216,4 +223,52 @@ fn grouped_help(cmd: clap::Command, with_dev: bool) -> clap::Command {
     cmd.help_template(format!(
         "{{before-help}}{{about-with-newline}}\n{{usage-heading}} {{usage}}\n\n{groups}Options:\n{{options}}{{after-help}}"
     ))
+}
+
+/// eyre's default report without its `Location:` block: the error, then each
+/// cause, numbered when there is more than one.
+struct UserReport;
+
+impl eyre::EyreHandler for UserReport {
+    fn debug(
+        &self,
+        error: &(dyn std::error::Error + 'static),
+        f: &mut std::fmt::Formatter<'_>,
+    ) -> std::fmt::Result {
+        if f.alternate() {
+            return std::fmt::Debug::fmt(error, f);
+        }
+        write!(f, "{error}")?;
+        let Some(cause) = error.source() else {
+            return Ok(());
+        };
+        write!(f, "\n\nCaused by:")?;
+        let multiple = cause.source().is_some();
+        for (n, e) in eyre::Chain::new(cause).enumerate() {
+            let lead = if multiple {
+                format!("{n:>4}: ")
+            } else {
+                "    ".to_string()
+            };
+            let pad = " ".repeat(lead.len());
+            for (i, line) in e.to_string().lines().enumerate() {
+                write!(f, "\n{}{line}", if i == 0 { &lead } else { &pad })?;
+            }
+        }
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod user_report_tests {
+    use eyre::WrapErr;
+
+    #[test]
+    fn a_report_names_its_causes_and_no_source_location() {
+        let _ = eyre::set_hook(Box::new(|_| Box::new(super::UserReport)));
+        let r: eyre::Result<()> = Err(eyre::eyre!("the inner cause")).wrap_err("the refusal");
+        let shown = format!("{:?}", r.unwrap_err());
+        assert_eq!(shown, "the refusal\n\nCaused by:\n    the inner cause");
+        assert!(!shown.contains("Location"), "{shown}");
+    }
 }
