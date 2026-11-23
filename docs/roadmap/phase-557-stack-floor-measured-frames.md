@@ -343,7 +343,7 @@ variants of each unit. So the walk's flags do not thrash a shared dir.
   #4531, for issue 2514). ThreadX on Linux is reported
   not checked, with its reason (2026-11-22). Its threads now run on their
   stated stacks
-  ([issue 2800](../issues/2800-threadx-linux-threads-run-on-host-pthread-stacks.md)),
+  ([issue 2800](../issues/archived/2800-threadx-linux-threads-run-on-host-pthread-stacks.md)),
   but a host image's paths run through the host libc, whose frames the walk
   does not size
   ([issue 2834](../issues/2834-host-image-stack-floor-walk.md)).
