@@ -17,3 +17,21 @@ board = "linux"
 
 [image.linux]
 entry = "cpp_lifecycle_pair"
+
+# The same program on the two DDS-shaped backends, for the interop cells
+# on every RMW the matrix carries. Each managed node pays its own service
+# entities there (RFC-0128 D7).
+[image.linux_xrce]
+entry = "cpp_lifecycle_pair"
+rmw = "xrce"
+
+# The program makes BOTH nodes managed in its own `main`, which no declaration
+# shows the entity inventory, so no derivation counts their services.
+# Two machines claim five lifecycle services each (RFC-0128 D7), and the
+# program serves none of its own.
+[image.linux_xrce.knobs.xrce]
+max_service_servers = 10
+
+[image.linux_cyclonedds]
+entry = "cpp_lifecycle_pair"
+rmw = "cyclonedds"

@@ -8904,26 +8904,41 @@ pub fn build_c_lifecycle_node() -> TestResult<&'static Path> {
         .map(|p| p.as_path())
 }
 
-/// phase-554 W9 -- two managed C nodes in one image (row `c-lifecycle-pair`),
-/// each with its own lifecycle and a publisher that is silent until active.
-pub fn build_c_lifecycle_pair() -> TestResult<&'static Path> {
-    static BINARY: OnceCell<PathBuf> = OnceCell::new();
-    BINARY
-        .get_or_try_init(|| {
-            build_example_cmake_rmw("linux/c/lifecycle-pair", "c_lifecycle_pair", Rmw::Zenoh)
-        })
-        .map(|p| p.as_path())
+/// phase-554 W9 -- two managed C nodes in one image, each with its own
+/// lifecycle and a publisher that is silent until active. Rows
+/// `c-lifecycle-pair` (zenoh), `c-lifecycle-pair-xrce` and
+/// `c-lifecycle-pair-cyclonedds`.
+pub fn build_c_lifecycle_pair(rmw: Rmw) -> TestResult<&'static Path> {
+    static ZENOH: OnceCell<PathBuf> = OnceCell::new();
+    static XRCE: OnceCell<PathBuf> = OnceCell::new();
+    static CYCLONEDDS: OnceCell<PathBuf> = OnceCell::new();
+    let cell = match rmw {
+        Rmw::Zenoh => &ZENOH,
+        Rmw::Xrce => &XRCE,
+        Rmw::Cyclonedds => &CYCLONEDDS,
+    };
+    cell.get_or_try_init(|| {
+        build_example_cmake_rmw("linux/c/lifecycle-pair", "c_lifecycle_pair", rmw)
+    })
+    .map(|p| p.as_path())
 }
 
 /// phase-554 W9 -- the C++ twin of [`build_c_lifecycle_pair`]: two
-/// `rclcpp_lifecycle::LifecycleNode`s (row `cpp-lifecycle-pair`).
-pub fn build_cpp_lifecycle_pair() -> TestResult<&'static Path> {
-    static BINARY: OnceCell<PathBuf> = OnceCell::new();
-    BINARY
-        .get_or_try_init(|| {
-            build_example_cmake_rmw("linux/cpp/lifecycle-pair", "cpp_lifecycle_pair", Rmw::Zenoh)
-        })
-        .map(|p| p.as_path())
+/// `rclcpp_lifecycle::LifecycleNode`s. Rows `cpp-lifecycle-pair` (zenoh),
+/// `cpp-lifecycle-pair-xrce` and `cpp-lifecycle-pair-cyclonedds`.
+pub fn build_cpp_lifecycle_pair(rmw: Rmw) -> TestResult<&'static Path> {
+    static ZENOH: OnceCell<PathBuf> = OnceCell::new();
+    static XRCE: OnceCell<PathBuf> = OnceCell::new();
+    static CYCLONEDDS: OnceCell<PathBuf> = OnceCell::new();
+    let cell = match rmw {
+        Rmw::Zenoh => &ZENOH,
+        Rmw::Xrce => &XRCE,
+        Rmw::Cyclonedds => &CYCLONEDDS,
+    };
+    cell.get_or_try_init(|| {
+        build_example_cmake_rmw("linux/cpp/lifecycle-pair", "cpp_lifecycle_pair", rmw)
+    })
+    .map(|p| p.as_path())
 }
 
 /// Cached path to the qemu-rtic-action-server binary
