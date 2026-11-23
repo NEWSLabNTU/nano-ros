@@ -5,12 +5,13 @@ status: open
 type: design-question
 severity: low
 area: [clock, zephyr, network]
-related: [phase-478, rfc-0141, 0758, 2866]
+related: [phase-582, phase-478, rfc-0141, 0758, 2866]
 found: 2026-11-23
 ---
 
-**Home:** [phase-478](../roadmap/phase-478-island-developer-experience-findings.md)
-I44. Consumer: the safety island (autoware-safety-island fork), branch
+**Home:** [phase-582](../roadmap/phase-582-wall-clock-source.md), rehomed
+2026-11-23 from [phase-478](../roadmap/phase-478-island-developer-experience-findings.md)
+I44, where the consumer found it. Consumer: the safety island (autoware-safety-island fork), branch
 `nano-ros-next`, nano-ros pin `8d4e70a382`.
 
 ## What happens
