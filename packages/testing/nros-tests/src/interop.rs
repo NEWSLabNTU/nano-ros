@@ -1100,6 +1100,15 @@ pub const CASE_CELLS: &[CaseOwner] = &[
     unowned("xrce_ros2_interop", "test_ros2_action_xrce_client",
             "no Xrce/Action interop cell exists (the ROS-2-drives-nano direction \
              of the two above)"),
+    // ── lifecycle_pair_interop -- two cells, one case each ─────────────────
+    // phase-554 W9: the C and the C++ image are separate cases, so a red on
+    // one says nothing about the other.
+    co("lifecycle_pair_interop",
+       "two_managed_nodes_are_silent_until_each_is_active::case_1_c",
+       "native-lifecycle-pair-c-zenoh"),
+    co("lifecycle_pair_interop",
+       "two_managed_nodes_are_silent_until_each_is_active::case_2_cpp",
+       "native-lifecycle-pair-cpp-zenoh"),
 ];
 
 /// Which cell, if any, a case of `test` is evidence for. `None` when the binary

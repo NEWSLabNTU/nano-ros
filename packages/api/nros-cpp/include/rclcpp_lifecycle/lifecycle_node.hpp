@@ -543,7 +543,6 @@ class LifecycleEngine {
         // A bound node's machine is its own (one per managed node), so its
         // callbacks go there; the executor-scoped calls below find no machine
         // once an executor holds two.
-        // Issue 2858 -- the executor-scoped shims lost a second node's machine.
         if (bound != nullptr) {
             return ::rclcpp::Result(nros_cpp_lifecycle_node_bind(
                 bound, &LifecycleEngine::tramp_configure, &LifecycleEngine::tramp_activate,
@@ -1089,13 +1088,11 @@ class LifecycleEngine {
     // callback if there is one and to the virtual otherwise.
     //
     // The managed entities follow the node's state, as the runtime's publish
-    // gate does (RFC-0128 D3). `activate` opens them BEFORE the user's hook,
+    // gate does. `activate` opens them BEFORE the user's hook,
     // because rclcpp's base `on_activate` activates them first and a publish
     // inside the hook must go out, then closes them again if the hook did not
     // succeed. `deactivate` / `cleanup` / `shutdown` close them after a hook
     // that succeeded.
-    // Issue 2857 -- this was after the hook, so a `LifecyclePublisher` dropped
-    // what `on_activate` published although the runtime's gate was open.
     static CallbackReturn dispatch(LifecycleEngine* n, TransitionCallbackType cb, void* ctx,
                                    CallbackReturn (LifecycleEngine::*fallback)(LifecycleState)) {
         const LifecycleState previous = n->get_current_state();

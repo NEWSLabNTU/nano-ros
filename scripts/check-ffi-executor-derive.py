@@ -101,6 +101,7 @@ HEADER_CASTS = {
     ("nros-c/src/executor.rs", "rclc_executor_node_init"): "body-scoped header read",
     ("nros-c/src/executor.rs", "trigger_bridge"): "body-scoped header read",
     ("nros-c/src/guard_condition.rs", "rclc_node_create_guard_condition"): "body-scoped header read",
+    ("nros-c/src/lifecycle.rs", "node_scope"): "the bound node's executor; each caller derives it body-scoped, never across a spin",
     ("nros-c/src/guard_condition.rs", "rclc_node_get_graph_guard_condition"): "body-scoped header read",
     ("nros-c/src/node.rs", "rclc_node_resolve_name"): "body-scoped header read",
     ("nros-c/src/node.rs", "resolve_entity_name_on_node"): "body-scoped header read",
