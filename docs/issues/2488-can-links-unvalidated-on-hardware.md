@@ -5,7 +5,7 @@ status: open
 type: limitation
 severity: medium
 area: [rmw-zenoh, can, testing]
-related: [rfc-0080, rfc-0081, rfc-0083, phase-377, phase-394, 1822, 2522, phase-555]
+related: [rfc-0080, rfc-0081, rfc-0083, phase-377, phase-394, 1822, 2522, phase-555, phase-478]
 found: 2026-11-13
 ---
 

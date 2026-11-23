@@ -5,7 +5,7 @@ status: open
 type: design-question
 severity: low
 area: [clock, zephyr, network]
-related: [phase-478, phase-582, rfc-0141, 0758, 2846, 2866]
+related: [phase-478, rfc-0141, 0758, 2866]
 found: 2026-11-23
 ---
 
@@ -24,8 +24,8 @@ server several times per real second. The island's own re-sync thread
 (before phase-582) behaved the same way, which is why it was off.
 
 The thread's fixed 2048-byte stack is the other half of making W3 usable on
-the FVP (the same `sntp_simple` call measured 7024 bytes there); that is issue
-2846, in review as PR #4632.
+the FVP (the same `sntp_simple` call measured 7024 bytes there); that is in
+review as PR #4632, with its issue file.
 
 ## Island workaround
 
@@ -56,5 +56,5 @@ One of:
 - The ruling is recorded here and in RFC-0141 D5.
 - Under 1 or 2: on the FVP with a 10 s interval, a local SNTP responder logs
   queries no closer than 10 s of host time apart over a 2-minute run; the
-  island sets a non-zero interval on its FVP images (with issue 2846's stack
+  island sets a non-zero interval on its FVP images (with PR #4632's stack
   knob) and its FVP lane stays green.

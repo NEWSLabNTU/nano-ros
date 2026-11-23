@@ -6,7 +6,7 @@ type: chore
 area: [zephyr, boards, cli, tooling]
 severity: low
 found: 2026-11-21
-related: [1786, 0232]
+related: [1786, 0232, phase-478]
 ---
 
 ## Decision

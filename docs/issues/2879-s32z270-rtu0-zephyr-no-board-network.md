@@ -5,7 +5,7 @@ status: open
 type: enhancement
 severity: low
 area: [zephyr, boards, network]
-related: [phase-478, 2679, 2631, phase-524, phase-512]
+related: [phase-478, 2679, 2631]
 found: 2026-11-23
 ---
 

@@ -5,7 +5,7 @@ status: open
 type: enhancement
 severity: low
 area: [clock, freertos, zephyr]
-related: [rfc-0141, phase-582, issue-2865]
+related: [rfc-0141, phase-582, issue-2865, phase-478]
 found: 2026-11-23
 ---
 
