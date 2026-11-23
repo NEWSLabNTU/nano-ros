@@ -869,6 +869,15 @@ leaf-cache-plan-parse:
 lane-sibling-scope:
     @bash tests/lane-sibling-scope-tests.sh
 
+# Issue 2893 -- both lane spellings, `tier2` and the `lane=tier2` a recipe
+# forwards verbatim, through every lane-validating helper and the provisioned-
+# roots recipe a scheduled tier 2 run died in. Negative control: a helper with
+# its normaliser removed refuses `lane=linux` (tests/lane-arg-spelling-tests.sh).
+# Buildless: the `linux` lane resolves its modules without cargo.
+[private]
+lane-arg-spelling:
+    @bash tests/lane-arg-spelling-tests.sh
+
 # phase-488 W3 — the ament verbs against a stock ROS 2 package's CMakeLists:
 # `rclcpp_components_register_node(... EXECUTABLE ...)` generates a main that
 # declares the component, `ament_auto_add_library(... SHARED ...)` builds STATIC,

@@ -2757,12 +2757,14 @@ _codegen lane="all": setup-launch-resolve (generate-bindings lane) (_require-lea
 _require-owned-provisioned-roots lane="all":
     #!/usr/bin/env bash
     set -euo pipefail
-    if [ "{{lane}}" != "all" ]; then
-        source scripts/build/fixture-lane.sh
+    source scripts/build/fixture-lane.sh
+    # Issue 2893: `build-test-fixtures` forwards `lane=<name>` verbatim.
+    lane="$(nros_lane_arg '{{lane}}')"
+    if [ "$lane" != "all" ]; then
         source scripts/lib/grep-q.sh
-        mods="$(nros_lane_modules "{{lane}}")"
+        mods="$(nros_lane_modules "$lane")"
         if ! nros_grep_q -x zephyr <<<"$mods"; then
-            echo "[provisioned roots] lane {{lane}} builds no Zephyr fixture; Zephyr workspace probes not needed"
+            echo "[provisioned roots] lane $lane builds no Zephyr fixture; Zephyr workspace probes not needed"
             exit 0
         fi
     fi
