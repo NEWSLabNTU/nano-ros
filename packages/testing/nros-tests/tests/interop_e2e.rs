@@ -1362,17 +1362,19 @@ fn interop(#[case] cell: Cell) {
             );
             node.wait_for_output_pattern("on_activate", Duration::from_secs(3))
                 .expect("on_activate never logged");
-            let active = poll_ros2_until(
-                &locator,
-                "lifecycle get --no-daemon --spin-time 0.1 /lifecycle_demo",
+            let active = nros_tests::ros2::poll_lifecycle_state(
+                || {
+                    run_ros2(
+                        &locator,
+                        "lifecycle get --no-daemon --spin-time 0.1 /lifecycle_demo",
+                    )
+                },
                 "active",
                 Duration::from_secs(5),
+                Duration::from_millis(100),
             );
-            // `ros2 lifecycle get` prints just the current state (e.g. `active [3]`),
-            // so Active is "active" with no "inactive" substring.
             assert!(
-                active.to_lowercase().contains("active")
-                    && !active.to_lowercase().contains("inactive"),
+                nros_tests::ros2::lifecycle_get_state(&active) == Some("active"),
                 "expected Active after activate, got:\n{active}"
             );
 

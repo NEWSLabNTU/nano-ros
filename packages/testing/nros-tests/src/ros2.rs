@@ -950,6 +950,44 @@ pub fn ros2_query_cmd(env_setup: &str, timeout_s: u32, args: &str) -> String {
     format!("{env_setup} && {deadline} ros2 {args} --no-daemon 2>&1")
 }
 
+/// The state a `ros2 lifecycle get` answer reports: `active` from
+/// `active [3]`. `None` when no line has that shape (a warning, an error,
+/// `Node not found`).
+///
+/// Compare the result for equality, never with `contains`: `"inactive"`
+/// contains `"active"`, so a substring test passes a node that never left
+/// `inactive`.
+pub fn lifecycle_get_state(out: &str) -> Option<&str> {
+    out.lines().find_map(|line| {
+        let (name, rest) = line.trim().split_once(" [")?;
+        let id = rest.strip_suffix(']')?;
+        let well_formed = !name.is_empty()
+            && name.bytes().all(|b| b.is_ascii_lowercase() || b == b'_')
+            && !id.is_empty()
+            && id.bytes().all(|b| b.is_ascii_digit());
+        well_formed.then_some(name)
+    })
+}
+
+/// Re-run `get` (a `ros2 lifecycle get` call) until its answer reports
+/// exactly `want`, or `timeout` passes. Returns the last answer either way,
+/// so the caller's assertion prints what the node really said.
+pub fn poll_lifecycle_state(
+    mut get: impl FnMut() -> String,
+    want: &str,
+    timeout: Duration,
+    interval: Duration,
+) -> String {
+    let deadline = std::time::Instant::now() + timeout;
+    loop {
+        let out = get();
+        if lifecycle_get_state(&out) == Some(want) || std::time::Instant::now() >= deadline {
+            return out;
+        }
+        std::thread::sleep(interval);
+    }
+}
+
 /// Run `ros2 node list` and return the output
 pub fn ros2_node_list(locator: &str, distro: &str) -> TestResult<String> {
     let (env_setup, _config_dir) = ros2_env_setup_with_locator(distro, locator);
@@ -2388,6 +2426,33 @@ impl Drop for Ros2DdsProcess {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn lifecycle_get_state_reads_the_state_exactly() {
+        assert_eq!(super::lifecycle_get_state("active [3]\n"), Some("active"));
+        assert_eq!(super::lifecycle_get_state("inactive [2]"), Some("inactive"));
+        assert_eq!(
+            super::lifecycle_get_state("WARNING: something\n  unconfigured [1]\n"),
+            Some("unconfigured")
+        );
+        assert_eq!(super::lifecycle_get_state("Node not found"), None);
+        assert_eq!(super::lifecycle_get_state("active"), None);
+        // The defect this exists for: `inactive` is not `active`.
+        assert_ne!(super::lifecycle_get_state("inactive [2]"), Some("active"));
+    }
+
+    #[test]
+    fn poll_lifecycle_state_waits_past_a_different_state() {
+        let mut answers = vec!["active [3]", "inactive [2]", "unconfigured [1]"];
+        let out = super::poll_lifecycle_state(
+            || answers.pop().unwrap_or("active [3]").to_string(),
+            "active",
+            Duration::from_secs(5),
+            Duration::from_millis(1),
+        );
+        assert_eq!(out, "active [3]");
+        assert!(answers.is_empty(), "it stopped before reaching `active`");
+    }
+
     use super::*;
 
     #[test]

@@ -909,16 +909,19 @@ fn run_cell(pcell: &MCell) {
 
             // Autostart should already have driven it to active — no manual
             // `ros2 lifecycle set` issued.
-            let state = poll_ros2_until(
-                &locator,
-                &format!("lifecycle get --no-daemon --spin-time 0.1 {lifecycle_node}"),
+            // An exact state: `inactive` contains `active`, so a substring
+            // poll stopped, and passed, on a node autostart left `inactive`.
+            let get = format!("lifecycle get --no-daemon --spin-time 0.1 {lifecycle_node}");
+            let state = nros_tests::ros2::poll_lifecycle_state(
+                || run_ros2(&locator, &get),
                 "active",
                 Duration::from_secs(20),
+                Duration::from_millis(200),
             );
             node.kill();
 
             assert!(
-                state.to_lowercase().contains("active"),
+                nros_tests::ros2::lifecycle_get_state(&state) == Some("active"),
                 "[{} {}] expected the autostart-managed node {lifecycle_node} to be \
                  `active` at boot ({}), got:\n{state}",
                 lang,
