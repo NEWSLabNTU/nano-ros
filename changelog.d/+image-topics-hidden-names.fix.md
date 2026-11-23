@@ -1,0 +1,1 @@
+`nros image show <image> --topics` leaves out hidden names, such as an action's `/fibonacci/_action/feedback`, as `ros2 topic list` does. Before, a C image listed each action's internal topics and services beside the action itself.
