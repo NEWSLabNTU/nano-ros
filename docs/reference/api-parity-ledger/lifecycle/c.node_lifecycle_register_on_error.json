@@ -1,0 +1,5 @@
+{
+  "key": "c:node_lifecycle_register_on_error",
+  "verdict": "extension",
+  "why": "the node-scoped half of the lifecycle API, beside the executor-scoped `executor_lifecycle_*` family. Every managed node has its own state machine, keyed by its node, and the executor-scoped calls answer only while there is one; with two managed nodes in one image a C app names the node it acts on. rclc has no counterpart: its state machine hangs off a caller-held `rclc_lifecycle_node_t`, one per node, with no executor to find it on."
+}
