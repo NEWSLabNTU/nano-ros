@@ -5,7 +5,7 @@ status: open
 type: enhancement
 severity: medium
 area: [platform, zephyr, freertos, boards]
-related: [rfc-0132, phase-560, 2573, rfc-0109, rfc-0080]
+related: [rfc-0132, phase-560, 2573, rfc-0109, rfc-0080, phase-478]
 found: 2026-11-16
 ---
 
@@ -15,6 +15,8 @@ GitHub: NEWSLabNTU/nano-ros#4012
 beside issue [2573](2573-can-fd-e2e-profile-and-flexcan-helper.md) (GitHub
 #3761): this is the portable layer under 2573's FlexCAN helper. Design:
 [RFC-0132](../design/0132-board-can-frame-driver.md) (Accepted 2026-11-17).
+
+**Tracked by:** [phase-478](../roadmap/phase-478-island-developer-experience-findings.md) I47, owner the ASI port session (claimed 2026-11-23).
 
 **Progress (2026-11-20):** W9.a-W9.e done (the header, bindings and mock;
 the `zephyr` and `socketcan` backends; the device table and its carrier; the
