@@ -110,6 +110,10 @@ pub mod queue_depth;
 /// that decides an image's declared counts, run BEFORE any configure so a
 /// reader early in one sees the final answer on its first pass.
 pub mod resolve;
+/// rlm's grammar migrations over a project's contracts and `system.toml`
+/// files (`nros configure --migrate`), and the remedy nros names when the
+/// checker refuses an old spelling.
+pub mod rlm_migrate;
 /// phase-454 W4 (RFC-0100 D4) — the PRODUCER of `build/nros/sizing/<entry>.toml`.
 ///
 /// Joins the three inventories above into the one artifact every backend reads.

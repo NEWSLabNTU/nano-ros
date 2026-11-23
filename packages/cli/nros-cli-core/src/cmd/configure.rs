@@ -49,9 +49,12 @@ pub struct Args {
     )]
     pub census: Option<String>,
 
-    /// Apply the known, reversible layout migrations first, printing every
-    /// file moved. Today that is one: a `system.toml` beside a package's
-    /// code moves into a bringup package.
+    /// Apply the known, reversible migrations first, printing every file
+    /// moved and every key rewritten: a `system.toml` beside a package's code
+    /// moves into a bringup package, and the project's contracts
+    /// (`*.contract.yaml`) and `system.toml` files are rewritten from
+    /// spellings the contract checker no longer reads to the current ones.
+    /// A rewrite changes only the renamed keys; comments and layout stay.
     // Issue 2394, RFC-0117 amendment "user-tier verbs for 2394"; the move is
     // RFC-0121 D8.
     #[arg(long, conflicts_with_all = ["check", "dry_run"])]
@@ -246,10 +249,7 @@ struct SyncOnly {
 /// the predicate configure's own warning uses.
 fn migrate(project: &Path) -> Result<()> {
     let movable = migratable(project);
-    if movable.is_empty() {
-        eprintln!("nros configure --migrate: nothing to migrate");
-        return Ok(());
-    }
+    let moved_any = !movable.is_empty();
     for dir in movable {
         eprintln!(
             "nros configure --migrate: moving {} into a bringup package",
@@ -262,6 +262,30 @@ fn migrate(project: &Path) -> Result<()> {
             fixtures: None,
             fixtures_root: None,
         })?;
+    }
+    // After the moves, so a `system.toml` that moved is migrated where it
+    // now lives. The rewrites are rlm's (`crate::rlm_migrate`).
+    let rewritten = crate::rlm_migrate::migrate_tree(project)?;
+    for f in &rewritten {
+        let shown = f.file.strip_prefix(project).unwrap_or(&f.file);
+        for e in &f.edits {
+            eprintln!(
+                "nros configure --migrate: {}:{}: {} ({})",
+                shown.display(),
+                e.line,
+                e.path,
+                e.rewrite
+            );
+        }
+        for s in &f.skipped {
+            eprintln!(
+                "nros configure --migrate: {}: not rewritten, edit it by hand: {s}",
+                shown.display()
+            );
+        }
+    }
+    if !moved_any && rewritten.is_empty() {
+        eprintln!("nros configure --migrate: nothing to migrate");
     }
     Ok(())
 }

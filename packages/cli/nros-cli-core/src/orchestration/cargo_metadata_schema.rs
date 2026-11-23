@@ -657,7 +657,7 @@ pub struct SystemToml {
     ///
     /// Phase 536 W3 (rlm v0.3.11): the key is `[tasks.*]`. The pre-rename
     /// `[tiers.*]` is refused, as rlm refuses it, naming the new key and
-    /// `play_launch migrate` ([`Self::retired_tiers`]).
+    /// `nros configure --migrate` ([`Self::retired_tiers`]).
     #[serde(default, rename = "tasks", skip_serializing_if = "BTreeMap::is_empty")]
     pub sched_tasks: BTreeMap<String, SchedTaskDef>,
     /// `[tiers.*]`, refused since rlm v0.3.11: present only to name its
@@ -2176,7 +2176,7 @@ mod tests {
     }
 
     /// phase-536 W3 -- the strict reader refuses rlm v0.3.11's retired keys
-    /// as rlm does, naming the new key and `play_launch migrate` (one case per
+    /// as rlm does, naming the new key and `nros configure --migrate` (one case per
     /// key); the new spelling reads.
     #[test]
     fn the_retired_tiers_keys_are_refused_naming_tasks_and_migrate() {
@@ -2188,7 +2188,7 @@ mod tests {
             .to_string();
         assert!(e.contains("`[tiers]` is retired"), "{e}");
         assert!(e.contains("`[tasks.<name>]`"), "{e}");
-        assert!(e.contains("play_launch migrate"), "{e}");
+        assert!(e.contains("nros configure --migrate"), "{e}");
 
         let group = format!(
             "{head}[[component]]\npkg = \"p\"\nclass = \"p::C\"\nname = \"n\"\n\
@@ -2199,7 +2199,7 @@ mod tests {
             .to_string();
         assert!(e.contains("`[[component]] group_tiers` is retired"), "{e}");
         assert!(e.contains("`group_tasks`"), "{e}");
-        assert!(e.contains("play_launch migrate"), "{e}");
+        assert!(e.contains("nros configure --migrate"), "{e}");
 
         // Negative control: the same file in the new spelling reads.
         let ok = group.replace("group_tiers", "group_tasks");

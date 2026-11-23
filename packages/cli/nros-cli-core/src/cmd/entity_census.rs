@@ -2402,7 +2402,7 @@ fn check_census(args: CheckArgs) -> Result<()> {
         .wrap_err_with(|| format!("`{}` is not JSON", census_path.display()))?;
 
     let contract = ros_launch_manifest_types::parse_manifest(&contract_path)
-        .map_err(|e| eyre::eyre!("{e}"))
+        .map_err(|e| eyre::eyre!(crate::rlm_migrate::name_nros_remedy(&e.to_string())))
         .wrap_err_with(|| format!("cannot read contract `{}`", contract_path.display()))?;
 
     let inventory = match args.inventory.as_deref() {

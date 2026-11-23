@@ -2522,6 +2522,37 @@ fn system_toml_beside_code_warnings(dirs: &[&Path]) -> Vec<String> {
         .collect()
 }
 
+/// The line put AHEAD of the resolver's output when the contract checker
+/// refused a spelling a migration rewrites (`stderr` names one), or `""`.
+///
+/// It names `nros configure --migrate` and the SOURCE files under `bringup`
+/// it rewrites: the checker reads a copy under `build/` and names that, and an
+/// edit there is overwritten by the next configure. The line avoids the words
+/// the quarantine marker's `check` searches for, so the marker still records
+/// the checker's own line.
+pub(crate) fn migration_remedy(stderr: &str, bringup: &Path) -> String {
+    if !crate::rlm_migrate::names_a_migration(stderr) {
+        return String::new();
+    }
+    // The files the migration would change, so the line never names a file it
+    // leaves alone.
+    let sources: Vec<String> = crate::rlm_migrate::pending_files(bringup)
+        .into_iter()
+        .map(|p| p.display().to_string())
+        .collect();
+    let what = if sources.is_empty() {
+        format!("the contracts under {}", bringup.display())
+    } else {
+        sources.join(", ")
+    };
+    format!(
+        "To fix: run `{}` in this project; it rewrites the old spellings in {what}. The \
+         checker below names a copy under build/, which the next configure regenerates \
+         from that source.\n",
+        crate::rlm_migrate::REMEDY
+    )
+}
+
 /// The directories of `dirs` holding a `system.toml` beside package code: the
 /// warning above and `nros configure --migrate` ask the same predicate.
 pub(crate) fn system_toml_beside_code(dirs: &[&Path]) -> Vec<PathBuf> {
@@ -3367,7 +3398,13 @@ fn resolve_system_models(scan: &[WsPkg], verbose: bool, model_dir: Option<&Path>
                 .wrap_err_with(|| format!("sync: spawn nros-launch-resolve for {}", pkg.name))?;
             if !out.status.success() {
                 let _ = std::fs::remove_file(&staged);
-                let stderr = String::from_utf8_lossy(&out.stderr);
+                // The checker names `play_launch migrate` for a spelling it
+                // no longer reads, a tool nano-ros does not ship: name the one
+                // it does, first, and the source file it rewrites (the checker
+                // names the copy under build/).
+                let raw = String::from_utf8_lossy(&out.stderr);
+                let remedy = migration_remedy(&raw, &pkg.dir);
+                let stderr = format!("{remedy}{}", crate::rlm_migrate::name_nros_remedy(&raw));
                 // phase-460 W1 (issue 1420) -- QUARANTINE. The previous model
                 // was intact by every check it would ever meet (its recorded
                 // inputs are those of the resolve that SUCCEEDED), so leaving

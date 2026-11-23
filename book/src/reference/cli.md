@@ -687,7 +687,7 @@ Options:
           Take the entity census first: build the native image generated from the same launch file, run it, and record what it registers. Every image this configure covers, or only `BRINGUP:IMAGE`: the image whose build checks the census, usually a cross image, as in `nros build BRINGUP:IMAGE`. A plain configure only reports a census that is missing or stale, because taking one builds and runs a program
 
       --migrate
-          Apply the known, reversible layout migrations first, printing every file moved. Today that is one: a `system.toml` beside a package's code moves into a bringup package
+          Apply the known, reversible migrations first, printing every file moved and every key rewritten: a `system.toml` beside a package's code moves into a bringup package, and the project's contracts (`*.contract.yaml`) and `system.toml` files are rewritten from spellings the contract checker no longer reads to the current ones. A rewrite changes only the renamed keys; comments and layout stay
 
   -h, --help
           Print help (see a summary with '-h')

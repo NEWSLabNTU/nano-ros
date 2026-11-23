@@ -36,7 +36,8 @@ The 21 breaking changes, grouped by who has to act:
     the wall-clock source is stated in `system.toml`.
 - **Contracts.**
   - The old ros-launch-manifest spellings are refused, each naming its replacement
-    (`play_launch migrate <contract> --write` rewrites them).
+    (`nros configure --migrate` rewrites them;
+    [issue 2923](../issues/archived/2923-nros11-contract-spelling-refused-no-shipped-migrate.md)).
   - QoS values and launch arguments are checked.
 - **Parameters.**
   - A string or array parameter needs a stated capacity, whether it is declared in the
