@@ -128,6 +128,11 @@ GROUPS = {
             ("catkin_pkg", "catkin_pkg"),
             ("em", "empy==3.3.4"),
             ("lark", "lark"),
+            # Issue 2917 -- the vendored rosidl_cli imports yaml too. It rode in
+            # with the `west` group on every interpreter that had one, so a
+            # venv made for this group alone could not import rosidl_adapter.
+            # The same four as `_VENDORED_PY_DEPS` in msg_to_cyclone_idl.py.
+            ("yaml", "PyYAML"),
         ],
     ),
     "sdk-tools": (

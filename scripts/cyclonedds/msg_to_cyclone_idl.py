@@ -221,10 +221,22 @@ def _adapter_bin_and_env() -> "tuple[Path, dict]":
     #
     # So refuse here, where the reason is still known.
     ros_exists = ros.is_dir()
+    # Issue 2917 -- ROS's copy is built for ONE Python (humble: 3.10). A build
+    # whose interpreter is another one (the Zephyr 4.4 line needs >=3.12) can
+    # never import it, so "source setup.bash" is a remedy that cannot work
+    # there, and the vendored copy is the only road.
+    this_py = f"python{sys.version_info[0]}.{sys.version_info[1]}"
+    ros_pys = sorted(p.name for p in ros.parent.glob("python3.*") if p.is_dir())
+    ros_py_other = bool(ros_pys) and this_py not in ros_pys
     sys.exit(
         "error: rosidl_adapter is not importable by this build's interpreter.\n"
         + (
-            f"  ROS's copy is present ({ros}) but `import rosidl_adapter` fails,\n"
+            f"  ROS's copy ({ros}) is built for {', '.join(ros_pys)}, and this\n"
+            f"  build runs {this_py}, so it cannot import it, sourced or not.\n"
+            "  Use the vendored copy below, with its deps installed into THIS\n"
+            f"  interpreter ({sys.executable}).\n"
+            if ros_exists and ros_py_other
+            else f"  ROS's copy is present ({ros}) but `import rosidl_adapter` fails,\n"
             "  which means ROS's site-packages are not on PYTHONPATH in THIS\n"
             "  build's environment — sourcing setup.bash in the launching shell\n"
             "  does not reach a nested cmake/ninja.\n"
@@ -256,8 +268,12 @@ def _adapter_bin_and_env() -> "tuple[Path, dict]":
         # the tool that applies it instead of carrying a second copy that would
         # be right on some hosts and wrong on the rest.
         "      (+ deps: nros setup --check   # names apt or pip, per host)\n"
-        "    source /opt/ros/<distro>/setup.bash   # into the BUILD's env\n"
-        "    NROS_ROSIDL_ADAPTER_BIN_DIR=<dir>     # explicit override"
+        + (
+            ""
+            if ros_py_other
+            else "    source /opt/ros/<distro>/setup.bash   # into the BUILD's env\n"
+        )
+        + "    NROS_ROSIDL_ADAPTER_BIN_DIR=<dir>     # explicit override"
     )
 
 
