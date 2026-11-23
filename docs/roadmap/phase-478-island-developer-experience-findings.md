@@ -1266,7 +1266,7 @@ unowned.
 - [issue 2632](../issues/2632-s32z270-freertos-rtd-variant.md): the s32z270-freertos RTD variant's NETC netif, port patch and full link (I46; phase-524 W3 stays its descriptor home).
 - [issue 2633](../issues/2633-board-owned-can-frame-driver.md): the S32Z2 CAN frame driver's vendor backend and the `board`-stack hand-off (I47; phase-560 W9 stays its design home).
 - [issue 2769](../issues/2769-zenoh-can-link-over-frame-driver.md): the zenoh-pico CAN link over the frame driver (I48).
-- [issue 2911](../issues/2911-census-prepass-skips-compile-check-nros-image-rows.md): the census pre-pass never took the census of a compile-check row configured by `nros build`, so the issue-2862 rows `west_owned_entry_census_flat` / `_nested` refused on the self-hosted runner.
+- [issue 2911](../issues/archived/2911-census-prepass-skips-compile-check-nros-image-rows.md) (resolved 2026-11-24 by PR #4723): the census pre-pass never took the census of a compile-check row configured by `nros build`, so the issue-2862 rows `west_owned_entry_census_flat` / `_nested` refused on the self-hosted runner.
 
 ## Issues homed here (2026-11-02)
 

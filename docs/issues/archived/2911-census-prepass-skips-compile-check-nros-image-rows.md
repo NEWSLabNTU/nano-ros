@@ -1,15 +1,17 @@
 ---
 id: 2911
 title: "The census pre-pass never takes the census of a compile-check row configured by `nros build`, so `west_owned_entry_census_*` refuse on a fresh tree"
-status: open
+status: resolved
 type: bug
 area: [ci, build, census]
 severity: high
 found: 2026-11-24
+resolved: 2026-11-24
+resolved_in: "fix(fixtures): the census pre-pass takes every nros-build compile-check image (issue 2911)"
 related: [phase-478, 2862, 1419, 2390, 2436]
 ---
 
-**Home: [phase-478](../roadmap/phase-478-island-developer-experience-findings.md)**
+**Home: [phase-478](../../roadmap/phase-478-island-developer-experience-findings.md)**
 (the owned west entry fixtures of issue 2862 are island-shaped).
 
 ## What happens
