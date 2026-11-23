@@ -1034,6 +1034,12 @@ pub(crate) fn leaf_declaration(
         &system.features,
         system.components.len(),
     ));
+    // Issue 2650 -- the census ran the leaf's whole program, so it says how
+    // long its parameter descriptions are. A leaf with no census was never
+    // watched and keeps the default room (absent, not refused).
+    if census_backed {
+        inventory.set_param_prose(crate::leaf_entity_env::census_description_prose(dir));
+    }
     Ok(LeafDeclaration {
         system,
         inventory: Some(inventory),

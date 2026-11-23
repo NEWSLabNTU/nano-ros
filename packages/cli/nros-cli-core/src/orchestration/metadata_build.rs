@@ -353,7 +353,7 @@ pub fn render_harness_cargo_toml(o: &MetadataBuildOptions) -> Result<String> {
          name = \"{bin}\"\n\
          path = \"src/main.rs\"\n\n\
          [dependencies]\n\
-         nros = {{ path = {nros:?}, features = [\"alloc\", \"log\", \"rmw-cffi\"] }}\n\
+         nros = {{ path = {nros:?}, features = [\"alloc\", \"log\", \"rmw-cffi\", \"probe-descriptor-text\"] }}\n\
          # A component registers into a REAL executor (its\n\
          # `register` gets the same `nros::Node` a program does), so the probe\n\
          # opens one on the `metadata` backend, which records and transmits\n\
@@ -447,7 +447,8 @@ pub fn render_harness_main(o: &MetadataBuildOptions) -> Result<String> {
          \x20   let config = nros::ExecutorConfig::new(\"\").rmw(\"metadata\");\n\
          \x20   let mut executor = nros::Executor::open(&config)\n\
          \x20       .expect(\"open the metadata backend\");\n\
-         \x20   nros::__macro::record_node_metadata::<{type_path}>(&mut recorder, &mut executor)\n\
+         \x20   // And the parameter prose the code sets (description lengths).\n\
+         \x20   nros::__macro::record_node_metadata_watching_prose::<{type_path}>(&mut recorder, &mut executor)\n\
          \x20       .expect(\"component register (metadata mode)\");\n\
          \x20   let export = nros::SourceMetadataExport::new({pkg:?}, {comp:?}){exe}{sym};\n\
          \x20   let json = recorder\n\
@@ -1577,7 +1578,11 @@ some later noise
         );
         assert_eq!(crate_name(&o), Some("action_client_pkg"));
         let main = render_harness_main(&o).unwrap();
-        assert!(main.contains("record_node_metadata::<action_client_pkg::FibonacciClient>"));
+        assert!(
+            main.contains(
+                "record_node_metadata_watching_prose::<action_client_pkg::FibonacciClient>"
+            )
+        );
         let toml = render_harness_cargo_toml(&o).unwrap();
         assert!(toml.contains(
             "action_client_pkg = { path = \"/ws/src/demo_pkg\", package = \"action_client_pkg\" }"
@@ -1597,7 +1602,9 @@ some later noise
     #[test]
     fn harness_main_calls_record_and_serialize() {
         let main = render_harness_main(&opts()).unwrap();
-        assert!(main.contains("record_node_metadata::<demo_pkg::talker::Component>"));
+        assert!(
+            main.contains("record_node_metadata_watching_prose::<demo_pkg::talker::Component>")
+        );
         assert!(main.contains("SourceMetadataExport::new(\"demo_pkg\", \"talker\")"));
         assert!(main.contains(".executable(\"talker\")"));
         assert!(main.contains(".exported_symbol(\"nros_component_talker\")"));
@@ -1749,7 +1756,7 @@ some later noise
         let toml = render_harness_cargo_toml(&opts()).unwrap();
         assert!(
             toml.contains(
-                "nros = { path = \"/nano-ros/packages/api/nros\", features = [\"alloc\", \"log\", \"rmw-cffi\"] }"
+                "nros = { path = \"/nano-ros/packages/api/nros\", features = [\"alloc\", \"log\", \"rmw-cffi\", \"probe-descriptor-text\"] }"
             )
         );
         assert!(

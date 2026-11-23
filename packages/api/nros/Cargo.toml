@@ -72,6 +72,12 @@ ffi-size-markers = []
 # its own delivery shape. That is the only producer of the feature: a firmware
 # image never names it and never carries the global.
 metadata-mode = ["nros-rmw/sync-spin", "nros-node/registration-observer"]
+# Issue 2650 -- the Rust source-metadata harness (the CLI's generated
+# `render_harness_main`) records into its OWN recorder, not `metadata_mode`'s
+# global one, so it needs the parameter-prose observer alone: this compiles
+# `nros-params`' descriptor-text observer and `record_node_metadata_watching_prose`,
+# and nothing else of a probe. A firmware image never names it.
+probe-descriptor-text = ["nros-params/descriptor-text-observer"]
 # phase-463 W7 — the PROFILING half: per-callback host `max_observed` (ns) and
 # the topics each invocation published, as `nros.wcet.measurements/1`
 # (`nros_node::executor::profile`). The census hooks below label every executor

@@ -166,6 +166,54 @@ fn component_records_metadata_without_transport() {
     assert_eq!(recorder.callback_effects().len(), 2);
 }
 
+// Issue 2650 -- the Rust harness's recording entry hears the parameter prose
+// the component's code sets, into the harness's OWN recorder.
+struct ProseComponent;
+impl Component for ProseComponent {
+    const NAME: &'static str = "prose_component";
+    fn register(context: &mut NodeContext<'_>) -> NodeResult<()> {
+        let _node = context.create_node_with_id(NodeId::new("node"), NodeOptions::new("prose"))?;
+        let mut d =
+            nros::ParameterDescriptor::new("gain", ParameterType::Double).expect("a descriptor");
+        d.set_description(&"d".repeat(42));
+        d.set_description("short");
+        d.set_additional_constraints("0 < gain");
+        Ok(())
+    }
+}
+
+#[test]
+fn the_harness_entry_states_the_prose_its_component_set() {
+    let census = census();
+    nros::metadata_mode::reset();
+    let mut executor = metadata_executor(&census);
+
+    let mut watched: MetadataRecorder = MetadataRecorder::default();
+    nros::__macro::record_node_metadata_watching_prose::<ProseComponent>(
+        &mut watched,
+        &mut executor,
+    )
+    .unwrap();
+    assert_eq!(watched.description_max_len(), Some(42));
+    let json = watched
+        .to_source_metadata_json(&nros::SourceMetadataExport::new("p", "c"))
+        .unwrap();
+    assert!(
+        json.contains("\"parameter_description_max_len\":42,"),
+        "{json}"
+    );
+    assert!(
+        json.contains("\"parameter_constraints_max_len\":8,"),
+        "{json}"
+    );
+
+    // The control: the plain entry states nothing about prose, which is what
+    // every Rust sidecar said before this entry existed.
+    let mut plain: MetadataRecorder = MetadataRecorder::default();
+    nros::__macro::record_node_metadata::<ProseComponent>(&mut plain, &mut executor).unwrap();
+    assert_eq!(plain.description_max_len(), None);
+}
+
 // Phase 250 Wave 2b — the declarative `.safety()` opt-in records the
 // `EntityMetadata.safety` flag so the runtime registers the integrity-aware
 // subscription. A plain subscription stays `safety == false`.

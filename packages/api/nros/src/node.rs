@@ -3459,6 +3459,55 @@ pub fn record_node_metadata<C: Component>(
     register_node::<C>(recorder, executor)
 }
 
+// Issue 2650.
+/// [`record_node_metadata`], also watching the parameter prose the component's
+/// code sets, so the sidecar states the longest `description` and
+/// `additional_constraints` (`0` when none) instead of saying nothing.
+///
+/// Those lengths size `NROS_PARAMS_MAX_DESCRIPTION_BYTES` and
+/// `NROS_PARAMS_MAX_CONSTRAINTS_BYTES`, and a sidecar that does not state them
+/// leaves every image the probe ran at the 256-byte default. The only observer
+/// used to be `metadata_mode`'s, which writes to that module's global recorder,
+/// so the Rust harness, which records into its own, never stated them.
+#[cfg(all(feature = "rmw-cffi", feature = "probe-descriptor-text"))]
+pub fn record_node_metadata_watching_prose<C: Component>(
+    recorder: &mut MetadataRecorder,
+    executor: &mut crate::Executor<'static>,
+) -> NodeResult<()> {
+    use core::sync::atomic::{AtomicUsize, Ordering};
+    use nros_params::descriptor_text_observer::{
+        DescriptorText, clear_descriptor_text_observer, set_descriptor_text_observer,
+    };
+    // The observer is a plain `fn`, so the lengths travel through statics; the
+    // harness records one component per process.
+    static DESCRIPTION: AtomicUsize = AtomicUsize::new(0);
+    static CONSTRAINTS: AtomicUsize = AtomicUsize::new(0);
+    DESCRIPTION.store(0, Ordering::Relaxed);
+    CONSTRAINTS.store(0, Ordering::Relaxed);
+    set_descriptor_text_observer(|text, len| {
+        let slot = match text {
+            DescriptorText::Description => &DESCRIPTION,
+            DescriptorText::Constraints => &CONSTRAINTS,
+        };
+        slot.fetch_max(len, Ordering::Relaxed);
+    });
+    let result = register_node::<C>(recorder, executor);
+    clear_descriptor_text_observer();
+    recorder.arm_descriptor_text();
+    recorder.observe_descriptor_text(false, DESCRIPTION.load(Ordering::Relaxed));
+    recorder.observe_descriptor_text(true, CONSTRAINTS.load(Ordering::Relaxed));
+    // With `metadata-mode` also compiled in, opening a node re-installs that
+    // module's observer over the one above, so the lengths land in its
+    // recorder: take them from there too.
+    #[cfg(feature = "metadata-mode")]
+    {
+        let (d, c) = crate::metadata_mode::descriptor_text_seen();
+        recorder.observe_descriptor_text(false, d.unwrap_or(0));
+        recorder.observe_descriptor_text(true, c.unwrap_or(0));
+    }
+    result
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -1,7 +1,7 @@
 ---
 id: 2650
 title: "Every parameter store slot carries a 256 B description buffer, about 15 KB at 32 slots when no value bound is paid"
-status: open
+status: resolved
 type: enhancement
 area: [memory, params]
 severity: low
@@ -9,7 +9,7 @@ found: 2026-11-16
 related: [2647, 2649, phase-478]
 ---
 
-**Home:** [phase-478](../roadmap/phase-478-island-developer-experience-findings.md)
+**Home:** [phase-478](../../roadmap/phase-478-island-developer-experience-findings.md)
 — follow-up to I28. This is the next largest part of a slot once issue 2647 has
 removed the string-array product.
 
@@ -31,7 +31,7 @@ descriptor.
   fact already (`[knobs.params]`), so it is cheap, but it drops the text that
   `ros2 param describe` shows.
 - Hold descriptions out of line, sized by what the code actually passes. That
-  needs the same arena machinery as [issue 2649](2649-param-string-array-shared-arena.md).
+  needs the same arena machinery as [issue 2649](../2649-param-string-array-shared-arena.md).
 - Drop the descriptor's copy of the name, since the entry's `Parameter` already
   holds it, and build the name only when the describe reply is written.
 
@@ -82,3 +82,58 @@ users see no change, and never default it to 0. The work is in three parts:
 - `NROS_MAX_PARAM_CONSTRAINTS_LEN` is captured (`parameter_constraints_max_len`)
   and not derived. Its default is already 0, and its truncation report names
   the wrong knob (issue 2686).
+
+## Resolved (2026-11-23)
+
+The derivation in part 3 never reached a Rust image, and did not reach the
+leaf roads at all. Both are fixed here.
+
+**No Rust sidecar stated the length.** The Rust source-metadata harness (the
+CLI's generated `render_harness_main`, used by the workspace probe refresh
+and the leaf probe alike) records into its OWN `MetadataRecorder`. The only
+prose observer was `metadata_mode`'s, which writes to that module's global
+recorder, and the harness is not built with `metadata-mode` anyway. So every
+Rust sidecar left `parameter_description_max_len` out, and every Rust image
+refused the derivation and kept 256.
+- **The new entry.** `nros::__macro::record_node_metadata_watching_prose`
+  (feature `probe-descriptor-text`, which compiles `nros-params`' observer and
+  nothing else of a probe) installs an observer, runs `register()`, then arms
+  the harness's recorder and records the longest description and constraints
+  text.
+- **With `metadata-mode` also compiled in,** opening a node re-installs that
+  module's observer over this one, so the entry also folds in what
+  `metadata_mode::descriptor_text_seen()` heard.
+- **The harness** builds with the feature and calls the entry.
+- **Test:** `the_harness_entry_states_the_prose_its_component_set`. A
+  component sets a 42-byte description and an 8-byte constraint; the sidecar
+  states 42 and 8, and the plain entry, the control, states nothing.
+
+**The leaf roads.**
+- **The cargo leaf** (`leaf_entity_env::inventory_for_leaf`) reads each
+  sidecar's key, by the model road's rule:
+  - watched only when every sidecar watched;
+  - a sidecar from before the watch, or an unprobeable component, makes it
+    unknown and refuses, so the store keeps 256;
+  - no sidecar at all leaves it not consulted.
+  - Test: `a_leaf_states_the_description_length_its_sidecars_watched`.
+- **The standalone (census) leaf** (`cmd/sizing_descriptor.rs`) takes the
+  census document's key (`census_description_prose`): the census runs the
+  leaf's whole program.
+
+**Measured.** `max_param_description_len` went from refused to 16 (no
+description is set, so the floor applies). Before is the same build with
+`NROS_PARAMS_MAX_DESCRIPTION_BYTES=256`, the room the store kept; mem-report
+`--baseline` gives the diff.
+
+| image | road | static RAM |
+|---|---|---:|
+| `examples/mps2-an385-baremetal/rust/listener` | cargo leaf | -1,936 B (`EXECUTOR_BACKING` -1,920) |
+| `examples/templates/cpp-port-minimal-publisher/mps2-an385-freertos` | standalone census | -1,920 B (`GlobalStorageHolder<0>::storage` -1,920) |
+
+1,920 B is 8 slots x (256 - 16) B.
+
+**Not done, and not this issue's:** `NROS_PARAMS_MAX_CONSTRAINTS_BYTES` is
+still captured and not derived. Its default is 0, so deriving it saves
+nothing, and would only ADD room where code sets constraints text (which is
+truncated to 0 today). The shared-runtime rule in "Still open" above is how
+that road behaves (`shared_runtime_prose`), not a gap.

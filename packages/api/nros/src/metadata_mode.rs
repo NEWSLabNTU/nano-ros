@@ -561,6 +561,21 @@ pub fn record_subscription_registration(
 }
 
 /// Serialize everything recorded so far, through the one schema emitter.
+// Issue 2650.
+/// The longest `description` and `additional_constraints` this
+/// module's recorder heard, `None` for one it never watched. Read by
+/// [`crate::__macro::record_node_metadata_watching_prose`]: opening a node here
+/// re-installs this module's observer over that entry's, so in a build with
+/// both, this is where the lengths landed.
+pub fn descriptor_text_seen() -> (Option<usize>, Option<usize>) {
+    state().with(|st| {
+        (
+            st.recorder.description_max_len(),
+            st.recorder.constraints_max_len(),
+        )
+    })
+}
+
 pub fn to_json(export: &SourceMetadataExport<'_>) -> Result<String, core::fmt::Error> {
     state().with(|st| st.recorder.to_source_metadata_json(export))
 }

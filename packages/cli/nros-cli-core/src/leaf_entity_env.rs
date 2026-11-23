@@ -417,6 +417,18 @@ pub fn census_parameter_count(leaf: &Path) -> Option<usize> {
     doc.get("parameters")?.as_array().map(Vec::len)
 }
 
+/// Issue 2650 -- what a standalone leaf's census watched of its code's
+/// parameter descriptions. The census runs the leaf's whole program, so its
+/// answer is image-wide. Unknown when there is no current, complete census, or
+/// it was written before the census watched prose.
+pub fn census_description_prose(leaf: &Path) -> crate::entity_inventory::ParamProse {
+    match census_document(leaf) {
+        Ok(Ok(doc)) => description_prose(&doc.to_string(), "census"),
+        Ok(Err(why)) => crate::entity_inventory::ParamProse::Unknown(why),
+        Err(e) => crate::entity_inventory::ParamProse::Unknown(e.to_string()),
+    }
+}
+
 /// The `census` document of a leaf's current, complete census, or why there is
 /// none. ONE reader for every fact read off it.
 fn census_document(leaf: &Path) -> Result<std::result::Result<serde_json::Value, String>> {
@@ -595,6 +607,11 @@ pub fn inventory_for_leaf(leaf: &Path) -> Result<(EntityInventory, Vec<String>)>
         }
         return Ok((inv, unprobeable));
     }
+    // Issue 2650 -- what the sidecars watched of the code's parameter
+    // descriptions, by the model road's rule (`from_model_with`): watched only
+    // when EVERY probed component's sidecar watched, else unknown, naming the
+    // first that did not. Left `NotConsulted` when nothing was probed.
+    let mut prose: Option<crate::entity_inventory::ParamProse> = None;
     let mut entries: Vec<_> = listings
         .into_iter()
         .flat_map(|rd| rd.filter_map(|e| e.ok()).map(|e| e.path()))
@@ -607,6 +624,11 @@ pub fn inventory_for_leaf(leaf: &Path) -> Result<(EntityInventory, Vec<String>)>
             .unwrap_or_default();
         if name.ends_with(".json.unprobeable") {
             unprobeable.push(name.to_string());
+            let seen = crate::entity_inventory::ParamProse::Unknown(format!(
+                "`{name}`: the probe could not run that component, so nothing watched its \
+                 parameter descriptions"
+            ));
+            prose = Some(prose.map_or(seen.clone(), |p| p.fold(&seen)));
             continue;
         }
         if !name.ends_with(".json") {
@@ -616,6 +638,8 @@ pub fn inventory_for_leaf(leaf: &Path) -> Result<(EntityInventory, Vec<String>)>
             .wrap_err_with(|| format!("reading {}", path.display()))?;
         let (pkg, component, declaration) = declaration_from_probe(&text)
             .wrap_err_with(|| format!("parsing {}", path.display()))?;
+        let seen = description_prose(&text, name);
+        prose = Some(prose.map_or(seen.clone(), |p| p.fold(&seen)));
         probed_rows.push((component.clone(), declaration.entities().to_vec()));
         inv.insert(ComponentEntities {
             pkg,
@@ -651,7 +675,29 @@ pub fn inventory_for_leaf(leaf: &Path) -> Result<(EntityInventory, Vec<String>)>
         }
         (None, _) => {}
     }
+    if let Some(p) = prose {
+        inv.set_param_prose(p);
+    }
     Ok((inv, unprobeable))
+}
+
+/// Issue 2650 -- what one probe sidecar says of its code's parameter
+/// descriptions: its top-level `parameter_description_max_len` (schema v6),
+/// or unknown when the sidecar was written before the probe watched them.
+fn description_prose(doc_json: &str, name: &str) -> crate::entity_inventory::ParamProse {
+    use crate::entity_inventory::ParamProse;
+    let len = serde_json::from_str::<serde_json::Value>(doc_json)
+        .ok()
+        .and_then(|v| v.get("parameter_description_max_len")?.as_u64());
+    match len {
+        Some(n) => ParamProse::Watched {
+            description_max_len: usize::try_from(n).unwrap_or(usize::MAX),
+        },
+        None => ParamProse::Unknown(format!(
+            "the probe sidecar `{name}` does not say how long its parameter descriptions are \
+             (written before the probe watched them; re-run `nros configure`)"
+        )),
+    }
 }
 
 /// Issue 2768 -- what the leaf's probe sidecars record of each launched
@@ -1679,6 +1725,57 @@ mod tests {
         std::fs::write(leaf2.join("node/metadata/talker.json"), TALKER).unwrap();
         let (inv2, _) = inventory_for_leaf(leaf2).unwrap();
         assert!(inv2.is_empty(), "an unreferenced package was read");
+    }
+
+    /// Issue 2650 -- the cargo-leaf road states the longest parameter
+    /// description its sidecars watched, by the model road's rule: watched only
+    /// when every sidecar watched; a sidecar from before the watch, or an
+    /// unprobeable component, makes it unknown; no sidecar leaves it unconsulted.
+    #[test]
+    fn a_leaf_states_the_description_length_its_sidecars_watched() {
+        use crate::entity_inventory::ParamProse;
+        let with_len = |n: u64| {
+            TALKER.replacen(
+                '{',
+                &format!("{{\"parameter_description_max_len\": {n},"),
+                1,
+            )
+        };
+        let leaf_with = |files: &[(&str, String)]| {
+            let td = tempfile::tempdir().unwrap();
+            std::fs::create_dir_all(td.path().join("metadata")).unwrap();
+            for (name, body) in files {
+                std::fs::write(td.path().join("metadata").join(name), body).unwrap();
+            }
+            td
+        };
+
+        let td = leaf_with(&[("a.json", with_len(40)), ("b.json", with_len(12))]);
+        let (inv, _) = inventory_for_leaf(td.path()).unwrap();
+        assert_eq!(
+            inv.param_prose(),
+            &ParamProse::Watched {
+                description_max_len: 40
+            }
+        );
+
+        let td = leaf_with(&[("a.json", with_len(40)), ("old.json", TALKER.to_string())]);
+        let (inv, _) = inventory_for_leaf(td.path()).unwrap();
+        let ParamProse::Unknown(why) = inv.param_prose() else {
+            panic!("{:?}", inv.param_prose());
+        };
+        assert!(why.contains("old.json"), "{why}");
+
+        let td = leaf_with(&[
+            ("a.json", with_len(40)),
+            ("c.json.unprobeable", String::new()),
+        ]);
+        let (inv, _) = inventory_for_leaf(td.path()).unwrap();
+        assert!(matches!(inv.param_prose(), ParamProse::Unknown(_)));
+
+        let td = tempfile::tempdir().unwrap();
+        let (inv, _) = inventory_for_leaf(td.path()).unwrap();
+        assert_eq!(inv.param_prose(), &ParamProse::NotConsulted);
     }
 
     /// Issue 1648 -- a sidecar row carrying the registration observation
