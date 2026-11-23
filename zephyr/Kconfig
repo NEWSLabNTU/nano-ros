@@ -3565,3 +3565,37 @@ endif # NROS
 # file that sets the symbol still overrides it.
 config LINKER_SORT_BY_ALIGNMENT
     default n if NROS && NATIVE_LIBRARY
+
+# Issue 2847. A test reads its evidence off the console: a readiness line
+# (Zephyr's own `net_config` "IPv4 address: ...") or an observed line
+# (`nros: core pin observed ... running_on=1`). On an image with deferred
+# logging, which is Zephyr's default on every non-POSIX board, each of those
+# is a message in the log buffer, `printk` included under CONFIG_LOG_PRINTK.
+# When a boot-time burst fills the buffer, Zephyr drops a message (the oldest
+# under CONFIG_LOG_MODE_OVERFLOW, the newest without it), and a marker that is
+# dropped never reaches the console. The cell then fails on a healthy image:
+# measured on mps2/an385 (issue 2825's `--- 14 messages dropped ---`) and on
+# qemu_cortex_a53 SMP (one solo run of three, four drop events, placement
+# correct in every run that printed).
+#
+# Blocking in thread context closes that channel for every marker at once:
+# a thread whose message finds the buffer full waits for the logging thread
+# to make room instead of losing the message. Every marker a test reads is
+# logged from a thread, so none can be dropped while the logging thread
+# makes progress. What it costs: a thread that logs into a full buffer stalls
+# until there is room, where before its message was lost. An ISR still drops,
+# since it cannot wait.
+#
+# The wait is bounded at Zephyr's maximum, 10 s, not forever: a forever wait
+# deadlocks if the logging thread itself logs into a full buffer. A logging
+# thread starved for 10 s fails the cell anyway.
+#
+# Second definitions of Zephyr's symbols, as for LINKER_SORT_BY_ALIGNMENT
+# above: the first default whose condition holds wins, and modules are
+# sourced first. A conf file that sets either symbol still overrides it, and
+# `just check zephyr-log-markers-lossless` refuses a tracked conf that does.
+config LOG_BLOCK_IN_THREAD
+    default y if NROS && LOG_MODE_DEFERRED
+
+config LOG_BLOCK_IN_THREAD_TIMEOUT_MS
+    default 10000 if NROS && LOG_MODE_DEFERRED

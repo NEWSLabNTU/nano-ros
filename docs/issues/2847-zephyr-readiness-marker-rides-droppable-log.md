@@ -55,39 +55,71 @@ message too.
 
 ## Survey
 
-Of the 36 Zephyr images built on host 241 on 2026-11-23, two have
-deferred-mode `printk` with overflow: `build-cortex-m-c-talker-zenoh` (mps2)
-and `build-ws-c-realtime-entry-smp` (qemu_cortex_a53 SMP), the two sites
-above. The others set `CONFIG_LOG_MODE_IMMEDIATE=y` (the cyclonedds snippet
-and the per-board cyclonedds confs) or build without `CONFIG_LOG_PRINTK`. That
-is a sample of the images one host had built, not the full fixture set. A
-zenoh-lane image that sets neither inherits the deferred default.
+Zephyr's `choice LOG_MODE` defaults to `LOG_MODE_IMMEDIATE` on `ARCH_POSIX`
+and to `LOG_MODE_DEFERRED` everywhere else. So every native_sim image is
+immediate and never had this channel, and every other board with
+`CONFIG_LOG=y` is deferred unless its conf says otherwise. In
+`examples/fixtures.toml` that is 18 Zephyr rows: 13 on mps2/an385, 4 on
+qemu_cortex_a53 SMP (the realtime entry, two log-sink cells and the
+dead-holder cell) and 1 on nucleo_f767zi. A first survey counted only the
+images one host had built, which were mostly native_sim, and understated
+this.
 
-## What has been done, and why it is not the end
+## What had been done before the fix
 
 - Issue 2815's fix makes the burst quieter: one history-depth warning
   instead of twelve.
 - The mps2 board fragment sets `CONFIG_LOG_BUFFER_SIZE=4096`, from 1024.
 
-Both make the drop rarer. Neither makes it impossible: the next burst that
-outgrows the buffer drops the marker again, and the test reads as a broken
-image.
+Both made the drop rarer, not impossible.
 
-## Directions (not decided)
+## Directions that were considered
 
-1. `CONFIG_LOG_MODE_OVERFLOW=n` on the images whose cells read markers. A
-   full buffer then drops NEW messages, so a marker logged early survives,
-   and a late one does not. Whether that covers a site depends on when its
-   marker prints relative to the burst, which has not been measured.
-2. Print each test-observed marker on a channel the log buffer cannot drop.
-   For the network marker, read the assigned address from the network
-   interface (`net_if`) after `net_config` runs, so the evidence stays
-   Zephyr's own (it reads the stack's state). For a `printk` marker, the
-   choices are `CONFIG_LOG_MODE_IMMEDIATE` on that image, or a console write
-   that does not go through the log.
+1. `CONFIG_LOG_MODE_OVERFLOW=n`: a full buffer drops NEW messages, so an
+   early marker survives and a late one does not. Not chosen: it moves the
+   loss rather than removing it.
+2. A separate console channel for each marker (`k_str_out`, or reading the
+   address from `net_if`). Not chosen: it needs a change at every site,
+   including Zephyr's own `net_config` line, and on SMP a raw console write
+   can interleave with the logging thread's output character by character
+   (the issue 2384 class).
 3. Have the harness treat `--- N messages dropped ---` before the marker as
-   "marker unknown", not "marker absent", and fall back to a second witness.
-   This makes the verdict honest without making the marker reliable.
+   "marker unknown". Not chosen: it makes the verdict honest without making
+   the marker reliable.
+
+## The fix
+
+`zephyr/Kconfig` gives every nros image with deferred logging
+`CONFIG_LOG_BLOCK_IN_THREAD=y` and `CONFIG_LOG_BLOCK_IN_THREAD_TIMEOUT_MS=10000`
+(second definitions of Zephyr's symbols, which win because modules are sourced
+first). In `mpsc_pbuf_alloc`, a thread-context allocation that finds the
+buffer full now waits on the buffer's semaphore before the drop branch is
+reached, so the logging thread runs and makes room. This covers every marker
+at once, whoever prints it and however (`printk`, `LOG_*`, Rust `log::`, C
+`printf` through `CONFIG_NROS_CONSOLE_WHOLE_LINES`).
+
+What it does not cover:
+
+- **ISR context.** An interrupt cannot wait, so a message logged from an ISR
+  can still be dropped. No marker a test reads is printed from an ISR: the
+  core-pin line comes from the sched task's own thread, and `net_config`'s
+  static-address line from the `SYS_INIT(APPLICATION)` hook, which runs in
+  the init thread.
+- **A logging thread starved for 10 s.** The wait is bounded, because a
+  forever wait deadlocks if the logging thread logs into a full buffer. A
+  cell whose logging thread cannot run for 10 s fails anyway.
+
+The cost is that a thread logging into a full buffer stalls instead of losing
+its message. The board's sched-task runner logs only at setup and on
+failure, never per tick; the realtime demo's apps print one line per tick.
+Measured on qemu_cortex_a53 SMP at host load about 85, 70 s: the 100 Hz
+control thread printed 6,757 consecutive ticks in about 66 s of guest time
+(about 102 Hz), every console line arrived, and no drop was reported. The
+`CorePinPlacement` cell then passed 5 of 5 solo runs at host load about 77,
+where before the fix it had passed 2 of 3.
+
+`just check zephyr-log-markers-lossless` holds both defaults and refuses a
+tracked `.conf` that turns them off.
 
 ## Closes when
 
