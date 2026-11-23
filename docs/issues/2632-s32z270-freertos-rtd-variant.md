@@ -5,7 +5,7 @@ status: open
 type: enhancement
 severity: medium
 area: [freertos, boards, build]
-related: [phase-524, phase-372, 0772]
+related: [phase-524, phase-372, 0772, phase-478]
 found: 2026-11-16
 ---
 
@@ -13,6 +13,8 @@ GitHub: NEWSLabNTU/nano-ros#4015
 
 **Home: [phase-524](../roadmap/phase-524-emulator-twins.md) W3** (board
 descriptors). Consumer: ASI's FreeRTOS lane on S32Z270 hardware.
+
+**Tracked by:** [phase-478](../roadmap/phase-478-island-developer-experience-findings.md) I46, owner the ASI port session (claimed 2026-11-23).
 
 ## What happens
 

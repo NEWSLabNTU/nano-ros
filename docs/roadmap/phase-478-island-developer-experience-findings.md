@@ -1,6 +1,18 @@
 # Phase 478 -- the island's developer-experience findings: borrowed toolchains, silent knobs, derivations without arithmetic
 
-**Status (2026-10-24). IN PROGRESS -- D1-D4 decided, I1-I8 landed; T2 and
+**Status (2026-11-23). IN PROGRESS. Owner: the ASI port session ("ASI
+port").** Since 2026-11-23 this is THE island phase: every nano-ros issue and
+missing feature the safety island (autoware-safety-island fork) needs for its
+migration to nano-ros is a row of
+[The island port's needs](#the-island-ports-needs-2026-11-23) below, either a
+work item here (I36-I49, T4) or a "tracked by" line naming where it lives.
+The open items, in order: I45 (in flight), I36, I37, I38, I41, I49, I43,
+I44, I40, I39, I46, I47, I48; I42 and then I26's island switch; T4 after
+each. T2, T3 and D4's on-board check below are older and stay open. Done
+means the island's branch `nano-ros-next` drops the workaround each row
+names. Items claim with `just claim phase-478-<item>`.
+
+Before that, **Status (2026-10-24). IN PROGRESS -- D1-D4 decided, I1-I8 landed; T2 and
 T3 wait on the island's board.** Refreshed 2026-10-24: D2/I3 and the first half
 of I8 had already landed under phase-474 I5 and issue 1534's configure warning,
 and most issues the 2026-10-05 text cited as open are resolved (T1). What is
@@ -755,6 +767,209 @@ so the images cannot state it in a board network file (I31). A top-level
 the check lets one group share an address and MAC and still refuses any two
 images that can run together. Never inferred from names.
 
+## The island port's needs (2026-11-23)
+
+The safety island (autoware-safety-island fork) is porting to current
+nano-ros in its phase 15 ("a platform-agnostic island"). Its branch
+`nano-ros` builds on the released nros11 CLI; its branch `nano-ros-next`
+pins main (`8d4e70a382`, 2026-11-23) and builds the CLI from source. Its
+phase-15 doc (`documentation/roadmap/phase-15-platform-agnostic-island.md` on
+`nano-ros-next`) lists what still waits on nano-ros, by its own GitHub tracker
+issues #4005-#4018 and by nano-ros issue ids. This section is the single list
+of those needs: each is a work item below or a "tracked by" row. Inventory
+read on island `nano-ros-next` `f6c8bef` and nano-ros main `a1cbbb6b04`.
+
+Done for a row means: the island's `nano-ros-next` deletes the workaround the
+row names, and its three CI lanes (Zephyr FVP, FreeRTOS POSIX, FreeRTOS
+AN536) stay green.
+
+### The island's tracker issues, mapped
+
+| island tracker | nano-ros | state on main (2026-11-23) | what the island still does |
+| --- | --- | --- | --- |
+| #4005 | 0758, 0772, 2165, 2865 | 0758, 0772 open, their asks built by [phase-582](phase-582-wall-clock-source.md) (W1 sources, W1d `board`, W2 libc shims, W3 SNTP re-sync); 2165 resolved; 2865 fixed by PR #4639 (file still `open`) | P5 done on `nano-ros-next` over phase-582; I49 closes the issue files |
+| #4006 | 2645 (I26), 2770 (I34), 2771 (I35) | resolved | waits on a release the prebuilt launcher can read (I42), then I26's switch |
+| #4007 | 2629 | resolved | controller images take FVP params from rows; the test programs are images since 2861-2864; `build.sh`'s `test/zephyr_app` builds (tap UDP tunnel, trace, stats) are the island's to turn into images (T4) |
+| #4008 | 2766 (I33) | resolved (PR #4462) | 0001 and 0002 removed; 0003 is issue 2878 (I38) |
+| #4009 | 2641 (I29) | resolved | `asi_common/include/common/diag/trace_marker.hpp` still calls `sys_trace_app_marker` itself; the island's to switch to `rclcpp::trace_marker` (T4) |
+| #4010 | 2636 (I21) | resolved | done on `nano-ros-next` (P4) |
+| #4011 | 2679 (I31) | resolved | FVP images use board network files (P6); the S32Z half is issue 2879 (I39) |
+| #4012 | 2633 | open (RTD strong symbols, `board`-stack `[canN]` hand-off) | P7 done over the driver; the S32Z2 hardware backend is I47 |
+| #4013 | 2646 (I27) | wontfix | the island's `src/eigen` workspace package; nothing waits |
+| #4014 | 2631 | resolved (PR #4086) | used on `nano-ros-next`; the module pins are issue 2880 (I40) |
+| #4015 | 2632 | open (NETC netif, port patch, full link) | I46 |
+| #4016 | 2678 (I30) | resolved | used on `nano-ros-next` |
+| #4017 | 2630 | resolved (PR #4039) | used on `nano-ros-next` |
+| #4018 | 2634 (I19) | resolved | used on `nano-ros-next` |
+
+### Cross-reference: every need, and where it is tracked
+
+| need (island evidence on `nano-ros-next`) | status | tracked by |
+| --- | --- | --- |
+| metadata probe adds a node's workspace `<depend>`s (controller_pkg `CMakeLists.txt:22-39` and the seven `src/autoware/*` fallbacks) | fixed on main, PR #4153, in the island's pin | issue 2680 ([phase-568](phase-568-build-args-and-profiles.md) W3); the island deletes the fallbacks (T4) |
+| a workspace root adds only its bringup's closure (controller_pkg `NROS_BRINGUP_DIR` guard, `:13-17`) | fixed on main, `976970a3da` | issue 2754; T4 |
+| `nros run` of a hand-written C/C++ entry (`.github/scripts/ci-helpers.sh` `nros_run_program`, `--plan` with the ELF added) | fixed on main, `68aaaaebe0` | issue 2752; T4 |
+| the probe seeds launch values (C++ `declare_parameter` defaults kept, P3) | fixed on main, `a7574ca6eb` | issue 2640 ([phase-566](phase-566-probe-launch-seeds.md)); T4 |
+| Zephyr root adds packages in `<depend>` order (the Autoware add-once guards) | fixed; the island dropped the guards | issue 2756 |
+| owned west entry: deploy, workspace modules, nested bringup census, `os_config` base | fixed; used on `nano-ros-next` | issues 2861, 2862, 2864 |
+| owned west entry: `NROS_INTERFACE_SEARCH_PATH` (`asi_tests/asi_*_zephyr/CMakeLists.txt:39-40`) | NOT FILED until now | issue 2876, I36 |
+| owned entry that never starts nano-ros on the host gets a census (`can_output_test_bringup` `[census] on_missing = "warn"`) | open, fix in flight (branch `fix/issue-2871-no-nano-ros-entry`) | issue 2871, I45 |
+| `nros run` `--forbid`, `--settle`, `--zephyr-workspace` | fixed; used on `nano-ros-next` | issue 2863 |
+| the Zephyr workspace ladder skips the project's west workspace (`run-zephyr-fvp-ci.sh:202-213`, `--zephyr-workspace` on every call) | NOT FILED until now | issue 2877, I37 |
+| the island's last Zephyr patch, an out-of-tree tracing backend (`patches/zephyr/0003-*`, `scripts/apply-zephyr-patches.sh`) | declined in 2766, NOT FILED as its own question | issue 2878, I38 |
+| S32Z network: board network file, VLAN, second interface (`network_config.cpp`, the last `PLATFORM_*` reader; the DHCP sleep in `board_network_hook.cpp`) | NOT FILED (2679 D5 cut it) | issue 2879, I39 |
+| S32Z Zephyr module pins (`actuation_module/west.yml`: `cmsis`, `hal_nxp`, `zephyr-lang-rust` by hand) | NOT FILED | issue 2880, I40 |
+| compile-time log floor (`common/logger/logger.hpp`, `CONFIG_LOG_LEVEL`, P4) | NOT FILED | issue 2881, I41 |
+| a release past nros11 (branch `nano-ros` on `0.6.0-nros11`; everything else on `nano-ros-next` with a source CLI) | NOT FILED | issue 2882, I42 |
+| `halt` after `platform` on a "none" port is unreachable (island writes `sntp` alone, P5) | NOT FILED | issue 2883, I43 |
+| SNTP re-sync paced on guest time (`sntp_resync_interval_ms = 0` on every image, P5) | NOT FILED | issue 2884, I44 |
+| SNTP re-sync thread stack fixed at 2048 B (7024 B measured on the FVP) | filed, fix in review (PR #4632) | issue 2846 ([phase-582](phase-582-wall-clock-source.md) W3); I44 needs it |
+| `board` clock re-asked on an interval | open follow-up; the island does not need it today | issue 2866 ([phase-582](phase-582-wall-clock-source.md)) |
+| FreeRTOS wall clock resolves after the network (`fallback_settle_ms = 6000` on an536, s32z2) | fixed, PR #4639; file still `open` | issue 2865 ([phase-582](phase-582-wall-clock-source.md)); I49 |
+| board-owned CAN frame driver (P7) | done for the island's boards; open for the S32Z2 RTD backend | issue 2633 ([phase-560](phase-560-contract-revision-follow.md) W9), I47 |
+| s32z270-freertos RTD variant: NETC netif, the NXP `port.c` Thumb-resume patch (`s32z2_board_glue/vendor_patched/port.c.patch`), a full link | open | issue 2632, I46; hardware and twin halves in [phase-512](phase-512-on-hardware-measurements.md) and [phase-524](phase-524-emulator-twins.md) W3 |
+| zenoh-pico CAN link over the frame driver | open; not an island need (it runs Cyclone DDS) | issue 2769, I48 |
+| images that never run together share an address (the four TAP images) | done | issue 2690, [phase-586](phase-586-image-alternatives.md) |
+| the Arm FVP is user-provided | done; the island provisions its own | issue 2802 |
+| zenoh CAN links on hardware; a generated silence watchdog | not island needs (no zenoh CAN; the island has its own staleness gate) | issues 2488, 2572 |
+| FVP board conf values below the island's (`prj-fvp.conf` heap, pthread, net buffers) | the image's own sizing, stated per image; nothing to file | -- |
+
+### I36 -- an owned west entry gets the workspace's interface search path
+
+- **Issue:** [2876](../issues/2876-owned-west-entry-no-interface-search-path.md).
+- **What:** the owned entry configures with the workspace's `src/` on
+  `NROS_INTERFACE_SEARCH_PATH`, as a generated app does.
+- **Acceptance:** 2876's (fixture with no line in its CMakeLists; owned and
+  generated carriers held to one search path); the island deletes the three
+  `set(NROS_INTERFACE_SEARCH_PATH ...)` lines.
+
+### I37 -- the Zephyr ladder finds the project's west workspace
+
+- **Issue:** [2877](../issues/2877-zephyr-workspace-ladder-skips-project-west-workspace.md).
+- **What:** a rung for the west workspace the nano-ros workspace sits in,
+  above the store's; the build names the tree it took.
+- **Acceptance:** 2877's; the island's FVP lane runs `nros build` / `nros run`
+  with no `--zephyr-workspace`.
+
+### I38 -- a ruling on the out-of-tree tracing backend patch
+
+- **Issue:** [2878](../issues/2878-zephyr-tracing-custom-backend-patch.md).
+- **What:** nano-ros carries the 3.7 patch beside 2766's, or the book
+  documents a consumer's own Zephyr patch over a provisioned tree.
+- **Acceptance:** 2878's; under the first answer the island deletes
+  `patches/zephyr/` and `scripts/apply-zephyr-patches.sh`.
+
+### I39 -- the S32Z network from a board network file
+
+- **Issue:** [2879](../issues/2879-s32z270-rtu0-zephyr-no-board-network.md).
+- **What:** `[board.net]` on `s32z270-rtu0-zephyr`; a VLAN tag (and, if
+  agreed, a second interface) in a board network file, or a board-owned hook.
+- **Acceptance:** 2879's configure check here; the tagged bring-up measured
+  under [phase-512](phase-512-on-hardware-measurements.md) or on the
+  [phase-524](phase-524-emulator-twins.md) twin (linked, not done here); the
+  island deletes `network_config.cpp` and its `PLATFORM_*` defines.
+
+### I40 -- a downstream west fragment for the S32Z270 Zephyr board
+
+- **Issue:** [2880](../issues/2880-s32z270-rtu0-zephyr-no-west-downstream.md).
+- **What:** `west-downstream.yml` with `zephyr-lang-rust`, `hal_nxp`, `cmsis`,
+  held in lockstep by a check.
+- **Acceptance:** 2880's; the island imports it and keeps no hand pin but
+  `zephyr` and nano-ros.
+
+### I41 -- a compile-time log floor
+
+- **Issue:** [2881](../issues/2881-rclcpp-log-min-severity-missing.md).
+- **What:** `RCLCPP_LOG_MIN_SEVERITY` with upstream's meaning.
+- **Acceptance:** 2881's (`just check cpp`: arguments below the floor are not
+  evaluated); the island's `log_*` shim loses its `CONFIG_LOG_LEVEL` gating.
+
+### I42 -- a release past nros11
+
+- **Issue:** [2882](../issues/2882-nros12-release-for-consumers.md).
+- **What:** the next release cut once the release lanes are green; until then
+  the blocking lanes are recorded in the issue.
+- **Acceptance:** a published release; the island folds `nano-ros-next` into
+  its default branch on it, then I26's island switch (a commit pin) is
+  possible.
+
+### I43 -- an unreachable `halt` is refused or warned
+
+- **Issue:** [2883](../issues/2883-zephyr-clock-halt-unreachable-after-platform.md).
+- **What:** a configure check on a port whose `platform` is "none".
+- **Acceptance:** 2883's knob-validation test; RFC-0141 names the check.
+  [Phase-582](phase-582-wall-clock-source.md) owns RFC-0141; its owner reviews.
+
+### I44 -- SNTP re-sync usable on a simulator
+
+- **Issue:** [2884](../issues/2884-sntp-resync-paced-on-guest-time.md); needs
+  issue 2846 (PR #4632, the stack as a knob) first.
+- **What:** a ruling on pacing, and its build.
+- **Acceptance:** 2884's; the island sets a non-zero
+  `sntp_resync_interval_ms` on its FVP images.
+
+### I45 -- a census for an owned entry that never starts nano-ros
+
+- **Issue:** [2871](../issues/2871-census-for-entry-without-nano-ros.md), in
+  flight on branch `fix/issue-2871-no-nano-ros-entry` (ruled option (a): the
+  image states it).
+- **Acceptance:** 2871's; the island's `can_output_test_bringup` drops
+  `[census] on_missing = "warn"`.
+
+### I46 -- the s32z270-freertos RTD variant, finished
+
+- **Issue:** [2632](../issues/2632-s32z270-freertos-rtd-variant.md), "Still
+  open" 1-3: the NETC netif glue, the port patch (a licence answer first),
+  a full image link.
+- **Needs:** a host with the NXP trees; the hardware run belongs to
+  [phase-512](phase-512-on-hardware-measurements.md), the board descriptor to
+  [phase-524](phase-524-emulator-twins.md) W3 (linked, not absorbed).
+- **Acceptance:** 2632's three items; the island's `[image.s32z2]` names
+  `s32z270-freertos-rtd` and deletes `src/s32z2_board_glue/`, the
+  `ASI_S32Z2_NXP_PORT` switch and `scripts/provision-nxp-freertos.sh`'s env.
+
+### I47 -- the S32Z2 CAN frame driver over the vendor drivers
+
+- **Issue:** [2633](../issues/2633-board-owned-can-frame-driver.md) (design
+  home [phase-560](phase-560-contract-revision-follow.md) W9): the
+  `s32z270-freertos` strong symbols over the RTD CAN driver, and the
+  `board`-stack `[canN]` hand-off.
+- **Needs:** I46's NXP trees.
+- **Acceptance:** 2633's; the island's `s32z2` image states a CAN device and
+  sends frames with no island backend.
+
+### I48 -- the zenoh-pico CAN link over the frame driver
+
+- **Issue:** [2769](../issues/2769-zenoh-can-link-over-frame-driver.md). Taken
+  here because it is island-shaped (one device owner on a `board`-stack
+  board); the island itself runs Cyclone DDS, so it is last.
+- **Acceptance:** 2769's.
+
+### I49 -- the clock issues closed against phase-582
+
+- **What:** issues 0758 and 0772 asked for what phase-582 built (sources, the
+  `board` hook, the FreeRTOS libc shims, SNTP re-sync); issue 2865's fix
+  merged (PR #4639). Record the island's evidence (its tracker #4005; CI run
+  45075448610 at main `9e9deb715f`: FVP "nros: wall clock from sntp", AN536
+  "nros: wall clock from board", "Stamp clock: absolute ... synced") in each
+  and resolve them, or name what is still missing. 2866 stays a phase-582
+  follow-up.
+- **Acceptance:** 0758, 0772 and 2865 resolved and archived, or each names
+  its remaining gap.
+
+### T4 -- the island drops each workaround
+
+- **What:** for every row above marked fixed, and for each item as it lands,
+  the island's `nano-ros-next` deletes the workaround and its CI stays
+  green. The rows fixed on main today: the probe fallbacks (2680), the
+  bringup guard (2754), `nros_run_program`'s `--plan` (2752), the C++
+  parameter defaults (2640), the test entries' `asi_common` fallback (2680,
+  2861; verify), the trace marker call (2641), the `test/zephyr_app` builds
+  as images (2629, 2861-2864).
+- **Acceptance:** each deletion is a commit on the island's `nano-ros-next`
+  with a green CI run, recorded in its phase-15 doc; a row whose deletion
+  fails gets a new issue here.
+
 ## Test / check
 
 ### T1 -- issue status sweep
@@ -828,6 +1043,14 @@ composition and its sum equals the resolved value.
 D1 before I1 and I2; D2 before I3; D3 before I4; I3 and I4 before T3. D4,
 I5, I6, I7 and I8 are independent. I8's second half waits on 474 T3.
 
+The island port's items (2026-11-23), in this order, each followed by its T4
+deletion on the island: I45 (in flight); I36 and I37 (the FVP lane's last
+flags and CMake lines); I38 (after I37, so the ladder decides which tree a
+carried patch lands in); I41; I49; I43; I44 (after issue 2846 merges); I40;
+I39; I46, then I47 (both need a host with the NXP trees; hardware runs under
+phase-512); I48 last. I42 whenever the release lanes are green, then I26's
+island switch.
+
 ## What this phase does not do
 
 - The runtime items of phase-474 (violations, arming, route checks, the heap
@@ -894,14 +1117,48 @@ I5, I6, I7 and I8 are independent. I8's second half waits on 474 T3.
       `nros-cli-core` `image_net` and `builder::zephyr` tests).
 - [x] I32: RFC-0136 built: `[image_alternatives]` validated, `check_collisions`
       lets one group share an address and MAC, the D5 tests and D6 docs (issue 2690).
-- [ ] I33: nano-ros carries the Zephyr CTF `app_marker` event patch (and the
+- [x] I33: nano-ros carries the Zephyr CTF `app_marker` event patch (and the
       `k_thread_priority_set` CTF fix) in `zephyr/patches/`, applied by
       `nros setup board`, so a CTF image emits callback and application
-      markers with no consumer patch (issue 2766).
+      markers with no consumer patch (issue 2766; PR #4462, the island
+      removed its 0001 and 0002 at main `14be463e27`).
 - [x] I34: `nros pin --rev <sha>` / `--path <dir>` write a commit or checkout
       pin, refusing what the launcher refuses (issue 2770).
 - [x] I35: `nros doctor` reports a toolchain pin that disagrees with
       `west.yml`'s nano-ros revision (issue 2771).
+- [ ] I36: an owned west entry configures with the workspace's `src/` on
+      `NROS_INTERFACE_SEARCH_PATH`; the island's three hand-set lines go
+      (issue 2876).
+- [ ] I37: the Zephyr workspace ladder takes the project's own west
+      workspace above the store's and says so; the island's FVP lane names
+      no `--zephyr-workspace` (issue 2877).
+- [ ] I38: the out-of-tree tracing backend patch ruled and built or
+      documented; under the first answer the island carries no Zephyr patch
+      (issue 2878).
+- [ ] I39: an S32Z image names a board network file, with its VLAN tag; the
+      island's `network_config.cpp` and `PLATFORM_*` defines go (issue 2879).
+- [ ] I40: `s32z270-rtu0-zephyr` ships a checked `west-downstream.yml`; the
+      island imports it (issue 2880).
+- [ ] I41: `RCLCPP_LOG_MIN_SEVERITY` compiles out the levels below it, with
+      their arguments; the island's `CONFIG_LOG_LEVEL` gating goes (issue
+      2881).
+- [ ] I42: a release past nros11 is published; the island's default branch
+      moves to it (issue 2882).
+- [ ] I43: an unreachable `halt` after `platform` is refused or warned at
+      configure (issue 2883).
+- [ ] I44: SNTP re-sync pacing ruled and built; the island's FVP images set a
+      non-zero interval (issue 2884, after issue 2846).
+- [ ] I45: an image states that its owned entry runs no nano-ros and gets an
+      empty census; the island drops `on_missing = "warn"` (issue 2871).
+- [ ] I46: the s32z270-freertos RTD variant has its NETC netif, the port
+      patch question answered, and a full link; the island names the variant
+      (issue 2632).
+- [ ] I47: the S32Z2 CAN frame driver over the vendor drivers (issue 2633).
+- [ ] I48: the zenoh-pico CAN link rides the frame driver (issue 2769).
+- [ ] I49: issues 0758, 0772 and 2865 resolved against phase-582 with the
+      island's evidence, or each names its remaining gap.
+- [ ] T4: every fixed row of "The island port's needs" has its island
+      workaround deleted on `nano-ros-next` with a green CI run.
 - [x] T1: every row of the status table matches its issue file (1120 archived).
 - [ ] T2: the fresh-worktree run passes as stated; `image-facts` on the island
       re-run and its result recorded. Needs the island tree at a pin that
@@ -922,6 +1179,26 @@ this phase will fix it.
 - [issue 0772](../issues/0772-freertos-lwip-wall-clock-epoch.md) — FreeRTOS/lwIP has no wall-clock epoch — the same consumer that drove the Zephyr one runs a FreeRTOS board too
 - [issue 0913](../issues/archived/0913-the-debugger-is-not-a-passive-instrument.md) -- attaching pyocd RTT kills the zenoh session. Moved to phase-512 and resolved there 2026-11-09: halts under the 60 s lease keep the session, longer ones recover without a router restart.
 - [issue 1957](../issues/1957-s32ds-image-crate-unverified-in-ide.md) — s32ds builds its staticlib through the generated image crate since phase-506 W4a and has not been built in the S32 Design Studio since
+
+## Issues homed here (2026-11-23)
+
+Filed from the island port's inventory (its phase 15 on `nano-ros-next`
+`f6c8bef`, nano-ros pin `8d4e70a382`), or taken here as island-shaped and
+unowned.
+
+- [issue 2876](../issues/2876-owned-west-entry-no-interface-search-path.md): an owned Zephyr west entry gets no workspace `NROS_INTERFACE_SEARCH_PATH` (I36).
+- [issue 2877](../issues/2877-zephyr-workspace-ladder-skips-project-west-workspace.md): the Zephyr workspace ladder never looks at the project's own west workspace (I37).
+- [issue 2878](../issues/2878-zephyr-tracing-custom-backend-patch.md): Zephyr 3.7 cannot select an out-of-tree tracing backend; the island carries the patch (I38).
+- [issue 2879](../issues/2879-s32z270-rtu0-zephyr-no-board-network.md): `s32z270-rtu0-zephyr` declares no `[board.net]`, and no VLAN or second interface renders (I39).
+- [issue 2880](../issues/2880-s32z270-rtu0-zephyr-no-west-downstream.md): `s32z270-rtu0-zephyr` has no `west-downstream.yml` (I40).
+- [issue 2881](../issues/2881-rclcpp-log-min-severity-missing.md): no compile-time log floor, `RCLCPP_LOG_MIN_SEVERITY` (I41).
+- [issue 2882](../issues/2882-nros12-release-for-consumers.md): no release past nros11, and nothing tracks the next (I42).
+- [issue 2883](../issues/2883-zephyr-clock-halt-unreachable-after-platform.md): `halt` after `platform` on a "none" port is unreachable and accepted (I43).
+- [issue 2884](../issues/2884-sntp-resync-paced-on-guest-time.md): the SNTP re-sync interval runs on guest time (I44).
+- [issue 2871](../issues/2871-census-for-entry-without-nano-ros.md): an owned entry that never starts nano-ros gets no census (I45; fix in flight).
+- [issue 2632](../issues/2632-s32z270-freertos-rtd-variant.md): the s32z270-freertos RTD variant's NETC netif, port patch and full link (I46; phase-524 W3 stays its descriptor home).
+- [issue 2633](../issues/2633-board-owned-can-frame-driver.md): the S32Z2 CAN frame driver's vendor backend and the `board`-stack hand-off (I47; phase-560 W9 stays its design home).
+- [issue 2769](../issues/2769-zenoh-can-link-over-frame-driver.md): the zenoh-pico CAN link over the frame driver (I48).
 
 ## Issues homed here (2026-11-02)
 

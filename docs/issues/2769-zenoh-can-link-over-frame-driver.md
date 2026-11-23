@@ -5,7 +5,7 @@ status: open
 type: enhancement
 severity: low
 area: [rmw-wire, platform, boards]
-related: [rfc-0080, rfc-0083, rfc-0132, 2633, phase-560]
+related: [rfc-0080, rfc-0083, rfc-0132, 2633, phase-560, phase-478]
 found: 2026-11-20
 ---
 
@@ -13,6 +13,8 @@ GitHub: NEWSLabNTU/nano-ros#4456
 
 Filed by phase-560 W9.f as RFC-0132 open question 4's follow-up (issue
 [2633](2633-board-owned-can-frame-driver.md)).
+
+**Tracked by:** [phase-478](../roadmap/phase-478-island-developer-experience-findings.md) I48, owner the ASI port session (claimed 2026-11-23).
 
 ## What is missing
 
