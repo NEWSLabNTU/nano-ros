@@ -19,9 +19,9 @@
 #   - NUTTX_APPS_DIR — NuttX apps source (default: third-party/nuttx/nuttx-apps)
 #   - NUTTX_DEFCONFIG — board defconfig (the board overlay supplies this; default
 #     is the qemu-arm board). A relative path is taken from the caller's cwd.
-#   - NUTTX_BOARD_MAKEDEFS — board Make.defs path relative to NUTTX_DIR (the board
-#     overlay supplies this; default = the qemu-arm board's
-#     boards/arm/qemu/qemu-armv7a/scripts/Make.defs)
+#   - NUTTX_BOARD_MAKEDEFS — optional board Make.defs path relative to NUTTX_DIR.
+#     Default: DERIVED from the defconfig's CONFIG_ARCH / CONFIG_ARCH_CHIP /
+#     CONFIG_ARCH_BOARD; an override for another arch is refused (issue 2914).
 #
 # Usage:
 #   ./build-nuttx.sh                    # Build with default defconfig
@@ -37,7 +37,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 DEFCONFIG="${NUTTX_DEFCONFIG:-$PROJECT_ROOT/packages/boards/nros-board-nuttx-qemu/nuttx-config/arm/defconfig}"
-# Issue 2915 — the defconfig, resolved once, before any `cd`.
+# Issues 2914/2915 — the board inputs, resolved once, before any `cd`.
 # shellcheck source=scripts/nuttx/build-inputs.sh
 . "$SCRIPT_DIR/build-inputs.sh"
 DEFCONFIG="$(nros_nuttx_resolve_defconfig "$DEFCONFIG" "$PWD")" || exit 1
@@ -135,7 +135,7 @@ case "${1:-}" in
             # The board config is a fragment (an `#include` of an upstream
             # config plus this board's differences), so it is configured,
             # never copied.
-            _mk="$(pwd)/${NUTTX_BOARD_MAKEDEFS:-boards/arm/qemu/qemu-armv7a/scripts/Make.defs}"
+            _mk="$(nros_nuttx_board_makedefs "$NUTTX_DIR" "$DEFCONFIG" "${NUTTX_BOARD_MAKEDEFS:-}")" || exit 1
             nros_nuttx_configure "$NUTTX_DIR" "$NUTTX_APPS_DIR" "$DEFCONFIG" "$_mk" \
                 "$PROJECT_ROOT/build/nuttx-configure/menuconfig" || exit 1
         fi
@@ -184,11 +184,12 @@ export APPDIR="$NUTTX_APPS_DIR"
 # stdio/lib_libbsprintf.c → stream/lib_libbsprintf.c after an upstream
 # reorganization), causing "No rule to make target" failures. We track the
 # NuttX submodule HEAD in a marker file and distclean when it changes.
-# 194.3c.3: the board Make.defs path is per-board (arch/chip/board), supplied by
-# the board overlay via NUTTX_BOARD_MAKEDEFS (relative to NUTTX_DIR); default =
-# the qemu-arm board so the arm provisioning is unchanged. A new-arch board
-# (e.g. riscv rv-virt) sets NUTTX_BOARD_MAKEDEFS=boards/risc-v/qemu-rv/rv-virt/scripts/Make.defs.
-BOARD_MAKEDEFS="$(pwd)/${NUTTX_BOARD_MAKEDEFS:-boards/arm/qemu/qemu-armv7a/scripts/Make.defs}"
+# 194.3c.3 / issue 2914: the board Make.defs is per-board (arch/chip/board) and
+# DERIVED from the defconfig, which states all three. NUTTX_BOARD_MAKEDEFS
+# (relative to NUTTX_DIR) still overrides it, but only within the defconfig's
+# arch: a riscv defconfig beside the qemu-arm Make.defs, the old silent default,
+# compiled with the host gcc and `-mfloat-abi=soft`.
+BOARD_MAKEDEFS="$(nros_nuttx_board_makedefs "$NUTTX_DIR" "$DEFCONFIG" "${NUTTX_BOARD_MAKEDEFS:-}")" || exit 1
 # phase-339 W1 — ARCH-KEYED everything below.
 #
 # Both architectures build in this one tree, so a single marker and a single

@@ -1147,9 +1147,11 @@ nuttx-links-snapshot:
 nuttx-export-machine:
     @python3 scripts/nuttx/check-export-machine.py
 
-# Issue 2915 — `build-nuttx.sh` reads a relative NUTTX_DEFCONFIG from the
-# caller's cwd, not from inside the NuttX tree, and names a missing one.
-# Self-test of the helpers it sources, with a negative control per case.
+# Issues 2914 / 2915 — `build-nuttx.sh` takes the board Make.defs from the
+# defconfig's CONFIG_ARCH/CHIP/BOARD (an override for another arch is refused;
+# it used to default to qemu-arm whatever the defconfig said), and reads a
+# relative NUTTX_DEFCONFIG from the caller's cwd, not from inside the NuttX
+# tree. Self-test of the helpers it sources, with a negative control per case.
 # Buildless, <1 s.
 [private]
 nuttx-build-inputs:

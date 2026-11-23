@@ -441,9 +441,8 @@ build-riscv-c-workspaces:
     fi
     nuttx_dir="${NUTTX_DIR:-$(pwd)/third-party/nuttx/nuttx}"
     rv_defconfig="$(pwd)/packages/boards/nros-board-nuttx-qemu/nuttx-config/riscv/defconfig"
-    NUTTX_DEFCONFIG="$rv_defconfig" \
-        NUTTX_BOARD_MAKEDEFS="boards/risc-v/qemu-rv/rv-virt/scripts/Make.defs" \
-        bash scripts/nuttx/build-nuttx.sh
+    # The board Make.defs is the defconfig's own (rv-virt), derived (issue 2914).
+    NUTTX_DEFCONFIG="$rv_defconfig" bash scripts/nuttx/build-nuttx.sh
     export NUTTX_DIR="$nuttx_dir"
     # issue 0456 — without this the board helpers take their qemu-ARM defaults
     # and archive `arm_vectortab.o` into a riscv image's boot archive; the link
@@ -478,9 +477,8 @@ build-riscv-rust:
     nuttx_dir="${NUTTX_DIR:-$(pwd)/third-party/nuttx/nuttx}"
     rv_defconfig="$(pwd)/packages/boards/nros-board-nuttx-qemu/nuttx-config/riscv/defconfig"
     # Provision the rv-virt export (reconfigures the shared tree if it was arm).
-    NUTTX_DEFCONFIG="$rv_defconfig" \
-        NUTTX_BOARD_MAKEDEFS="boards/risc-v/qemu-rv/rv-virt/scripts/Make.defs" \
-        bash scripts/nuttx/build-nuttx.sh
+    # The board Make.defs is the defconfig's own (rv-virt), derived (issue 2914).
+    NUTTX_DEFCONFIG="$rv_defconfig" bash scripts/nuttx/build-nuttx.sh
     export NUTTX_DIR="$nuttx_dir"
     # issue 0456 — the riscv values for the shared board build.rs helpers, which
     # default to qemu-arm. ONE spelling, sourced by all three riscv recipes:
