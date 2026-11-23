@@ -50,12 +50,13 @@ first row whose image needs one failed.
 
 ## Why the local gate passed
 
-The local `just ci gate` does not run the Zephyr fixture build
-(`just zephyr build-fixtures` / `build-test-fixtures` with the zephyr module);
-that build runs in the tier-1/tier-2 lanes on the self-hosted runner. The
-2862 work took the census by hand while developing the fixture, and the
-census file lives in the fixture's ignored `build/` dir, so every later
-configure in that checkout found it fresh.
+`just ci gate` builds no fixtures; the Zephyr fixture build that runs the
+pre-pass runs only in the tier-1/tier-2 lanes on the self-hosted runner. A
+direct `scripts/build/west-fixtures.sh` run (no `NROS_CENSUS_PREPASS`) lets
+`nros build` take the census itself, and under the default probe policy a
+missing census is only a warning, so the row configured locally. Reproduced
+on a fresh worktree with `NROS_CENSUS_PREPASS=done NROS_PROBE_FAILURE=refuse`:
+`MISSING build.ninja` with the runner's error.
 
 ## Fix
 
