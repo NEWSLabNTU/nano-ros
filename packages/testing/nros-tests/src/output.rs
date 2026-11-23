@@ -2508,3 +2508,7 @@ pub const LOG_DEAD_HOLDER_AFTER_RECORD: &str = "record after the released death"
 /// The record main logs after the second death (check skipped): the negative
 /// control, held for a dead holder and never delivered.
 pub const LOG_DEAD_HOLDER_STRANDED_RECORD: &str = "record after the unreported death";
+/// Issues 2738 and 2762 -- the prefix the image's faulting (serialised) sink
+/// echoes each record it gets with. A dead holder strands records owed to a
+/// serialised sink only: the Zephyr console sink is re-entrant.
+pub const LOG_DEAD_HOLDER_SERIAL_PREFIX: &str = "log-dead-holder: serialised sink got [main]: ";

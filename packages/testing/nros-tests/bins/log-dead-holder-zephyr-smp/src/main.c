@@ -17,6 +17,12 @@
  * and the record is stranded, which is what makes phase 1's delivery mean
  * something. It runs second because it leaves the dispatcher held for good.
  *
+ * The verdict is read from the faulting sink, which echoes every other record
+ * with a prefix: it is serialised behind the dispatcher, so it is what a dead
+ * holder strands. The Zephyr console sink is re-entrant since issue 2762 and
+ * gets every record without the dispatcher, so the stranded record DOES reach
+ * the console in phase 2, which the test also asserts.
+ *
  * The strings below are `nros_tests::output::LOG_DEAD_HOLDER_*`.
  */
 
@@ -52,8 +58,6 @@ static void fatal_sink(void* user_data, rcl_log_severity_t severity, const char*
                        const char* file, size_t file_len, uint32_t line, uint64_t timestamp_ns) {
     (void)user_data;
     (void)severity;
-    (void)logger_name;
-    (void)logger_name_len;
     (void)file;
     (void)file_len;
     (void)line;
@@ -61,6 +65,8 @@ static void fatal_sink(void* user_data, rcl_log_severity_t severity, const char*
     if (message_len >= 3 && memcmp(message, "DIE", 3) == 0) {
         k_oops();
     }
+    printk("log-dead-holder: serialised sink got [%.*s]: %.*s\n", (int)logger_name_len, logger_name,
+           (int)message_len, message);
 }
 
 static void victim_entry(void* a, void* b, void* c) {

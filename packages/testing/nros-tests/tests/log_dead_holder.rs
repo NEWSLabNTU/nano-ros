@@ -20,6 +20,12 @@
 //!   arrives. Without it, phase 1's delivery could be a guard that was never
 //!   held.
 //!
+//! Both verdicts are read from the faulting sink's own echo
+//! (`LOG_DEAD_HOLDER_SERIAL_PREFIX`), which is serialised behind the
+//! dispatcher. The console sink is re-entrant since issue 2762, so it gets
+//! the phase-2 record anyway, without the dispatcher, and that is asserted
+//! too: a dead holder no longer silences the default sink.
+//!
 //! ## Prerequisites
 //!
 //! - `NROS_ZEPHYR_FIXTURE_FILTER=log-dead-holder just zephyr build-fixtures`
@@ -31,7 +37,8 @@ use nros_tests::{
     fixtures::{RequireFixture, build_log_dead_holder_smp},
     output::{
         LOG_DEAD_HOLDER_AFTER_RECORD, LOG_DEAD_HOLDER_DONE, LOG_DEAD_HOLDER_HANDLER_RETURNS,
-        LOG_DEAD_HOLDER_PHASE1_DONE, LOG_DEAD_HOLDER_REPORT, LOG_DEAD_HOLDER_STRANDED_RECORD,
+        LOG_DEAD_HOLDER_PHASE1_DONE, LOG_DEAD_HOLDER_REPORT, LOG_DEAD_HOLDER_SERIAL_PREFIX,
+        LOG_DEAD_HOLDER_STRANDED_RECORD,
     },
     zephyr::{ZephyrPlatform, ZephyrProcess},
 };
@@ -75,16 +82,26 @@ fn a_dead_dispatcher_holder_is_reported_once_and_later_records_are_delivered() {
         "the report must name the thread that died: {}\n{out}",
         reports[0]
     );
+    let after = format!("{LOG_DEAD_HOLDER_SERIAL_PREFIX}{LOG_DEAD_HOLDER_AFTER_RECORD}");
     assert!(
-        phase1.contains(LOG_DEAD_HOLDER_AFTER_RECORD),
-        "the record after the released death never reached the console:\n{out}"
+        phase1.contains(&after),
+        "the record after the released death never reached the serialised sink:\n{out}"
     );
 
     // Phase 2, the negative control: the same death unchecked strands the
     // next record, so phase 1's delivery is the release's doing.
+    let stranded = format!("{LOG_DEAD_HOLDER_SERIAL_PREFIX}{LOG_DEAD_HOLDER_STRANDED_RECORD}");
     assert!(
-        !out.contains(LOG_DEAD_HOLDER_STRANDED_RECORD),
-        "a record after an UNCHECKED death was delivered, so the dispatcher was never \
-         held and phase 1 proves nothing:\n{out}"
+        !out.contains(&stranded),
+        "a record after an UNCHECKED death reached the serialised sink, so the \
+         dispatcher was never held and phase 1 proves nothing:\n{out}"
+    );
+    // Issue 2762: the console sink is re-entrant, so the same record reaches
+    // the console without the dispatcher the dead thread still holds.
+    assert!(
+        out.lines()
+            .any(|l| l.contains(LOG_DEAD_HOLDER_STRANDED_RECORD) && !l.contains(&stranded)),
+        "the re-entrant console sink never got the record after the unchecked death, \
+         so a dead holder still silences it:\n{out}"
     );
 }
