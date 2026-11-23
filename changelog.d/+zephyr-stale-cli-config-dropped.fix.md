@@ -1,0 +1,1 @@
+A Zephyr build directory configured before a nano-ros setting was retired, or became a system.toml knob, configures again. The old `-DCONFIG_*` value Zephyr kept in the build directory's cache is dropped with a warning naming what to set instead. A retired setting passed on the current command line is still refused.

@@ -167,6 +167,33 @@ function(_nros_image_consume_overrides ids_var)
     set(${ids_var} "${_ids}" PARENT_SCOPE)
 endfunction()
 
+# _nros_image_kconfig_drop_stale_cli(<symbols> <why-prefix>) -- issue 2906.
+# Zephyr's spelling of "set on the command line" (`kconfig.cmake`) is the cache
+# entry `CONFIG_<SYM>` on the configure that passes it and `CLI_CONFIG_<SYM>` on
+# every re-configure after, for the life of the build dir. This hook runs
+# before `kconfig.cmake` moves the first into the second, so here a
+# `CONFIG_<SYM>` is THIS configure's command line and a `CLI_CONFIG_<SYM>`
+# alone is an EARLIER one's -- possibly a tree's from before the symbol was
+# retired or became a system.toml knob, which nothing current passes. Such an
+# entry is removed from the cache with a warning naming where it came from;
+# refusing it instead wedged every build dir configured before a retirement
+# until its cache was hand-edited (measured: 23 of 28 Zephyr 3.7 dirs after
+# phase-581 W6). A value this configure passes is left for the refusals.
+# <why-prefix> names, per symbol, the variable holding what to set instead.
+function(_nros_image_kconfig_drop_stale_cli symbols why_prefix)
+    foreach(_sym IN LISTS symbols)
+        if(DEFINED CACHE{CLI_CONFIG_${_sym}} AND NOT DEFINED CACHE{CONFIG_${_sym}})
+            set(_val "$CACHE{CLI_CONFIG_${_sym}}")
+            unset(CLI_CONFIG_${_sym} CACHE)
+            message(WARNING
+                "nano-ros: dropped CLI_CONFIG_${_sym}=${_val} from this build dir's "
+                "CMakeCache.txt: an earlier configure passed -DCONFIG_${_sym}, and "
+                "Zephyr re-applies it on every configure after. This configure did not "
+                "pass it, so it no longer applies. ${${why_prefix}${_sym}}")
+        endif()
+    endforeach()
+endfunction()
+
 # _nros_image_kconfig_refuse_retired(<overrides> <files>) -- RFC-0140 D4,
 # phase-581 W5. A RETIRED Kconfig symbol (a conf line in <files>, or a
 # `-DCONFIG_<symbol>` / Zephyr's `CLI_CONFIG_<symbol>` cache entry) and a
@@ -207,6 +234,8 @@ function(_nros_image_kconfig_retired_findings out overrides files)
             endif()
         endforeach()
     endforeach()
+    # A cache-only `CLI_CONFIG_<SYM>` was dropped by
+    # _nros_image_kconfig_drop_stale_cli before this runs (issue 2906).
     foreach(_sym IN LISTS NROS_KNOB_RETIRED_KCONFIG)
         if(DEFINED CACHE{CONFIG_${_sym}} OR DEFINED CACHE{CLI_CONFIG_${_sym}})
             string(APPEND _found
@@ -262,6 +291,8 @@ function(nros_image_kconfig_hook)
     if(DEFINED CACHE{EXTRA_CONF_FILE})
         list(APPEND _retired_scan $CACHE{EXTRA_CONF_FILE})
     endif()
+    _nros_image_kconfig_drop_stale_cli("${NROS_KNOB_RETIRED_KCONFIG}"
+        NROS_KNOB_RETIRED_KCONFIG_MSG_)
     _nros_image_kconfig_refuse_retired("${_overrides}" "${_retired_scan}")
 
     # Drop an earlier rendering of ours from the cache value, whatever happens
@@ -388,6 +419,16 @@ function(nros_image_kconfig_hook)
     # user-configurable" error, naming neither system.toml nor the override
     # channel (M3). Zephyr caches it as `CONFIG_<SYM>` on the configure that
     # passes it and as `CLI_CONFIG_<SYM>` on every re-configure after.
+    # Issue 2906 -- a `CLI_CONFIG_<SYM>` alone is an earlier configure's, likely
+    # from before the symbol became a knob; it is dropped, not refused.
+    set(_knob_syms "")
+    foreach(_id IN LISTS NROS_KNOB_KCONFIG_IDS)
+        set(_sym "${NROS_KNOB_KCONFIG_SYMBOL_${_id}}")
+        list(APPEND _knob_syms "${_sym}")
+        set(_knob_why_${_sym}
+            "Set it in ${_dir}/system.toml, or -DNROS_OVERRIDE_${_id}=<v> for one build.")
+    endforeach()
+    _nros_image_kconfig_drop_stale_cli("${_knob_syms}" _knob_why_)
     set(_cli_knobs "")
     foreach(_id IN LISTS NROS_KNOB_KCONFIG_IDS)
         set(_sym "${NROS_KNOB_KCONFIG_SYMBOL_${_id}}")

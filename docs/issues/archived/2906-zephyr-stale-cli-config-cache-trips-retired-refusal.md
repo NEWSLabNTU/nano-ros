@@ -1,11 +1,12 @@
 ---
 id: 2906
 title: "A Zephyr build dir configured before a setting was retired refuses to configure, and only a hand cache edit gets it out"
-status: open
+status: resolved
 type: bug
 area: [zephyr, build, ux]
 severity: medium
 found: 2026-11-23
+resolved: 2026-11-23
 related: [2847]
 ---
 
@@ -76,3 +77,25 @@ A Zephyr build dir configured before a setting was retired either configures
 on the next incremental build or is refused with a message that names where
 the value lives and one command that clears it. A test on a probe project
 covers the cache-only case, beside `tests/zephyr-transient-overrides-tests.sh`.
+
+## Resolution
+
+Fixed 2026-11-23 by direction 1, drop with a warning. The module's hook runs
+before Zephyr's `kconfig.cmake`, so at that point a `CONFIG_<SYM>` cache entry
+is this configure's command line and a `CLI_CONFIG_<SYM>` alone is an earlier
+configure's. `_nros_image_kconfig_drop_stale_cli`
+(`zephyr/cmake/nros_image_kconfig.cmake`) removes a cache-only
+`CLI_CONFIG_<SYM>` for every retired symbol (the registry's
+`NROS_KNOB_RETIRED_KCONFIG`, the list the refusal reads) and every knob symbol
+(the sibling refusal that sends a knob to system.toml had the same wedge). It
+warns with the value, where it came from and what to set instead. A value this
+configure passes is still refused. The remedy runs inside the configure, so
+it reaches every road that re-configures a kept build dir (`just
+reconfigure-stale`, `cmake <dir>`, an incremental `west build`, a persistent
+runner workspace) with no hand cache edit. Measured on the probe below; the
+end-to-end check is a re-configure of a dir wedged by phase-581 W6.
+
+Test: `tests/zephyr-transient-overrides-tests.sh` case H configures a probe
+build dir with a retired symbol as an older tree would, then re-configures
+under the current module (no refusal, warning, entry gone), then passes the
+symbol live (refused). Making the helper a no-op fails four of H's checks.
