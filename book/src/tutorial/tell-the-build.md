@@ -51,7 +51,7 @@ trimmed):
 
 ```text
 nros build: next for `sensor_node_bringup:freertos`:
-  artifact: /home/you/sensor_ws/build/freertos-zenoh/freertos_entry/target/thumbv7m-none-eabi/debug/freertos_entry
+  artifact: /home/you/sensor_ws/build/freertos-zenoh/freertos_entry/target/thumbv7m-none-eabi/release/freertos_entry
 ```
 
 Read the image's sizes with the `size` tool of the Arm toolchain
@@ -63,7 +63,7 @@ Read the image's sizes with the `size` tool of the Arm toolchain
 
 ```bash probe=815 track=installed variant=qemu
 "$(nros locate tool arm-none-eabi-gcc)/bin/arm-none-eabi-size" \
-    build/freertos-zenoh/freertos_entry/target/thumbv7m-none-eabi/debug/freertos_entry
+    build/freertos-zenoh/freertos_entry/target/thumbv7m-none-eabi/release/freertos_entry
 ```
 
 #### C
@@ -84,7 +84,7 @@ Read the image's sizes with the `size` tool of the Arm toolchain
 
 ```text
    text    data     bss     dec     hex filename
-1029108    7624 1240176 2276908  22be2c build/freertos-zenoh/freertos_entry/target/thumbv7m-none-eabi/debug/freertos_entry
+1029108    7624 1240176 2276908  22be2c build/freertos-zenoh/freertos_entry/target/thumbv7m-none-eabi/release/freertos_entry
 ```
 
 Those are the numbers of a Rust project; a C or C++ project's differ.
@@ -226,7 +226,7 @@ nros build
 
 ```bash probe=835 track=installed variant=qemu
 "$(nros locate tool arm-none-eabi-gcc)/bin/arm-none-eabi-size" \
-    build/freertos-zenoh/freertos_entry/target/thumbv7m-none-eabi/debug/freertos_entry
+    build/freertos-zenoh/freertos_entry/target/thumbv7m-none-eabi/release/freertos_entry
 ```
 
 #### C
@@ -247,7 +247,7 @@ nros build
 
 ```text
    text    data     bss     dec     hex filename
-1028636    5992 1022448 2057076  1f6374 build/freertos-zenoh/freertos_entry/target/thumbv7m-none-eabi/debug/freertos_entry
+1028636    5992 1022448 2057076  1f6374 build/freertos-zenoh/freertos_entry/target/thumbv7m-none-eabi/release/freertos_entry
 ```
 
 Static RAM fell from 1,240,176 to 1,022,448 bytes of `bss`, and `data` from
