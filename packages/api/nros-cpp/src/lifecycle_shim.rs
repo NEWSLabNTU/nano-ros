@@ -267,6 +267,128 @@ pub unsafe extern "C" fn nros_cpp_lifecycle_register_on_error(
     unsafe { register_cpp(executor, LifecycleCallbackSlot::Error, cb, ctx) }
 }
 
+/// `node`'s executor and id, for the node-scoped shims below.
+///
+/// # Safety
+/// `node` must be null or a live `nros_cpp_node_t*` whose executor is a valid
+/// `CppContext*`.
+#[cfg(all(feature = "lifecycle-services", feature = "rmw-cffi"))]
+unsafe fn node_scope(
+    node: *const crate::nros_cpp_node_t,
+) -> Option<(*mut c_void, nros_node::executor::NodeId)> {
+    if node.is_null() {
+        return None;
+    }
+    let node = unsafe { &*node };
+    Some((node.executor, crate::node_id_opt(node)?))
+}
+
+/// Trigger a lifecycle transition on `node`'s OWN state machine.
+///
+/// The node-scoped twin of [`nros_cpp_lifecycle_change_state`], which reads
+/// the executor's single machine and so finds none once an executor holds two
+/// managed nodes. `transition_id` is numbered as there.
+///
+/// # Safety
+/// `node` must be a live `nros_cpp_node_t*` whose executor is a valid
+/// `CppContext*`. Registered transition callbacks run here, so they and their
+/// context must be live.
+// Issue 2858 -- the executor-scoped shims answer NOT_INIT with two machines.
+#[cfg(all(feature = "lifecycle-services", feature = "rmw-cffi"))]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_lifecycle_node_change_state(
+    node: *const crate::nros_cpp_node_t,
+    transition_id: u8,
+) -> nros_cpp_ret_t {
+    let Some((executor, id)) = (unsafe { node_scope(node) }) else {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    };
+    let Some(mut ctx) = (unsafe { cpp_ctx_checked(executor) }) else {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    };
+    let Some(sm) = ctx.executor.lifecycle_state_machine_on_mut(id) else {
+        return NROS_CPP_RET_NOT_INIT;
+    };
+    let Some(t) = LifecycleTransition::from_u8(transition_id) else {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    };
+    // SAFETY: forwarded through this function's unsafe contract.
+    match unsafe { sm.trigger_transition(t) } {
+        Ok(_) => NROS_CPP_RET_OK,
+        Err(LifecycleError::NodeFinalized) => NROS_CPP_RET_ERROR,
+        Err(LifecycleError::InvalidTransition { .. }) => NROS_CPP_RET_INVALID_ARGUMENT,
+        Err(LifecycleError::CallbackFailed { .. }) => NROS_CPP_RET_ERROR,
+    }
+}
+
+/// The current REP-2002 state of `node`'s OWN state machine; `0` (`Unknown`)
+/// when `node` is null or has no machine. Numbered as
+/// [`nros_cpp_lifecycle_get_current_state`].
+///
+/// # Safety
+/// `node` must be null or a live `nros_cpp_node_t*` whose executor is a valid
+/// `CppContext*`.
+#[cfg(all(feature = "lifecycle-services", feature = "rmw-cffi"))]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_lifecycle_node_get_current_state(
+    node: *const crate::nros_cpp_node_t,
+) -> u8 {
+    let Some((executor, id)) = (unsafe { node_scope(node) }) else {
+        return 0;
+    };
+    let Some(ctx) = (unsafe { cpp_ctx_checked(executor) }) else {
+        return 0;
+    };
+    match ctx.executor.lifecycle_state_machine_on(id) {
+        Some(sm) => sm.state() as u8,
+        None => 0,
+    }
+}
+
+/// Install all six transition callbacks on `node`'s OWN state machine, with
+/// one shared `ctx` -- what `rclcpp_lifecycle::LifecycleNode` binds once its
+/// services are registered under the node's name. A null callback clears that
+/// slot.
+///
+/// # Safety
+/// `node` must be a live `nros_cpp_node_t*` whose executor is a valid
+/// `CppContext*`; every callback and `ctx` must stay live for as long as a
+/// transition can fire.
+#[cfg(all(feature = "lifecycle-services", feature = "rmw-cffi"))]
+#[unsafe(no_mangle)]
+// The callbacks are spelled `Option<unsafe extern "C" fn ..>` rather than
+// `Option<nros_cpp_lifecycle_callback_t>`: cbindgen renders the first as a
+// nullable function pointer, the second as an opaque struct C++ cannot pass.
+#[allow(clippy::too_many_arguments)]
+pub unsafe extern "C" fn nros_cpp_lifecycle_node_bind(
+    node: *const crate::nros_cpp_node_t,
+    on_configure: Option<unsafe extern "C" fn(*mut c_void) -> u8>,
+    on_activate: Option<unsafe extern "C" fn(*mut c_void) -> u8>,
+    on_deactivate: Option<unsafe extern "C" fn(*mut c_void) -> u8>,
+    on_cleanup: Option<unsafe extern "C" fn(*mut c_void) -> u8>,
+    on_shutdown: Option<unsafe extern "C" fn(*mut c_void) -> u8>,
+    on_error: Option<unsafe extern "C" fn(*mut c_void) -> u8>,
+    ctx: *mut c_void,
+) -> nros_cpp_ret_t {
+    let Some((executor, id)) = (unsafe { node_scope(node) }) else {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    };
+    let Some(mut context) = (unsafe { cpp_ctx_checked(executor) }) else {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    };
+    let Some(sm) = context.executor.lifecycle_state_machine_on_mut(id) else {
+        return NROS_CPP_RET_NOT_INIT;
+    };
+    sm.register(LifecycleCallbackSlot::Configure, on_configure);
+    sm.register(LifecycleCallbackSlot::Activate, on_activate);
+    sm.register(LifecycleCallbackSlot::Deactivate, on_deactivate);
+    sm.register(LifecycleCallbackSlot::Cleanup, on_cleanup);
+    sm.register(LifecycleCallbackSlot::Shutdown, on_shutdown);
+    sm.register(LifecycleCallbackSlot::Error, on_error);
+    sm.set_context(ctx);
+    NROS_CPP_RET_OK
+}
+
 /// Make one MANAGED node of the image a lifecycle node: register the five
 /// REP-2002 services under the node's own name, then drive it to its boot
 /// autostart.
@@ -375,6 +497,30 @@ mod tests {
             let ret = unsafe { reg(ptr::null_mut(), dummy_cb, ptr::null_mut()) };
             assert_eq!(ret, NROS_CPP_RET_INVALID_ARGUMENT);
         }
+    }
+
+    /// The node-scoped shims refuse a null node rather than trapping.
+    #[test]
+    fn null_node_is_refused_by_the_node_scoped_shims() {
+        let ret = unsafe { nros_cpp_lifecycle_node_change_state(ptr::null(), 1) };
+        assert_eq!(ret, NROS_CPP_RET_INVALID_ARGUMENT);
+        assert_eq!(
+            unsafe { nros_cpp_lifecycle_node_get_current_state(ptr::null()) },
+            0
+        );
+        let ret = unsafe {
+            nros_cpp_lifecycle_node_bind(
+                ptr::null(),
+                Some(dummy_cb),
+                None,
+                None,
+                None,
+                None,
+                None,
+                ptr::null_mut(),
+            )
+        };
+        assert_eq!(ret, NROS_CPP_RET_INVALID_ARGUMENT);
     }
 
     /// Null executor reads back as `Unconfigured` (0) rather than trapping.

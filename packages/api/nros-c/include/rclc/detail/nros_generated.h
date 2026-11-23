@@ -7944,6 +7944,84 @@ rcl_ret_t rclc_executor_lifecycle_register_on_error(struct rclc_executor_t *exec
                                                     void *context);
 
 /**
+ * Register the five REP-2002 lifecycle services on `node`, served under
+ * its own name (`/<node>/get_state` and so on), with a state machine of
+ * its own. Call it once per managed node; drive and observe each with the
+ * `rclc_node_lifecycle_*` calls below. A node that already has a machine
+ * is refused (`RCL_RET_ERROR`, with the reason logged).
+ */
+NROS_PUBLIC rcl_ret_t rclc_node_register_lifecycle_services(const struct rcl_node_t *node);
+
+/**
+ * The current lifecycle state of `node`'s own state machine:
+ * `RCLC_LIFECYCLE_STATE_UNCONFIGURED` when `node` is NULL, unbound, or
+ * not managed.
+ */
+NROS_PUBLIC uint8_t rclc_node_lifecycle_get_current_state(const struct rcl_node_t *node);
+
+/**
+ * Trigger a lifecycle transition on `node`'s own state machine
+ * (`RCL_RET_NOT_INIT` when the node is not managed). `transition_id` is
+ * numbered as for `rclc_executor_lifecycle_change_state`.
+ *
+ * # Safety
+ * Invokes the user's registered C callback through a raw function
+ * pointer. The caller must ensure the callback and any context it
+ * captures are live.
+ */
+NROS_PUBLIC
+rcl_ret_t rclc_node_lifecycle_change_state(const struct rcl_node_t *node,
+                                           uint8_t transition_id);
+
+/**
+ * Register the on-configure callback on `node`'s own state machine.
+ */
+NROS_PUBLIC
+rcl_ret_t rclc_node_lifecycle_register_on_configure(const struct rcl_node_t *node,
+                                                    rclc_lifecycle_callback_t cb,
+                                                    void *context);
+
+/**
+ * Register the on-activate callback on `node`'s own state machine.
+ */
+NROS_PUBLIC
+rcl_ret_t rclc_node_lifecycle_register_on_activate(const struct rcl_node_t *node,
+                                                   rclc_lifecycle_callback_t cb,
+                                                   void *context);
+
+/**
+ * Register the on-deactivate callback on `node`'s own state machine.
+ */
+NROS_PUBLIC
+rcl_ret_t rclc_node_lifecycle_register_on_deactivate(const struct rcl_node_t *node,
+                                                     rclc_lifecycle_callback_t cb,
+                                                     void *context);
+
+/**
+ * Register the on-cleanup callback on `node`'s own state machine.
+ */
+NROS_PUBLIC
+rcl_ret_t rclc_node_lifecycle_register_on_cleanup(const struct rcl_node_t *node,
+                                                  rclc_lifecycle_callback_t cb,
+                                                  void *context);
+
+/**
+ * Register the on-shutdown callback on `node`'s own state machine.
+ */
+NROS_PUBLIC
+rcl_ret_t rclc_node_lifecycle_register_on_shutdown(const struct rcl_node_t *node,
+                                                   rclc_lifecycle_callback_t cb,
+                                                   void *context);
+
+/**
+ * Register the on-error callback on `node`'s own state machine.
+ */
+NROS_PUBLIC
+rcl_ret_t rclc_node_lifecycle_register_on_error(const struct rcl_node_t *node,
+                                                rclc_lifecycle_callback_t cb,
+                                                void *context);
+
+/**
  * Install the per-topic QoS override table the deploy plan lowered from
  * `qos_overrides.<topic>.<role>.<policy>` launch params (issue #52). Every
  * entity created on `node` afterwards folds the matching `(topic, role)`
