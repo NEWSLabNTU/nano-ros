@@ -61,8 +61,8 @@ call `nros_codegen_tool_reconfigure()`. `add_custom_command` / `add_custom_targe
 blocks are excluded: those carry the tool in `DEPENDS`, which is the edge this
 gate demands where it cannot be expressed.
 
-The verb is matched wherever it appears as a bare token, not only next to the
-tool, because the three spellings in this tree differ — a direct
+The verb phrase is matched wherever it appears as bare tokens, not only next to
+the tool, because the three spellings in this tree differ — a direct
 `execute_process(COMMAND "${tool}" dev codegen system …)`, a command built into a
 variable (`set(_cmd "${tool}" dev codegen …)`), and arguments built into a variable
 with the tool supplied at the call (`set(_args codegen entry …)`). An
@@ -147,8 +147,10 @@ VERSION_HELPER = "nros_codegen_version_stale"
 # gate green, although that module's own header says it owes the edge (issue
 # 1018), and never asked `ws leaf-system`, whose answer (the leaf's board, RMW
 # and deployment identity) is baked into `build.ninja` exactly as rmw-dispatch's
-# is. Keyed on the verb as the CLI spells it (`ws sizing-descriptor`); matched
-# on its LAST word as a bare token, which is what `VERB_RE` reads.
+# is. Keyed on the verb as the CLI spells it (`ws sizing-descriptor`), and
+# matched as that WHOLE phrase of bare tokens (`verb_re`). Matching the last word
+# alone made `profile env` exempt, because `env` is also `cmake -E env` (issue
+# 2741).
 # (`codegen resolve-deps` is spelled through a variable, never an
 # execute_process `COMMAND`, and keeps its own rule: NON_EMITTING_ARG below.)
 NOT_EMITTING = {
@@ -158,7 +160,6 @@ NOT_EMITTING = {
     "board cmake-vars": "a fact verb, read back inside its own configure (module docstring)",
     "profile resolve": "names the active cargo PROFILE; its answer is the knob, not the tool's code",
     "profile dir": "names the active cargo PROFILE's dir; its answer is the knob, not the tool's code",
-    "profile env": "EMITS the tool's compiled profile table (issue 2318: a rebuilt CLI changed it under an unchanged name), and NanoRosCargoProfile.cmake registers the tool itself; exempt only because its last word `env` is also `cmake -E env`, which token matching cannot tell from a call (issue 2741)",
     "profile carve-out": "names a platform's profile carve-out; its answer is the knob, not the tool's code",
     "config show": "prints the user's own config; its answer is that file, not the tool's code",
     "sdk-root": "a STORE path query; the answer is the store's layout, not generated code",
@@ -219,11 +220,24 @@ def harvest_emitting_verbs(files, read):
     # stay in the population as the tree's first two emitters.
     population = spelled | {"codegen", "codegen-system"}
     emitting, problems = harvest.reconcile(population, NOT_EMITTING, what="configure-time verb")
-    tokens = sorted({v.split()[-1] for v in emitting} | {"codegen"})
-    return tokens, problems
+    # Issue 2741: the WHOLE verb, as the CLI spells it, never its last word. A
+    # last word is often ordinary CMake vocabulary (`profile env` ends in the
+    # `env` of `cmake -E env`), and matching it made an emitter exempt.
+    phrases = sorted(set(emitting) | {"codegen"})
+    return phrases, problems
 
 
-EMITTING_VERBS = ("codegen", "codegen-system", "rmw-dispatch")  # replaced by main()
+def verb_re(phrases):
+    """A bare-token match of each whole verb phrase; its words may be split by
+    any whitespace (a multi-line `set(_args ws sizing-descriptor …)`)."""
+    alts = sorted(phrases, key=len, reverse=True)
+    return re.compile(
+        r"(?<![\w./$-])(" + "|".join(r"\s+".join(map(re.escape, v.split())) for v in alts)
+        + r")(?![\w./-])"
+    )
+
+
+EMITTING_VERBS = ("codegen", "codegen-system", "ws rmw-dispatch", "profile env")  # replaced by main()
 
 # `codegen` with this argument is the same-configure fragment writer, not an
 # emitter of anything a later build step compiles.
@@ -283,9 +297,7 @@ def blank_strings(text):
     return "".join(out)
 
 
-VERB_RE = re.compile(
-    r"(?<![\w./$-])(" + "|".join(sorted(EMITTING_VERBS, key=len, reverse=True)) + r")(?![\w./-])"
-)
+VERB_RE = verb_re(EMITTING_VERBS)
 
 
 def emitting_verbs(text):
@@ -305,7 +317,7 @@ def emitting_verbs(text):
     text = blank_strings(blank_blocks(blank_blocks(text, "add_custom_command"), "add_custom_target"))
     found = set()
     for m in VERB_RE.finditer(text):
-        verb = m.group(1)
+        verb = " ".join(m.group(1).split())
         if verb == "codegen":
             tail = text[m.end() : m.end() + 40].split()
             if tail and tail[0] == NON_EMITTING_ARG:
@@ -377,9 +389,7 @@ def main():
             print(f"check-codegen-tool-reconfigure: {p_}", file=sys.stderr)
         return 1
     EMITTING_VERBS = tuple(tokens)
-    VERB_RE = re.compile(
-        r"(?<![\w./$-])(" + "|".join(sorted(EMITTING_VERBS, key=len, reverse=True)) + r")(?![\w./-])"
-    )
+    VERB_RE = verb_re(EMITTING_VERBS)
 
     # Rule 2 first: it is the one a reader of a red lane will not guess.
     stale_blind = version_offenders(files, read)
@@ -485,6 +495,11 @@ def selftest(verbose=False):
         ),
         "cmdvar.cmake": via_cmd_var,
         "argsvar.cmake": via_args_var,
+        # Issue 2741 — a verb whose last word is CMake vocabulary.
+        "profenv.cmake": 'execute_process(COMMAND "${_nros}" dev profile env "${_p}" --cmake)\n',
+        "profenv_reg.cmake": reg + 'execute_process(COMMAND "${_nros}" dev profile env "${_p}")\n',
+        "cmakeenv.cmake": 'execute_process(COMMAND ${CMAKE_COMMAND} -E env A=b ninja)\n',
+        "splitverb.cmake": 'set(_a\n    profile\n    env x)\nexecute_process(COMMAND "${t}" ${_a})\n',
         "prose.cmake": (
             reg.replace(HELPER, "other_fn")
             + 'message(FATAL_ERROR "`nros dev codegen entry` failed")\n'
@@ -501,7 +516,7 @@ def selftest(verbose=False):
         run(["system.cmake"])[0][1] == ["codegen-system"])
     chk("`codegen resolve-deps` is not an emitter", run(["resolve.cmake"]) == [])
     chk("an unregistered `ws rmw-dispatch` FAILS",
-        run(["rmwdispatch.cmake"]) == [("rmwdispatch.cmake", ["rmw-dispatch"])])
+        run(["rmwdispatch.cmake"]) == [("rmwdispatch.cmake", ["ws rmw-dispatch"])])
     chk("registering the rmw dispatch query passes",
         run(["rmwdispatch_reg.cmake"]) == [])
     chk("a BUILD-time add_custom_command is out of scope (it carries DEPENDS)",
@@ -520,6 +535,16 @@ def selftest(verbose=False):
         run(["cmdvar.cmake"]) == [("cmdvar.cmake", ["codegen"])])
     chk("arguments built into a variable are too",
         run(["argsvar.cmake"]) == [("argsvar.cmake", ["codegen"])])
+    chk("an unregistered `profile env` FAILS (issue 2741: no longer exempt)",
+        run(["profenv.cmake"]) == [("profenv.cmake", ["profile env"])])
+    chk("registering `profile env` passes", run(["profenv_reg.cmake"]) == [])
+    chk("`cmake -E env` is not the `profile env` verb (issue 2741)",
+        run(["cmakeenv.cmake"]) == [])
+    chk("a verb phrase split across lines is still one verb",
+        run(["splitverb.cmake"]) == [("splitverb.cmake", ["profile env"])])
+    # Mutation: matching the LAST word again would flag `cmake -E env`.
+    chk("a last-word match is what this replaced",
+        re.compile(r"(?<![\w./$-])(env)(?![\w./-])").search(files["cmakeenv.cmake"]) is not None)
     chk("a verb named inside a quoted message is prose, not an invocation",
         run(["prose.cmake"]) == [])
     chk("the whole tracked set is enumerable", len(tracked_cmake()) > 0)
@@ -531,7 +556,7 @@ def selftest(verbose=False):
         configure_time_verbs(fx["a.cmake"]) == {"ws sizing-descriptor"})
     toks, probs = harvest_emitting_verbs(list(fx), lambda r: fx[r])
     chk("an unexempted verb owes the registration; an exempted one does not",
-        "sizing-descriptor" in toks and "sdk-root" not in toks)
+        "ws sizing-descriptor" in toks and "sdk-root" not in toks)
 
     # ---- Rule 2: the emitted-version edge (issue 1360) ----
     predict = (

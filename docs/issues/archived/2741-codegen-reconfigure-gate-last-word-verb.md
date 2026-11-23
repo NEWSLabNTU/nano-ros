@@ -1,7 +1,7 @@
 ---
 id: 2741
 title: "check-codegen-tool-reconfigure matches an emitting `nros` verb by its last word, so `profile env` must be exempt because `env` is also `cmake -E env`"
-status: open
+status: resolved
 type: tech-debt
 severity: low
 area: [build, cmake, gates]
@@ -43,3 +43,28 @@ Match the INVOCATION, not a bare token. Either:
 Then drop the collision exemptions (`profile env`, and re-check `show`,
 `toolchain` and `configure`), so that `NanoRosCargoProfile.cmake` is
 gated rather than trusted.
+
+## Resolved (2026-11-23)
+
+The gate matches the WHOLE verb phrase as the CLI spells it
+(`profile env`, `ws sizing-descriptor`), as consecutive bare tokens that may
+be split by any whitespace (`verb_re`), never its last word. `cmake -E env`
+no longer reads as `profile env`, so `profile env` left `NOT_EMITTING` and
+`NanoRosCargoProfile.cmake` is now gated rather than trusted.
+
+Measured over the 436 tracked cmake files, old reach against new: exactly one
+file differs, `cmake/NanoRosCargoProfile.cmake`, now reached by `profile env`.
+Every other file reports the same verbs. Mutation: renaming that file's two
+`nros_codegen_tool_reconfigure(` calls FAILS the new gate and passed the old
+one.
+
+Re-checked, and kept on purpose:
+- `show` and `toolchain` are rustup's verbs. They are exempt because their
+  tool is not `nros`, not because of a collision.
+- `configure` is a one-word verb, so a whole-phrase match is still the bare
+  token `configure`, which is cmake vocabulary (`SHAPE configure`). Its
+  exemption stands on its own reason: `nros configure` keys its stamp on the
+  CLI's codegen version, and its one cmake caller registers the tool.
+
+Self-test 31/31, including `cmake -E env` (not a finding), a `profile env`
+phrase split across lines (a finding), and the registered form (passes).
