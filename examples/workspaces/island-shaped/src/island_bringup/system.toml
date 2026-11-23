@@ -35,11 +35,14 @@ name = "monitor"
 board = "linux"
 
 # The board build. Its pools are stated ABOVE what the inventory derives
-# (3 publishers, 3 subscriptions), as the island states headroom for
-# entities a later feature adds.
+# (7 publishers, 4 subscriptions), as the island states headroom for
+# entities a later feature adds. The image keeps the stock node interfaces,
+# as the island does, so the derived counts are the application's 3 and 3
+# plus one `/rosout` and one `/parameter_events` writer per node and the one
+# `/clock` subscription (issue 2886).
 [image.freertos]
 board = "mps2-an385-freertos"
-knobs.zenoh.max_publishers = 6
+knobs.zenoh.max_publishers = 9
 knobs.zenoh.max_subscribers = 6
 
 # The same raise on the Zephyr road, where it is rendered into Kconfig (a
@@ -50,7 +53,7 @@ knobs.zenoh.max_subscribers = 6
 # of that build dir (tests/fixtures/knob-delivery/island-shaped-zephyr).
 [image.zephyr]
 board = "zephyr"
-knobs.zenoh.max_publishers = 6
+knobs.zenoh.max_publishers = 9
 knobs.zenoh.max_subscribers = 6
 
 [board_config."mps2-an385-freertos"]
