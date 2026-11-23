@@ -80,15 +80,16 @@ SNTP never re-acquires. A consumer's board hook papers over that with
     - Host tests (`check clock-resolve`): the stub clock, the fallback, an
       unanswered `board` reading 0, `halt`, the link error naming the hook,
       and an unselected build referencing nothing.
-    - Image cells `(Linux, Rust|Cpp, Zenoh, Pubsub, Example) + [ClockBoard]`
+    - Image cells `(Linux, Rust|C|Cpp, Zenoh, Pubsub, Example) + [ClockBoard]`
       (`tests/linux_board_clock.rs`): the board image's public wall clock and
       its zenoh source stamps sit in the stub instant's window, and its state
       reads synced, `board`. The ordinary sibling stamps host time and links
       no hook.
-    - **C is not covered:** a C image's configure also builds every
-      component's executable against the board-selected runtime (issue
-      2841). Until that is fixed, such an executable is refused at configure
-      with a clear message (manager ruling), and a verdict cell covers it.
+    - **C is covered (issue 2841, resolved 2026-11-23):** a workspace
+      configure that exists for an image's configuration builds the image
+      only, never a component's own executable, so the C image builds. The
+      configure-time refusal stays for a standalone leaf, whose own carrier
+      is its program, and its verdict cell still covers it.
     - **The settle window (manager ruling, 2026-11-22):** `board` behaves
       like `sntp`. While nothing is latched it is asked every 10 ms within
       `clock.fallback_settle_ms`. The first answer latches `board`; a window
@@ -333,9 +334,8 @@ SNTP never re-acquires. A consumer's board hook papers over that with
 - phase-478 gap 5.4 (no board time source over serial).
 - [Issue 2866](../issues/2866-board-clock-resync-interval.md): `board` is
   asked once; a re-sync interval in SNTP's knob shape is a follow-up.
-- [Issue 2841](../issues/2841-c-configure-builds-component-exes-against-image-runtime.md):
-  W1d's C stub-board image cannot build until a C image's configure stops
-  building every component's executable against the image's runtime.
+- [Issue 2841](../issues/archived/2841-c-configure-builds-component-exes-against-image-runtime.md)
+  (resolved): W1d's C stub-board image now builds and runs.
 - [Issue 2875](../issues/2875-sntp-dns-socket-service-stack-64bit.md):
   the SNTP source's `select DNS_RESOLVER` pulls in Zephyr's socket service
   thread, whose default stack fails the 64-bit floor, so a 64-bit image that
