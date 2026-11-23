@@ -1,11 +1,13 @@
 ---
 id: 2868
 title: "`nros run`'s SIGTERM-to-SIGKILL grace equalled a threadx-linux image's own termination grace, so the verb could kill an image before it reported and ended"
-status: open
+status: resolved
 type: bug
 severity: low
 area: [cli, threadx, testing]
 found: 2026-11-23
+resolved: 2026-11-23
+resolved_in: \"bb73e4214a (#4649): TEARDOWN_GRACE is 3 s, and check-process-deadline checks the image's grace against it"
 related: [1741, 2800]
 ---
 
@@ -56,3 +58,9 @@ well as against the harness.
 
 Mutation check: put back at 2 s, the gate fails, naming `target_session.rs`
 and this issue.
+
+## Resolved (2026-11-23)
+
+The fix above is on main as bb73e4214a, merged in #4649. This doc was left
+open when it landed. The race itself was never seen firing (see "Not
+measured" above); the fix removes the tie, and the gate keeps it removed.
