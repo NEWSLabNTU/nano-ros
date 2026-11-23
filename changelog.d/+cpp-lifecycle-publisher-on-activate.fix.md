@@ -1,0 +1,1 @@
+A C++ `rclcpp_lifecycle::LifecyclePublisher` now sends what `on_activate` publishes, as rclcpp's does: a node's managed entities are activated before its `on_activate` runs, and deactivated again if the transition does not succeed. Before, the publisher stayed inactive until the callback returned and dropped the message.
