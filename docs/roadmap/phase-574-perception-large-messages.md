@@ -167,6 +167,35 @@ decides only whether an MCU-class camera node is viable later.
 - **Acceptance:** every blocking issue from W6 is resolved, and the W2, W4
   and W5 measurements that failed now pass.
 
+### W8 — GPU perception on the original Jetson Nano, with its latency
+
+- **Owner:** nros 241.
+- **Status:** OPEN
+- **The board:** the Jetson Nano of phase-589 W10, on JetPack 4.6.6 (CUDA
+  10.2, TensorRT 8.2, a Maxwell GPU). The Nano runs TensorRT engines in FP16;
+  NVIDIA says INT8 is not supported on it. A YOLOv8n engine has been reported
+  at about 6 frames per second there, so the measured rate goes in the table
+  rather than an assumed one.
+- **Two processes, by libc:** CUDA and TensorRT are glibc shared libraries,
+  so the detector is a dynamically linked glibc 2.27 C++ node. It is
+  cross-built against a sysroot taken from the Nano's L4T root filesystem,
+  because the `nros` CLI needs glibc 2.34 and cannot run on the Nano itself.
+  The consumer that acts on the detections is the static musl node of
+  phase-589 W10, run under `SCHED_FIFO` on the RT kernel of W11.
+- **What:** a C++ node (nros-cpp, zenoh) that runs a YOLO-class TensorRT
+  engine on camera frames and publishes a detection message per frame. Each
+  message carries the frame's capture time and the time inference ended. The
+  RT node subscribes and records its receive time. The engine, camera code and
+  Nano board package live in the user's project.
+- **Measurements:** the detector's frame rate; inference time; and the delay
+  from inference end to receipt at the RT node, at p50, p99 and maximum,
+  without load and with `stress-ng` load on the other cores, on the stock
+  kernel and the RT kernel.
+- **Acceptance:** that table in this document. At the detector's own rate,
+  the p99 delay from inference end to receipt stays below one frame period
+  of the phase's 30 Hz class (33 ms) on the RT kernel under load, or the
+  limiting component is named in W6.
+
 ## Acceptance for the phase
 
 The applications are feasible on nano-ros when all of these hold:
