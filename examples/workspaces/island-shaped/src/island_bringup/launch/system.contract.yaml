@@ -1,5 +1,6 @@
 # Node interface contract for system.launch.xml. The image's pools are derived
-# from it (3 publishers, 3 subscriptions), and the census taken from the
+# from it (3 publishers, 3 subscriptions, plus the stock node interfaces'
+# entities: see system.toml), and the census taken from the
 # native image is checked against it, as the island's are.
 #
 # `nodes:` keys are LOCAL endpoint names.
