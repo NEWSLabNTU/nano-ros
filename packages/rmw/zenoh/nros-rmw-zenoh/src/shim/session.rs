@@ -1494,7 +1494,12 @@ impl ZenohSession {
         let qos = super::qos::admit(super::qos::EntityKind::Publisher, topic.name, &qos)?;
         let data_key = match self.share_data_publisher(topic, &qos) {
             Some(p) => p,
-            None => super::publisher::declare_data_publisher(&self.context, topic, &qos)?,
+            None => super::publisher::declare_data_publisher(
+                &self.context,
+                &super::publisher::DataKeyexpr::of(topic)?,
+                topic,
+                &qos,
+            )?,
         };
         self.note_data_publisher(data_key.handle(), topic, &qos);
         self.ensure_node_liveliness(topic.domain_id, topic.namespace, node_name);

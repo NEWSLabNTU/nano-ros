@@ -592,25 +592,40 @@ pub(super) fn now_ms() -> u64 {
     unsafe { nros_platform_clock_ns() / 1_000_000 }
 }
 
-/// The NUL-terminated data keyexpr of `topic`, and its length without the NUL.
-fn data_keyexpr(
-    topic: &nros_rmw::TopicInfo,
-) -> Result<
-    (
-        heapless::String<KEYEXPR_STRING_SIZE>,
-        [u8; KEYEXPR_BUFFER_SIZE],
-    ),
-    TransportError,
-> {
-    let key: heapless::String<KEYEXPR_STRING_SIZE> = topic.to_key();
-    let mut keyexpr_buf = [0u8; KEYEXPR_BUFFER_SIZE];
-    let bytes = key.as_bytes();
-    if bytes.len() >= keyexpr_buf.len() {
-        return Err(TransportError::TopicNameInvalid);
+/// `topic`'s data keyexpr, built ONCE and NUL-terminated: the key and the
+/// byte form the C call takes are one buffer.
+///
+/// Issue 2694. It used to be built as a `String` and copied into a
+/// `[u8; KEYEXPR_BUFFER_SIZE]`, both returned by value and both kept, at
+/// three call levels (`ZenohPublisher::new_on`, `declare_data_publisher` and
+/// the builder), so publisher creation held about 520 B of key per level.
+/// Pass it by reference.
+pub(super) struct DataKeyexpr(heapless::String<KEYEXPR_BUFFER_SIZE>);
+
+impl DataKeyexpr {
+    /// The key of `topic`, or `TopicNameInvalid` when it does not fit
+    /// `KEYEXPR_STRING_SIZE` plus its NUL.
+    pub(super) fn of(topic: &nros_rmw::TopicInfo) -> Result<Self, TransportError> {
+        // A key that does not fit names another topic once truncated, so it
+        // is refused, never built short.
+        let mut key = topic
+            .try_to_key::<KEYEXPR_BUFFER_SIZE>()
+            .ok_or(TransportError::TopicNameInvalid)?;
+        if key.len() > KEYEXPR_STRING_SIZE || key.push('\0').is_err() {
+            return Err(TransportError::TopicNameInvalid);
+        }
+        Ok(Self(key))
     }
-    keyexpr_buf[..bytes.len()].copy_from_slice(bytes);
-    keyexpr_buf[bytes.len()] = 0;
-    Ok((key, keyexpr_buf))
+
+    /// The key, without the NUL.
+    pub(super) fn as_str(&self) -> &str {
+        &self.0[..self.0.len() - 1]
+    }
+
+    /// The key and its NUL, as the C call takes it.
+    pub(super) fn as_nul_bytes(&self) -> &[u8] {
+        self.0.as_bytes()
+    }
 }
 
 /// Declare the zenoh publisher on `topic`'s data keyexpr, with the two
@@ -620,13 +635,12 @@ fn data_keyexpr(
 /// [`super::NodeTopicWriter`].
 pub(super) fn declare_data_publisher(
     context: &Context,
+    key: &DataKeyexpr,
     topic: &nros_rmw::TopicInfo,
     qos: &nros_rmw::QoSProfile,
 ) -> Result<crate::zpico::Publisher<'static>, TransportError> {
-    let (_key, keyexpr_buf) = data_keyexpr(topic)?;
-
     #[cfg(feature = "std")]
-    log::debug!("Publisher data keyexpr: {}", _key.as_str());
+    log::debug!("Publisher data keyexpr: {}", key.as_str());
 
     // Safety: We need to extend the lifetime because ZenohPublisher borrows from Context.
     // This is safe because:
@@ -635,7 +649,7 @@ pub(super) fn declare_data_publisher(
     // 3. We transmute the lifetime to 'static for storage
     let publisher = unsafe {
         let pub_result = context.declare_publisher(
-            &keyexpr_buf,
+            key.as_nul_bytes(),
             topic.tx_express,
             qos.reliability == nros_rmw::QoSReliabilityPolicy::Reliable,
         );
@@ -686,10 +700,10 @@ impl ZenohPublisher {
         qos: &nros_rmw::QoSProfile,
         shared: Option<crate::zpico::Publisher<'static>>,
     ) -> Result<Self, TransportError> {
-        let (key, keyexpr_buf) = data_keyexpr(topic)?;
+        let key = DataKeyexpr::of(topic)?;
         let publisher = match shared {
             Some(p) => p,
-            None => declare_data_publisher(context, topic, qos)?,
+            None => declare_data_publisher(context, &key, topic, qos)?,
         };
 
         // phase-455 W5 / issue 1341 — the transient-local half. `admit` has
@@ -697,11 +711,7 @@ impl ZenohPublisher {
         // granted the depth this retention actually serves, so reaching here
         // with TransientLocal means "serve it".
         let retention = if qos.durability == nros_rmw::QoSDurabilityPolicy::TransientLocal {
-            Some(Self::declare_retention(
-                context,
-                key.as_str(),
-                &keyexpr_buf,
-            )?)
+            Some(Self::declare_retention(context, &key)?)
         } else {
             None
         };
@@ -746,9 +756,9 @@ impl ZenohPublisher {
     /// under that zid.
     fn declare_retention(
         context: &Context,
-        topic_key: &str,
-        topic_keyexpr_nul: &[u8; KEYEXPR_BUFFER_SIZE],
+        key: &DataKeyexpr,
     ) -> Result<TransientLocalRetention, TransportError> {
+        let topic_key = key.as_str();
         let Some(slot) = transient_local::claim() else {
             // issue 0460's shape, one pool over: name the knob, say what the
             // pool is for, and do it through `nros_log` so an embedded image
@@ -822,12 +832,7 @@ impl ZenohPublisher {
 
         // Wire the reply keyexpr BEFORE the queryable exists, so the first
         // query cannot find a slot that knows where to reply but not how.
-        transient_local::arm(
-            slot,
-            context.handle(),
-            -1,
-            &topic_keyexpr_nul[..=topic_key.len().min(KEYEXPR_BUFFER_SIZE - 1)],
-        );
+        transient_local::arm(slot, context.handle(), -1, key.as_nul_bytes());
         // SAFETY: the callback's context is a slot INDEX into a process-static
         // pool, so it is valid for the queryable's whole life and beyond.
         let queryable = unsafe {
@@ -861,7 +866,7 @@ impl ZenohPublisher {
             slot,
             context.handle(),
             queryable.handle(),
-            &topic_keyexpr_nul[..=topic_key.len().min(KEYEXPR_BUFFER_SIZE - 1)],
+            key.as_nul_bytes(),
         );
         // Issue 2366 -- the `@adv` liveliness token, on the cache's own key, so
         // a subscription that exists BEFORE this publisher queries the cache
@@ -1530,3 +1535,30 @@ mod lending {
 
 #[cfg(feature = "lending")]
 pub use lending::{ZENOH_TX_BUF, ZenohSlot};
+
+#[cfg(test)]
+mod data_keyexpr_tests {
+    use super::{DataKeyexpr, KEYEXPR_STRING_SIZE};
+    use crate::keyexpr::TopicKeyExpr as _;
+    use nros_rmw::TopicInfo;
+
+    // Issue 2694 -- the one buffer is both forms: the key, and the key and
+    // its NUL for the C call.
+    #[test]
+    fn the_key_and_its_nul_form_are_one_buffer() {
+        let topic = TopicInfo::new("/chatter", "std_msgs::msg::dds_::String_", "abc123");
+        let want: heapless::String<KEYEXPR_STRING_SIZE> = topic.to_key();
+        let key = DataKeyexpr::of(&topic).unwrap();
+        assert_eq!(key.as_str(), want.as_str());
+        let nul = key.as_nul_bytes();
+        assert_eq!(&nul[..nul.len() - 1], want.as_bytes());
+        assert_eq!(nul.last(), Some(&0));
+    }
+
+    #[test]
+    fn a_key_over_the_bound_is_refused() {
+        let long = "x".repeat(KEYEXPR_STRING_SIZE);
+        let topic = TopicInfo::new(&long, "std_msgs::msg::dds_::String_", "abc123");
+        assert!(DataKeyexpr::of(&topic).is_err());
+    }
+}

@@ -1,7 +1,7 @@
 ---
 id: 2694
 title: "Publisher creation holds each data key expression twice on the stack, at three call levels"
-status: open
+status: resolved
 type: tech-debt
 severity: low
 area: [rmw, zenoh, memory]
@@ -62,3 +62,44 @@ How much of that rise this gives back is not known yet. The drift row
 follows the walk's deepest path, and where the walk cuts its call cycle can
 move with the frames (issue 2550). Acceptance is the re-walked row, with the
 per-function frames above, not a predicted number.
+
+## Resolved (2026-11-23)
+
+The key is held once, in the form the C call needs. `DataKeyexpr`
+(`shim/publisher.rs`) is one `heapless::String<KEYEXPR_BUFFER_SIZE>` holding
+the key and its NUL:
+- `as_str()` is the key, for the debug log and the retention keyexpr;
+- `as_nul_bytes()` is the form `declare_publisher` takes.
+
+`ZenohPublisher::new_on` builds it once and passes it by reference to
+`declare_data_publisher` and `declare_retention`. The one other declare site
+(`ZenohSession::declare_node_topic_writer`) builds its own.
+
+**A second defect on the same path.** `TopicInfo::to_key` ignores the write
+error, so a topic whose key did not fit was built TRUNCATED. The
+`TopicNameInvalid` check after it could never fire: a 256-character topic
+became the key `0/`. `try_to_key` (`keyexpr.rs`) now reports the overflow,
+and `DataKeyexpr::of` refuses such a key. `to_key` is unchanged for its other
+callers.
+
+**Measured** on `qemu_bsp_talker_bringup@mps2-an385-baremetal`, main
+`856de6eb48` vs this change. Frames come from this build's llc objects only
+(`llvm-readobj --stack-sizes`); the walk from `stack-floor-drift --only`.
+
+| frame | before | after |
+|---|---:|---:|
+| `ZenohPublisher::new_on` | 2,360 B | 1,584 B |
+| `declare_data_publisher` | 1,336 B | 24 B |
+| `data_keyexpr` -> `DataKeyexpr::of` | 1,088 B | 560 B |
+| the three, together | 4,784 B | 2,168 B (-2,616 B) |
+| `ZenohSession::share_data_publisher` | 616 B | 616 B (out of scope: its key is the hashed lookup key) |
+| the row's walk | 113,276 B | 111,124 B (-2,152 B) |
+
+The row's recorded `static` (153,784 B) is not re-recorded here. The open
+cargo-C typing PR (issue 2658's next narrowing) re-records this row, and
+re-recording it twice would conflict. The walk on main is already below the
+recorded value, and a fall never fails the drift check.
+
+Tests: `the_key_and_its_nul_form_are_one_buffer` and
+`a_key_over_the_bound_is_refused`. The latter failed before `try_to_key`,
+because it caught the truncation.
