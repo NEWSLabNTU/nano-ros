@@ -3,7 +3,7 @@
 **Status (2026-11-23). OPEN: W1, W2, W3 and W4 done; closes when they merge.** Implements the
 [RFC-0065](../design/0065-colcon-like-workspace-builder.md) D1 amendment of
 2026-11-23 (user ruling: option (a), stay alive and proxy) for
-[issue 2836](../issues/2836-link-overflow-unexplained.md). Pairing: the pty
+[issue 2836](../issues/archived/2836-link-overflow-unexplained.md). Pairing: the pty
 and signal plumbing (W1, W2) is an engineer's; the log reader, the
 explanation text and the book (W3, W4) are docs/UX.
 
