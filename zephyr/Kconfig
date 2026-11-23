@@ -3536,6 +3536,30 @@ configdefault MAIN_STACK_SIZE
 
 endif # NROS_RMW_XRCE
 
+# Issue 2875 -- the socket service thread's stack, for every image that gets
+# the thread. Zephyr starts that thread (`net_socket_service`) when anything
+# selects NET_SOCKETS_SERVICE: `DNS_RESOLVER` does, and `clock.source = sntp`
+# selects DNS_RESOLVER (NROS_CLOCK_SOURCE_HAS_SNTP above), so choosing a clock
+# source hands the image a thread whose stack nobody here sized. Zephyr's
+# default is 1200 B.
+#
+# The thread polls with `struct k_poll_event poll_events[POLL_MAX]` on its own
+# stack, so `zephyr/cmake/nros_socket_service_stack.cmake` (issue 2785) refuses
+# a stack below `POLL_MAX x 40 + 3072` on a 64-bit target and
+# `POLL_MAX x 20 + 1024` on a 32-bit one. 1200 is below the 64-bit floor at any
+# POLL_MAX (3192 at Zephyr's default 3), so every 64-bit image naming sntp
+# stopped at configure.
+#
+# Kconfig cannot compute the floor, so the default is a number that covers the
+# largest poll maximum this module defaults to (8, the Cyclone block above; a
+# zenoh image keeps Zephyr's 3): 64-bit `8 x 40 + 3072` = 3392, stated as
+# 4096; 32-bit `8 x 20 + 1024` = 1184, which Zephyr's own 1200 already covers,
+# so the 32-bit default stays Zephyr's. An image that raises the poll maximum
+# past what these cover (25 on 64-bit, 8 on 32-bit) is still refused by the
+# guard, which names the size it needs. A board conf or prj.conf still wins.
+configdefault NET_SOCKETS_SERVICE_STACK_SIZE
+    default 4096 if 64BIT
+
 endif # NROS
 
 # Issue 2724 -- a native-simulator image (native_sim, native_sim/native/64,

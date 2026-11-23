@@ -35,10 +35,14 @@ function(nros_socket_service_stack_floor out)
        OR NOT DEFINED CONFIG_NET_SOCKETS_SERVICE_STACK_SIZE)
         return()
     endif()
-    if(DEFINED CONFIG_NET_SOCKETS_POLL_MAX)
-        set(_max "${CONFIG_NET_SOCKETS_POLL_MAX}")
-    elseif(DEFINED CONFIG_ZVFS_POLL_MAX)
+    # The array is sized by ZVFS_POLL_MAX on 4.x (`zvfs_poll.c`) and by
+    # NET_SOCKETS_POLL_MAX on 3.7 (`sockets.c`). Ask ZVFS first: 4.x still
+    # defines NET_SOCKETS_POLL_MAX, deprecated with a default of 0, so asking
+    # it first sized a 4.x poll array as empty (issue 2875).
+    if(DEFINED CONFIG_ZVFS_POLL_MAX)
         set(_max "${CONFIG_ZVFS_POLL_MAX}")
+    elseif(DEFINED CONFIG_NET_SOCKETS_POLL_MAX)
+        set(_max "${CONFIG_NET_SOCKETS_POLL_MAX}")
     else()
         return()
     endif()
@@ -60,10 +64,10 @@ function(nros_check_socket_service_stack)
         return()
     endif()
     if(CONFIG_NET_SOCKETS_SERVICE_STACK_SIZE LESS _floor)
-        if(DEFINED CONFIG_NET_SOCKETS_POLL_MAX)
-            set(_knob "CONFIG_NET_SOCKETS_POLL_MAX=${CONFIG_NET_SOCKETS_POLL_MAX}")
-        else()
+        if(DEFINED CONFIG_ZVFS_POLL_MAX)
             set(_knob "CONFIG_ZVFS_POLL_MAX=${CONFIG_ZVFS_POLL_MAX}")
+        else()
+            set(_knob "CONFIG_NET_SOCKETS_POLL_MAX=${CONFIG_NET_SOCKETS_POLL_MAX}")
         endif()
         # Issue 2785.
         message(FATAL_ERROR
