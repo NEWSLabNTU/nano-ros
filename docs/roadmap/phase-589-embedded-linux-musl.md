@@ -99,6 +99,10 @@ Each piece of hand wiring is a work item below.
   media SDK and NPU runtime. Those ship as shared libraries, so the image links
   musl dynamically, and each image needs its own link libraries, search paths
   and include directories through CMake.
+- **The vendor runtime on the proof-of-concept board:** HiSilicon MPP V1.0.1.1
+  (the `ss_mpi_*` API), plus `libss_mpi_km.so` and `libsvp_acl.so` for the
+  NPU. All of them are musl shared objects, so a node linking them cannot be
+  a static image.
 - **Acceptance:** a C++ node on the in-tree musl board links a shared library
   named only in its own CMake, builds dynamically against the board's sysroot,
   and runs on the device.
