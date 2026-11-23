@@ -197,7 +197,10 @@ impl Bus {
     /// and an empty failure names no cause.
     fn ros2(&self, subcommand: &str) -> String {
         let deadline = nros_tests::process::deadline(20);
-        let script = format!("{} && {deadline} ros2 {subcommand} --no-daemon 2>&1", self.env);
+        let script = format!(
+            "{} && {deadline} ros2 {subcommand} --no-daemon 2>&1",
+            self.env
+        );
         let started = Instant::now();
         let out = Command::new("bash")
             .args(["-c", &script])
@@ -360,10 +363,7 @@ fn pair_binary(lang: &str, rmw: FixtureRmw) -> &'static Path {
 #[case::cpp_cyclonedds("cpp", FixtureRmw::Cyclonedds)]
 #[case::c_xrce("c", FixtureRmw::Xrce)]
 #[case::cpp_xrce("cpp", FixtureRmw::Xrce)]
-fn two_managed_nodes_are_silent_until_each_is_active(
-    #[case] lang: &str,
-    #[case] rmw: FixtureRmw,
-) {
+fn two_managed_nodes_are_silent_until_each_is_active(#[case] lang: &str, #[case] rmw: FixtureRmw) {
     let bus = Bus::new(rmw);
     let binary = pair_binary(lang, rmw);
     let mut image = bus.start_image(binary, &format!("{lang}-lifecycle-pair-{rmw:?}"));
