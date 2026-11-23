@@ -50,6 +50,11 @@
 //! ruling set those boards to `daily` (RFC-0122 D9), so the lane is how that
 //! cadence gets re-measured.
 //!
+//! Re-measured 2026-11-23 (phase-554 W9): the two lifecycle-pair interop
+//! cells joined at existing coordinates (Linux, C and C++, zenoh). They are
+//! Interop cells, so no cover lane selects them. Tier 3 went 287 -> 289 over
+//! the same 56.
+//!
 //! Re-measured 2026-11-23 (issue 2828): the C lifecycle interop cell
 //! `native-lifecycle-c-zenoh` joined at an existing coordinate (Linux, C,
 //! zenoh). It is an Interop cell, so no cover lane selects it. Tier 3 went
@@ -1478,8 +1483,8 @@ _tier-build:
         // tier-3 row was only ever checked for its coordinates.
         let total_cells = all_runtime_cells().count();
         assert_eq!(
-            total_cells, 287,
-            "the table's tier-3 cell count (287) is stale; recomputed {total_cells}"
+            total_cells, 289,
+            "the table's tier-3 cell count (289) is stale; recomputed {total_cells}"
         );
         assert_eq!(
             total_coords, 56,

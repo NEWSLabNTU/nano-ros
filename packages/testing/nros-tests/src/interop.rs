@@ -419,6 +419,17 @@ pub const CELLS: &[InteropCell] = &[
     ic("native-lifecycle-c-zenoh",
        c(Linux, C, Zenoh, Lifecycle, Interop, Runtime),
        LinuxFixtures, RosEdition(Zenoh), BiDir, "c_lifecycle_interop"),
+    // tests/lifecycle_pair_interop.rs -- phase-554 W9: two managed nodes in one
+    // image, driven one at a time by stock `ros2 lifecycle`. Each keeps its own
+    // state, and each node's publisher is silent until that node is active,
+    // stops at deactivate and resumes at the next activate. A publish from
+    // `on_activate` goes out.
+    ic("native-lifecycle-pair-c-zenoh",
+       c(Linux, C, Zenoh, Lifecycle, Interop, Runtime),
+       LinuxFixtures, RosEdition(Zenoh), BiDir, "lifecycle_pair_interop"),
+    ic("native-lifecycle-pair-cpp-zenoh",
+       c(Linux, Cpp, Zenoh, Lifecycle, Interop, Runtime),
+       LinuxFixtures, RosEdition(Zenoh), BiDir, "lifecycle_pair_interop"),
 
     // ── Zephyr native_sim QoS interop ───────────────────────────────────
     // phase-441 W5 — this header read "Zephyr on-target QoS interop", which

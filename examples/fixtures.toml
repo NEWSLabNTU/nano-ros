@@ -4541,6 +4541,29 @@ bringup = "src/c_lifecycle_node_bringup"
 image = "linux"
 build_subdir = "build/posix-zenoh-linux-c_lifecycle_node_bringup-linux/cmake"
 
+# Two managed nodes in one image, in C and in C++: each node has its own
+# lifecycle services and machine, and its publisher is silent until the node
+# is active (phase-554 W9). Consumed by tests/lifecycle_pair_interop.rs.
+[[workspace_fixture]]
+id = "c-lifecycle-pair"
+platform = "linux"
+lang = "c"
+rmw = "zenoh"
+dir = "examples/linux/c/lifecycle-pair"
+bringup = "src/c_lifecycle_pair_bringup"
+image = "linux"
+build_subdir = "build/posix-zenoh-linux-c_lifecycle_pair_bringup-linux/cmake"
+
+[[workspace_fixture]]
+id = "cpp-lifecycle-pair"
+platform = "linux"
+lang = "cpp"
+rmw = "zenoh"
+dir = "examples/linux/cpp/lifecycle-pair"
+bringup = "src/cpp_lifecycle_pair_bringup"
+image = "linux"
+build_subdir = "build/posix-zenoh-linux-cpp_lifecycle_pair_bringup-linux/cmake"
+
 # Phase 275 W2 (#102 H3) — linux/cpp variant examples that shipped with zero
 # fixtures. Standard `-DNROS_RMW` path (default zenoh); `target=` mirrors the
 # cmake project/exe NAME (differs from the hyphenated dir), matching the
