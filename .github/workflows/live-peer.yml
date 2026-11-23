@@ -125,8 +125,13 @@ jobs:
   regression:
     name: rows whose board IS this runner
     runs-on: ubuntu-22.04
-    # Longest green run 177.7 min (n=12). Twice that is 356, so capped at 350:
-    # GitHub ends a hosted job at 360, and a timeout must sit below it to bind.
+    # Capped at 350: GitHub ends a hosted job at 360, and a timeout must sit
+    # below it to bind. The old "longest green 177.7 min, twice is 356" basis
+    # is gone: the four greens of 2026-11-16..20 took 306.5, 164.9, 282.4 and
+    # 237.5 min on the SAME work, because the job is ~130 serial from-scratch
+    # builds on a 4-vCPU hosted runner whose speed varies 1.5-2x day to day
+    # (B16). Run 45148744207 reached the cap inside the fixture step. The
+    # lever is the build count, never this number.
     timeout-minutes: 350
     # The distro comes from the image, which is why grepping this file for
     # `ros-humble` finds nothing (that reading cost issue 1127 a wrong revision).
@@ -344,7 +349,8 @@ jobs:
                   avail
                   # Issue 2469 — and mid-loop when free space runs low. Since
                   # phase-531/535 made the Linux examples one-package
-                  # workspaces, the set is 73 rows (57 on 2026-11-11), each 2-3 G
+                  # workspaces the set grew (141 rows on 2026-11-23, until B16
+                  # derived the migrated leaves by name: 97), each 2-3 G
                   # after a 28 G cold first one, and run 43153068357's runner
                   # died of disk at 7 G free with the loop unfinished. A release
                   # costs only a rebuild of the libraries a later row of the
@@ -435,6 +441,19 @@ jobs:
         run: |
           source ./activate.sh
           just interop-verdicts || true
+
+      # B16 — the fixture step builds only the workspace rows DERIVED from the
+      # cells' tests, by name. A row a test resolved that the derivation did
+      # not name is refused here, from the evidence ledger (written at the
+      # resolver's lane check, before the binary is looked for), so narrowing
+      # can never drop a row silently. Only when the cells ran: without them
+      # the ledger is empty and says nothing.
+      - name: Post check that every resolved workspace row was derived
+        if: always() && steps.cells.outputs.cells_ran == 'true'
+        run: |
+          source ./activate.sh
+          python3 scripts/check-interop-verdicts.py --list-passing --runner host \
+              --host-workspace-fixtures --check-resolved "$NROS_TEST_EVIDENCE_DIR"
 
       # `steps.<id>.outcome`, not `.conclusion`: the outcome is the step's own
       # result before any `continue-on-error` rewrite, and it speaks the same
