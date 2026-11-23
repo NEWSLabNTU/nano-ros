@@ -489,7 +489,6 @@ fn ros2_param_cli_addresses_each_node_on_cyclonedds() -> nros_tests::TestResult<
     let mut cmd = Command::new(binary);
     cmd.env("RUST_LOG", "info")
         .env("ROS_DOMAIN_ID", domain.to_string())
-        .env("NROS_DOMAIN_ID", domain.to_string())
         // The registered backend NAME, never an ambient lane token (AGENTS.md
         // "`NROS_RMW` footgun").
         .env("NROS_RMW", "cyclonedds");
@@ -658,7 +657,6 @@ fn xrce_set_parameters_naming_25_declared_lands() -> nros_tests::TestResult<()> 
     cmd.env("NROS_LOCATOR", &addr)
         .env("XRCE_AGENT_ADDR", &addr)
         .env("ROS_DOMAIN_ID", domain.to_string())
-        .env("NROS_DOMAIN_ID", domain.to_string())
         .env("NROS_RMW", "xrce")
         .env("NROS_ENTRY_SPIN_MS", "60000")
         .env("NROS_ENTRY_SPIN_STEP_MS", "10");

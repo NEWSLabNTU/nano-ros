@@ -151,7 +151,6 @@ fn rust_multi_node_entry_per_node_graph_nodes_cyclonedds() -> nros_tests::TestRe
 
     let mut cmd = Command::new(&entry);
     cmd.env("ROS_DOMAIN_ID", domain.to_string())
-        .env("NROS_DOMAIN_ID", domain.to_string())
         // The registered backend name, never an ambient lane token (AGENTS.md
         // "`NROS_RMW` footgun").
         .env("NROS_RMW", "cyclonedds")
@@ -216,7 +215,6 @@ fn rust_multi_node_entry_per_node_graph_nodes_xrce() -> nros_tests::TestResult<(
     cmd.env("NROS_LOCATOR", &addr)
         .env("XRCE_AGENT_ADDR", &addr)
         .env("ROS_DOMAIN_ID", domain.to_string())
-        .env("NROS_DOMAIN_ID", domain.to_string())
         .env("NROS_RMW", "xrce")
         .env("NROS_ENTRY_SPIN_MS", "25000")
         .env("NROS_ENTRY_SPIN_STEP_MS", "10");
@@ -336,7 +334,6 @@ fn xrce_entry_leaves_the_graph(entry: &std::path::Path, ending: Ending) {
     cmd.env("NROS_LOCATOR", &addr)
         .env("XRCE_AGENT_ADDR", &addr)
         .env("ROS_DOMAIN_ID", domain.to_string())
-        .env("NROS_DOMAIN_ID", domain.to_string())
         .env("NROS_RMW", "xrce")
         .env("NROS_ENTRY_SPIN_STEP_MS", "10");
     match ending {

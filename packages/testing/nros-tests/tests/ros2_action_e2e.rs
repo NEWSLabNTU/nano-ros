@@ -447,7 +447,7 @@ fn a_stock_ros2_client_drives_the_nano_ros_action_server_over_zenoh() {
 
     let mut server = Command::new(&server_bin)
         .env("RUST_LOG", "info")
-        .env("NROS_ENTRY_LOCATOR", &locator)
+        .env("NROS_LOCATOR", &locator)
         .spawn()
         .expect("start the nano-ros zenoh action server");
 
@@ -604,7 +604,7 @@ fn the_nano_ros_action_client_drives_a_stock_ros2_server_over_zenoh() {
     await_fibonacci_action(&env, "stock ROS 2");
 
     // Spawned DIRECTLY rather than through `env.run`, unlike the Cyclone
-    // sibling: the nano side needs `NROS_ENTRY_LOCATOR` and nothing whatsoever from
+    // sibling: the nano side needs `NROS_LOCATOR` and nothing whatsoever from
     // the ROS environment, and running it under `source setup.bash` would put
     // a `LD_LIBRARY_PATH` it does not use in front of the binary. The
     // `timeout` is still mandatory and for the Cyclone case's reason — the
@@ -612,7 +612,7 @@ fn the_nano_ros_action_client_drives_a_stock_ros2_server_over_zenoh() {
     // bounded time is not a test.
     let out = nros_tests::process::deadline_command(60, &client_bin)
         .env("RUST_LOG", "info")
-        .env("NROS_ENTRY_LOCATOR", &locator)
+        .env("NROS_LOCATOR", &locator)
         .output()
         .expect("run the nano-ros zenoh action client");
 
