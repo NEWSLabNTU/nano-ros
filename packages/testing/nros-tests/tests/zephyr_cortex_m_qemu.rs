@@ -47,13 +47,15 @@ use nros_tests::{
     fixtures::{
         ManagedProcess, QemuProcess, RequireFixture, Rmw, XrceAgent, ZenohRouter,
         build_native_talker_rmw, build_zephyr_cortex_m_c_boot_report,
-        build_zephyr_cortex_m_example, build_zephyr_cortex_m_idle_wake, is_qemu_available,
+        build_zephyr_cortex_m_example, build_zephyr_cortex_m_idle_wake,
+        build_zephyr_cortex_m_workspace_c_lifecycle_pair_xrce, is_qemu_available,
         is_xrce_agent_available, is_zenohd_available, qemu_monitor_command,
     },
     matrix::{Lang, PlatformId, Rmw as MatrixRmw, Workload},
     output::{
         ARRIVAL_LATENCY_PREFIX, IDLE_WAKE_ARMED_MARKER, IDLE_WAKE_RESULT_PREFIX,
-        ROUTER_SESSION_LOG_FILTER, ROUTER_SESSION_MARKER, parse_arrival_latency, parse_idle_wake,
+        INT32_TALKER_LOG_PREFIX, PLATFORM_HEAP_EXHAUSTED, ROUTER_SESSION_LOG_FILTER,
+        ROUTER_SESSION_MARKER, ZEPHYR_HEAP_PEAK, parse_arrival_latency, parse_idle_wake,
     },
     qemu::MPS2_AN385_ZEPHYR,
 };
@@ -773,6 +775,66 @@ fn zephyr_cortex_m_idle_xrce_image_wakes_only_for_its_deadlines() {
 }
 
 /// RFC-0051 §7c (phase-510 W3) — the cases this file runs are exactly the
+/// Issue 2780's lifecycle term -- two managed C nodes on XRCE, on
+/// the heap the configure DERIVES for them.
+///
+/// Each managed node registers a REP-2002 machine whose five servers are one
+/// 44,200-byte allocation on the platform heap, and on XRCE each server also
+/// takes a slot in `xrce_session_state_t`. Kconfig's flat lifecycle arm
+/// (196,608 B) priced one machine, so the second machine's allocation failed
+/// at boot: `HEAP EXHAUSTED (TOO SMALL): request 44200 bytes`, from
+/// `LifecycleServiceServers::try_new_boxed`, and no node came up. The image
+/// states no heap, so it boots on `zephyr/cmake/nros_heap_floor.cmake`'s
+/// floor; with the flat arm back this cell is red.
+///
+/// Both nodes autostart to Active (`[lifecycle] autostart = "active"`), so a
+/// healthy image publishes from both within a few periods.
+#[test]
+fn zephyr_cortex_m_two_managed_xrce_nodes_boot_on_the_derived_heap() {
+    require_cortex_m_in_lane("the Zephyr Cortex-M lifecycle-pair cell");
+    if !is_qemu_available() {
+        nros_tests::unmet!("qemu-system-arm not found");
+    }
+    let binary = build_zephyr_cortex_m_workspace_c_lifecycle_pair_xrce()
+        .require("the mps2_an385 two-managed-node XRCE image");
+    if !is_xrce_agent_available() {
+        nros_tests::unmet!("the Micro-XRCE-DDS agent was not found — run `just setup`");
+    }
+    // The port the row bakes (`west_xrce_agent_port`), from the allocator.
+    let port = nros_tests::alloc::xrce_agent_port_of(
+        PlatformId::ZephyrQemuCortexM,
+        Lang::C,
+        Workload::Lifecycle,
+    );
+    let _agent = XrceAgent::start(port)
+        .unwrap_or_else(|e| panic!("failed to start the XRCE agent on {port}: {e:?}"));
+
+    let mut qemu = QemuProcess::start_zephyr_mps2_an385_networked_measured(&binary)
+        .expect("spawn the lifecycle-pair image");
+    // Two talkers at 1 Hz: four publishes is both nodes active, twice.
+    let output = qemu.collect_until_count(INT32_TALKER_LOG_PREFIX, 4, BOOT_BUDGET);
+    qemu.kill();
+    eprintln!("Zephyr mps2_an385 lifecycle-pair (XRCE) output:\n{output}");
+
+    assert!(
+        !output.contains(PLATFORM_HEAP_EXHAUSTED),
+        "the platform heap ran out while the image registered its two lifecycle machines: the \
+         derived NROS_MEMORY_HEAP_BYTES does not price the second machine (issue 2780). \
+         Output:\n{output}"
+    );
+    let published = output.matches(INT32_TALKER_LOG_PREFIX).count();
+    assert!(
+        published >= 4,
+        "the two managed talkers published {published} times, expected at least 4: both nodes \
+         should reach Active and publish. Output:\n{output}"
+    );
+    // The peak, for whoever re-prices the floor (issue 2780: every heap default
+    // is sized from these lines).
+    if let Some(peak) = output.lines().rfind(|l| l.contains(ZEPHYR_HEAP_PEAK)) {
+        eprintln!("lifecycle-pair (XRCE): {}", peak.trim());
+    }
+}
+
 /// Runtime cells `matrix::consumer_of` assigns to it. Fixture-free: a cell
 /// added, retiered or reassigned without this list moving is a red here.
 #[test]
@@ -800,6 +862,13 @@ fn cases_bound_to_matrix_cells() {
                 K::Example,
             ),
             (P::ZephyrQemuCortexM, L::C, R::Xrce, W::IdleWake, K::Example),
+            (
+                P::ZephyrQemuCortexM,
+                L::C,
+                R::Xrce,
+                W::Lifecycle,
+                K::Workspace,
+            ),
             (
                 P::ZephyrQemuCortexM,
                 L::Cpp,

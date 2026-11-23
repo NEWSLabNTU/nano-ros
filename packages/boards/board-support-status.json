@@ -453,7 +453,7 @@
       "roads": [],
       "last_run": null,
       "stale_from": null,
-      "breadth": "witness \u2014 Runtime: Pubsub, Port, PortSmoke, PortMonitor, PortWorkspace, BootReport, IdleWake, ViolationChannel in C, C++, Rust over zenoh, XRCE-DDS; build-only: Service, Action",
+      "breadth": "witness \u2014 Runtime: Pubsub, Port, PortSmoke, PortMonitor, PortWorkspace, BootReport, IdleWake, Lifecycle, ViolationChannel in C, C++, Rust over zenoh, XRCE-DDS; build-only: Service, Action",
       "rmws": {
         "runtime": [
           "zenoh",
@@ -529,7 +529,7 @@
       "roads": [],
       "last_run": "2026-11-21",
       "stale_from": "2027-03-22",
-      "breadth": "inherited from ZephyrQemuCortexM \u2014 Runtime: Pubsub, Port, PortSmoke, PortMonitor, PortWorkspace, BootReport, IdleWake, ViolationChannel in C, C++, Rust over zenoh, XRCE-DDS; build-only: Service, Action. Board-specific: build-only: Pubsub",
+      "breadth": "inherited from ZephyrQemuCortexM \u2014 Runtime: Pubsub, Port, PortSmoke, PortMonitor, PortWorkspace, BootReport, IdleWake, Lifecycle, ViolationChannel in C, C++, Rust over zenoh, XRCE-DDS; build-only: Service, Action. Board-specific: build-only: Pubsub",
       "rmws": {
         "runtime": [
           "zenoh",
@@ -564,7 +564,7 @@
       "roads": [],
       "last_run": null,
       "stale_from": null,
-      "breadth": "inherited from ZephyrQemuCortexM \u2014 Runtime: Pubsub, Port, PortSmoke, PortMonitor, PortWorkspace, BootReport, IdleWake, ViolationChannel in C, C++, Rust over zenoh, XRCE-DDS; build-only: Service, Action",
+      "breadth": "inherited from ZephyrQemuCortexM \u2014 Runtime: Pubsub, Port, PortSmoke, PortMonitor, PortWorkspace, BootReport, IdleWake, Lifecycle, ViolationChannel in C, C++, Rust over zenoh, XRCE-DDS; build-only: Service, Action",
       "rmws": {
         "runtime": [
           "zenoh",
@@ -597,7 +597,7 @@
       "roads": [],
       "last_run": "2026-10-26",
       "stale_from": "2027-02-24",
-      "breadth": "inherited from ZephyrQemuCortexM \u2014 Runtime: Pubsub, Port, PortSmoke, PortMonitor, PortWorkspace, BootReport, IdleWake, ViolationChannel in C, C++, Rust over zenoh, XRCE-DDS; build-only: Service, Action",
+      "breadth": "inherited from ZephyrQemuCortexM \u2014 Runtime: Pubsub, Port, PortSmoke, PortMonitor, PortWorkspace, BootReport, IdleWake, Lifecycle, ViolationChannel in C, C++, Rust over zenoh, XRCE-DDS; build-only: Service, Action",
       "rmws": {
         "runtime": [
           "zenoh",
@@ -636,7 +636,7 @@
       "roads": [],
       "last_run": "2026-11-01",
       "stale_from": "2027-03-02",
-      "breadth": "inherited from ZephyrQemuCortexM \u2014 Runtime: Pubsub, Port, PortSmoke, PortMonitor, PortWorkspace, BootReport, IdleWake, ViolationChannel in C, C++, Rust over zenoh, XRCE-DDS; build-only: Service, Action. Board-specific: Runtime: Pubsub in C over zenoh",
+      "breadth": "inherited from ZephyrQemuCortexM \u2014 Runtime: Pubsub, Port, PortSmoke, PortMonitor, PortWorkspace, BootReport, IdleWake, Lifecycle, ViolationChannel in C, C++, Rust over zenoh, XRCE-DDS; build-only: Service, Action. Board-specific: Runtime: Pubsub in C over zenoh",
       "rmws": {
         "runtime": [
           "zenoh",
@@ -669,7 +669,7 @@
       "roads": [],
       "last_run": null,
       "stale_from": null,
-      "breadth": "inherited from ZephyrQemuCortexM \u2014 Runtime: Pubsub, Port, PortSmoke, PortMonitor, PortWorkspace, BootReport, IdleWake, ViolationChannel in C, C++, Rust over zenoh, XRCE-DDS; build-only: Service, Action",
+      "breadth": "inherited from ZephyrQemuCortexM \u2014 Runtime: Pubsub, Port, PortSmoke, PortMonitor, PortWorkspace, BootReport, IdleWake, Lifecycle, ViolationChannel in C, C++, Rust over zenoh, XRCE-DDS; build-only: Service, Action",
       "rmws": {
         "runtime": [
           "zenoh",

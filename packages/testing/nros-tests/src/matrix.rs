@@ -1741,6 +1741,8 @@ pub fn consumer_of(cell: &Cell) -> Option<Consumer> {
         (P::ZephyrQemuCortexM, _, _, W::Pubsub | W::BootReport | W::IdleWake, K::Example) => {
             Some(ZephyrCortexM)
         }
+        // Issue 2780.
+        (P::ZephyrQemuCortexM, L::C, R::Xrce, W::Lifecycle, K::Workspace) => Some(ZephyrCortexM),
         // phase-544 W2 (issue 2273).
         (_, _, _, W::ViolationChannel, _) => Some(ViolationChannel),
         // issue 2389.

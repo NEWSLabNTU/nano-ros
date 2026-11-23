@@ -264,7 +264,7 @@ One crate; the book's entry shape is direct execution (the `board-entry` feature
 | Test-matrix platform | ZephyrQemuCortexM |
 | Runs on | `qemu:mps2-an385` |
 | Cadence | daily |
-| Breadth | witness — Runtime: Pubsub, Port, PortSmoke, PortMonitor, PortWorkspace, BootReport, IdleWake, ViolationChannel in C, C++, Rust over zenoh, XRCE-DDS; build-only: Service, Action |
+| Breadth | witness — Runtime: Pubsub, Port, PortSmoke, PortMonitor, PortWorkspace, BootReport, IdleWake, Lifecycle, ViolationChannel in C, C++, Rust over zenoh, XRCE-DDS; build-only: Service, Action |
 | Book | Run: [mps2 an385 zephyr](../starters/mps2-an385-zephyr.md#run-it-in-qemu) |
 | Book probe tracks | `zephyr-mps2` (weekly), `zephyr-mps2-c` (weekly), `zephyr-mps2-cpp` (weekly), `platform-zephyr-mps2` |
 
@@ -305,7 +305,7 @@ HONEST LABEL: C runtime-proven; Rust and C++ Pubsub are explicit CarveOuts and e
 | Test-matrix platform | Fvp |
 | Runs on | `fvp:FVP_BaseR_AEMv8R` |
 | Cadence | manual, last run 2026-11-21 |
-| Breadth | inherited from ZephyrQemuCortexM — Runtime: Pubsub, Port, PortSmoke, PortMonitor, PortWorkspace, BootReport, IdleWake, ViolationChannel in C, C++, Rust over zenoh, XRCE-DDS; build-only: Service, Action. Board-specific: build-only: Pubsub |
+| Breadth | inherited from ZephyrQemuCortexM — Runtime: Pubsub, Port, PortSmoke, PortMonitor, PortWorkspace, BootReport, IdleWake, Lifecycle, ViolationChannel in C, C++, Rust over zenoh, XRCE-DDS; build-only: Service, Action. Board-specific: build-only: Pubsub |
 | Book | — |
 | Book probe tracks | — |
 
@@ -325,7 +325,7 @@ Runtime is run by a maintainer, hence `cadence = "manual"`. The model is user-pr
 | Test-matrix platform | — |
 | Runs on | `s32z270` (target) |
 | Cadence | — |
-| Breadth | inherited from ZephyrQemuCortexM — Runtime: Pubsub, Port, PortSmoke, PortMonitor, PortWorkspace, BootReport, IdleWake, ViolationChannel in C, C++, Rust over zenoh, XRCE-DDS; build-only: Service, Action |
+| Breadth | inherited from ZephyrQemuCortexM — Runtime: Pubsub, Port, PortSmoke, PortMonitor, PortWorkspace, BootReport, IdleWake, Lifecycle, ViolationChannel in C, C++, Rust over zenoh, XRCE-DDS; build-only: Service, Action |
 | Book | — |
 | Book probe tracks | — |
 
@@ -345,7 +345,7 @@ S32Z270 RTU0 Cortex-R52 (board revision D) on Zephyr, with Zephyr's NXP NETC eth
 | Test-matrix platform | — |
 | Runs on | `mr-canhubk344` |
 | Cadence | manual, last run 2026-10-26 |
-| Breadth | inherited from ZephyrQemuCortexM — Runtime: Pubsub, Port, PortSmoke, PortMonitor, PortWorkspace, BootReport, IdleWake, ViolationChannel in C, C++, Rust over zenoh, XRCE-DDS; build-only: Service, Action |
+| Breadth | inherited from ZephyrQemuCortexM — Runtime: Pubsub, Port, PortSmoke, PortMonitor, PortWorkspace, BootReport, IdleWake, Lifecycle, ViolationChannel in C, C++, Rust over zenoh, XRCE-DDS; build-only: Service, Action |
 | Book | — |
 | Book probe tracks | — |
 
@@ -365,7 +365,7 @@ NXP S32K344 (Cortex-M7) on the MR-CANHUBK344, Zephyr, behind a 921,600-baud UART
 | Test-matrix platform | ZephyrNucleoF767zi |
 | Runs on | `renode:nucleo_f767zi`, `nucleo-f767zi` (target) |
 | Cadence | manual, last run 2026-11-01 |
-| Breadth | inherited from ZephyrQemuCortexM — Runtime: Pubsub, Port, PortSmoke, PortMonitor, PortWorkspace, BootReport, IdleWake, ViolationChannel in C, C++, Rust over zenoh, XRCE-DDS; build-only: Service, Action. Board-specific: Runtime: Pubsub in C over zenoh |
+| Breadth | inherited from ZephyrQemuCortexM — Runtime: Pubsub, Port, PortSmoke, PortMonitor, PortWorkspace, BootReport, IdleWake, Lifecycle, ViolationChannel in C, C++, Rust over zenoh, XRCE-DDS; build-only: Service, Action. Board-specific: Runtime: Pubsub in C over zenoh |
 | Book | Run: [nucleo f767zi](../starters/nucleo-f767zi.md#run-it-in-the-renode-twin); Flash: [nucleo f767zi](../starters/nucleo-f767zi.md#flash-the-board) |
 | Book probe tracks | `flash-a-real-board`, `flash-a-real-board-bench`, `zephyr-west-app-flash` (weekly), `renode-nucleo` (weekly), `renode-nucleo-rust` (weekly), `renode-nucleo-cpp` (weekly), `nucleo-f767zi-bench` |
 
@@ -385,7 +385,7 @@ ST Nucleo-F767ZI (STM32F767ZI, Cortex-M7F, 384 KiB sram0) on Zephyr 3.7. Its Ren
 | Test-matrix platform | — |
 | Runs on | `rpi-pico-w` (target) |
 | Cadence | — |
-| Breadth | inherited from ZephyrQemuCortexM — Runtime: Pubsub, Port, PortSmoke, PortMonitor, PortWorkspace, BootReport, IdleWake, ViolationChannel in C, C++, Rust over zenoh, XRCE-DDS; build-only: Service, Action |
+| Breadth | inherited from ZephyrQemuCortexM — Runtime: Pubsub, Port, PortSmoke, PortMonitor, PortWorkspace, BootReport, IdleWake, Lifecycle, ViolationChannel in C, C++, Rust over zenoh, XRCE-DDS; build-only: Service, Action |
 | Book | — |
 | Book probe tracks | — |
 

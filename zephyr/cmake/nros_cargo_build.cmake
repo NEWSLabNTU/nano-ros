@@ -1534,7 +1534,7 @@ function(nros_resolve_knobs)
     endif()
     _nros_zephyr_heap_class_base("${CONFIG_NROS_CAPABILITY_LIFECYCLE}"
         "${CONFIG_NROS_CAPABILITY_PARAM_SERVICES}" _nros_heap_base)
-    _nros_zephyr_heap_floor("${_nros_heap_base}" "${_nros_heap_buf}"
+    _nros_zephyr_heap_floor("${_nros_heap_base}" "${_nros_heap_buf}" "${CONFIG_NROS_RMW_XRCE}"
         NROS_DERIVED_MEMORY_HEAP_BYTES NROS_COMPOSITION_MEMORY_HEAP_BYTES)
     if("${CONFIG_NROS_MEMORY_HEAP_BYTES}" STREQUAL "${NROS_KNOB_DERIVE_SENTINEL}"
        AND "${NROS_DERIVED_MEMORY_HEAP_BYTES}" STREQUAL "")

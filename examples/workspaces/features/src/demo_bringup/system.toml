@@ -404,6 +404,24 @@ max_queryables = 16
 # inventory does not compose (measured, phase-481 W3), so -1 would fall to the
 # defaults and `register_lifecycle_services()` would fail at boot.
 
+# Issue 2780's lifecycle term -- TWO managed C nodes on XRCE on
+# an emulated Cortex-M, the (ZephyrQemuCortexM, C, Xrce, Lifecycle, Workspace)
+# cell. Every managed node owns a REP-2002 machine whose five servers are one
+# 44,200-byte heap allocation, and on XRCE each of them also takes a
+# service-server slot in `xrce_session_state_t`. Kconfig's flat 192 KiB
+# lifecycle arm priced one machine: the second one's allocation failed at boot
+# (`HEAP EXHAUSTED`, `LifecycleServiceServers::try_new_boxed`). The heap is
+# DERIVED here, never stated: this image is what holds the derivation to the
+# second machine (zephyr/cmake/nros_heap_floor.cmake). Its files live in
+# `boards/mps2_an385/`, merged after the board package's own prj.conf; the
+# fixture row bakes the agent port. Consumed by tests/zephyr_cortex_m_qemu.rs.
+[image.zephyr_mps2_c_lifecycle_pair_xrce]
+board = "mps2-an385-zephyr"
+rmw = "xrce"
+os_config = ["prj-xrce.conf"]
+launch = "c_lifecycle_pair.launch.xml"
+locator = "udp/10.0.2.2:2018"
+
 [image.zephyr_rust_params]
 board = "zephyr"
 os_config = ["prj-zenoh.conf"]

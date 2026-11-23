@@ -1,0 +1,9 @@
+<?xml version="1.0"?>
+<!-- Issue 2780 - TWO managed (lifecycle) C nodes in one image: each
+     `<lifecycle_node>` registers its own REP-2002 machine, so the image holds
+     two lifecycle service sets on its platform heap. The Zephyr mps2 XRCE image
+     `zephyr_mps2_c_lifecycle_pair_xrce` is the one that boots it. -->
+<launch>
+  <lifecycle_node pkg="c_lifecycle_talker_pkg" exec="c_talker" name="talker"/>
+  <lifecycle_node pkg="c_lifecycle_talker_pkg" exec="c_talker" name="talker2"/>
+</launch>
