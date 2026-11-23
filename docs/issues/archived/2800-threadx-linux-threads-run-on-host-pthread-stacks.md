@@ -1,7 +1,7 @@
 ---
 id: 2800
 title: "ThreadX on Linux runs every thread on a host pthread stack: a host image cannot catch its target's stack overflow, and each pool-allocated stack is dead weight"
-status: open
+status: resolved
 type: limitation
 severity: low
 area: [threadx, memory, build]
@@ -39,7 +39,7 @@ or `pthread_attr_setstack` in the board or `nros-board-common/c`.
    task's, out of the byte pool. On this port those bytes are never used. So
    the pool's derived size (`app stack + WORKING_SET[rmw]`, issue 2624)
    counts stack the port does not use, and
-   [issue 2732](archived/2732-threadx-pool-counts-sched-task-stacks.md)'s
+   [issue 2732](2732-threadx-pool-counts-sched-task-stacks.md)'s
    `+ sched-task stacks` would count more of it. 2732's pool sizing should
    decide whether threadx-linux's derivation drops those terms, or keeps
    them so the host and target derive the same pool.
@@ -90,6 +90,37 @@ Open:
   the cells print no peak lines; these were run by hand.
 - `nros build`'s stack-floor walk does not reach a host image, and
   threadx-linux stays off `STATING_PLATFORMS`:
-  [issue 2834](2834-host-image-stack-floor-walk.md).
+  [issue 2834](../2834-host-image-stack-floor-walk.md).
 - Issue 2732's pool question stands, now with stacks that are used.
 
+
+## Resolved (2026-11-23)
+
+The fix landed with the 2026-11-22 progress above: each thread runs on its
+ThreadX stack, which the board states. What stayed open was measuring, plus
+two questions that are now owned elsewhere.
+
+**The app stack, measured on x86_64** (`main` at `d8f62334b9` plus this
+branch). Each image ran 15 s against its own router and was ended by
+SIGINT, twice; the termination guard printed the peaks. On x86_64 the
+port's floor (`PTHREAD_STACK_MIN` 16,384 + 128) is below the stated stack,
+so each thread ran on exactly what it states:
+
+| image | `nros_app` peak | of | timer thread |
+|---|---:|---:|---:|
+| `examples/threadx-linux/c/talker` | 22,520 B / 22,392 B | 65,536 | 5,000 of 16,512 |
+| `examples/threadx-linux/cpp/talker` | 26,280 B / 26,280 B | 65,536 | 5,000 of 16,512 |
+| `examples/workspaces/mixed` `demo_bringup:threadx` (C talker + listener, measured by another session) | 32,952 B | 65,536 | 5,000 of 16,512 (one cold run 11,496) |
+
+Add the aarch64 Rust numbers above (45,904 B worst). The worst app peak on
+any host and language is 70 % of the stated 64 KiB, so the default stands.
+
+The rest is owned elsewhere:
+- **Checking a stated stack against a walk or a peak** is issue 2834:
+  - the cargo road's held-to-peak check (`[[observed]]` rows keyed by host
+    triple) lands there;
+  - the cmake road's threadx-linux C/C++ images are still checked by
+    nothing, a gap recorded there.
+- **The pool question:** issue 2732 now counts every spawned sched task's
+  stack in the byte pool. On this port those stacks are used, so the host
+  and the target derive the same pool.
