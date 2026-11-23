@@ -5,7 +5,7 @@ status: open
 type: bug
 severity: medium
 area: [freertos, platform]
-related: [rfc-0141, phase-582]
+related: [rfc-0141, phase-582, phase-478]
 found: 2026-11-23
 ---
 On a bare-metal FreeRTOS image the port resolved the `[knobs.clock] source`

@@ -775,7 +775,7 @@ nano-ros in its phase 15 ("a platform-agnostic island"). Its branch
 pins main (`8d4e70a382`, 2026-11-23) and builds the CLI from source. Its
 phase-15 doc (`documentation/roadmap/phase-15-platform-agnostic-island.md` on
 `nano-ros-next`) lists what still waits on nano-ros, by its own GitHub tracker
-issues #4005-#4018 and by nano-ros issue ids. This section is the single list
+entries #4005 to #4018 and by nano-ros issue ids. This section is the single list
 of those needs: each is a work item below or a "tracked by" row. Inventory
 read on island `nano-ros-next` `f6c8bef` and nano-ros main `a1cbbb6b04`.
 
@@ -813,7 +813,7 @@ AN536) stay green.
 | Zephyr root adds packages in `<depend>` order (the Autoware add-once guards) | fixed; the island dropped the guards | issue 2756 |
 | owned west entry: deploy, workspace modules, nested bringup census, `os_config` base | fixed; used on `nano-ros-next` | issues 2861, 2862, 2864 |
 | owned west entry: `NROS_INTERFACE_SEARCH_PATH` (`asi_tests/asi_*_zephyr/CMakeLists.txt:39-40`) | NOT FILED until now | issue 2876, I36 |
-| owned entry that never starts nano-ros on the host gets a census (`can_output_test_bringup` `[census] on_missing = "warn"`) | open, fix in flight (branch `fix/issue-2871-no-nano-ros-entry`) | issue 2871, I45 |
+| owned entry that never starts nano-ros on the host gets a census (`can_output_test_bringup` `[census] on_missing = "warn"`) | open, fix in flight (its fix branch, PR coming) | 2871 (`docs/issues/`; the fix archives it), I45 |
 | `nros run` `--forbid`, `--settle`, `--zephyr-workspace` | fixed; used on `nano-ros-next` | issue 2863 |
 | the Zephyr workspace ladder skips the project's west workspace (`run-zephyr-fvp-ci.sh:202-213`, `--zephyr-workspace` on every call) | NOT FILED until now | issue 2877, I37 |
 | the island's last Zephyr patch, an out-of-tree tracing backend (`patches/zephyr/0003-*`, `scripts/apply-zephyr-patches.sh`) | declined in 2766, NOT FILED as its own question | issue 2878, I38 |
@@ -823,7 +823,7 @@ AN536) stay green.
 | a release past nros11 (branch `nano-ros` on `0.6.0-nros11`; everything else on `nano-ros-next` with a source CLI) | NOT FILED | issue 2882, I42 |
 | `halt` after `platform` on a "none" port is unreachable (island writes `sntp` alone, P5) | NOT FILED | issue 2883, I43 |
 | SNTP re-sync paced on guest time (`sntp_resync_interval_ms = 0` on every image, P5) | NOT FILED | issue 2884, I44 |
-| SNTP re-sync thread stack fixed at 2048 B (7024 B measured on the FVP) | filed, fix in review (PR #4632) | issue 2846 ([phase-582](phase-582-wall-clock-source.md) W3); I44 needs it |
+| SNTP re-sync thread stack fixed at 2048 B (7024 B measured on the FVP) | filed with its fix, in review (PR #4632; the issue file lands with it) | [phase-582](phase-582-wall-clock-source.md) W3; I44 needs it |
 | `board` clock re-asked on an interval | open follow-up; the island does not need it today | issue 2866 ([phase-582](phase-582-wall-clock-source.md)) |
 | FreeRTOS wall clock resolves after the network (`fallback_settle_ms = 6000` on an536, s32z2) | fixed, PR #4639; file still `open` | issue 2865 ([phase-582](phase-582-wall-clock-source.md)); I49 |
 | board-owned CAN frame driver (P7) | done for the island's boards; open for the S32Z2 RTD backend | issue 2633 ([phase-560](phase-560-contract-revision-follow.md) W9), I47 |
@@ -903,15 +903,15 @@ AN536) stay green.
 ### I44 -- SNTP re-sync usable on a simulator
 
 - **Issue:** [2884](../issues/2884-sntp-resync-paced-on-guest-time.md); needs
-  issue 2846 (PR #4632, the stack as a knob) first.
+  PR #4632 (the SNTP re-sync stack as a knob, with its issue file) first.
 - **What:** a ruling on pacing, and its build.
 - **Acceptance:** 2884's; the island sets a non-zero
   `sntp_resync_interval_ms` on its FVP images.
 
 ### I45 -- a census for an owned entry that never starts nano-ros
 
-- **Issue:** [2871](../issues/2871-census-for-entry-without-nano-ros.md), in
-  flight on branch `fix/issue-2871-no-nano-ros-entry` (ruled option (a): the
+- **Issue:** 2871 (`docs/issues/`; not linked, its fix archives it), in
+  flight on its fix branch (ruled option (a): the
   image states it).
 - **Acceptance:** 2871's; the island's `can_output_test_bringup` drops
   `[census] on_missing = "warn"`.
@@ -1046,7 +1046,7 @@ I5, I6, I7 and I8 are independent. I8's second half waits on 474 T3.
 The island port's items (2026-11-23), in this order, each followed by its T4
 deletion on the island: I45 (in flight); I36 and I37 (the FVP lane's last
 flags and CMake lines); I38 (after I37, so the ladder decides which tree a
-carried patch lands in); I41; I49; I43; I44 (after issue 2846 merges); I40;
+carried patch lands in); I41; I49; I43; I44 (after PR #4632 merges); I40;
 I39; I46, then I47 (both need a host with the NXP trees; hardware runs under
 phase-512); I48 last. I42 whenever the release lanes are green, then I26's
 island switch.
@@ -1147,9 +1147,9 @@ island switch.
 - [ ] I43: an unreachable `halt` after `platform` is refused or warned at
       configure (issue 2883).
 - [ ] I44: SNTP re-sync pacing ruled and built; the island's FVP images set a
-      non-zero interval (issue 2884, after issue 2846).
+      non-zero interval (issue 2884, after PR #4632).
 - [ ] I45: an image states that its owned entry runs no nano-ros and gets an
-      empty census; the island drops `on_missing = "warn"` (issue 2871).
+      empty census; the island drops `on_missing = "warn"` (2871).
 - [ ] I46: the s32z270-freertos RTD variant has its NETC netif, the port
       patch question answered, and a full link; the island names the variant
       (issue 2632).
@@ -1195,7 +1195,7 @@ unowned.
 - [issue 2882](../issues/2882-nros12-release-for-consumers.md): no release past nros11, and nothing tracks the next (I42).
 - [issue 2883](../issues/2883-zephyr-clock-halt-unreachable-after-platform.md): `halt` after `platform` on a "none" port is unreachable and accepted (I43).
 - [issue 2884](../issues/2884-sntp-resync-paced-on-guest-time.md): the SNTP re-sync interval runs on guest time (I44).
-- [issue 2871](../issues/2871-census-for-entry-without-nano-ros.md): an owned entry that never starts nano-ros gets no census (I45; fix in flight).
+- 2871 (not linked: its in-flight fix archives the file): an owned entry that never starts nano-ros gets no census (I45; fix in flight).
 - [issue 2632](../issues/2632-s32z270-freertos-rtd-variant.md): the s32z270-freertos RTD variant's NETC netif, port patch and full link (I46; phase-524 W3 stays its descriptor home).
 - [issue 2633](../issues/2633-board-owned-can-frame-driver.md): the S32Z2 CAN frame driver's vendor backend and the `board`-stack hand-off (I47; phase-560 W9 stays its design home).
 - [issue 2769](../issues/2769-zenoh-can-link-over-frame-driver.md): the zenoh-pico CAN link over the frame driver (I48).

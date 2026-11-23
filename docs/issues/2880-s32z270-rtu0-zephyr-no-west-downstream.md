@@ -33,7 +33,7 @@ import; `gate.yml`'s `zephyr-module-fixtures` job fetches them for itself.
 - `cmsis` and `hal_nxp` "at the revisions Zephyr v3.7.0's own west.yml pins";
   the comment records the break that found them ("SoC s32z270 not supported"
   from an older `hal_nxp`);
-- `zephyr` at `v3.7.0` and `zephyr-lang-rust` at `404fcefdba`, each with a
+- `zephyr` at `v3.7.0` and `zephyr-lang-rust` at nano-ros's supported rev, each with a
   comment to bump it "in lockstep" with nano-ros's `west.yml`.
 
 Nothing checks the four against nano-ros's pins; `nros doctor` (issue 2771)
