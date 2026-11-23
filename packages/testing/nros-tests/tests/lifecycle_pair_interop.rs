@@ -180,7 +180,7 @@ impl Echo {
         let _ = self.child.wait();
         out.lines()
             .filter_map(|l| l.trim().strip_prefix("data:"))
-            .map(|d| d.trim().trim_matches('\'').trim_matches('"').to_string())
+            .map(|d| d.trim().trim_matches('\'').trim_matches('\x22').to_string())
             .collect()
     }
 }
@@ -220,17 +220,20 @@ fn hears(echo: Echo, node: &str, want: &str) -> Vec<String> {
 }
 
 #[rstest]
-#[case::c("c-lifecycle-pair", build_c_lifecycle_pair as fn() -> TestResult<&'static Path>)]
-#[case::cpp("cpp-lifecycle-pair", build_cpp_lifecycle_pair as fn() -> TestResult<&'static Path>)]
+#[case::c("c-lifecycle-pair")]
+#[case::cpp("cpp-lifecycle-pair")]
 fn two_managed_nodes_are_silent_until_each_is_active(
     #[case] label: &str,
-    #[case] build: fn() -> TestResult<&'static Path>,
     zenohd_unique: ZenohRouter,
 ) {
     require_zenohd();
     require_ros2();
     let locator = zenohd_unique.locator();
-    let binary = build().require(label);
+    let built = match label {
+        "c-lifecycle-pair" => build_c_lifecycle_pair(),
+        _ => build_cpp_lifecycle_pair(),
+    };
+    let binary = built.require(label);
     let mut image = start_image(binary, label, &locator);
 
     // 1. exactly the two nodes, each under its own name.
