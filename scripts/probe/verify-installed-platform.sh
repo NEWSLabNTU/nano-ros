@@ -28,7 +28,8 @@ if [ -n "${PROBE_BOARD:-}" ]; then
         echo "PROBE FAIL: \`nros board show $PROBE_BOARD\` failed on the installed toolchain" >&2
         exit 1
     fi
-    status_line="$(printf '%s\n' "$show" | grep '^  status ' || true)"
+    # The descriptor's `support` row (phase-569 W5b; `status` before it).
+    status_line="$(printf '%s\n' "$show" | grep -E '^  (support|status) ' || true)"
     case "$status_line" in
         *Verified*|*Boots*|*Builds*|*"Not supported"*) echo "probe: board $PROBE_BOARD:$status_line" ;;
         *) echo "PROBE FAIL: \`nros board show $PROBE_BOARD\` printed no status word: $show" >&2
