@@ -888,10 +888,13 @@ AN536) stay green.
 
 ### I41 -- a compile-time log floor
 
-- **Issue:** [2881](../issues/2881-rclcpp-log-min-severity-missing.md).
+- **Issue:** [2881](../issues/archived/2881-rclcpp-log-min-severity-missing.md).
 - **What:** `RCLCPP_LOG_MIN_SEVERITY` with upstream's meaning.
 - **Acceptance:** 2881's (`just check cpp`: arguments below the floor are not
   evaluated); the island's `log_*` shim loses its `CONFIG_LOG_LEVEL` gating.
+- **Status:** the nano-ros half is done: `RCLCPP_LOG_MIN_SEVERITY` and its C
+  twin `RCLC_LOG_MIN_SEVERITY`, set by a compile definition (issue 2881,
+  resolved). The island's deletion waits on its pin.
 
 ### I42 -- a release past nros11
 
@@ -1255,7 +1258,7 @@ unowned.
 - [issue 2878](../issues/2878-zephyr-tracing-custom-backend-patch.md): Zephyr 3.7 cannot select an out-of-tree tracing backend; the island carries the patch (I38).
 - [issue 2879](../issues/2879-s32z270-rtu0-zephyr-no-board-network.md): `s32z270-rtu0-zephyr` declares no `[board.net]`, and no VLAN or second interface renders (I39).
 - [issue 2880](../issues/2880-s32z270-rtu0-zephyr-no-west-downstream.md): `s32z270-rtu0-zephyr` has no `west-downstream.yml` (I40).
-- [issue 2881](../issues/2881-rclcpp-log-min-severity-missing.md): no compile-time log floor, `RCLCPP_LOG_MIN_SEVERITY` (I41).
+- [issue 2881](../issues/archived/2881-rclcpp-log-min-severity-missing.md): no compile-time log floor, `RCLCPP_LOG_MIN_SEVERITY` (I41).
 - [issue 2882](../issues/2882-nros12-release-for-consumers.md): no release past nros11 (I42; planned by phase-590).
 - [issue 2883](../issues/2883-zephyr-clock-halt-unreachable-after-platform.md): `halt` after `platform` on a "none" port is unreachable and accepted (I43; homed in phase-582).
 - [issue 2884](../issues/2884-sntp-resync-paced-on-guest-time.md): the SNTP re-sync interval runs on guest time (I44; homed in phase-582).

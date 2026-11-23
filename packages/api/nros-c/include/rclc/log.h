@@ -210,27 +210,88 @@ void rclc_log_emit_fmt_at(rclc_logger_t logger, rcl_log_severity_t severity, con
  * Filtering happens on the Rust side: the image's compile-time CEILING
  * (`NROS_LOG_MAX_LEVEL`, `trace` unless stated) and then the
  * per-logger threshold (`rclc_logger_set_level`), both inside the same check
- * `rclc_logger_is_enabled` answers. The call site still formats; guard it with
- * `rclc_logger_is_enabled` if the arguments are expensive. */
+ * `rclc_logger_is_enabled` answers. The call site still evaluates its
+ * arguments; to keep a level's arguments out of the image, set the
+ * compile-time floor `RCLC_LOG_MIN_SEVERITY` below, or guard the call with
+ * `rclc_logger_is_enabled`. */
 
+/* ---- Compile-time floor ----
+ *
+ * `RCLC_LOG_MIN_SEVERITY` is the C twin of upstream's `RCUTILS_LOG_MIN_SEVERITY`
+ * (and of `RCLCPP_LOG_MIN_SEVERITY`, `<rclcpp/logging.hpp>`): define it, with
+ * `-D` or before the first include, to one of the seven values below and every
+ * level macro BELOW it -- `RCLC_LOG_<LEVEL>` and `RCLC_LOG_<LEVEL>_THROTTLE` --
+ * expands to nothing. Its arguments, the logger included, are then not
+ * evaluated at all, which is the difference from the run-time filters (the
+ * `log.max_level` ceiling and `rclc_logger_set_level`): those refuse a record
+ * after the call site has computed every argument.
+ *
+ * The numbers are `log.max_level`'s (`NROS_LOG_MAX_LEVEL`, 0 trace .. 6 off),
+ * so a Zephyr build can pass the image's ceiling straight through:
+ * `-DRCLC_LOG_MIN_SEVERITY=CONFIG_NROS_LOG_MAX_LEVEL`. Unset, the floor is
+ * TRACE: nothing is compiled out. `RCLC_LOG_THROTTLE_AT` takes its severity
+ * at run time and is not gated. */
+#define RCLC_LOG_MIN_SEVERITY_TRACE 0
+#define RCLC_LOG_MIN_SEVERITY_DEBUG 1
+#define RCLC_LOG_MIN_SEVERITY_INFO 2
+#define RCLC_LOG_MIN_SEVERITY_WARN 3
+#define RCLC_LOG_MIN_SEVERITY_ERROR 4
+#define RCLC_LOG_MIN_SEVERITY_FATAL 5
+#define RCLC_LOG_MIN_SEVERITY_NONE 6
+#ifndef RCLC_LOG_MIN_SEVERITY
+#define RCLC_LOG_MIN_SEVERITY RCLC_LOG_MIN_SEVERITY_TRACE
+#endif
+#if RCLC_LOG_MIN_SEVERITY < RCLC_LOG_MIN_SEVERITY_TRACE ||                                         \
+    RCLC_LOG_MIN_SEVERITY > RCLC_LOG_MIN_SEVERITY_NONE
+#error                                                                                             \
+    "RCLC_LOG_MIN_SEVERITY must be one of RCLC_LOG_MIN_SEVERITY_{TRACE,DEBUG,INFO,WARN,ERROR,FATAL,NONE} (0..6)"
+#endif
+
+/* A compiled-out level: an expression, as the emitting form is. */
+#define RCLC_LOG_COMPILED_OUT_(...) ((void)0)
+
+#if RCLC_LOG_MIN_SEVERITY <= RCLC_LOG_MIN_SEVERITY_TRACE
 #define RCLC_LOG_TRACE(logger, ...)                                                                \
     rclc_log_emit_fmt_at((logger), RCLC_LOG_SEVERITY_TRACE, __FILE__, (uint32_t)__LINE__,          \
                          __VA_ARGS__)
+#else
+#define RCLC_LOG_TRACE(logger, ...) RCLC_LOG_COMPILED_OUT_()
+#endif
+#if RCLC_LOG_MIN_SEVERITY <= RCLC_LOG_MIN_SEVERITY_DEBUG
 #define RCLC_LOG_DEBUG(logger, ...)                                                                \
     rclc_log_emit_fmt_at((logger), RCLC_LOG_SEVERITY_DEBUG, __FILE__, (uint32_t)__LINE__,          \
                          __VA_ARGS__)
+#else
+#define RCLC_LOG_DEBUG(logger, ...) RCLC_LOG_COMPILED_OUT_()
+#endif
+#if RCLC_LOG_MIN_SEVERITY <= RCLC_LOG_MIN_SEVERITY_INFO
 #define RCLC_LOG_INFO(logger, ...)                                                                 \
     rclc_log_emit_fmt_at((logger), RCLC_LOG_SEVERITY_INFO, __FILE__, (uint32_t)__LINE__,           \
                          __VA_ARGS__)
+#else
+#define RCLC_LOG_INFO(logger, ...) RCLC_LOG_COMPILED_OUT_()
+#endif
+#if RCLC_LOG_MIN_SEVERITY <= RCLC_LOG_MIN_SEVERITY_WARN
 #define RCLC_LOG_WARN(logger, ...)                                                                 \
     rclc_log_emit_fmt_at((logger), RCLC_LOG_SEVERITY_WARN, __FILE__, (uint32_t)__LINE__,           \
                          __VA_ARGS__)
+#else
+#define RCLC_LOG_WARN(logger, ...) RCLC_LOG_COMPILED_OUT_()
+#endif
+#if RCLC_LOG_MIN_SEVERITY <= RCLC_LOG_MIN_SEVERITY_ERROR
 #define RCLC_LOG_ERROR(logger, ...)                                                                \
     rclc_log_emit_fmt_at((logger), RCLC_LOG_SEVERITY_ERROR, __FILE__, (uint32_t)__LINE__,          \
                          __VA_ARGS__)
+#else
+#define RCLC_LOG_ERROR(logger, ...) RCLC_LOG_COMPILED_OUT_()
+#endif
+#if RCLC_LOG_MIN_SEVERITY <= RCLC_LOG_MIN_SEVERITY_FATAL
 #define RCLC_LOG_FATAL(logger, ...)                                                                \
     rclc_log_emit_fmt_at((logger), RCLC_LOG_SEVERITY_FATAL, __FILE__, (uint32_t)__LINE__,          \
                          __VA_ARGS__)
+#else
+#define RCLC_LOG_FATAL(logger, ...) RCLC_LOG_COMPILED_OUT_()
+#endif
 
 /**
  * Explicit installation of the default sink list.
@@ -492,18 +553,54 @@ bool rclc_log_throttle_admit_at(uint64_t* last_ns, uint64_t interval_ms, uint64_
         }                                                                                          \
     } while (0)
 
+#if RCLC_LOG_MIN_SEVERITY <= RCLC_LOG_MIN_SEVERITY_TRACE
 #define RCLC_LOG_TRACE_THROTTLE(logger, interval_ms, ...)                                          \
     RCLC_LOG_THROTTLE_AT((logger), RCLC_LOG_SEVERITY_TRACE, (interval_ms), __VA_ARGS__)
+#else
+#define RCLC_LOG_TRACE_THROTTLE(logger, interval_ms, ...)                                          \
+    do {                                                                                           \
+    } while (0)
+#endif
+#if RCLC_LOG_MIN_SEVERITY <= RCLC_LOG_MIN_SEVERITY_DEBUG
 #define RCLC_LOG_DEBUG_THROTTLE(logger, interval_ms, ...)                                          \
     RCLC_LOG_THROTTLE_AT((logger), RCLC_LOG_SEVERITY_DEBUG, (interval_ms), __VA_ARGS__)
+#else
+#define RCLC_LOG_DEBUG_THROTTLE(logger, interval_ms, ...)                                          \
+    do {                                                                                           \
+    } while (0)
+#endif
+#if RCLC_LOG_MIN_SEVERITY <= RCLC_LOG_MIN_SEVERITY_INFO
 #define RCLC_LOG_INFO_THROTTLE(logger, interval_ms, ...)                                           \
     RCLC_LOG_THROTTLE_AT((logger), RCLC_LOG_SEVERITY_INFO, (interval_ms), __VA_ARGS__)
+#else
+#define RCLC_LOG_INFO_THROTTLE(logger, interval_ms, ...)                                           \
+    do {                                                                                           \
+    } while (0)
+#endif
+#if RCLC_LOG_MIN_SEVERITY <= RCLC_LOG_MIN_SEVERITY_WARN
 #define RCLC_LOG_WARN_THROTTLE(logger, interval_ms, ...)                                           \
     RCLC_LOG_THROTTLE_AT((logger), RCLC_LOG_SEVERITY_WARN, (interval_ms), __VA_ARGS__)
+#else
+#define RCLC_LOG_WARN_THROTTLE(logger, interval_ms, ...)                                           \
+    do {                                                                                           \
+    } while (0)
+#endif
+#if RCLC_LOG_MIN_SEVERITY <= RCLC_LOG_MIN_SEVERITY_ERROR
 #define RCLC_LOG_ERROR_THROTTLE(logger, interval_ms, ...)                                          \
     RCLC_LOG_THROTTLE_AT((logger), RCLC_LOG_SEVERITY_ERROR, (interval_ms), __VA_ARGS__)
+#else
+#define RCLC_LOG_ERROR_THROTTLE(logger, interval_ms, ...)                                          \
+    do {                                                                                           \
+    } while (0)
+#endif
+#if RCLC_LOG_MIN_SEVERITY <= RCLC_LOG_MIN_SEVERITY_FATAL
 #define RCLC_LOG_FATAL_THROTTLE(logger, interval_ms, ...)                                          \
     RCLC_LOG_THROTTLE_AT((logger), RCLC_LOG_SEVERITY_FATAL, (interval_ms), __VA_ARGS__)
+#else
+#define RCLC_LOG_FATAL_THROTTLE(logger, interval_ms, ...)                                          \
+    do {                                                                                           \
+    } while (0)
+#endif
 
 #ifdef __cplusplus
 } /* extern "C" */

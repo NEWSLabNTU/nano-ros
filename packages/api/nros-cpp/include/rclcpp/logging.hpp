@@ -890,7 +890,8 @@ inline bool throttle_admit(const ClockT& clock, uint64_t* last_ns, bool* refused
 //
 // One consequence worth naming: `RCLCPP_DEBUG` no longer compiles out under
 // `NDEBUG`. It is runtime-filtered by the logger's threshold now, which is what
-// upstream does.
+// upstream does. What compiles a level out is upstream's knob for it, the
+// floor below.
 //
 // `_STREAM` no longer discards its message. It used to expand to
 // `RCLCPP_INFO(logger, "%s", "")` with `args` NEVER REFERENCED, which is the
@@ -911,26 +912,90 @@ inline bool throttle_admit(const ClockT& clock, uint64_t* last_ns, bool* refused
 // The whole family sits behind `#ifndef RCLCPP_INFO` so a translation unit that
 // somehow also has real rclcpp keeps rclcpp's own definitions.
 #ifndef RCLCPP_INFO
+
+// THE COMPILE-TIME FLOOR, upstream's `RCLCPP_LOG_MIN_SEVERITY`
+// with upstream's six values. Define it (`-D` or before the first include) and
+// every `RCLCPP_*` macro of a level BELOW it -- plain, `_ONCE`, `_SKIPFIRST`,
+// `_THROTTLE`, `_SKIPFIRST_THROTTLE`, `_STREAM` -- expands to an empty
+// statement: its arguments, logger, clock and stream operands are not
+// evaluated, and nothing of the call is in the image. Unset, it is `_DEBUG`
+// and nothing is compiled out.
+//
+// That is the difference from the run-time filters: the logger's level and
+// the image's `log.max_level` ceiling refuse a record inside `nros_log`, after
+// the call site has computed every argument -- on a control loop that logs at
+// debug level each cycle, the work the floor removes.
+//
+// The C floor, `RCLC_LOG_MIN_SEVERITY` (`<rclc/log.h>`, rcutils'
+// `RCUTILS_LOG_MIN_SEVERITY` there), applies here too, as rcutils' does to
+// upstream's macros: a level survives only if it is at or above both.
+#define RCLCPP_LOG_MIN_SEVERITY_DEBUG 0
+#define RCLCPP_LOG_MIN_SEVERITY_INFO 1
+#define RCLCPP_LOG_MIN_SEVERITY_WARN 2
+#define RCLCPP_LOG_MIN_SEVERITY_ERROR 3
+#define RCLCPP_LOG_MIN_SEVERITY_FATAL 4
+#define RCLCPP_LOG_MIN_SEVERITY_NONE 5
+#ifndef RCLCPP_LOG_MIN_SEVERITY
+#define RCLCPP_LOG_MIN_SEVERITY RCLCPP_LOG_MIN_SEVERITY_DEBUG
+#endif
+#if RCLCPP_LOG_MIN_SEVERITY < RCLCPP_LOG_MIN_SEVERITY_DEBUG ||                                     \
+    RCLCPP_LOG_MIN_SEVERITY > RCLCPP_LOG_MIN_SEVERITY_NONE
+#error                                                                                             \
+    "RCLCPP_LOG_MIN_SEVERITY must be one of RCLCPP_LOG_MIN_SEVERITY_{DEBUG,INFO,WARN,ERROR,FATAL,NONE}"
+#endif
+
+// One gate per level: `NROS_RCLCPP_AT_<LEVEL>_(m)` is `m` when the level is
+// compiled in and the empty statement when it is not, so each macro below is
+// written once and the floor decides which body it gets.
+#define NROS_RCLCPP_COMPILED_OUT_(...)                                                             \
+    do {                                                                                           \
+    } while (0)
+#if RCLCPP_LOG_MIN_SEVERITY <= RCLCPP_LOG_MIN_SEVERITY_DEBUG &&                                    \
+    RCLC_LOG_MIN_SEVERITY <= RCLC_LOG_MIN_SEVERITY_DEBUG
+#define NROS_RCLCPP_AT_DEBUG_(m) m
+#else
+#define NROS_RCLCPP_AT_DEBUG_(m) NROS_RCLCPP_COMPILED_OUT_
+#endif
+#if RCLCPP_LOG_MIN_SEVERITY <= RCLCPP_LOG_MIN_SEVERITY_INFO &&                                     \
+    RCLC_LOG_MIN_SEVERITY <= RCLC_LOG_MIN_SEVERITY_INFO
+#define NROS_RCLCPP_AT_INFO_(m) m
+#else
+#define NROS_RCLCPP_AT_INFO_(m) NROS_RCLCPP_COMPILED_OUT_
+#endif
+#if RCLCPP_LOG_MIN_SEVERITY <= RCLCPP_LOG_MIN_SEVERITY_WARN &&                                     \
+    RCLC_LOG_MIN_SEVERITY <= RCLC_LOG_MIN_SEVERITY_WARN
+#define NROS_RCLCPP_AT_WARN_(m) m
+#else
+#define NROS_RCLCPP_AT_WARN_(m) NROS_RCLCPP_COMPILED_OUT_
+#endif
+#if RCLCPP_LOG_MIN_SEVERITY <= RCLCPP_LOG_MIN_SEVERITY_ERROR &&                                    \
+    RCLC_LOG_MIN_SEVERITY <= RCLC_LOG_MIN_SEVERITY_ERROR
+#define NROS_RCLCPP_AT_ERROR_(m) m
+#else
+#define NROS_RCLCPP_AT_ERROR_(m) NROS_RCLCPP_COMPILED_OUT_
+#endif
+#if RCLCPP_LOG_MIN_SEVERITY <= RCLCPP_LOG_MIN_SEVERITY_FATAL &&                                    \
+    RCLC_LOG_MIN_SEVERITY <= RCLC_LOG_MIN_SEVERITY_FATAL
+#define NROS_RCLCPP_AT_FATAL_(m) m
+#else
+#define NROS_RCLCPP_AT_FATAL_(m) NROS_RCLCPP_COMPILED_OUT_
+#endif
+
+#define NROS_RCLCPP_LOG_(severity, logger, ...)                                                    \
+    do {                                                                                           \
+        rclc_log_emit_fmt_at(::rclcpp::detail::log_handle(logger), (severity), __FILE__,           \
+                             (uint32_t)__LINE__, __VA_ARGS__);                                     \
+    } while (0)
 #define RCLCPP_DEBUG(logger, ...)                                                                  \
-    do {                                                                                           \
-        RCLC_LOG_DEBUG(::rclcpp::detail::log_handle(logger), __VA_ARGS__);                         \
-    } while (0)
+    NROS_RCLCPP_AT_DEBUG_(NROS_RCLCPP_LOG_)(RCLC_LOG_SEVERITY_DEBUG, logger, __VA_ARGS__)
 #define RCLCPP_INFO(logger, ...)                                                                   \
-    do {                                                                                           \
-        RCLC_LOG_INFO(::rclcpp::detail::log_handle(logger), __VA_ARGS__);                          \
-    } while (0)
+    NROS_RCLCPP_AT_INFO_(NROS_RCLCPP_LOG_)(RCLC_LOG_SEVERITY_INFO, logger, __VA_ARGS__)
 #define RCLCPP_WARN(logger, ...)                                                                   \
-    do {                                                                                           \
-        RCLC_LOG_WARN(::rclcpp::detail::log_handle(logger), __VA_ARGS__);                          \
-    } while (0)
+    NROS_RCLCPP_AT_WARN_(NROS_RCLCPP_LOG_)(RCLC_LOG_SEVERITY_WARN, logger, __VA_ARGS__)
 #define RCLCPP_ERROR(logger, ...)                                                                  \
-    do {                                                                                           \
-        RCLC_LOG_ERROR(::rclcpp::detail::log_handle(logger), __VA_ARGS__);                         \
-    } while (0)
+    NROS_RCLCPP_AT_ERROR_(NROS_RCLCPP_LOG_)(RCLC_LOG_SEVERITY_ERROR, logger, __VA_ARGS__)
 #define RCLCPP_FATAL(logger, ...)                                                                  \
-    do {                                                                                           \
-        RCLC_LOG_FATAL(::rclcpp::detail::log_handle(logger), __VA_ARGS__);                         \
-    } while (0)
+    NROS_RCLCPP_AT_FATAL_(NROS_RCLCPP_LOG_)(RCLC_LOG_SEVERITY_FATAL, logger, __VA_ARGS__)
 
 // The conditional families — `_ONCE`, `_SKIPFIRST`, `_THROTTLE`,
 // `_SKIPFIRST_THROTTLE` — upstream's set, at every level. Each declares its
@@ -977,45 +1042,55 @@ inline bool throttle_admit(const ClockT& clock, uint64_t* last_ns, bool* refused
         }                                                                                          \
     } while (0)
 #define RCLCPP_DEBUG_ONCE(logger, ...)                                                             \
-    NROS_RCLCPP_LOG_ONCE_(RCLC_LOG_SEVERITY_DEBUG, logger, __VA_ARGS__)
+    NROS_RCLCPP_AT_DEBUG_(NROS_RCLCPP_LOG_ONCE_)(RCLC_LOG_SEVERITY_DEBUG, logger, __VA_ARGS__)
 #define RCLCPP_DEBUG_SKIPFIRST(logger, ...)                                                        \
-    NROS_RCLCPP_LOG_SKIPFIRST_(RCLC_LOG_SEVERITY_DEBUG, logger, __VA_ARGS__)
+    NROS_RCLCPP_AT_DEBUG_(NROS_RCLCPP_LOG_SKIPFIRST_)(RCLC_LOG_SEVERITY_DEBUG, logger, __VA_ARGS__)
 #define RCLCPP_DEBUG_THROTTLE(logger, clock, period_ms, ...)                                       \
-    NROS_RCLCPP_LOG_THROTTLE_(RCLC_LOG_SEVERITY_DEBUG, 0, logger, clock, period_ms, __VA_ARGS__)
+    NROS_RCLCPP_AT_DEBUG_(NROS_RCLCPP_LOG_THROTTLE_)                                               \
+    (RCLC_LOG_SEVERITY_DEBUG, 0, logger, clock, period_ms, __VA_ARGS__)
 #define RCLCPP_DEBUG_SKIPFIRST_THROTTLE(logger, clock, period_ms, ...)                             \
-    NROS_RCLCPP_LOG_THROTTLE_(RCLC_LOG_SEVERITY_DEBUG, 1, logger, clock, period_ms, __VA_ARGS__)
+    NROS_RCLCPP_AT_DEBUG_(NROS_RCLCPP_LOG_THROTTLE_)                                               \
+    (RCLC_LOG_SEVERITY_DEBUG, 1, logger, clock, period_ms, __VA_ARGS__)
 #define RCLCPP_INFO_ONCE(logger, ...)                                                              \
-    NROS_RCLCPP_LOG_ONCE_(RCLC_LOG_SEVERITY_INFO, logger, __VA_ARGS__)
+    NROS_RCLCPP_AT_INFO_(NROS_RCLCPP_LOG_ONCE_)(RCLC_LOG_SEVERITY_INFO, logger, __VA_ARGS__)
 #define RCLCPP_INFO_SKIPFIRST(logger, ...)                                                         \
-    NROS_RCLCPP_LOG_SKIPFIRST_(RCLC_LOG_SEVERITY_INFO, logger, __VA_ARGS__)
+    NROS_RCLCPP_AT_INFO_(NROS_RCLCPP_LOG_SKIPFIRST_)(RCLC_LOG_SEVERITY_INFO, logger, __VA_ARGS__)
 #define RCLCPP_INFO_THROTTLE(logger, clock, period_ms, ...)                                        \
-    NROS_RCLCPP_LOG_THROTTLE_(RCLC_LOG_SEVERITY_INFO, 0, logger, clock, period_ms, __VA_ARGS__)
+    NROS_RCLCPP_AT_INFO_(NROS_RCLCPP_LOG_THROTTLE_)                                                \
+    (RCLC_LOG_SEVERITY_INFO, 0, logger, clock, period_ms, __VA_ARGS__)
 #define RCLCPP_INFO_SKIPFIRST_THROTTLE(logger, clock, period_ms, ...)                              \
-    NROS_RCLCPP_LOG_THROTTLE_(RCLC_LOG_SEVERITY_INFO, 1, logger, clock, period_ms, __VA_ARGS__)
+    NROS_RCLCPP_AT_INFO_(NROS_RCLCPP_LOG_THROTTLE_)                                                \
+    (RCLC_LOG_SEVERITY_INFO, 1, logger, clock, period_ms, __VA_ARGS__)
 #define RCLCPP_WARN_ONCE(logger, ...)                                                              \
-    NROS_RCLCPP_LOG_ONCE_(RCLC_LOG_SEVERITY_WARN, logger, __VA_ARGS__)
+    NROS_RCLCPP_AT_WARN_(NROS_RCLCPP_LOG_ONCE_)(RCLC_LOG_SEVERITY_WARN, logger, __VA_ARGS__)
 #define RCLCPP_WARN_SKIPFIRST(logger, ...)                                                         \
-    NROS_RCLCPP_LOG_SKIPFIRST_(RCLC_LOG_SEVERITY_WARN, logger, __VA_ARGS__)
+    NROS_RCLCPP_AT_WARN_(NROS_RCLCPP_LOG_SKIPFIRST_)(RCLC_LOG_SEVERITY_WARN, logger, __VA_ARGS__)
 #define RCLCPP_WARN_THROTTLE(logger, clock, period_ms, ...)                                        \
-    NROS_RCLCPP_LOG_THROTTLE_(RCLC_LOG_SEVERITY_WARN, 0, logger, clock, period_ms, __VA_ARGS__)
+    NROS_RCLCPP_AT_WARN_(NROS_RCLCPP_LOG_THROTTLE_)                                                \
+    (RCLC_LOG_SEVERITY_WARN, 0, logger, clock, period_ms, __VA_ARGS__)
 #define RCLCPP_WARN_SKIPFIRST_THROTTLE(logger, clock, period_ms, ...)                              \
-    NROS_RCLCPP_LOG_THROTTLE_(RCLC_LOG_SEVERITY_WARN, 1, logger, clock, period_ms, __VA_ARGS__)
+    NROS_RCLCPP_AT_WARN_(NROS_RCLCPP_LOG_THROTTLE_)                                                \
+    (RCLC_LOG_SEVERITY_WARN, 1, logger, clock, period_ms, __VA_ARGS__)
 #define RCLCPP_ERROR_ONCE(logger, ...)                                                             \
-    NROS_RCLCPP_LOG_ONCE_(RCLC_LOG_SEVERITY_ERROR, logger, __VA_ARGS__)
+    NROS_RCLCPP_AT_ERROR_(NROS_RCLCPP_LOG_ONCE_)(RCLC_LOG_SEVERITY_ERROR, logger, __VA_ARGS__)
 #define RCLCPP_ERROR_SKIPFIRST(logger, ...)                                                        \
-    NROS_RCLCPP_LOG_SKIPFIRST_(RCLC_LOG_SEVERITY_ERROR, logger, __VA_ARGS__)
+    NROS_RCLCPP_AT_ERROR_(NROS_RCLCPP_LOG_SKIPFIRST_)(RCLC_LOG_SEVERITY_ERROR, logger, __VA_ARGS__)
 #define RCLCPP_ERROR_THROTTLE(logger, clock, period_ms, ...)                                       \
-    NROS_RCLCPP_LOG_THROTTLE_(RCLC_LOG_SEVERITY_ERROR, 0, logger, clock, period_ms, __VA_ARGS__)
+    NROS_RCLCPP_AT_ERROR_(NROS_RCLCPP_LOG_THROTTLE_)                                               \
+    (RCLC_LOG_SEVERITY_ERROR, 0, logger, clock, period_ms, __VA_ARGS__)
 #define RCLCPP_ERROR_SKIPFIRST_THROTTLE(logger, clock, period_ms, ...)                             \
-    NROS_RCLCPP_LOG_THROTTLE_(RCLC_LOG_SEVERITY_ERROR, 1, logger, clock, period_ms, __VA_ARGS__)
+    NROS_RCLCPP_AT_ERROR_(NROS_RCLCPP_LOG_THROTTLE_)                                               \
+    (RCLC_LOG_SEVERITY_ERROR, 1, logger, clock, period_ms, __VA_ARGS__)
 #define RCLCPP_FATAL_ONCE(logger, ...)                                                             \
-    NROS_RCLCPP_LOG_ONCE_(RCLC_LOG_SEVERITY_FATAL, logger, __VA_ARGS__)
+    NROS_RCLCPP_AT_FATAL_(NROS_RCLCPP_LOG_ONCE_)(RCLC_LOG_SEVERITY_FATAL, logger, __VA_ARGS__)
 #define RCLCPP_FATAL_SKIPFIRST(logger, ...)                                                        \
-    NROS_RCLCPP_LOG_SKIPFIRST_(RCLC_LOG_SEVERITY_FATAL, logger, __VA_ARGS__)
+    NROS_RCLCPP_AT_FATAL_(NROS_RCLCPP_LOG_SKIPFIRST_)(RCLC_LOG_SEVERITY_FATAL, logger, __VA_ARGS__)
 #define RCLCPP_FATAL_THROTTLE(logger, clock, period_ms, ...)                                       \
-    NROS_RCLCPP_LOG_THROTTLE_(RCLC_LOG_SEVERITY_FATAL, 0, logger, clock, period_ms, __VA_ARGS__)
+    NROS_RCLCPP_AT_FATAL_(NROS_RCLCPP_LOG_THROTTLE_)                                               \
+    (RCLC_LOG_SEVERITY_FATAL, 0, logger, clock, period_ms, __VA_ARGS__)
 #define RCLCPP_FATAL_SKIPFIRST_THROTTLE(logger, clock, period_ms, ...)                             \
-    NROS_RCLCPP_LOG_THROTTLE_(RCLC_LOG_SEVERITY_FATAL, 1, logger, clock, period_ms, __VA_ARGS__)
+    NROS_RCLCPP_AT_FATAL_(NROS_RCLCPP_LOG_THROTTLE_)                                               \
+    (RCLC_LOG_SEVERITY_FATAL, 1, logger, clock, period_ms, __VA_ARGS__)
 #endif // RCLCPP_INFO
 
 /// Emit a refusal message, with the call site.
@@ -1162,11 +1237,16 @@ template <typename T> inline LogStream& operator<<(LogStream& out, const T& valu
         macro(logger, "%s", nros_rclcpp_stream_.c_str());                                          \
     } while (0)
 
-#define RCLCPP_DEBUG_STREAM(logger, ...) NROS_RCLCPP_STREAM_(RCLCPP_DEBUG, logger, __VA_ARGS__)
-#define RCLCPP_INFO_STREAM(logger, ...) NROS_RCLCPP_STREAM_(RCLCPP_INFO, logger, __VA_ARGS__)
-#define RCLCPP_WARN_STREAM(logger, ...) NROS_RCLCPP_STREAM_(RCLCPP_WARN, logger, __VA_ARGS__)
-#define RCLCPP_ERROR_STREAM(logger, ...) NROS_RCLCPP_STREAM_(RCLCPP_ERROR, logger, __VA_ARGS__)
-#define RCLCPP_FATAL_STREAM(logger, ...) NROS_RCLCPP_STREAM_(RCLCPP_FATAL, logger, __VA_ARGS__)
+#define RCLCPP_DEBUG_STREAM(logger, ...)                                                           \
+    NROS_RCLCPP_AT_DEBUG_(NROS_RCLCPP_STREAM_)(RCLCPP_DEBUG, logger, __VA_ARGS__)
+#define RCLCPP_INFO_STREAM(logger, ...)                                                            \
+    NROS_RCLCPP_AT_INFO_(NROS_RCLCPP_STREAM_)(RCLCPP_INFO, logger, __VA_ARGS__)
+#define RCLCPP_WARN_STREAM(logger, ...)                                                            \
+    NROS_RCLCPP_AT_WARN_(NROS_RCLCPP_STREAM_)(RCLCPP_WARN, logger, __VA_ARGS__)
+#define RCLCPP_ERROR_STREAM(logger, ...)                                                           \
+    NROS_RCLCPP_AT_ERROR_(NROS_RCLCPP_STREAM_)(RCLCPP_ERROR, logger, __VA_ARGS__)
+#define RCLCPP_FATAL_STREAM(logger, ...)                                                           \
+    NROS_RCLCPP_AT_FATAL_(NROS_RCLCPP_STREAM_)(RCLCPP_FATAL, logger, __VA_ARGS__)
 #endif // !RCLCPP_INFO_STREAM
 
 #endif // NROS_RCLCPP_LOGGING_HPP

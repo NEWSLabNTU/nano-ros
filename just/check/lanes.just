@@ -1983,6 +1983,32 @@ cpp-runtime:
             "$nros_cpp_lib" -lpthread -ldl -lm
         "$gen/nros-cpp-tests-runtime"/log_conditional_runtime
     done
+    # Issue 2881 -- the compile-time floor: below `RCLCPP_LOG_MIN_SEVERITY` /
+    # `RCLC_LOG_MIN_SEVERITY` every family is compiled out (operands not
+    # evaluated, no record); at or above it logs. One arm per floor, so the
+    # unset default, an rclcpp floor, `NONE`, and the C floor are each held.
+    test -f packages/api/nros-cpp/tests/compile/log_min_severity_runtime.cpp || { \
+        echo "ERROR: log_min_severity_runtime.cpp is MISSING -- this check would pass on absence." >&2; \
+        exit 1; \
+    }
+    echo "  - RCLCPP_LOG_MIN_SEVERITY / RCLC_LOG_MIN_SEVERITY compile a level out (runtime, issue 2881)"
+    for _floor_arm in "" "-DRCLCPP_LOG_MIN_SEVERITY=RCLCPP_LOG_MIN_SEVERITY_INFO" \
+        "-DRCLCPP_LOG_MIN_SEVERITY=RCLCPP_LOG_MIN_SEVERITY_NONE" \
+        "-DRCLC_LOG_MIN_SEVERITY=RCLC_LOG_MIN_SEVERITY_WARN"; do
+        for _std_arm in "-DNROS_CPP_STD=1" ""; do
+            # shellcheck disable=SC2086
+            c++ -std=c++14 $_std_arm $_floor_arm -Wall -Wextra -Werror -fno-exceptions -fno-rtti \
+                -I"$cppgen" \
+                -I"$cgen" \
+                -Ipackages/api/nros-cpp/include \
+                -Ipackages/api/nros-c/include \
+                -Ipackages/platform/nros-platform-api/include \
+                -o "$gen/nros-cpp-tests-runtime"/log_min_severity_runtime \
+                packages/api/nros-cpp/tests/compile/log_min_severity_runtime.cpp \
+                "$nros_cpp_lib" -lpthread -ldl -lm
+            "$gen/nros-cpp-tests-runtime"/log_min_severity_runtime
+        done
+    done
     # phase-417 W4.c/W4.d — the two behaviours a C++ `static_assert` cannot
     # reach. Both link `libnros_cpp.a` AND the shared C stub RMW backend
     # (`nros-c/tests/run/stub_rmw_backend.c`), because both need a real
