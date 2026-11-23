@@ -109,10 +109,9 @@ bug without closing it.
   floor comes from `ZVFS_POLL_MAX`, not from the 0 the old order read.
 - mps2-an385 C++ talker, Zephyr 4.4: configures and builds (it gets no socket
   service thread, so the guard does not apply).
+- qemu-cortex-a53 SMP, Zephyr 3.7.2, `clock.source = "sntp"`, no stack
+  line, fresh build dir, on main after the fix merged: configures and builds,
+  with no refusal from the guard. Its `.config` has `NET_SOCKETS_SERVICE=y`,
+  `NET_SOCKETS_SERVICE_STACK_SIZE=4096`, `NET_SOCKETS_POLL_MAX=3` (3.7 has no
+  `ZVFS_POLL_MAX`, so this is the poll knob there): floor 3192 B, under 4096.
 - ARM FVP, Zephyr 3.7: builds. FVP has no socket service thread.
-
-### Not measured
-
-- qemu-cortex-a53 with `sntp` on Zephyr 3.7. Expected to pass: the module's
-  `configdefault` blocks already apply on 3.7, 3.7 has no `ZVFS_POLL_MAX`, so
-  the guard reads `NET_SOCKETS_POLL_MAX=3`, and 3192 B is under 4096.
