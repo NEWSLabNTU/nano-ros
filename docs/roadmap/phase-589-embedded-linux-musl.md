@@ -1,7 +1,8 @@
 # Phase 589 — Embedded Linux (musl) as a deployment target
 
-**Status (2026-11-23). OPEN.** W1 is in review; the rest are open, with no
-owner yet. Makes a hosted Linux image for an embedded SoC running musl a
+**Status (2026-11-23). OPEN.** W1 is done; the rest are open. W10 to W12
+(the original Jetson Nano) are owned by nros 241; the others have no owner
+yet. Makes a hosted Linux image for an embedded SoC running musl a
 supported target: provisioned, built from an in-tree board, and run on the
 device, with no hand wiring.
 
@@ -43,13 +44,13 @@ Each piece of hand wiring is a work item below.
 
 ### W1 — A musl target builds
 
-- **Status:** OPEN (issue 2844; the fix is in review).
+- **Status:** DONE (2026-11-23, PR #4643; issue 2844).
 - **What:** the POSIX port takes `PTHREAD_STACK_MIN` from `<limits.h>`, and no
   build script names `-lpthread` / `-lrt` for a musl target
   (`nros_cc_flags::libc_libs`, read from `CARGO_CFG_TARGET_ENV`).
 - **Acceptance:** met. The camera talker builds at the fix commit with no local
   patch: a static aarch64 ELF of 1,718,584 bytes, the same size as the patched
-  proof of concept. `just ci gate` pending.
+  proof of concept. `just ci gate` green.
 
 ### W2 — A board states its type
 
@@ -116,8 +117,78 @@ Each piece of hand wiring is a work item below.
 - **Acceptance:** a design note naming the hook and its limits, then a node on
   the musl board stamping messages from a clock it supplies.
 
+### W10 — An image for the original Jetson Nano
+
+- **Owner:** nros 241.
+- **Status:** OPEN
+- **The board:** the original Jetson Nano Developer Kit (Tegra X1, 4x
+  Cortex-A57, 128-core Maxwell GPU). This is not the Orin Nano. Its last
+  software release is JetPack 4.6.6, L4T R32.7.6, which is final for JetPack 4:
+  Ubuntu 18.04, kernel 4.9, CUDA 10.2, TensorRT 8.2. Ubuntu 18.04's glibc is
+  2.27, below the 2.34 floor of our host dists, so neither the `nros` CLI nor a
+  glibc image built on a current host runs there. A static musl aarch64 image
+  (W1) depends on none of it.
+- **Where the board lives:** in a user project, as an out-of-tree board found
+  through `NROS_EXTRA_BOARD_PATH`, per the board-support ruling. It reuses
+  `nros-board-linux`, with target `aarch64-unknown-linux-musl` and
+  `+crt-static`. nano-ros takes what any such board would hit, in W2 to W5.
+- **What:** the Linux talker and listener, built on a host with `nros build`,
+  copied to the Nano, and run against a zenoh router on the host (W12).
+- **Acceptance:** on a Nano running stock L4T R32.7.6, the static talker runs
+  and the host receives it, with no package installed on the Nano. `file`
+  reports a statically linked aarch64 ELF, and the out-of-tree board's
+  descriptor is the only Nano-specific file.
+
+### W11 — A real-time kernel on the Nano, measured
+
+- **Owner:** nros 241.
+- **Status:** OPEN
+- **Why a kernel:** the Tegra X1 has no real-time co-processor a user can
+  program. Its BPMP runs boot and power firmware, and there is no SPE as on
+  Xavier and Orin, so the IVC co-processor work does not apply. Real time here
+  means a PREEMPT_RT L4T kernel, plus the `SCHED_FIFO` tiers
+  `nros-board-linux` already applies.
+- **The kernel path:** the L4T R32.7.6 kernel source carries
+  `scripts/rt-patch.sh apply-patches`. Build it with the Linaro GCC 7.3.1
+  aarch64 toolchain NVIDIA names for R32, from `tegra_defconfig` with
+  Fully Preemptible Kernel (RT) and 1000 Hz, then install `Image`, the DTBs
+  and the modules. NVIDIA ships no prebuilt RT kernel package for the Nano on
+  R32 (its `nvidia-l4t-rt-kernel` repository covered AGX Xavier only), and
+  calls the patches evaluation-grade. Forum reports describe lockups on some
+  R32.7 releases, so the stock kernel image stays bootable beside it.
+- **Measurements, each on the stock and the RT kernel:**
+  - `cyclictest -m -S -p 90 -i 1000 -D 10m`, idle and under `stress-ng` CPU
+    and memory load: the maximum and the p99 latency;
+  - the nano-ros timer jitter at 100 Hz and 1 kHz under `SCHED_FIFO`, the same
+    measurement as the proof of concept's, including the rate the 1 kHz timer
+    actually reaches (W7).
+- **Acceptance:** a table of those numbers in this document, with the kernel
+  build recorded (config delta and source release). The RT kernel's
+  `cyclictest` maximum under load is below 100 us, or the measured value and
+  its cause are recorded.
+
+### W12 — ROS 2 interop through a router on a host
+
+- **Owner:** nros 241.
+- **Status:** OPEN
+- **Why a host:** ROS 2 Humble targets Ubuntu 22.04 and ships no 18.04
+  packages, so no ROS 2 runs on the Nano. The Nano's nodes run in zenoh client
+  mode against `rmw_zenohd` on a host with ROS 2, which is the proof of
+  concept's topology.
+- **Acceptance:** on the host, `ros2 topic echo` receives the Nano's talker,
+  and a host `ros2 run demo_nodes_cpp talker` reaches the Nano's listener.
+  `ros2 topic echo` also shows phase-574 W8's detections from the Nano.
+
+### Not feasible: Genuino 101
+
+The user's Genuino 101 (Intel Curie: a Quark SE core with 80 KB SRAM) was
+judged not feasible on 2026-11-23, in the manager session's report to the
+user. Its two reasons: no current Zephyr release supports the board, and 80 KB
+of SRAM is below what a networked nano-ros image needs.
+
 ## Order
 
 W1 first. W2 to W4 are small and independent. W5 depends on W1 and absorbs
 the proof of concept's wrapper. W6 and W7 are measured on the device. W8 and
-W9 follow W5.
+W9 follow W5. W10 needs only W1, so it does not wait for W5; W11 and W12
+follow W10, and W11 measures W7's 1 kHz case on a second device.
