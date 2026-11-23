@@ -435,6 +435,8 @@ pub mod __macro {
         usize,
     ) -> i32;
 
+    #[cfg(all(feature = "rmw-cffi", feature = "probe-descriptor-text"))]
+    pub use crate::node::record_node_metadata_watching_prose;
     #[cfg(feature = "rmw-cffi")]
     pub use crate::node::{__record_with_context, record_node_metadata, register_node};
     pub use crate::node::{ActionExecutor, ClientDispatch, GraphQuery, PublisherResolver, TimerOp};

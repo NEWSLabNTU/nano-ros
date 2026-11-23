@@ -97,7 +97,7 @@ symbol RAM -32,224`. Every other symbol is unchanged.
 - [Issue 2649](../2649-param-string-array-shared-arena.md): once any `string_array`
   is declared, every slot still pays S x SA. An out-of-line shared string arena
   would make the slot hold an offset and a length instead.
-- [Issue 2650](../2650-param-descriptor-description-per-slot.md): every slot also
+- [Issue 2650](2650-param-descriptor-description-per-slot.md): every slot also
   carries a 256 B description, about 460 B a slot even when every value bound
   is 0.
 
