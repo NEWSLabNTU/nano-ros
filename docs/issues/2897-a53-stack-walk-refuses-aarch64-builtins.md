@@ -65,8 +65,26 @@ Zephyr 3.7 image, plus the table's 10 % margin (#4632).
   measured: 223 of 260 functions have a frame, and the six outline atomics the
   walk reached are each 0 (leaves). The other 37 say why: they call `abort`
   or `malloc`, or branch through a register.
-- **Steps 2 and 3 are next.** They are measured on a rebuilt a53 image, with
-  this row in place, so the remaining refusals are the arch entry points alone.
+- **Rebuilt with step 1's row (host 142, 2026-11-24).** The outline atomics
+  no longer refuse. The walk still refuses on the arm64 assembly alone:
+  `__start`, `arch_cpu_idle`, `arm_smccc_hvc`, `arm_smccc_smc`,
+  `z_arm64_context_switch`, `z_arm64_exit_exc` and `z_arm64_fpu_save`. With
+  those counted as 0 it reaches at least 146,368 B from main (against 32,768)
+  and at least 144,272 B from the SNTP root (against 8,192). Those are the same
+  over-bound shape as before, so they are not sizes.
+- **Step 2 is next, and its shape is open.**
+  - Cortex-M's assembly is reached only through over-approximate bound edges,
+    which skip a frameless target.
+  - arm64's is reached by direct calls, so the walk refuses.
+  - Candidate: measure a frameless function defined in an assembled object
+    with step 1's A64 decoder, as `apply_linked_compiler_builtins` does for
+    `compiler_builtins`.
+  - Caveat: `z_arm64_context_switch` and `z_arm64_exit_exc` move `sp` between
+    stacks, which a frame decoder must not read as a frame. Those want a stated
+    frame with a reason, not a decoded one.
+  - Needs the seven functions' disassembly from an a53 build.
+- The a53 analyzer boot did not run: the board needs a tap NIC, and
+  `/dev/net/tun` is not permitted on host 142.
 
 Acceptance: the same a53 build's `report.json` has an `SNTP_RESYNC` role with a floor, and
 the main root's floor is either checked or refused for a reason other than a missing frame.
