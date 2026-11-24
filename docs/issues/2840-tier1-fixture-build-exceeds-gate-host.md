@@ -60,3 +60,52 @@ the probe tree at its source.
 
 Acceptance: a tier-1 fixture build measured end to end, under the host lock,
 with its peak below the gate host's free-space floor.
+
+## Measured end to end, 2026-11-24
+
+nros 142 ran `just build-test-fixtures lane=tier1` on a clean worktree at
+main `fb2c34e379` (which has issue B22's census-prepass fix, #4739),
+aarch64, host 142. It finished, rc 0, in 6,800 s (1 h 53 min). `df` was
+sampled every 10 s and `du` every 60 s. An earlier attempt at `6a86f706fe`
+died in the census prepass after 1,957 s at a lower bound of 14.0 GiB, and
+is superseded.
+
+**Peak: +177 GiB of worktree** (`du` 4.2 to 182.1 GiB). The filesystem delta
+was 181.2 GiB, including a little other activity on the host. The peak is
+the END state: the lane only grows and frees nothing during the run.
+Sampled every 10 min, in GiB: 4, 10, 14, 17, 27, 68, 70, 121, 137, 160, 181.
+The two large steps came at about 40-50 min and 60-72 min.
+
+Where it sat at the end, in GiB:
+
+| tree | GiB |
+|---|---:|
+| `build/zephyr-workspace-builds/3.7` (32 dirs, ~1.22 each) | 35.0 |
+| `build/sizes-probe` (one `rustc-1.99.0` dir) | 34.6 |
+| `build/cmake-fixtures` | 11.0 |
+| `build/corrosion-cargo` (native 4.8, metadata-probe 2.9) | 7.8 |
+| `build/compile-check-fixtures` | 7.1 |
+| `build/cargo-fixtures` | 2.5 |
+| `examples/workspaces` (rust 12.9, features 8.1, cpp 3.8, c 3.1) | 37.3 |
+| `examples/linux` (rust 10.9) | 13.7 |
+| `packages/testing/nros-tests` | 18.6 |
+| `packages/cli/target` | 2.4 |
+
+sccache grew 0.4 GiB (30.2 to 30.6), outside the worktree. The shared caches
+were warm (cargo registry, sccache, the `~/.nros` store, the Zephyr
+workspaces), so a cold host adds the store on top of the 177 GiB.
+
+**Acceptance is not met.** 177 GiB is above a 150 GB gate host, and above the
+127 GB lower bound measured on 11-22. Against this table, the mitigations
+above in their ranked order:
+
+- mitigation 1 reaches about 55 GiB: `build/sizes-probe` 34.6, the
+  Corrosion trees 7.8, plus the workspace configures, which issue 2702's
+  prune already reaches;
+- mitigation 2 is fixed at 35 GiB: the west dirs stay;
+- `packages/testing/nros-tests` at 18.6 GiB is a tree none of the three
+  names.
+
+The raw samples and logs are kept on host 142 in
+`/home/aeon/repos/nano-ros/tmp/issue-2840/`: `2840-run2-samples.tsv` and
+`2840-run2-fixtures.log` for this run, `2840-run1-*` for the incomplete one.
