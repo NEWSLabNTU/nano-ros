@@ -25,14 +25,16 @@ endif()
 file(WRITE "\${CMAKE_BINARY_DIR}/defines.txt" "\${_d}")
 CML
 pass=0 fail=0 n=0
-while IFS=$'\t' read -r src up fail_p settle want; do
+while IFS=$'\t' read -r src up fail_p settle bri brs want; do
     case "$src" in '#'*|'') continue ;; esac
     n=$((n + 1))
-    envs=(-u NROS_CLOCK_SOURCE -u NROS_CLOCK_UPGRADE -u NROS_CLOCK_EPOCH_FAILURE -u NROS_CLOCK_FALLBACK_SETTLE_MS)
+    envs=(-u NROS_CLOCK_SOURCE -u NROS_CLOCK_UPGRADE -u NROS_CLOCK_EPOCH_FAILURE -u NROS_CLOCK_FALLBACK_SETTLE_MS -u NROS_CLOCK_BOARD_RESYNC_INTERVAL_MS -u NROS_CLOCK_BOARD_RESYNC_STACK_BYTES)
     envs+=("NROS_CLOCK_SOURCE=$src")
     [ "$up" = "-" ] || envs+=("NROS_CLOCK_UPGRADE=$up")
     [ "$fail_p" = "-" ] || envs+=("NROS_CLOCK_EPOCH_FAILURE=$fail_p")
     [ "$settle" = "-" ] || envs+=("NROS_CLOCK_FALLBACK_SETTLE_MS=$settle")
+    [ "$bri" = "-" ] || envs+=("NROS_CLOCK_BOARD_RESYNC_INTERVAL_MS=$bri")
+    [ "$brs" = "-" ] || envs+=("NROS_CLOCK_BOARD_RESYNC_STACK_BYTES=$brs")
     b="$tmp/b$n"
     if ! env "${envs[@]}" cmake -S "$tmp/src" -B "$b" >"$b.log" 2>&1; then
         echo "  FAIL row $n ($src): configure failed"; sed 's/^/    /' "$b.log" | tail -5

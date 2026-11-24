@@ -274,6 +274,12 @@ static void nros_posix_clock_resolve_once(void) {
     s_wall_clock_first = nros_clock_first_source_from_build();
     s_wall_clock_latched =
         nros_clock_resolve(&policy, nros_posix_clock_try, nros_posix_clock_report, NULL);
+#ifdef NROS_CLOCK_HAS_BOARD
+    /* `clock.board_resync_interval_ms`: re-ask the board on its own task
+     * (nothing when the interval is 0). Installs go through the one setter,
+     * so `clock.upgrade` decides whether a re-answer applies. */
+    nros_clock_board_resync_start__set_by__knobs_clock_source();
+#endif
 }
 
 uint64_t nros_platform_time_now_ns(void) {

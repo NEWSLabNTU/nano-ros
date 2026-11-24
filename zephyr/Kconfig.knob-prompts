@@ -7,6 +7,12 @@
 # <build>/nros/Kconfig.from-system-toml, which that section sources, so
 # prj.conf, menuconfig and -DCONFIG_* configure the knobs as they always did.
 
+config NROS_CLOCK_BOARD_RESYNC_INTERVAL_MS
+    int "Re-ask the board's wall clock every (ms), 0 for once at boot"
+
+config NROS_CLOCK_BOARD_RESYNC_STACK_BYTES
+    int "Stack of the board wall-clock re-ask task (bytes)"
+
 config NROS_CLOCK_EPOCH_FAILURE
     string "What boot does when no wall-clock source answers"
 

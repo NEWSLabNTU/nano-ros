@@ -365,6 +365,10 @@ static inline bool nros_sntp_pace_due(const nros_sntp_pace_t* p, uint64_t since_
  * runs out, polling every 10 ms, and install its offset through the one
  * setter. Shared by every port that resolves `board`. */
 bool nros_clock_board_try__set_by__knobs_clock_source(uint32_t settle_ms);
+/* Start re-asking the board on `clock.board_resync_interval_ms` (same file).
+ * The port calls it once the resolution is latched, when `board` is listed;
+ * with the interval at 0, the default, it does nothing. */
+void nros_clock_board_resync_start__set_by__knobs_clock_source(void);
 #endif
 
 #ifdef __cplusplus

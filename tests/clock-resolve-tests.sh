@@ -31,6 +31,9 @@
 #  11. a rate that cannot be trusted (a server step either way, no monotonic
 #      time between answers, outside the bounds) paces that gap on monotonic
 #      time.
+#  12. the shared re-ask helper (`nros/clock_resync.h`, the board re-ask):
+#      once per interval of monotonic time, never sooner, a change of outcome
+#      reported once, and an interval of 0 starts no task.
 # The negative control rebuilds the same test with the elapsed time between
 # readings FROZEN: both "advances" cases must fail, so neither "never goes
 # backwards" nor "holds" can pass on a clock that never moves.
@@ -48,6 +51,7 @@ inc="$root/packages/platform/nros-platform-api/include"
 
 cat > "$tmp/main.c" <<'EOF'
 #include <nros/clock_resolve.h>
+#include <nros/clock_resync.h>
 #include <setjmp.h>
 #include <stdio.h>
 #include <string.h>
@@ -124,6 +128,22 @@ static void reset(void) {
     halt_msg[0] = '\0';
 }
 static uint64_t mono_us(void) { return nros_platform_clock_ns() / 1000ULL; }
+
+/* The task ABI the re-ask helper reaches: case 12 starts none, and asserts
+ * that an interval of 0 never asks for one. */
+static int task_inits;
+void nros_platform_task_attr_init(nros_platform_task_attr_t *attr) { memset(attr, 0, sizeof *attr); }
+int8_t nros_platform_task_init(void *task, void *attr, void *(*entry)(void *), void *arg) {
+    (void)task; (void)attr; (void)entry; (void)arg; task_inits++; return 0;
+}
+
+/* The shared re-ask helper's callbacks (case 12). */
+static int resync_asks, resync_changes;
+static bool resync_answer = true, resync_last_change;
+static bool resync_ask(void *ctx) { (void)ctx; resync_asks++; return resync_answer; }
+static void resync_changed(void *ctx, bool answered) {
+    (void)ctx; resync_changes++; resync_last_change = answered;
+}
 
 static int bad;
 #define CHECK(name, cond) do { if (cond) printf("  ok   %s\n", name); \
@@ -323,6 +343,40 @@ int main(void) {
         nros_sntp_pace_answer(&edge, 10000, 1700001000000ULL); /* rate 100, the bound */
         CHECK("11 the upper bound itself is usable",
               nros_sntp_pace_rate(&edge, &r) == NROS_SNTP_PACE_RATE_OK && r == 100000000ULL);
+    }
+
+    /* 12. the shared re-ask helper: asks once per interval of monotonic time,
+     * never sooner, and reports a change of outcome once. */
+    {
+        nros_clock_resync_t rs = {0};
+        rs.interval_ms = 1000u;
+        rs.ask = resync_ask;
+        rs.changed = resync_changed;
+        rs.last_ask_ms = 5000u;
+        CHECK("12 not due before the interval",
+              !nros_clock_resync_step(&rs, 5999u) && resync_asks == 0);
+        CHECK("12 due at the interval", nros_clock_resync_step(&rs, 6000u) && resync_asks == 1);
+        CHECK("12 the first outcome is reported", resync_changes == 1 && resync_last_change);
+        CHECK("12 the next is one interval after the ask, not before",
+              !nros_clock_resync_step(&rs, 6999u) && nros_clock_resync_step(&rs, 7000u) &&
+                  resync_asks == 2);
+        CHECK("12 the same outcome again is not reported", resync_changes == 1);
+        resync_answer = false;
+        (void)nros_clock_resync_step(&rs, 8000u);
+        (void)nros_clock_resync_step(&rs, 9000u);
+        CHECK("12 a source going quiet is reported once",
+              resync_changes == 2 && !resync_last_change && resync_asks == 4);
+        resync_answer = true;
+        (void)nros_clock_resync_step(&rs, 10000u);
+        CHECK("12 answering again is reported", resync_changes == 3 && resync_last_change);
+        CHECK("12 tick: a sixteenth, 10 ms to 1 s",
+              nros_clock_resync_tick_ms(1600u) == 100u && nros_clock_resync_tick_ms(50u) == 10u &&
+                  nros_clock_resync_tick_ms(86400000u) == 1000u);
+        nros_clock_resync_t off = {0};
+        off.interval_ms = 0u;
+        off.ask = resync_ask;
+        CHECK("12 an interval of 0 starts nothing",
+              nros_clock_resync_start(&off) == 0 && task_inits == 0);
     }
     return bad;
 }

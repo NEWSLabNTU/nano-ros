@@ -36,7 +36,14 @@
 #      `unstamped`: reads 0, {unsynced, board}, the first read returned after
 #      the window and well before forever, and later reads ask nothing;
 #   i. the same with `halt`: the process stops (SIGABRT) after the window.
-# Negative controls: the same case a against a port whose lazy resolution
+# The re-ask (`clock.board_resync_interval_ms`), with a hook that answers the
+# instant on its first call and the instant + 1 h on every later one (a board
+# clock its own time service stepped):
+#   j. interval 100 ms, stack 4096 B (a floor): 600 ms on, the reading has
+#      followed the step, the hook was re-asked, the state is {synced, board};
+#   k. no interval: the hook is asked once and the step never reaches a read.
+# Negative controls: case j against a port that never starts the re-ask must
+# FAIL; the same case a against a port whose lazy resolution
 # call is deleted must FAIL, so a reading that is merely nonzero cannot pass;
 # case g against a selection TU that ignores the window (asks once) must
 # FAIL; case g against a port that resolves on EVERY read must FAIL (the
@@ -61,7 +68,8 @@ tu=nros_clock_board__set_by__knobs_clock_source
 tu_src="$root/packages/platform/nros-platform-api/c/$tu.c"
 
 # HOOK_ANSWERS: 1 always, 0 never, 2 only from HOOK_AFTER_MS after its first
-# call (a board whose clock syncs late).
+# call (a board whose clock syncs late), 3 the instant first and the instant
+# + 1 h after (a board clock stepped after boot).
 cat > "$tmp/hook.c" <<'EOF'
 #include <stdbool.h>
 #include <stdint.h>
@@ -90,6 +98,9 @@ bool nros_board_wall_clock_ns(uint64_t* out_ns) {
         return false;
     }
     *out_ns = BOARD_NS;
+    return true;
+#elif HOOK_ANSWERS == 3
+    *out_ns = hook_calls == 1 ? BOARD_NS : BOARD_NS + 3600000000000ULL;
     return true;
 #else
     (void)out_ns;
@@ -184,6 +195,24 @@ int main(void) {
         (void)nros_platform_time_now_ns();
     }
     CHECK("h later reads never ask the hook again", hook_calls == calls);
+#elif defined(CASE_J) || defined(CASE_K)
+    uint64_t t0 = nros_platform_time_now_ns();
+    CHECK("jk the first reading is the first answer",
+          t0 + 1000ULL >= BOARD_NS && t0 < BOARD_NS + 1000000000ULL);
+    struct timespec d = {0, 600 * 1000 * 1000};
+    nanosleep(&d, NULL);
+    uint64_t t = nros_platform_time_now_ns();
+    nros_wall_clock_state_t st = nros_platform_wall_clock_state();
+    printf("  jk read 600 ms on: %llu, hook asked %d times\n", (unsigned long long)t, hook_calls);
+    CHECK("jk state: synced, board", st.synced && st.source == NROS_WALL_CLOCK_SOURCE_BOARD);
+#if defined(CASE_J)
+    CHECK("j the board was re-asked", hook_calls >= 3);
+    CHECK("j the reading followed the board's step (+1 h)",
+          t >= BOARD_NS + 3600000000000ULL && t < BOARD_NS + 3600000000000ULL + 5000000000ULL);
+#else
+    CHECK("k the board was asked once", hook_calls == 1);
+    CHECK("k the reading never followed the step", t < BOARD_NS + 5000000000ULL);
+#endif
 #endif
     return bad;
 }
@@ -365,4 +394,29 @@ rc=0; out="$("${NROS_DEADLINE[@]}" 20 "$tmp/npr" 2>&1)" || rc=$?
 [ "$rc" -ne 0 ] || { printf '%s\n' "$out" >&2; fail "negative control: a per-read resolving port passed case g"; }
 nros_grep_q -F 'FAIL g later reads never ask the hook again' <<<"$out"; m=$?
 [ "$m" -eq 0 ] || { printf '%s\n' "$out" >&2; fail "negative control: the per-read mutant failed, but not on the later reads"; }
-echo "clock-board-posix: OK (negative controls: no lazy resolution fails a; ask-once and per-read resolution fail g)"
+# j/k: the re-ask.
+resync=('-DNROS_CLOCK_SOURCE_CSV="board"' -DNROS_CLOCK_HAS_BOARD=1 -DNROS_CLOCK_FALLBACK_SETTLE_MS=0u \
+    -DNROS_CLOCK_BOARD_RESYNC_INTERVAL_MS=100u -DNROS_CLOCK_BOARD_RESYNC_STACK_BYTES=4096u)
+need_build "the re-ask port" "$tmp/resync.err" port resync "$src/platform.c" "${resync[@]}"
+need_build "case j" "$tmp/j.err" prog "$tmp/j" resync CASE_J 3
+run_case j "$tmp/j"
+need_build "case k" "$tmp/k.err" prog "$tmp/k" board CASE_K 3
+run_case k "$tmp/k"
+
+# Negative control: a port that never starts the re-ask fails j.
+python3 - "$src/platform.c" "$tmp/platform_noreask.c" <<'PY'
+import sys
+s = open(sys.argv[1]).read()
+n = "    nros_clock_board_resync_start__set_by__knobs_clock_source();\n"
+if s.count(n) != 1:
+    sys.exit("the re-ask start was not found")
+open(sys.argv[2], "w").write(s.replace(n, ""))
+PY
+[ -s "$tmp/platform_noreask.c" ] || fail "negative control: could not build the no-re-ask mutant"
+need_build "the no-re-ask mutant" "$tmp/noreask.err" port noreask "$tmp/platform_noreask.c" "${resync[@]}"
+need_build "the no-re-ask mutant's case j" "$tmp/nj.err" prog "$tmp/nj" noreask CASE_J 3
+rc=0; out="$("${NROS_DEADLINE[@]}" 20 "$tmp/nj" 2>&1)" || rc=$?
+[ "$rc" -ne 0 ] || { printf '%s\n' "$out" >&2; fail "negative control: a port that never re-asks passed case j"; }
+nros_grep_q -F 'FAIL j the board was re-asked' <<<"$out"; m=$?
+[ "$m" -eq 0 ] || { printf '%s\n' "$out" >&2; fail "negative control: the no-re-ask mutant failed, but not on the re-ask"; }
+echo "clock-board-posix: OK (negative controls: no lazy resolution fails a; ask-once and per-read resolution fail g; no re-ask fails j)"

@@ -1324,6 +1324,39 @@ osource "$(KCONFIG_BINARY_DIR)/../nros/Kconfig.pthread-pools"
 #     -DCONFIG_* work as before.
 osource "$(KCONFIG_BINARY_DIR)/../nros/Kconfig.from-system-toml"
 
+# prompt: Re-ask the board's wall clock every (ms), 0 for once at boot
+config NROS_CLOCK_BOARD_RESYNC_INTERVAL_MS
+    int
+    default 0
+    range 0 86400000
+    help
+      For the board source: above 0, the image asks the board's clock hook again
+      on this interval and re-installs the wall-clock offset, so stamps follow a
+      board clock that drifts or that its own time service later corrects. 0 asks
+      once, at boot. An answer is installed under clock.upgrade, like every other
+      source's; a hook that does not answer keeps the installed offset. The re-ask
+      runs on its own task, sized by clock.board_resync_stack_bytes, and only when
+      board is a source the image's clock policy admits.
+
+      The interval is measured on the image's own monotonic clock: on a simulator,
+      guest time. That is deliberate: the hook is the board's own code, so a faster
+      re-ask costs the image nothing but CPU, unlike the SNTP re-sync, which is
+      paced on the server's clock to keep the rate it asks a server at real.
+
+
+# prompt: Stack of the board wall-clock re-ask task (bytes)
+config NROS_CLOCK_BOARD_RESYNC_STACK_BYTES
+    int
+    default 8192
+    range 1024 1048576
+    help
+      Bytes of stack for the task clock.board_resync_interval_ms starts. It runs
+      the board's clock hook, which is the board's own code, so its depth is the
+      board's: state what the hook needs. It is a floor: a port whose own minimum
+      task stack is larger raises it. The task exists only when the interval is
+      above 0, so this costs nothing otherwise.
+
+
 # prompt: What boot does when no wall-clock source answers
 config NROS_CLOCK_EPOCH_FAILURE
     string

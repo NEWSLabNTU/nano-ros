@@ -358,8 +358,10 @@ SNTP never re-acquires. A consumer's board hook papers over that with
 - [Issue 2691](../issues/archived/2691-freertos-tick-count-answers-as-wall-clock.md):
   W2.
 - phase-478 gap 5.4 (no board time source over serial).
-- [Issue 2866](../issues/2866-board-clock-resync-interval.md): `board` is
-  asked once; a re-sync interval in SNTP's knob shape is a follow-up.
+- [Issue 2866](../issues/archived/2866-board-clock-resync-interval.md)
+  (resolved): `board` is re-asked on `clock.board_resync_interval_ms`, on a
+  task whose stack is `clock.board_resync_stack_bytes`, through the shared
+  helper `nros/clock_resync.h` (RFC-0141 D2).
 - [Issue 2841](../issues/archived/2841-c-configure-builds-component-exes-against-image-runtime.md)
   (resolved): W1d's C stub-board image now builds and runs.
 - [Issue 2875](../issues/archived/2875-sntp-dns-socket-service-stack-64bit.md)

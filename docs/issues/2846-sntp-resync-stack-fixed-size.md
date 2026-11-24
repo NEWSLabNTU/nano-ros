@@ -119,3 +119,13 @@ the 32-bit image's clock and sntp knobs, plus board fragments under
 `method` is how its peak was taken. **When 2897's step 3 records the row:**
 decide whether the 8,192 B default is still right for 64-bit, update the
 knob's help with the in-tree 64-bit figure, and close this issue.
+
+## A shared helper exists now (2026-11-24)
+
+Issue 2866 added `nros/clock_resync.h`, a re-ask loop on a platform-ABI task
+whose stack is a stated floor, for the `board` source's re-ask
+(`clock.board_resync_stack_bytes`). Zephyr's SNTP re-sync still runs its own
+`K_THREAD_DEFINE`. Moving it onto the helper gives both sources one shape. It
+also gives SNTP a stack floor that each port raises rather than a static
+array. That move is open here; it does not change the measurements above.
+

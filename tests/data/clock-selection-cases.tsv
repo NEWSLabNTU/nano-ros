@@ -3,10 +3,13 @@
 # (nros_zephyr_build::clock_selection, cargo and west roads) and the CMake one
 # (cmake/NanoRosClockSelection.cmake). A rule changed in one reader and not the
 # other fails its test. Columns, tab-separated, `-` for unstated:
-#   source	upgrade	epoch_failure	fallback_settle_ms	defines (`;`-joined, or NONE)
-platform	-	-	-	NONE
- platform 	monotonic	-	5	NONE
-board	-	-	-	NROS_CLOCK_SOURCE_CSV="board";NROS_CLOCK_HAS_BOARD=1
-board, platform	-	halt	-	NROS_CLOCK_SOURCE_CSV="board,platform";NROS_CLOCK_EPOCH_FAILURE="halt";NROS_CLOCK_HAS_BOARD=1
-board,platform	monotonic	unstamped	2500	NROS_CLOCK_SOURCE_CSV="board,platform";NROS_CLOCK_UPGRADE="monotonic";NROS_CLOCK_EPOCH_FAILURE="unstamped";NROS_CLOCK_FALLBACK_SETTLE_MS=2500u;NROS_CLOCK_HAS_BOARD=1
-sntp,platform	-	-	-	NROS_CLOCK_SOURCE_CSV="sntp,platform"
+#   source	upgrade	epoch_failure	fallback_settle_ms	board_resync_interval_ms	board_resync_stack_bytes	defines (`;`-joined, or NONE)
+platform	-	-	-	-	-	NONE
+ platform 	monotonic	-	5	-	-	NONE
+board	-	-	-	-	-	NROS_CLOCK_SOURCE_CSV="board";NROS_CLOCK_HAS_BOARD=1
+board, platform	-	halt	-	-	-	NROS_CLOCK_SOURCE_CSV="board,platform";NROS_CLOCK_EPOCH_FAILURE="halt";NROS_CLOCK_HAS_BOARD=1
+board,platform	monotonic	unstamped	2500	-	-	NROS_CLOCK_SOURCE_CSV="board,platform";NROS_CLOCK_UPGRADE="monotonic";NROS_CLOCK_EPOCH_FAILURE="unstamped";NROS_CLOCK_FALLBACK_SETTLE_MS=2500u;NROS_CLOCK_HAS_BOARD=1
+sntp,platform	-	-	-	-	-	NROS_CLOCK_SOURCE_CSV="sntp,platform"
+board,platform	-	-	-	1000	4096	NROS_CLOCK_SOURCE_CSV="board,platform";NROS_CLOCK_HAS_BOARD=1;NROS_CLOCK_BOARD_RESYNC_INTERVAL_MS=1000u;NROS_CLOCK_BOARD_RESYNC_STACK_BYTES=4096u
+board	-	-	-	0	-	NROS_CLOCK_SOURCE_CSV="board";NROS_CLOCK_HAS_BOARD=1;NROS_CLOCK_BOARD_RESYNC_INTERVAL_MS=0u
+sntp,platform	-	-	-	1000	4096	NROS_CLOCK_SOURCE_CSV="sntp,platform"
