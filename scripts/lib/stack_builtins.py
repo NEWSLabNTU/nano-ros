@@ -155,6 +155,15 @@ def _code_sections(obj: bytes) -> list[tuple[str, bytes]] | None:
     return out
 
 
+def archive_arch(path: Path) -> str:
+    """The architecture of an archive's first ELF member (`arm`, `riscv`,
+    `aarch64`): what decides the row's measuring method."""
+    for _, body in _ar_members(path.read_bytes()):
+        if body[:4] == b"\x7fELF":
+            return object_arch(body[:20])
+    return "arm"
+
+
 def archive_code_key(path: Path) -> str:
     """The archive's CODE KEY: a sha256 over each ELF member's executable and
     relocation sections, ordered by member then section name (a repeated
@@ -430,14 +439,117 @@ def parse_member_rv(text: str) -> dict[str, Body]:
     return bodies
 
 
+# ------------------------------------------------------------------ AArch64
+#
+# Issue 2897: a 64-bit Arm Zephyr image links the SDK's aarch64 libgcc (its
+# outline atomics, `__aarch64_ldadd8_acq_rel` and kin), which carries no `.su`
+# and no CFI the walk reads. The same rules, for A64's encoding:
+#   - a frame is the sum of every pre-indexed store that moves sp down
+#     (`stp x29, x30, [sp, #-N]!`, `str x19, [sp, #-N]!`) and every
+#     `sub sp, sp, #N` (with `, lsl #12` scaling it); `sub sp, sp, <reg>` moves
+#     sp by a run-time amount: unmeasured. A post-indexed load
+#     (`ldp ..., [sp], #N`), `add sp, ...` and `mov sp, <reg>` restore it;
+#   - a call is `bl` with R_AARCH64_CALL26; `b` with R_AARCH64_JUMP26 is a
+#     tail branch, the same frame;
+#   - `blr <reg>` is a call through a register: unmeasured; `br <reg>` a jump
+#     through one: unmeasured. `ret` ends a body.
+
+_A64_RELOC = re.compile(r"^\s*[0-9a-f]+:\s+R_AARCH64_(?P<type>\S+)\s+(?P<sym>\S+)")
+_A64_TERMINATORS = ("ret", "b", "br", "eret", "brk", "udf", "hlt")
+
+
+def sp_decrement_a64(mnemonic: str, operands: str) -> int | None:
+    """Bytes this A64 instruction moves `sp` DOWN by: 0 when it does not, None
+    when it moves it by an amount not in the instruction (a register)."""
+    mn = mnemonic.lower()
+    ops = operands.lower().replace(" ", "")
+    if mn.startswith(("st", "sti")) and "[sp,#-" in ops and ops.endswith("]!"):
+        v = _imm(ops.split("[sp,", 1)[1])
+        return -v if v is not None and v < 0 else 0
+    if mn in ("sub", "subs") and ops.startswith("sp,sp,"):
+        rest = ops[len("sp,sp,"):]
+        if not rest.startswith("#"):
+            return None  # sub sp, sp, xN: a run-time amount
+        parts = rest.split(",")
+        v = _imm(parts[0]) or 0
+        if len(parts) > 1 and parts[1] == "lsl#12":
+            v <<= 12
+        return v
+    return 0  # add sp / mov sp / a post-indexed load: a restore, never a push
+
+
+def parse_member_a64(text: str) -> dict[str, Body]:
+    """`llvm-objdump -dr` of one AArch64 object: each body's own frame, its
+    calls and branches out, and the body it falls through into."""
+    bodies: dict[str, Body] = {}
+    order: list[str] = []
+    cur: Body | None = None
+    for line in text.splitlines():
+        m = _FUNC_HDR.match(line)
+        if m:
+            name = m["name"]
+            if name.startswith("$") or name.startswith(".L"):
+                continue  # a mapping symbol or a local label
+            cur = bodies.setdefault(name, Body(name))
+            order.append(name)
+            continue
+        if cur is None:
+            continue
+        m = _A64_RELOC.match(line)
+        if m:
+            if m["type"] == "CALL26":
+                cur.calls.add(m["sym"])
+            elif m["type"] == "JUMP26" and m["sym"] != cur.name:
+                cur.jumps.add(m["sym"])
+            continue
+        m = _INSN.match(line)
+        if not m or m["mn"].startswith("<") or m["mn"] == "...":
+            continue  # `<unknown>`: an LSE instruction the disassembler lacks
+        mn, ops = m["mn"].lower(), (m["ops"] or "").strip()
+        if mn.startswith(".") or re.fullmatch(r"[0-9a-f]{2,8}", mn):
+            continue
+        d = sp_decrement_a64(mn, ops)
+        if d is None:
+            cur.unmeasured = cur.unmeasured or f"moves sp by a register (`{mn} {ops}`)"
+        else:
+            cur.frame += d
+        if mn == "blr":
+            cur.unmeasured = cur.unmeasured or f"calls through a register (`{mn} {ops}`)"
+        elif mn == "br":
+            cur.unmeasured = cur.unmeasured or f"jumps through a register (`{mn} {ops}`)"
+        elif mn in ("bl", "b"):
+            tg = _TARGET.search(ops)
+            if tg and tg["sym"] != cur.name and not tg["sym"].startswith(("$", ".L")):
+                (cur.calls if mn == "bl" else cur.jumps).add(tg["sym"])
+        if mn != "nop":
+            cur.last = (mn, ops)
+    for a, b in zip(order, order[1:]):
+        body = bodies[a]
+        if body.last is not None and body.last[0] not in _A64_TERMINATORS:
+            body.next = b
+    for body in bodies.values():
+        if body.next:
+            body.jumps.add(body.next)
+    return bodies
+
+
+ARCH_METHOD = {
+    "arm": "thumb prologue sum, plus the deepest in-archive callee chain",
+    "riscv": "risc-v prologue sum, plus the deepest in-archive callee chain",
+    "aarch64": "a64 prologue sum, plus the deepest in-archive callee chain",
+}
+PARSERS = {"arm": parse_member, "riscv": parse_member_rv, "aarch64": parse_member_a64}
+
+
 def object_arch(obj: bytes) -> str:
-    """`riscv` or `arm`, from an ELF object's e_machine (243, 40)."""
+    """`riscv`, `aarch64` or `arm`, from an ELF object's e_machine
+    (243, 183, 40)."""
     if obj[:4] != b"\x7fELF":
         return "arm"
     e = "<" if obj[5] == 1 else ">"
     import struct
     (mach,) = struct.unpack_from(e + "H", obj, 18)
-    return "riscv" if mach == 243 else "arm"
+    return {243: "riscv", 183: "aarch64"}.get(mach, "arm")
 
 
 # ------------------------------------------------------------------ archive
@@ -479,8 +591,7 @@ def measure_archive(archive: Path, objdump: str, nm: str, ar: str,
                 arch = object_arch(obj.read_bytes()[:20])
             except OSError:
                 arch = "arm"  # a stubbed archive in a self-test
-            parse = parse_member_rv if arch == "riscv" else parse_member
-            bodies[mem] = parse(r.stdout)
+            bodies[mem] = PARSERS[arch](r.stdout)
     return _depths(defs, bodies)
 
 
@@ -513,7 +624,7 @@ def measure_objects(objs: list[Path], objdump: str, nm: str, own: bool = False
             arch = object_arch(obj.read_bytes()[:20])
         except OSError:
             continue
-        bodies[mem] = (parse_member_rv if arch == "riscv" else parse_member)(r.stdout)
+        bodies[mem] = PARSERS[arch](r.stdout)
     if own:
         out: dict[str, dict] = {}
         for name, (mem, _) in defs.items():
@@ -723,13 +834,13 @@ def validate(table: dict, root: Path | None = None) -> list[str]:
 
 
 def render_row(path_label: str, sha: str, toolchain: str, measured: str,
-               result: dict[str, dict]) -> str:
+               result: dict[str, dict], arch: str = "arm") -> str:
     """One `[[archive]]` block, in the one spelling the recipe writes."""
     lines = ["[[archive]]",
              f'path = "{path_label}"',
              f'code_sha256 = "{sha}"',
              f'toolchain = "{toolchain}"',
-             'method = "thumb prologue sum, plus the deepest in-archive callee chain"',
+             f'method = "{ARCH_METHOD[arch]}"',
              f'measured = "{measured}"',
              "",
              "[archive.frames]"]
@@ -804,6 +915,59 @@ def self_checks() -> list[tuple[str, bool]]:
                 and sp_decrement("vpush", "{d8, d9}") == 16))
     out.append(("builtins: sp moved by a register is unmeasured",
                 sp_decrement("sub", "sp, r3") is None))
+    out.append(("builtins a64: pre-indexed stores and sub sp count, restores do not",
+                sp_decrement_a64("stp", "x29, x30, [sp, #-32]!") == 32
+                and sp_decrement_a64("str", "x19, [sp, #-16]!") == 16
+                and sp_decrement_a64("sub", "sp, sp, #0x40") == 64
+                and sp_decrement_a64("sub", "sp, sp, #1, lsl #12") == 4096
+                and sp_decrement_a64("ldp", "x29, x30, [sp], #32") == 0
+                and sp_decrement_a64("stp", "x19, x20, [sp, #16]") == 0
+                and sp_decrement_a64("add", "sp, sp, #0x40") == 0
+                and sp_decrement_a64("mov", "sp, x29") == 0))
+    out.append(("builtins a64: sp moved by a register is unmeasured",
+                sp_decrement_a64("sub", "sp, sp, x8") is None))
+    a64 = """
+0000000000000000 <__aarch64_ldadd8_acq_rel>:
+       0:      	hint	#34
+       4:      	adrp	x16, 0x0 <__aarch64_ldadd8_acq_rel+0x4>
+		0000000000000004:  R_AARCH64_ADR_PREL_PG_HI21	__aarch64_have_lse_atomics
+       8:      	cbz	w16, 0x14 <__aarch64_ldadd8_acq_rel+0x14>
+       c:      	<unknown>
+      10:      	ret
+      14:      	ldaxr	x16, [x1]
+      18:      	ret
+0000000000000020 <outer>:
+      20:      	stp	x29, x30, [sp, #-48]!
+      24:      	bl	0x0 <inner>
+		0000000000000024:  R_AARCH64_CALL26	inner
+      28:      	ldp	x29, x30, [sp], #48
+      2c:      	b	0x0 <tail>
+		000000000000002c:  R_AARCH64_JUMP26	tail
+0000000000000030 <viareg>:
+      30:      	blr	x3
+      34:      	ret
+0000000000000038 <falls>:
+      38:      	sub	sp, sp, #16
+0000000000000040 <next>:
+      40:      	add	sp, sp, #16
+      44:      	ret
+"""
+    b64 = parse_member_a64(a64)
+    out.append(("builtins a64: an outline atomic is a leaf with no frame",
+                b64["__aarch64_ldadd8_acq_rel"].frame == 0
+                and not b64["__aarch64_ldadd8_acq_rel"].calls
+                and b64["__aarch64_ldadd8_acq_rel"].unmeasured is None))
+    out.append(("builtins a64: bl CALL26 is a call, b JUMP26 a tail jump",
+                b64["outer"].frame == 48 and b64["outer"].calls == {"inner"}
+                and "tail" in b64["outer"].jumps))
+    out.append(("builtins a64: blr is unmeasured",
+                (b64["viareg"].unmeasured or "").startswith("calls through a register")))
+    out.append(("builtins a64: no ret falls through, ret does not",
+                b64["falls"].next == "next" and b64["outer"].next is None
+                and b64["next"].next is None))
+    out.append(("builtins a64: e_machine 183 is aarch64",
+                object_arch(b"\x7fELF\x02\x01" + bytes(12) + (183).to_bytes(2, "little"))
+                == "aarch64"))
     out.append(("builtins: pop and add sp never count",
                 sp_decrement("pop", "{r4, pc}") == 0 and sp_decrement("add", "sp, #8") == 0))
     # A synthetic `llvm-objdump -dr` of one member, with the shapes libgcc has:

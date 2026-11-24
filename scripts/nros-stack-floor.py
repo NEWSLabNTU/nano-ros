@@ -6605,7 +6605,8 @@ def measure_builtins(args: argparse.Namespace) -> int:
     toolchain = args.toolchain or label.split("/lib/")[0]
     import datetime
     row = stack_builtins.render_row(label, sha, toolchain,
-                                    datetime.date.today().isoformat(), result)
+                                    datetime.date.today().isoformat(), result,
+                                    stack_builtins.archive_arch(archive))
     into = Path(args.into)
     text = into.read_text(encoding="utf-8") if into.is_file() else ""
     text = stack_builtins.replace_row(text, sha, row)
