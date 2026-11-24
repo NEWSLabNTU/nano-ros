@@ -59,15 +59,6 @@
 #         none). Issue 2377 cites it so the two cannot drift. REMOVE THIS ROW
 #         when the PR carrying `docs/issues/2376-*.md` merges.
 #
-#   2919, 2920  IN FLIGHT — reserved (`refs/issue-ids/2919`, `2920`) and filed
-#         by the nros 175 session on its own branch: 2919 is the two-managed-
-#         node XRCE heap shortfall whose part 2 issue 2780's derivation now
-#         prices, 2920 the refused `/rosout` writers missing from its peaks.
-#         Neither PR was open on 2026-11-24. REMOVE THESE ROWS when the PR
-#         carrying `docs/issues/2919-*.md` and `2920-*.md` merges.
-#
-docs/issues/2780-zephyr-images-boot-then-stall.md:2919
-docs/issues/2780-zephyr-images-boot-then-stall.md:2920
 docs/roadmap/archived/phase-431-ship-the-nros-binary.md:1110
 just/check/docs.just:1110
 scripts/build/rustdoc-set.sh:1110
