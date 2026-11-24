@@ -213,8 +213,9 @@ So the second machine costs 67,584: 40,960 of buffers, the 3,240 of handles,
 and about 23 KB for the five service-server slots it adds to
 `xrce_session_state_t` (the cap moves 19 to 24; a slot is about 4.7 KB). The
 remainder above the buffers is 26,624 on XRCE. It is priced at 32,768: one
-sample, and these peaks miss the two `/rosout` writers the backend refused
-(issue 2920). zenoh keeps 0: the same two-machine image on zenoh peaked at
+sample. These peaks miss the two `/rosout` writers the backend then refused
+(issue 2920); with them created, host 175 measured the one-machine peak
+183,312 -> 183,536, +224 B, well inside the margin. zenoh keeps 0: the same two-machine image on zenoh peaked at
 181,536 on the flat arm.
 
 The remainder is per RMW in `nros_heap_floor.cmake`
