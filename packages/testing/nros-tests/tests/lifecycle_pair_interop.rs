@@ -310,17 +310,26 @@ impl Echo {
     }
 
     /// Stop the subscriber and return the `data:` payloads it printed.
-    fn stop(mut self) -> Vec<String> {
+    fn stop(self) -> Vec<String> {
+        self.stop_raw().0
+    }
+
+    /// [`Self::stop`], with everything the subscriber printed: a failure
+    /// that heard nothing shows WHY (a `ros2 topic echo` warning or error),
+    /// not only an empty list.
+    fn stop_raw(mut self) -> (Vec<String>, String) {
         let _ = self.child.kill();
         let mut out = String::new();
         if let Some(mut so) = self.child.stdout.take() {
             let _ = so.read_to_string(&mut out);
         }
         let _ = self.child.wait();
-        out.lines()
+        let data = out
+            .lines()
             .filter_map(|l| l.trim().strip_prefix("data:"))
             .map(|d| d.trim().trim_matches('\'').trim_matches('"').to_string())
-            .collect()
+            .collect();
+        (data, out)
     }
 }
 
@@ -332,10 +341,11 @@ fn hears(echo: Echo, node: &str, want: &str) -> Vec<String> {
     // window: enough for the activate publish and several timer periods.
     std::thread::sleep(QUIET);
     let topic = echo.topic.clone();
-    let heard = echo.stop();
+    let (heard, raw) = echo.stop_raw();
     assert!(
         heard.iter().any(|d| d == &format!("{name}: {want}")),
-        "{topic} should carry `{name}: {want}`, got: {heard:?}"
+        "{topic} should carry `{name}: {want}`, got: {heard:?}\n\
+         `ros2 topic echo` printed:\n{raw}"
     );
     assert!(
         heard.iter().any(|d| d
