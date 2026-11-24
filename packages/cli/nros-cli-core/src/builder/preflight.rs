@@ -891,6 +891,39 @@ impl std::fmt::Display for PreflightRefusal {
 
 impl std::error::Error for PreflightRefusal {}
 
+/// Issue 2909 -- planning a Zephyr image found no Zephyr tree, so `west build`
+/// cannot run. Like [`PreflightRefusal`] it says "this host cannot build that
+/// image", not "the image is wrong", so `nros configure` skips it with a stamp
+/// and retries it when its preflight passes (Rulings R15/R19), instead of
+/// leaving it unstamped and re-planning every image on every bare configure
+/// (R22, the 87 s per run issue 2909 measured). Its `Display` is the planner's
+/// full message, unchanged, so `nros build <image>` prints what it always did.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ZephyrAbsent(pub String);
+
+impl std::fmt::Display for ZephyrAbsent {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl std::error::Error for ZephyrAbsent {}
+
+/// The one-line reason `e` is a refusal of THIS HOST (an absent toolchain,
+/// target or Zephyr tree) rather than of the image, or `None` when it is any
+/// other failure. Typed, never by message text: [`PreflightRefusal`] gives its
+/// summary, [`ZephyrAbsent`] names what is missing and the two ways to supply it.
+#[must_use]
+pub fn host_refusal(e: &eyre::Report) -> Option<String> {
+    if let Some(r) = e.downcast_ref::<PreflightRefusal>() {
+        return Some(r.summary());
+    }
+    e.downcast_ref::<ZephyrAbsent>().map(|_| {
+        "missing a Zephyr tree (run: nros setup zephyr, or pass --zephyr-workspace <dir>)"
+            .to_string()
+    })
+}
+
 /// Render the problems as the message stage 3 fails with.
 #[must_use]
 pub fn report(missing: &[Missing]) -> String {

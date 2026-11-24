@@ -1053,8 +1053,8 @@ fn real_preflight(
     args.zephyr_workspace = zephyr_workspace.map(Path::to_path_buf);
     match crate::cmd::build::preflight_query(&args) {
         Ok(()) => Ok(None),
-        Err(e) => match e.downcast_ref::<crate::builder::preflight::PreflightRefusal>() {
-            Some(r) => Ok(Some(r.summary())),
+        Err(e) => match crate::builder::preflight::host_refusal(&e) {
+            Some(why) => Ok(Some(why)),
             None => Err(e),
         },
     }
