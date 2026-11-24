@@ -373,8 +373,9 @@ SNTP never re-acquires. A consumer's board hook papers over that with
   re-sync thread has no measured 64-bit floor yet; its 8,192 B default rests
   on the consumer's measured peak (in flight on #4632).
 
-- [Issue 2935](../issues/2935-freertos-board-late-tick-lower-bound-flake.md):
+- [Issue 2935](../issues/archived/2935-freertos-board-late-tick-lower-bound-flake.md):
   `clock-board-freertos`'s `board-late` holds a tick-measured duration to a
-  lower bound, which fails under host load.
+  lower bound, which fails under host load. Resolved: the bound moved to the
+  host clock.
 
 - phase-575 W6: the shape was first agreed there; the design moved here.
