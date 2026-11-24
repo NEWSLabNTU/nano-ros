@@ -293,6 +293,12 @@ pub(super) struct ServiceBuffer {
     /// session's reply-slot table (this buffer array is process-global, so the
     /// handle cannot be recovered from the buffer index alone).
     pub(super) session: core::sync::atomic::AtomicPtr<zpico_sys::zpico_session_t>,
+    /// phase-554 W4 -- the C shim's handle of the queryable this header is
+    /// SERVED by, which the reply-slot table is keyed on. A header is its own
+    /// queryable's, except a node's lifecycle services, which share the node's
+    /// one queryable (see [`LifecycleGroup`]); so the header index is not the
+    /// queryable handle. -1 until the queryable is declared.
+    pub(super) queryable: core::sync::atomic::AtomicI32,
     /// phase-461 W4 -- what this queryable's inbox dropped, counted by the
     /// producer. See [`InboxDrops`].
     pub(super) drops: InboxDrops,
@@ -306,6 +312,7 @@ impl ServiceBuffer {
             tail: AtomicUsize::new(0),
             waker: AtomicWaker::new(),
             session: core::sync::atomic::AtomicPtr::new(core::ptr::null_mut()),
+            queryable: core::sync::atomic::AtomicI32::new(-1),
             drops: InboxDrops::new(),
         }
     }
@@ -890,9 +897,20 @@ extern "C" fn queryable_callback(
     payload_len: usize,
     ctx: *mut core::ffi::c_void,
 ) {
+    // The request's key expression is not kept: the reply goes out on the
+    // query's own key, which the C shim reads from the clone in its reply slot
+    // (`query_reply(.., None, ..)`).
+    let _ = (keyexpr, keyexpr_len);
     // phase-328/#376 — `ctx` is the GLOBAL buffer index
-    // (session_index * ZPICO_MAX_QUERYABLES + local), set at server registration.
-    let buffer_index = ctx as usize;
+    // (session_index * SERVICE_HEADERS_PER_SESSION + local), set at server
+    // registration.
+    deliver(ctx as usize, payload, payload_len);
+}
+
+/// Put one request into header `buffer_index`'s ring and wake its consumer:
+/// the producer half both queryable callbacks share (a server's own, and a
+/// node's lifecycle group, which has routed the request to its member first).
+fn deliver(buffer_index: usize, payload: *const u8, payload_len: usize) {
     if buffer_index >= SERVICE_BUFFER_COUNT {
         return;
     }
@@ -901,13 +919,6 @@ extern "C" fn queryable_callback(
         index: buffer_index,
     };
     let buffer = buf_ref.get_mut();
-
-    // The request's key expression is not kept: the reply goes out on the
-    // query's own key, which the C shim reads from the clone in its reply slot
-    // (`query_reply(.., None, ..)`). A queryable that covers several service
-    // keys -- a node's lifecycle services -- would otherwise answer every
-    // pending request on whichever key arrived last.
-    let _ = (keyexpr, keyexpr_len);
 
     // Drop empty-payload queries — they come from background discovery /
     // liveliness probes that zenoh-pico delivers through the same
@@ -938,12 +949,20 @@ extern "C" fn queryable_callback(
 
     // Phase 237 — the reply correlation token is the C shim's reply-slot index
     // (the cloned query held for a possibly-deferred reply), not a free-running
-    // counter. `buffer_index` is the queryable handle.
+    // counter. The slot table is keyed on the QUERYABLE that received the
+    // query, which the header records (phase-554 W4: a lifecycle member's is
+    // its node's group queryable, not its own index).
     // FFI returns i64; narrow to the counter's native width (i32 on 32-bit
     // targets, where AtomicSeqCounter is AtomicI32). Reply-slot indices are
     // small and fit. Symmetric with the `.into()` widening on load.
     let session = buffer.session.load(Ordering::Acquire);
-    let seq = unsafe { zpico_sys::zpico_queryable_take_reply_seq(session, buffer_index as i32) };
+    let queryable = buffer.queryable.load(Ordering::Acquire);
+    if queryable < 0 {
+        // Still being declared; see `new_with_inbox`. `admit` only read the
+        // tail, so returning here publishes nothing.
+        return;
+    }
+    let seq = unsafe { zpico_sys::zpico_queryable_take_reply_seq(session, queryable) };
     // Safety: payload pointer is valid for payload_len bytes (from C shim),
     // and non-null (checked above).
     let payload = unsafe { core::slice::from_raw_parts(payload, payload_len) };
@@ -963,6 +982,168 @@ extern "C" fn queryable_callback(
 }
 
 // ============================================================================
+// A node's lifecycle group (phase-554 W4, RFC-0128 D7 as amended 2026-11-24)
+// ============================================================================
+
+/// The five REP-2002 lifecycle endpoints, in the order a group stores its
+/// members. The same five as the tail of [`BUILTIN_SERVICE_ENDPOINTS`].
+const LIFECYCLE_ENDPOINTS: [&str; 5] = [
+    "change_state",
+    "get_state",
+    "get_available_states",
+    "get_available_transitions",
+    "get_transition_graph",
+];
+
+/// The type package every lifecycle service's DDS type name starts with. A
+/// user service that merely shares an endpoint NAME is not a lifecycle one.
+const LIFECYCLE_TYPE_PREFIX: &str = "lifecycle_msgs::srv::dds_::";
+
+/// One managed node's lifecycle services, served by ONE zenoh queryable.
+///
+/// A node's five lifecycle servers would each be a queryable. Instead the
+/// first one created declares the node's queryable on
+/// `<domain>/<node FQN>/*/lifecycle_msgs::srv::dds_::$*/*`, and the other four
+/// ATTACH to it: each keeps its own request header, ring and liveliness token,
+/// so `ros2 service list` and `ros2 lifecycle` see exactly five services, but
+/// only one queryable is declared. The queryable's callback routes a request
+/// to its member by the endpoint in the request's key, and every reply goes
+/// out on its own query's key. The key names this node only, so the queryable
+/// stays `complete` and routing stays exact; a key covering several nodes
+/// cannot be written without matching other images' nodes too.
+///
+/// Attaching is deterministic and never falls back to a queryable of its own:
+/// a member whose node identity disagrees with its name, an endpoint attached
+/// twice, or a full group table is refused with the reason.
+pub(super) struct LifecycleGroup {
+    /// Whether this entry is a node's group.
+    in_use: core::sync::atomic::AtomicBool,
+    /// The node, as a hash of its FQN (the entry stores no string).
+    node: core::sync::atomic::AtomicU64,
+    /// The C shim's handle of the node's queryable.
+    queryable: core::sync::atomic::AtomicI32,
+    /// Each endpoint's request header, as `buffer index + 1` (0 = absent).
+    members: [AtomicUsize; 5],
+}
+
+impl LifecycleGroup {
+    const fn new() -> Self {
+        Self {
+            in_use: core::sync::atomic::AtomicBool::new(false),
+            node: core::sync::atomic::AtomicU64::new(0),
+            queryable: core::sync::atomic::AtomicI32::new(-1),
+            members: [const { AtomicUsize::new(0) }; 5],
+        }
+    }
+}
+
+/// Groups per session. Each group declares one queryable, so a session can
+/// never hold more groups than queryables.
+const LIFECYCLE_GROUPS_PER_SESSION: usize = ZPICO_MAX_QUERYABLES;
+const LIFECYCLE_GROUP_COUNT: usize = ZPICO_MAX_SESSIONS * LIFECYCLE_GROUPS_PER_SESSION;
+static LIFECYCLE_GROUPS: [LifecycleGroup; LIFECYCLE_GROUP_COUNT] =
+    [const { LifecycleGroup::new() }; LIFECYCLE_GROUP_COUNT];
+
+/// FNV-1a over a node FQN, with its surrounding `/`s trimmed so `/ns/node`
+/// and `ns/node` name one node.
+fn node_hash(fqn: &str) -> u64 {
+    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+    for b in fqn.trim_matches('/').bytes() {
+        h ^= u64::from(b);
+        h = h.wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    h
+}
+
+/// `(node FQN, endpoint index)` when `name` (typed `type_name`) is one of a
+/// node's five lifecycle services: its last `/`-segment is one of
+/// [`LIFECYCLE_ENDPOINTS`] under a non-empty node FQN, and its type is a
+/// `lifecycle_msgs` service.
+fn lifecycle_member<'a>(name: &'a str, type_name: &str) -> Option<(&'a str, usize)> {
+    if !type_name.starts_with("lifecycle_msgs") {
+        return None;
+    }
+    let (fqn, endpoint) = name.rsplit_once('/')?;
+    if fqn.trim_matches('/').is_empty() {
+        return None;
+    }
+    let index = LIFECYCLE_ENDPOINTS.iter().position(|e| *e == endpoint)?;
+    Some((fqn, index))
+}
+
+/// Which member a request on `key` is for: the endpoint segment that the
+/// `lifecycle_msgs::srv::dds_::` type segment follows.
+fn lifecycle_route(key: &str) -> Option<usize> {
+    let mut prev: Option<&str> = None;
+    for seg in key.split('/') {
+        if seg.starts_with(LIFECYCLE_TYPE_PREFIX) {
+            let endpoint = prev?;
+            return LIFECYCLE_ENDPOINTS.iter().position(|e| *e == endpoint);
+        }
+        prev = Some(seg);
+    }
+    None
+}
+
+/// The queryable callback of a node's lifecycle group: route to the member
+/// and deliver as that member's own queryable would. A request for an
+/// endpoint not (yet) attached is dropped; the C shim reclaims a reply slot
+/// the callback never took (issue 0902).
+extern "C" fn lifecycle_group_callback(
+    keyexpr: *const core::ffi::c_char,
+    keyexpr_len: usize,
+    payload: *const u8,
+    payload_len: usize,
+    ctx: *mut core::ffi::c_void,
+) {
+    let group = ctx as usize;
+    if group >= LIFECYCLE_GROUP_COUNT || keyexpr.is_null() {
+        return;
+    }
+    // Safety: the C shim passes a key valid for `keyexpr_len` bytes.
+    let key = unsafe { core::slice::from_raw_parts(keyexpr.cast::<u8>(), keyexpr_len) };
+    let Ok(key) = core::str::from_utf8(key) else {
+        return;
+    };
+    let Some(member) = lifecycle_route(key) else {
+        return;
+    };
+    let slot = LIFECYCLE_GROUPS[group].members[member].load(Ordering::Acquire);
+    if slot == 0 {
+        return;
+    }
+    deliver(slot - 1, payload, payload_len);
+}
+
+/// The node's group in `session_index`'s table, or a free entry claimed for
+/// it: `(group index, whether it was just claimed)`. `None` when the table is
+/// full.
+fn lifecycle_group_for(session_index: usize, node: u64) -> Option<(usize, bool)> {
+    let base = session_index * LIFECYCLE_GROUPS_PER_SESSION;
+    let table = &LIFECYCLE_GROUPS[base..base + LIFECYCLE_GROUPS_PER_SESSION];
+    for (i, e) in table.iter().enumerate() {
+        if e.in_use.load(Ordering::Acquire) && e.node.load(Ordering::Acquire) == node {
+            return Some((base + i, false));
+        }
+    }
+    for (i, e) in table.iter().enumerate() {
+        let g = base + i;
+        if e.in_use
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .is_ok()
+        {
+            e.node.store(node, Ordering::Release);
+            e.queryable.store(-1, Ordering::Release);
+            for m in &e.members {
+                m.store(0, Ordering::Release);
+            }
+            return Some((g, true));
+        }
+    }
+    None
+}
+
+// ============================================================================
 // ZenohServiceServer
 // ============================================================================
 
@@ -971,8 +1152,15 @@ extern "C" fn queryable_callback(
 /// Receives service requests via queryable callbacks.
 /// Note: The reply mechanism is limited due to the callback model.
 pub struct ZenohServiceServer {
-    /// The queryable handle (kept alive to maintain registration)
-    _queryable: Queryable,
+    /// The queryable this server DECLARED, kept alive to keep it registered.
+    /// `None` for a lifecycle service that attached to its node's group
+    /// queryable (phase-554 W4), which the group's first server holds.
+    _queryable: Option<Queryable>,
+    /// The C shim's handle of the queryable that SERVES this server: its own,
+    /// or its node's lifecycle group's. Reply slots are keyed on it.
+    queryable_handle: i32,
+    /// `(group, endpoint)` when this is one of a node's lifecycle services.
+    lifecycle: Option<(usize, usize)>,
     /// Safe accessor for the static service buffer
     buf: ServiceBufferRef,
     /// Liveliness token for ROS 2 graph discovery (kept alive for server lifetime)
@@ -1196,6 +1384,57 @@ impl ZenohServiceServer {
         };
         bind_ring(buffer_index, ring);
 
+        // phase-328 — record the owning session BEFORE declaring, so a query
+        // that arrives during declaration finds the right pool slot.
+        // phase-554 W4 — the queryable that serves this header is NOT known
+        // until it is declared (a lifecycle member's is its node's group's, so
+        // header indices and C handles no longer run in step). -1 until then:
+        // a request that lands in that window is declined, and the C shim
+        // reclaims its reply slot (issue 0902), rather than taking another
+        // queryable's reply seq and making THAT queryable drop its request.
+        let header = ServiceBufferRef::new(buffer_index);
+        header
+            .get()
+            .session
+            .store(context.handle(), Ordering::Release);
+        header.get().queryable.store(-1, Ordering::Release);
+
+        let release = || {
+            super::bump::release(&NEXT_SERVICE_BUFFER_INDEX[session_index], local);
+            if let Some(drawn) = drawn_from {
+                release_shim_ring(session_index, drawn);
+            }
+        };
+
+        // phase-554 W4 — a node's lifecycle service shares the node's queryable.
+        if let Some((fqn, endpoint)) = lifecycle_member(service.name, service.type_name) {
+            return match Self::attach_lifecycle(
+                context,
+                service,
+                session_index,
+                buffer_index,
+                fqn,
+                endpoint,
+            ) {
+                Ok((queryable, handle, group)) => {
+                    header.get().queryable.store(handle, Ordering::Release);
+                    Ok(Self::assemble(
+                        context,
+                        queryable,
+                        handle,
+                        buffer_index,
+                        liveliness,
+                        inbox_knobs,
+                        Some((group, endpoint)),
+                    ))
+                }
+                Err(e) => {
+                    release();
+                    Err(e)
+                }
+            };
+        }
+
         // Generate the service key
         let key: heapless::String<KEYEXPR_STRING_SIZE> = service.to_key();
 
@@ -1203,17 +1442,11 @@ impl ZenohServiceServer {
         let mut keyexpr_buf = [0u8; KEYEXPR_BUFFER_SIZE];
         let bytes = key.as_bytes();
         if bytes.len() >= keyexpr_buf.len() {
+            release();
             return Err(TransportError::TopicNameInvalid);
         }
         keyexpr_buf[..bytes.len()].copy_from_slice(bytes);
         keyexpr_buf[bytes.len()] = 0;
-
-        // phase-328 — record the owning session BEFORE declaring, so a query
-        // that arrives during declaration finds the right pool slot.
-        ServiceBufferRef::new(buffer_index)
-            .get()
-            .session
-            .store(context.handle(), Ordering::Release);
 
         // Create queryable with callback
         let queryable = unsafe {
@@ -1224,15 +1457,37 @@ impl ZenohServiceServer {
             )
         }
         .map_err(|e| {
-            super::bump::release(&NEXT_SERVICE_BUFFER_INDEX[session_index], local);
-            if let Some(drawn) = drawn_from {
-                release_shim_ring(session_index, drawn);
-            }
+            release();
             TransportError::from(e)
         })?;
+        let handle = queryable.handle();
+        header.get().queryable.store(handle, Ordering::Release);
 
-        Ok(Self {
+        Ok(Self::assemble(
+            context,
+            Some(queryable),
+            handle,
+            buffer_index,
+            liveliness,
+            inbox_knobs,
+            None,
+        ))
+    }
+
+    /// The server's fields, whichever queryable serves it.
+    fn assemble(
+        context: &Context,
+        queryable: Option<Queryable>,
+        queryable_handle: i32,
+        buffer_index: usize,
+        liveliness: Option<super::LivelinessToken>,
+        inbox_knobs: (&'static str, &'static str),
+        lifecycle: Option<(usize, usize)>,
+    ) -> Self {
+        Self {
             _queryable: queryable,
+            queryable_handle,
+            lifecycle,
             buf: ServiceBufferRef::new(buffer_index),
             _liveliness: liveliness,
             context: context as *const Context,
@@ -1242,7 +1497,103 @@ impl ZenohServiceServer {
             announcer: DropAnnouncer::default(),
             inbox_knobs,
             request_info: nros_rmw::ServiceRequestInfo::NOT_REPORTED,
-        })
+        }
+    }
+
+    /// phase-554 W4 — join `fqn`'s lifecycle group as `endpoint`, declaring
+    /// the group's queryable if this is the node's first lifecycle service.
+    /// Returns the queryable to hold (the first member only), its handle, and
+    /// the group's index. Every refusal names its cause: none falls back to a
+    /// queryable of this service's own.
+    fn attach_lifecycle(
+        context: &Context,
+        service: &ServiceInfo,
+        session_index: usize,
+        buffer_index: usize,
+        fqn: &str,
+        endpoint: usize,
+    ) -> Result<(Option<Queryable>, i32, usize), TransportError> {
+        // The name's node must be the node the service was created for.
+        if let Some(node) = service.node_name {
+            let ns = service.namespace.trim_matches('/');
+            let named = fqn.trim_matches('/');
+            let same = if ns.is_empty() {
+                named == node
+            } else {
+                named.len() == ns.len() + 1 + node.len()
+                    && named.starts_with(ns)
+                    && named[ns.len()..].starts_with('/')
+                    && named.ends_with(node)
+            };
+            if !same {
+                return Err(TransportError::Backend(
+                    "lifecycle service refused: its name's node differs from the node it was \
+                     created for, so it cannot join that node's lifecycle queryable",
+                ));
+            }
+        }
+        let Some((group, fresh)) = lifecycle_group_for(session_index, node_hash(fqn)) else {
+            return Err(TransportError::Backend(
+                "lifecycle service refused: every lifecycle group of this session is in use \
+                 (one per managed node, at most NROS_ZENOH_MAX_QUERYABLES)",
+            ));
+        };
+        let entry = &LIFECYCLE_GROUPS[group];
+        // Attach first, so the queryable routes from its first request.
+        if entry.members[endpoint]
+            .compare_exchange(0, buffer_index + 1, Ordering::AcqRel, Ordering::Acquire)
+            .is_err()
+        {
+            return Err(TransportError::Backend(
+                "lifecycle service refused: this node already serves that lifecycle \
+                 endpoint; a node has exactly five",
+            ));
+        }
+        if !fresh {
+            let handle = entry.queryable.load(Ordering::Acquire);
+            if handle < 0 {
+                entry.members[endpoint].store(0, Ordering::Release);
+                return Err(TransportError::Backend(
+                    "lifecycle service refused: its node's lifecycle queryable was never \
+                     declared",
+                ));
+            }
+            return Ok((None, handle, group));
+        }
+        let mut key: heapless::String<KEYEXPR_STRING_SIZE> = heapless::String::new();
+        let written = core::fmt::write(
+            &mut key,
+            format_args!(
+                "{}/{}/*/{}$*/*",
+                service.domain_id,
+                fqn.trim_matches('/'),
+                LIFECYCLE_TYPE_PREFIX
+            ),
+        );
+        let mut keyexpr_buf = [0u8; KEYEXPR_BUFFER_SIZE];
+        let bytes = key.as_bytes();
+        if written.is_err() || bytes.len() >= keyexpr_buf.len() {
+            entry.members[endpoint].store(0, Ordering::Release);
+            entry.in_use.store(false, Ordering::Release);
+            return Err(TransportError::TopicNameInvalid);
+        }
+        keyexpr_buf[..bytes.len()].copy_from_slice(bytes);
+        keyexpr_buf[bytes.len()] = 0;
+        let queryable = unsafe {
+            context.declare_queryable_raw(
+                &keyexpr_buf,
+                lifecycle_group_callback,
+                group as *mut core::ffi::c_void,
+            )
+        }
+        .map_err(|e| {
+            entry.members[endpoint].store(0, Ordering::Release);
+            entry.in_use.store(false, Ordering::Release);
+            TransportError::from(e)
+        })?;
+        let handle = queryable.handle();
+        entry.queryable.store(handle, Ordering::Release);
+        Ok((Some(queryable), handle, group))
     }
 
     /// What this server's inbox has dropped since it was
@@ -1256,7 +1607,7 @@ impl ZenohServiceServer {
     /// side, never in the callback: the callback runs on zenoh's read task,
     /// and `nros_log` is not a call to make there.
     fn announce_drops(&mut self) {
-        let handle = self._queryable.handle();
+        let handle = self.queryable_handle;
         let (depth_knob, bytes_knob) = self.inbox_knobs;
         let ring = self.buf.get().ring;
         for a in self
@@ -1313,7 +1664,34 @@ impl ZenohServiceServer {
     /// server itself should name it, so a count cannot be credited to the wrong
     /// queryable — the runtime declares its own before an entry's do.
     pub fn queryable_handle(&self) -> i32 {
-        self._queryable.handle()
+        self.queryable_handle
+    }
+}
+
+impl Drop for ZenohServiceServer {
+    /// phase-554 W4 -- leave the node's lifecycle group. The member slot is
+    /// cleared only if it still names this server, so a late drop cannot clear
+    /// another node's member; the group's first server (which holds the
+    /// queryable) frees the group, since dropping it undeclares the queryable.
+    ///
+    /// So the group lives as long as its FIRST server: the other members stop
+    /// receiving, and lose any reply they still hold, once it is dropped. A
+    /// node's lifecycle servers are one object in `nros-node` and are dropped
+    /// together, which is the only shape this serves.
+    fn drop(&mut self) {
+        if let Some((group, endpoint)) = self.lifecycle {
+            let entry = &LIFECYCLE_GROUPS[group];
+            let _ = entry.members[endpoint].compare_exchange(
+                self.buf.index + 1,
+                0,
+                Ordering::AcqRel,
+                Ordering::Acquire,
+            );
+            if self._queryable.is_some() {
+                entry.queryable.store(-1, Ordering::Release);
+                entry.in_use.store(false, Ordering::Release);
+            }
+        }
     }
 }
 
@@ -1409,14 +1787,12 @@ impl ServiceTrait for ZenohServiceServer {
         let mut attachment = [0u8; RMW_ATTACHMENT_SIZE];
         // SAFETY: `context` outlives every server created on it.
         let context = unsafe { &*self.context };
-        self.request_info = match context.queryable_request_attachment(
-            self._queryable.handle(),
-            seq,
-            &mut attachment,
-        ) {
-            Some(len) => request_info_from_attachment(&attachment[..len.min(attachment.len())]),
-            None => nros_rmw::ServiceRequestInfo::NOT_REPORTED,
-        };
+        self.request_info =
+            match context.queryable_request_attachment(self.queryable_handle, seq, &mut attachment)
+            {
+                Some(len) => request_info_from_attachment(&attachment[..len.min(attachment.len())]),
+                None => nros_rmw::ServiceRequestInfo::NOT_REPORTED,
+            };
         // Issue 2135 — the receive time is this server's own fact, so it is
         // reported whether or not the attachment parsed. 0 = no wall clock.
         self.request_info.received_timestamp =
@@ -1452,7 +1828,7 @@ impl ServiceTrait for ZenohServiceServer {
          * compiles to a no-op under `ZPICO_SMOLTCP` / `ZPICO_SERIAL`, which is
          * the bare-metal serial board 0902 was measured on. */
         if sequence_number < 0 {
-            let handle = self._queryable.handle();
+            let handle = self.queryable_handle;
             if context.take_reply_slot_announcement(handle) {
                 let (held, refusals, capacity) =
                     context.reply_slot_stats(handle).unwrap_or((0, 0, 0));
@@ -1483,7 +1859,7 @@ impl ServiceTrait for ZenohServiceServer {
         // (`None`), read from the same clone, so it is right per request even
         // when one queryable covers several service keys.
         context
-            .query_reply(self._queryable.handle(), sequence_number, None, data, None)
+            .query_reply(self.queryable_handle, sequence_number, None, data, None)
             .map_err(|_| TransportError::ServiceReplyFailed)?;
 
         Ok(())
@@ -2440,6 +2816,77 @@ pub(super) mod tests {
     // ========================================================================
     // 37.1a: Service buffer state machine tests
     // ========================================================================
+
+    /// phase-554 W4 -- a node's lifecycle service is recognised by its NAME and
+    /// its TYPE together; a user service that shares an endpoint name is not one.
+    #[test]
+    fn lifecycle_members_need_the_name_and_the_type() {
+        let ty = "lifecycle_msgs::srv::dds_::GetState_";
+        assert_eq!(
+            lifecycle_member("/ns/lc/get_state", ty),
+            Some(("/ns/lc", 1))
+        );
+        assert_eq!(
+            lifecycle_member(
+                "/lc/get_transition_graph",
+                "lifecycle_msgs::srv::dds_::GetAvailableTransitions_"
+            ),
+            Some(("/lc", 4))
+        );
+        // The type decides: a user service called `get_state` is not one.
+        assert_eq!(
+            lifecycle_member("/lc/get_state", "my_pkg::srv::dds_::GetState_"),
+            None
+        );
+        // Neither is a lifecycle type under another endpoint, nor one with no node.
+        assert_eq!(lifecycle_member("/lc/get_state_v2", ty), None);
+        assert_eq!(lifecycle_member("/get_state", ty), None);
+    }
+
+    /// phase-554 W4 -- a request is routed by the endpoint segment its
+    /// `lifecycle_msgs` type segment follows, on humble's and jazzy's keys.
+    #[test]
+    fn a_lifecycle_request_is_routed_by_its_endpoint() {
+        let humble =
+            "0/ns/lc/change_state/lifecycle_msgs::srv::dds_::ChangeState_/TypeHashNotSupported";
+        assert_eq!(lifecycle_route(humble), Some(0));
+        let jazzy =
+            "7/lc/get_available_states/lifecycle_msgs::srv::dds_::GetAvailableStates_/RIHS01_ab";
+        assert_eq!(lifecycle_route(jazzy), Some(2));
+        // No lifecycle type segment, or an endpoint the group does not serve.
+        assert_eq!(
+            lifecycle_route("0/lc/get_state/my_pkg::srv::dds_::GetState_/x"),
+            None
+        );
+        assert_eq!(
+            lifecycle_route("0/lc/reset/lifecycle_msgs::srv::dds_::Reset_/x"),
+            None
+        );
+    }
+
+    /// phase-554 W4 -- one group per node: the same node finds its group again,
+    /// another node gets its own, and a freed group is reused.
+    #[test]
+    fn each_node_has_one_lifecycle_group() {
+        // A session index no other test of this module uses for groups.
+        let session = ZPICO_MAX_SESSIONS - 1;
+        let a = node_hash("/ns/a");
+        assert_eq!(
+            a,
+            node_hash("ns/a"),
+            "surrounding slashes name the same node"
+        );
+        let (ga, fresh) = lifecycle_group_for(session, a).expect("a group for /ns/a");
+        assert!(fresh);
+        assert_eq!(lifecycle_group_for(session, a), Some((ga, false)));
+        let (gb, fresh) =
+            lifecycle_group_for(session, node_hash("/ns/b")).expect("a group for /ns/b");
+        assert!(fresh);
+        assert_ne!(ga, gb);
+        // Leaving frees both entries for the next image of this test run.
+        LIFECYCLE_GROUPS[ga].in_use.store(false, Ordering::Release);
+        LIFECYCLE_GROUPS[gb].in_use.store(false, Ordering::Release);
+    }
 
     #[test]
     fn svc_buf_idle_poll() {
