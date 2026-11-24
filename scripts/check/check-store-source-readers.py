@@ -34,7 +34,7 @@ reads `$FREERTOS_DIR`, `$LWIP_DIR`, `$THREADX_DIR` or `$NETX_DIR` must SET it
 first, through `nros_locate_sdk_trees` or `nros_locate_source` — earlier in
 the same recipe (`just`), or earlier in the file (script). Reading it straight
 from the caller's environment is what left four nightly ports and the
-live-peer board jobs with an unbound variable or an empty path after the move.
+ros2-interop board jobs with an unbound variable or an empty path after the move.
 
 Buildless, tracked files only, ~0.2 s. Self-tests its comment filter, the
 env-read pattern and the recipe rule.
@@ -90,9 +90,9 @@ ALLOWED = {
     "scripts/check-zenoh-lane-ownership.py": "classifies RELATIVE paths, reads nothing",
     # Provisioning lists: they INITIALISE the checkout copy (the ladder's
     # last rung), they do not read a tree.
-    ".github/workflows/live-peer.yml": "submodule init list",
+    ".github/workflows/ros2-interop.yml": "submodule init list",
     ".github/workflows/gate.yml": "submodule init list (the check job's source gates)",
-    ".github/workflows/host-tests.yml": "submodule init list (the asan job's zenoh backend)",
+    ".github/workflows/host-suite.yml": "submodule init list (the asan job's zenoh backend)",
     ".config/gate-lanes.toml": "submodule init list ([[provision.submodule]], phase-565 W1)",
     # Developer tools that read the checkout on purpose (they audit the
     # vendored sources a contributor edits, not what a build consumes).

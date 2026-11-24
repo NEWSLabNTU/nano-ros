@@ -5,7 +5,7 @@
 # real junit. So this lane is GREEN on its first run by construction, and a red
 # means a cell that demonstrably worked has stopped working.
 #
-# That is the whole reason it is separate from `host-tests.yml`'s `just ci
+# That is the whole reason it is separate from `host-suite.yml`'s `just ci
 # tier1`. Tier 1 carries the entire compile tier, so any unrelated red stops the
 # run before `test-all` and the cells produce no verdict at all — measured on
 # 2026-09-06, when tier1 finally cleared issue 1136's fixture break and then
@@ -16,7 +16,7 @@
 # SCHEDULE + DISPATCH ONLY. Never on `pull_request`: it needs a live bus, it is
 # slow, and a required check that cannot pass everywhere is how two PRs
 # deadlocked on 2026-08-28.
-name: live-peer regression
+name: ros2-interop regression
 
 on:
   schedule:
@@ -29,7 +29,7 @@ permissions:
   packages: read
 
 concurrency:
-  group: live-peer-${{ github.ref }}
+  group: ros2-interop-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -141,7 +141,7 @@ jobs:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
       # The host's preinstalled toolchains, mounted so `reclaim-disk.sh` can
-      # delete them — the same six trees host-tests.yml mounts, for the reason
+      # delete them — the same six trees host-suite.yml mounts, for the reason
       # it gives. A container job cannot reach them otherwise: on 2026-10-05
       # (run 37263280002) this job's reclaim found only `/__t` (5.2 G), had
       # 84.7 G free, and the fixture build still died on `No space left on
@@ -169,7 +169,7 @@ jobs:
     # WHICH STAGE DID THIS RUN REACH? — issue 1158's third axis, applied here.
     #
     # This lane already discriminated "the run did not happen" from "a cell
-    # regressed", but ONLY inside `test-live-peer-regression`'s cell loop, by
+    # regressed", but ONLY inside `test-ros2-interop-regression`'s cell loop, by
     # exit code (100 = nextest ran and failed; anything else = the run did not
     # happen). Every step UPSTREAM of that loop reported as a flat lane
     # `failure` — which is the exact ambiguity the loop was written to remove,
@@ -189,7 +189,7 @@ jobs:
       # evidence ledger. From `$GITHUB_WORKSPACE` in the shell, because the job
       # runs in a container and `${{ github.workspace }}` is the HOST path.
       - name: Point the evidence ledger at the uploaded tree
-        run: echo "NROS_TEST_EVIDENCE_DIR=$GITHUB_WORKSPACE/tmp/live-peer-junit/host/evidence" >> "$GITHUB_ENV"
+        run: echo "NROS_TEST_EVIDENCE_DIR=$GITHUB_WORKSPACE/tmp/ros2-interop-junit/host/evidence" >> "$GITHUB_ENV"
 
       # The one CLI build road: `.github/actions/setup-nros-cli`. It asserts the
       # binary matches the checkout: a stale CLI re-stales every fixture keyed
@@ -297,7 +297,7 @@ jobs:
       # 2026-09-09. `lane-stage.py` classifies a step by keyword, `cells` is the
       # marker for the runtime stage, and the classifier takes the most specific
       # stage first — so the old name made a FIXTURE BUILD failure report as
-      # "the cells ran and failed", i.e. as a live-peer regression. Run
+      # "the cells ran and failed", i.e. as a ros2-interop regression. Run
       # 34186427723 is exactly that failure. The self-test pins the old spelling
       # as a misclassification so the rename cannot be undone by accident.
       - name: Build the fixtures those rows resolve
@@ -415,7 +415,7 @@ jobs:
         run: |
           source ./activate.sh
           set +e
-          just linux test-live-peer-regression host
+          just linux test-ros2-interop-regression host
           rc=$?
           set -e
           ran=false
@@ -423,16 +423,16 @@ jobs:
           printf 'cells_ran=%s\n' "$ran" >> "$GITHUB_OUTPUT"
           exit $rc
 
-      # Keep the evidence. `test-live-peer-regression` writes one junit per test
-      # binary under tmp/live-peer-junit/, and it is the only record of WHY a cell
+      # Keep the evidence. `test-ros2-interop-regression` writes one junit per test
+      # binary under tmp/ros2-interop-junit/, and it is the only record of WHY a cell
       # failed or which precondition a skip named. Run 34497290149 printed seven
       # real failures and kept nothing to read them from.
       - name: Upload the cells' junit
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: live-peer-junit-host
-          path: tmp/live-peer-junit/host/
+          name: ros2-interop-junit-host
+          path: tmp/ros2-interop-junit/host/
           if-no-files-found: ignore
           retention-days: 14
 
@@ -465,7 +465,7 @@ jobs:
         if: always()
         uses: ./.github/actions/report-lane-stage
         with:
-          lane: "live-peer regression (host)"
+          lane: "ros2-interop regression (host)"
           steps: >-
             [{"name": "Build the nros CLI", "conclusion": "${{ steps.cli.outcome }}"},
              {"name": "Report what the ledger claims, before running anything", "conclusion": "${{ steps.ledger.outcome }}"},
@@ -518,7 +518,7 @@ jobs:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
       # The host's preinstalled toolchains, mounted so `reclaim-disk.sh` can
-      # delete them — the same six trees host-tests.yml mounts, for the reason
+      # delete them — the same six trees host-suite.yml mounts, for the reason
       # it gives. A container job cannot reach them otherwise: on 2026-10-05
       # (run 37263280002) this job's reclaim found only `/__t` (5.2 G), had
       # 84.7 G free, and the fixture build still died on `No space left on
@@ -549,7 +549,7 @@ jobs:
       # evidence ledger. From `$GITHUB_WORKSPACE` in the shell, because the job
       # runs in a container and `${{ github.workspace }}` is the HOST path.
       - name: Point the evidence ledger at the uploaded tree
-        run: echo "NROS_TEST_EVIDENCE_DIR=$GITHUB_WORKSPACE/tmp/live-peer-junit/board-zephyr/evidence" >> "$GITHUB_ENV"
+        run: echo "NROS_TEST_EVIDENCE_DIR=$GITHUB_WORKSPACE/tmp/ros2-interop-junit/board-zephyr/evidence" >> "$GITHUB_ENV"
 
       # The one CLI build road: `.github/actions/setup-nros-cli`. It asserts the
       # binary matches the checkout: a stale CLI re-stales every fixture keyed
@@ -572,7 +572,7 @@ jobs:
       # now the shared `scripts/ci/reclaim-disk.sh`, which does the same three
       # removals plus the two this lane never knew about (the mounted hosted
       # tool cache, and the metadata-probe cargo scratch). One reclaim with one
-      # set of reasons, rather than a second idiom per lane: `live-peer` is one
+      # set of reasons, rather than a second idiom per lane: `ros2-interop` is one
       # of the lanes issue 1353 measured running out of disk, so what the other
       # two learn about it should reach here without a transcription.
       #
@@ -584,7 +584,7 @@ jobs:
         run: scripts/ci/reclaim-disk.sh "before the SDK setup"
 
       # Issue 1353 — what the reclaim freed, in the one channel that survives
-      # this lane's failure. `live-peer` is where the issue first saw a runner
+      # this lane's failure. `ros2-interop` is where the issue first saw a runner
       # die with no failing step at all (run 35817736997: step 9 still
       # `in_progress`, steps 10-13 `pending`), so its own uploads at the end of
       # the job are exactly the ones that never happen. This step completes
@@ -599,7 +599,7 @@ jobs:
         if: ${{ !cancelled() && env.NROS_DISK_TRANSCRIPT != '' }}
         uses: actions/upload-artifact@v4
         with:
-          name: disk-transcript-live-peer-board
+          name: disk-transcript-ros2-interop-board
           path: ${{ env.NROS_DISK_TRANSCRIPT }}
           if-no-files-found: ignore
           retention-days: 7
@@ -711,7 +711,7 @@ jobs:
         # recorded cell) is one build pass per value, never the last one.
         run: |
           source ./activate.sh
-          bash scripts/ci/live-peer-board-build.sh run "$SCOPES" "$NARROWING"
+          bash scripts/ci/ros2-interop-board-build.sh run "$SCOPES" "$NARROWING"
 
       # The cells run under `cargo nextest`, which `just setup linux` installs
       # and this job never runs: its scopes are `zephyr`/`qemu`, and the Zephyr
@@ -736,7 +736,7 @@ jobs:
         run: |
           source ./activate.sh
           set +e
-          just linux test-live-peer-regression board-zephyr
+          just linux test-ros2-interop-regression board-zephyr
           rc=$?
           set -e
           ran=false
@@ -744,16 +744,16 @@ jobs:
           printf 'cells_ran=%s\n' "$ran" >> "$GITHUB_OUTPUT"
           exit $rc
 
-      # Keep the evidence. `test-live-peer-regression` writes one junit per test
-      # binary under tmp/live-peer-junit/, and it is the only record of WHY a cell
+      # Keep the evidence. `test-ros2-interop-regression` writes one junit per test
+      # binary under tmp/ros2-interop-junit/, and it is the only record of WHY a cell
       # failed or which precondition a skip named. Run 34497290149 printed seven
       # real failures and kept nothing to read them from.
       - name: Upload the cells' junit
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: live-peer-junit-board
-          path: tmp/live-peer-junit/board-zephyr/
+          name: ros2-interop-junit-board
+          path: tmp/ros2-interop-junit/board-zephyr/
           if-no-files-found: ignore
           retention-days: 14
 
@@ -768,7 +768,7 @@ jobs:
         if: always()
         uses: ./.github/actions/report-lane-stage
         with:
-          lane: "live-peer regression (board)"
+          lane: "ros2-interop regression (board)"
           steps: >-
             [{"name": "Build the nros CLI", "conclusion": "${{ steps.cli.outcome }}"},
              {"name": "Register the baked Zephyr SDK for this HOME", "conclusion": "${{ steps.sdk.outcome }}"},
@@ -822,7 +822,7 @@ jobs:
       # evidence ledger. From `$GITHUB_WORKSPACE` in the shell, because the job
       # runs in a container and `${{ github.workspace }}` is the HOST path.
       - name: Point the evidence ledger at the uploaded tree
-        run: echo "NROS_TEST_EVIDENCE_DIR=$GITHUB_WORKSPACE/tmp/live-peer-junit/board-ci/evidence" >> "$GITHUB_ENV"
+        run: echo "NROS_TEST_EVIDENCE_DIR=$GITHUB_WORKSPACE/tmp/ros2-interop-junit/board-ci/evidence" >> "$GITHUB_ENV"
 
       # The one CLI build road: `.github/actions/setup-nros-cli`. It asserts the
       # binary matches the checkout: a stale CLI re-stales every fixture keyed
@@ -840,7 +840,7 @@ jobs:
         if: ${{ !cancelled() && env.NROS_DISK_TRANSCRIPT != '' }}
         uses: actions/upload-artifact@v4
         with:
-          name: disk-transcript-live-peer-board-ci
+          name: disk-transcript-ros2-interop-board-ci
           path: ${{ env.NROS_DISK_TRANSCRIPT }}
           if-no-files-found: ignore
           retention-days: 7
@@ -900,7 +900,7 @@ jobs:
         # recorded cell) is one build pass per value, never the last one.
         run: |
           source ./activate.sh
-          bash scripts/ci/live-peer-board-build.sh run "$SCOPES" "$NARROWING"
+          bash scripts/ci/ros2-interop-board-build.sh run "$SCOPES" "$NARROWING"
 
       - name: Provision cargo-nextest
         id: nextest
@@ -917,7 +917,7 @@ jobs:
         run: |
           source ./activate.sh
           set +e
-          just linux test-live-peer-regression board-ci
+          just linux test-ros2-interop-regression board-ci
           rc=$?
           set -e
           ran=false
@@ -929,8 +929,8 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: live-peer-junit-board-ci
-          path: tmp/live-peer-junit/board-ci/
+          name: ros2-interop-junit-board-ci
+          path: tmp/ros2-interop-junit/board-ci/
           if-no-files-found: ignore
           retention-days: 14
 
@@ -945,7 +945,7 @@ jobs:
         if: always()
         uses: ./.github/actions/report-lane-stage
         with:
-          lane: "live-peer regression (board, ci image)"
+          lane: "ros2-interop regression (board, ci image)"
           steps: >-
             [{"name": "Build the nros CLI", "conclusion": "${{ steps.cli.outcome }}"},
              {"name": "Reclaim disk before the SDK setup", "conclusion": "${{ steps.disk.outcome }}"},
@@ -956,7 +956,7 @@ jobs:
              {"name": "Run the board cells with a recorded PASS", "conclusion": "${{ steps.cells.outcome }}"}]
           cells-ran: ${{ steps.cells.outputs.cells_ran }}
 
-  # The job NAME carries the stage, for the same reason `run-matrix.yml`'s
+  # The job NAME carries the stage, for the same reason `platform-matrix.yml`'s
   # `coverage` job does: a check-run name is the last piece of a run that is
   # legible without opening a log — `gh run view`, the commit's checks list, the
   # run list. Everything else this lane knows about how far it got dies in a log
@@ -968,7 +968,7 @@ jobs:
   # its own `if: always()` reporter ran. Only `result == 'skipped'` tells them
   # apart; the old bare `|| 'DID NOT START'` named a lost runner as a skip.
   stage:
-    name: "live-peer host — ${{ needs.regression.outputs.stage_label || (needs.regression.result == 'skipped' && 'DID NOT START') || 'NO VERDICT: the job ended before it reported' }}"
+    name: "ros2-interop host — ${{ needs.regression.outputs.stage_label || (needs.regression.result == 'skipped' && 'DID NOT START') || 'NO VERDICT: the job ended before it reported' }}"
     needs: [regression]
     if: always()
     runs-on: ubuntu-22.04
@@ -985,7 +985,7 @@ jobs:
         run: |
           label="$LABEL"
           reached="$REACHED"
-          echo "live-peer regression (host): $label"
+          echo "ros2-interop regression (host): $label"
           if [ "$reached" != "true" ]; then
               echo ""
               echo "The cells did not run, so this run says NOTHING about whether"
@@ -1003,7 +1003,7 @@ jobs:
   # non-verdicts happened: the split could not be computed, there was nothing to
   # run, or the job was to run and never started.
   stage-board:
-    name: "live-peer board — ${{ needs.board.outputs.stage_label || (needs.membership.result != 'success' && 'NO VERDICT: could not split the ledger by runner') || (needs.membership.outputs.has_board == 'true' && needs.board.result == 'skipped' && 'DID NOT START') || (needs.membership.outputs.has_board == 'true' && 'NO VERDICT: the job ended before it reported') || 'no cell on a board has a recorded PASS' }}"
+    name: "ros2-interop board — ${{ needs.board.outputs.stage_label || (needs.membership.result != 'success' && 'NO VERDICT: could not split the ledger by runner') || (needs.membership.outputs.has_board == 'true' && needs.board.result == 'skipped' && 'DID NOT START') || (needs.membership.outputs.has_board == 'true' && 'NO VERDICT: the job ended before it reported') || 'no cell on a board has a recorded PASS' }}"
     needs: [membership, board]
     if: always()
     runs-on: ubuntu-22.04
@@ -1038,7 +1038,7 @@ jobs:
               if [ "$BOARD_RESULT" = "skipped" ]; then label="DID NOT START"
               else label="NO VERDICT: the job ended before it reported"; fi
           fi
-          echo "live-peer regression (board): $label"
+          echo "ros2-interop regression (board): $label"
           echo "  rows: $CELLS"
           if [ "$reached" != "true" ]; then
               echo ""
@@ -1051,7 +1051,7 @@ jobs:
   # chain as `stage-board`: each image's rows get their own verdict, so a red
   # in one never reads as the other's.
   stage-board-ci:
-    name: "live-peer board (ci image) — ${{ needs.board-ci.outputs.stage_label || (needs.membership.result != 'success' && 'NO VERDICT: could not split the ledger by runner') || (needs.membership.outputs.has_ci_board == 'true' && needs.board-ci.result == 'skipped' && 'DID NOT START') || (needs.membership.outputs.has_ci_board == 'true' && 'NO VERDICT: the job ended before it reported') || 'no cell on a ci-image board has a recorded PASS' }}"
+    name: "ros2-interop board (ci image) — ${{ needs.board-ci.outputs.stage_label || (needs.membership.result != 'success' && 'NO VERDICT: could not split the ledger by runner') || (needs.membership.outputs.has_ci_board == 'true' && needs.board-ci.result == 'skipped' && 'DID NOT START') || (needs.membership.outputs.has_ci_board == 'true' && 'NO VERDICT: the job ended before it reported') || 'no cell on a ci-image board has a recorded PASS' }}"
     needs: [membership, board-ci]
     if: always()
     runs-on: ubuntu-22.04
@@ -1083,7 +1083,7 @@ jobs:
               if [ "$BOARD_RESULT" = "skipped" ]; then label="DID NOT START"
               else label="NO VERDICT: the job ended before it reported"; fi
           fi
-          echo "live-peer regression (board, ci image): $label"
+          echo "ros2-interop regression (board, ci image): $label"
           echo "  rows: $CELLS"
           if [ "$reached" != "true" ]; then
               echo ""
@@ -1117,7 +1117,7 @@ jobs:
       - name: Download the cells' junit and evidence ledgers
         uses: actions/download-artifact@v4
         with:
-          pattern: live-peer-junit-*
+          pattern: ros2-interop-junit-*
           path: board-artifacts
       - name: Read this run's jobs
         env:
@@ -1127,7 +1127,7 @@ jobs:
         run: |
           python3 scripts/ci/board-results.py --jobs jobs.json --artifacts board-artifacts \
             --out board-results.json --summary "$GITHUB_STEP_SUMMARY" \
-            --run-meta workflow=live-peer.yml event="${{ github.event_name }}" \
+            --run-meta workflow=ros2-interop.yml event="${{ github.event_name }}" \
               run="${{ github.run_id }}" sha="${{ github.sha }}" date="$(date -u +%F)" \
               url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
       - name: Upload board-results.json

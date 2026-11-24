@@ -227,7 +227,7 @@ writes.
 ## No recurrence, and the lead is bounded (2026-11-24)
 
 **Scanned, no recurrence.** The failed runs among the last 15 of
-`run-matrix`, `host-tests`, `live-peer` and `nightly` (12 failed runs,
+`platform-matrix`, `host-suite`, `ros2-interop` and `nightly` (12 failed runs,
 2026-11-14 to 2026-11-23, read with `gh run view --log-failed`). None
 contains a failure, a TIMEOUT or a watchdog line (`stuck while …`) from any
 `entity_wake` test. The watchdog merged on 2026-11-17 has not fired.

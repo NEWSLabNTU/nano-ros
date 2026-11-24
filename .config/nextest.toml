@@ -573,7 +573,7 @@ slow-timeout = { period = "180s", terminate-after = 3 }
 # `CONFIG_NROS_LOCATOR="tcp/10.0.2.2:10700"`, and BOTH
 # `zephyr_cortex_m_qemu::zephyr_cortex_m_c_zenoh_pubsub_e2e` (the baked
 # `matrix::CELLS` cell) and `pubsub_zephyr_cortex_m_ros2_interop_e2e` (the
-# live-peer `interop::CELLS` cell) start a router on that port. That is not a
+# ros2-interop `interop::CELLS` cell) start a router on that port. That is not a
 # mere collision: `ZenohRouter::start_on` calls `kill_listeners_on_port` first,
 # so whichever starts second KILLS the other test's router mid-run.
 #
@@ -614,7 +614,7 @@ slow-timeout = { period = "60s", terminate-after = 3 }
 filter = "binary(=zephyr_renode_twin)"
 slow-timeout = { period = "90s", terminate-after = 2 }
 
-# phase-441 W3 — the SECOND-KERNEL live-peer cell
+# phase-441 W3 — the SECOND-KERNEL ros2-interop cell
 # (`freertos-mps2-pubsub-c-zenoh-n2r`). It boots the SAME `workspace-c-freertos`
 # image as `entry_e2e`'s freertos_c cell, so it starts a router on the same baked
 # port (`port_of(FreertosMps2, C, EntryPubsub)`) and the two must not run at
@@ -956,7 +956,7 @@ filter = "binary(interop_e2e) and test(cyclone)"
 test-group = "host-dds-ros2-interop"
 slow-timeout = { period = "60s", terminate-after = 3 }
 
-# phase-455 W3 — the ZENOH half of the ACTIONS live-peer lane.
+# phase-455 W3 — the ZENOH half of the ACTIONS ros2-interop lane.
 #
 # THIS OVERRIDE MUST STAY HERE, ahead of the `binary(=ros2_action_e2e)` one
 # immediately below and therefore ahead of every broader row further down
@@ -1003,7 +1003,7 @@ filter = "binary(=ros2_action_e2e) and test(zenoh)"
 test-group = "ros2-interop"
 slow-timeout = { period = "120s", terminate-after = 3 }
 
-# phase-433 W6 — the ACTIONS live-peer lane, routed exactly like the cyclone
+# phase-433 W6 — the ACTIONS ros2-interop lane, routed exactly like the cyclone
 # half of `interop_e2e` above and for the same two reasons.
 #
 # Since phase-455 W3 this row is the CYCLONE half only: the anchored
@@ -1216,7 +1216,7 @@ slow-timeout = { period = "60s", terminate-after = 10 }
 max-threads = 4
 
 # phase-441 W1 — RESOURCE: the `build-cortex-m-*-talker-zenoh` leaves' baked
-# router ports (allocator 10600/10700/10800). The live-peer interop cell and the
+# router ports (allocator 10600/10700/10800). The ros2-interop cell and the
 # baked pubsub cell of the SAME language start a router on the same port, and
 # `ZenohRouter::start_on` kills whoever holds it. Serialize the family; the
 # override that selects into it is far above, ahead of `binary(~zephyr)`.

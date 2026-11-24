@@ -11,7 +11,7 @@
 #                      as parallel sibling jobs `CI` aggregates (phase-489 W1).
 #                      The buildless gate survives the rapid push cadence.
 #                      `just check build` -- the FULL compile tier -- runs in
-#                      host-tests.yml's daily cron (phase-559 W7), never on a
+#                      host-suite.yml's daily cron (phase-559 W7), never on a
 #                      pull request. A PR gets a compile SMOKE, not the tier.
 #                      Both this line and the job name below used to assert that
 #                      tier ran on a pull request -- coverage advertised and not
@@ -24,7 +24,7 @@
 #   - colcon-parity  : `just colcon-parity` (local-msg-package builds under colcon).
 #   - sdk-index      : verify-index.py + qemu-configure drift (sdk-index bumps).
 #
-# NOT folded here: the heavy test/build lanes (host-tests, nightly), release,
+# NOT folded here: the heavy test/build lanes (host-suite, nightly), release,
 # images, docs.
 name: gate
 
@@ -117,7 +117,7 @@ on:
   merge_group:
   # NO `schedule` (phase-559 W7). The daily signals this file used to carry
   # moved to the tier files that own a cron: the build tier (`check-build`) to
-  # host-tests.yml, the Zephyr part of `template-copy-out` to nightly.yml.
+  # host-suite.yml, the Zephyr part of `template-copy-out` to nightly.yml.
   # `check-default-gates-run-somewhere` refuses a `schedule` trigger on the
   # workflow holding the required `CI`.
   workflow_dispatch:
@@ -146,7 +146,7 @@ concurrency:
 # 8.9 of 12.3 GiB in `target/debug/deps` (72 %) and 3.3 of 8.4 GiB in the
 # `target-check-*` dirs (39 %). The compile tier writes tens of G into the
 # ~38 G a hosted runner has after the reclaim, so this is the margin (the
-# scheduled `check build`, which measured ~40 G, is host-tests.yml's since
+# scheduled `check build`, which measured ~40 G, is host-suite.yml's since
 # phase-559 W7 and carries the same four variables there).
 #
 # Workflow-wide, not per job: the sccache warm job and every compiling job
@@ -1054,7 +1054,7 @@ jobs:
       #                     + workspace-all + test-lane-contracts
       #   merge_group   ->  + test-unit                            per BATCH
       #   (daily)       ->  check-build, no-std — the full tier, in
-      #                     host-tests.yml's cron since phase-559 W7
+      #                     host-suite.yml's cron since phase-559 W7
       #
       # NOTE `check-build` is never on a merge-gating event. It was on the merge group
       # once and could never pass there (it resolves generated bindings and
@@ -1363,7 +1363,7 @@ jobs:
       #
       # This is the `check-lane-contracts` rule applied to the step below: a lane
       # may resolve a compile-stage artifact only if the lane BUILDS it. Same
-      # provisioning `host-tests.yml` does for the same reason.
+      # provisioning `host-suite.yml` does for the same reason.
       #
       # Found by RUNNING it, not by reading: the local run that justified this
       # step passed with ROS unset, which proved env independence and said
@@ -1550,7 +1550,7 @@ jobs:
     # pool would freeze the merge queue until its check timeout. Measured on
     # 2026-10-12 while this was written: two of the three runners showed
     # `online`/idle and took no job for hours (every queue L3 that day ran on
-    # newslab-server-241; nightly and run-matrix sat queued). Turn it on only
+    # newslab-server-241; nightly and platform-matrix sat queued). Turn it on only
     # after a `workflow_dispatch` run of this workflow has gone green on the
     # pool; turn it off (unset, or anything but `true`) to send both jobs back
     # to the hosted runner on the next run.
@@ -2022,7 +2022,7 @@ jobs:
   # `true`, the hosted runner in the CI image otherwise. Never a pull request,
   # so never a fork's.
   #
-  # DISK (issue 1353 hit this gate inside `host-tests`). The gate builds ONE
+  # DISK (issue 1353 hit this gate inside `host-suite`). The gate builds ONE
   # copy at a time in `$TMPDIR` and deletes it on success, so its peak is one
   # template's build, not the set's — measured locally in issue 1453. TMPDIR is
   # the job's `$RUNNER_TEMP`, which the runner empties per job, and the disk is
@@ -2630,7 +2630,7 @@ jobs:
       # `target` dirs, but a combined action still stores whatever the runner
       # image itself leaves lying around under them plus whatever a future
       # step here grows into. Measured on the live cache under the sibling
-      # `nros-cli-*` key in host-tests.yml: entries at 116 MB (restore/save
+      # `nros-cli-*` key in host-suite.yml: entries at 116 MB (restore/save
       # split, bounded to the CLI build) and 8194 MB (combined action, one
       # entry carrying a whole job's leftovers) — the repository's 10 GB
       # Actions cache total was at 11.69 GB, so GitHub was evicting, including
@@ -2920,7 +2920,7 @@ jobs:
       # nothing else into that dir afterward. A combined action here stores
       # whatever this job leaves behind rather than "the CLI build" alone.
       # Measured on the live cache under the sibling `nros-cli-*` key in
-      # host-tests.yml: 116 MB (restore/save split) vs 8194 MB (combined
+      # host-suite.yml: 116 MB (restore/save split) vs 8194 MB (combined
       # action) — the repository's 10 GB Actions cache total was at 11.69 GB,
       # so GitHub was evicting, including `gate.yml`'s own sccache entry that
       # the required PR check reads.

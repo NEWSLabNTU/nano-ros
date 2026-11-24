@@ -1887,7 +1887,7 @@ pub fn run() {
     // The result is 16 undefined symbols at LINK time in a consumer —
     // `z_sleep_ms`, `z_malloc`, `_z_mutex_*` — reported against whatever binary
     // happened to link zpico, with nothing pointing back at the crate that made
-    // the decision. It took `host-tests` red on main and eight local routes that
+    // the decision. It took `host-suite` red on main and eight local routes that
     // did not reproduce, because reproducing it needs a graph where zpico is
     // present WITHOUT `platform-posix`: the entry depends on `nros-rmw-zenoh`
     // directly (so `platform-aliases` is on by default) while the board it goes

@@ -331,7 +331,7 @@ nros_export_cyclone_config() {
 # precondition, not a delivery result, so it is asked up front and fails in
 # milliseconds with the cause -- instead of surfacing as a deadline expiring.
 #
-# Measured on host-tests (run 34432822434, and every run that reached these
+# Measured on host-suite (run 34432822434, and every run that reached these
 # cells since 2026-09-08): `ghcr.io/newslabntu/nano-ros-ci:humble` is `FROM
 # ros:humble-ros-base`, and apt satisfies `ros-humble-rmw-implementation`'s
 # `rmw-fastrtps-cpp | rmw-cyclonedds-cpp | rmw-connextdds` with the FIRST

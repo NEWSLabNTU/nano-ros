@@ -9,7 +9,7 @@ the image's (cmake, a compiler, ROS); four must be FETCHED by the job itself:
 
 Issue 2382 is what happens without this rule: the `build` lane claimed
 submodules and history, the hosted jobs that run it (gate.yml's build-tier
-shards, host-tests' tier-1 gates) fetched neither, and from phase-543 W5/W6
+shards, host-suite' tier-1 gates) fetched neither, and from phase-543 W5/W6
 every one of them stopped in the preflight with no gate run, for three nights,
 while every check on the pull requests stayed green.
 

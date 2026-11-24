@@ -209,7 +209,7 @@ Verdicts per row; the hole details and their class are in the issues named above
 | `interface-glob-configure-depends` | an interface msg/srv/action glob carries CONFIGURE_DEPENDS | drop CONFIGURE_DEPENDS from the local msg glob | 1 | — | — | **CLEAN** |
 | `interlock-visibility` | an interlocked CI job has a job reporting that it did not run | nightly coverage-matrix-nightly report step -> echo ok | 1 | — | — | **CLEAN** |
 | `interop-cell-runners` | every Runtime interop cell's test binary is invoked by a recipe/workflow | just/xrce.just binary(xrce_ros2_interop) -> binary(xrce_ros2_interopz) (only exclusions remain) | 1 | — | — | **CLEAN** |
-| `interop-verdict-ledger` | every live-peer cell has a recorded verdict | rename the bridge-zenoh-to-cyclone verdict's cell | 1 | — | — | **CLEAN** |
+| `interop-verdict-ledger` | every ros2-interop cell has a recorded verdict | rename the bridge-zenoh-to-cyclone verdict's cell | 1 | — | — | **CLEAN** |
 | `issue-index` | README 'Recently resolved' digests are frozen (ratchet 327) | append one digest | 1 | — | — | **CLEAN** |
 | `issue-index-ratchet-down` | the frozen digest ratchet is forced down (W9) | delete one digest (count 326 < 327) | 0 | the same deletion plus one appended digest (net 327, a regrowth into the freed slot) | 1 | **HOLE** → the COUNT fixed here; the swap itself (net 327) still passed rc 0 until the block CONTENT was frozen by sha256 (issue 1739 follow-up) |
 | `just-recipe-paths` | a recipe's literal in-repo paths exist | bash scripts/no-such-audit.sh in just/check/docs.just | 1 | — | — | **CLEAN** |
@@ -408,10 +408,10 @@ Each helper was weakened and the whole `check fast` lane run. A helper break no 
 | `scripts/check-dist-runtime-deps.py` | `just workspace doctor` only | **NO WORKFLOW** (1739); red on this host |
 | `scripts/check-executor-stack-floor.py` | none | **NO LANE** (1739) |
 | `scripts/check-feature-gated-modules.sh` | `check::compile-smoke` (gate.yml, PR) | reached |
-| `scripts/check-fixtures-stale.sh` | `_lane-gate` (run-matrix.yml, nightly.yml) | reached |
+| `scripts/check-fixtures-stale.sh` | `_lane-gate` (platform-matrix.yml, nightly.yml) | reached |
 | `scripts/check-launch-resolve-fresh.sh` | `ci gate` step only | **NO WORKFLOW** (1739) — and the meta-gate cannot see it |
 | `scripts/check-nextest-test-filters.py` | none | **NO LANE** (1739) |
-| `scripts/check-rust-targets-installed.sh` | `check-tier-preconditions.sh` (`just ci tier1 run`, host-tests.yml) | reached |
+| `scripts/check-rust-targets-installed.sh` | `check-tier-preconditions.sh` (`just ci tier1 run`, host-suite.yml) | reached |
 | `scripts/check-stack-floor.py` | recipe: selftest+claims only; image check in `fixtures-build.sh` esp32 rows | image half reached via fixture builds |
 | `scripts/check-weak-symbols-image.sh` | none | **NO LANE** (1739) |
 | `scripts/check-workspace-rmw-agreement.py` | none | **NO LANE**, dead population (1739) |

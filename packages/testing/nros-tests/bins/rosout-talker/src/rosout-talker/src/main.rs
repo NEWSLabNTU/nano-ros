@@ -1,4 +1,4 @@
-//! `/rosout` live-peer fixture — phase-467 Q4, ledger row
+//! `/rosout` ros2-interop fixture — phase-467 Q4, ledger row
 //! `c:logging_rosout_enabled`.
 //!
 //! Logs through its node's logger and spins. Nothing else: since phase-556

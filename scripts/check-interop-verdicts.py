@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""A live-peer cell that has never produced a VERDICT — issue 1127, phase-433 W5.
+"""A ros2-interop cell that has never produced a VERDICT — issue 1127, phase-433 W5.
 
 `nros_tests::interop::CELLS` declares the cells whose subject is a LIVE ROS 2
 peer. Phase-433 W4 closed "nothing can be AIMED at this cell"
@@ -32,7 +32,7 @@ generated file that serialised the queue in issues 0883/0884.
 
 THE LOAD-BEARING RULE: A BINDING TEST IS NOT EVIDENCE
 
-Every one of the eleven live-peer binaries also carries a test that calls
+Every one of the eleven ros2-interop binaries also carries a test that calls
 `interop::assert_test_bound` and nothing else (`cases_bound_to_interop_cells`
 and its siblings). Those pass on any host, with no peer, forever. So "did this
 binary produce a non-skip result" is TRUE for all eleven on a machine with no
@@ -138,7 +138,7 @@ def read_ledger(path: Path, *, required: bool) -> str:
 
     phase-472 W4: this read `LEDGER.read_text() if LEDGER.exists() else ""`,
     so deleting (or failing to check out) `.config/interop-verdicts.toml` read
-    as an EMPTY ledger — 25 recorded verdicts erased, `live-peer.yml`'s
+    as an EMPTY ledger — 25 recorded verdicts erased, `ros2-interop.yml`'s
     membership gone, and the gate printing "OK — 0/28 … have ever produced a
     verdict". An empty ledger is a legitimate state only for a `--ledger`
     override (a self-test or demo creating one), which passes required=False.
@@ -149,7 +149,7 @@ def read_ledger(path: Path, *, required: bool) -> str:
         raise LedgerError(
             f"{_rel(path)} is MISSING. It is a tracked file, and a missing ledger\n"
             f"  is not an empty one: reading it as empty erases every recorded\n"
-            f"  verdict and empties the live-peer lane that derives from it.\n"
+            f"  verdict and empties the ros2-interop lane that derives from it.\n"
             f"  Restore it:  git checkout -- {_rel(path)}"
         )
     return ""
@@ -186,7 +186,7 @@ def test_sources(cells: list[dict]) -> dict[str, str | None]:
 
 # --- which RUNNER a cell needs (phase-441 W4) ----------------------------
 #
-# `live-peer.yml` derives its membership from this ledger, so a cell joins the
+# `ros2-interop.yml` derives its membership from this ledger, so a cell joins the
 # lane the moment a verdict is recorded. What does NOT follow is the RUNNER: a
 # cell on a board needs that board's SDK, its cross toolchain and — off
 # native_sim — an emulator, and the container the host cells run in has none of
@@ -393,7 +393,7 @@ def scopes_for(platforms, role: str = "setup") -> list[str]:
 # (`NROS_FIXTURE_ID` names one row), and several cells sharing it need one build
 # pass EACH: joined with `|` it named a row nobody has, and the board-ci job
 # stopped in its build every night once a second FreeRTOS cell was recorded
-# (run 39721379635, issue 1758). `scripts/ci/live-peer-board-build.sh` runs a
+# (run 39721379635, issue 1758). `scripts/ci/ros2-interop-board-build.sh` runs a
 # repeated key as one pass per value.
 NARROWING_REGEX_KEYS = frozenset({"NROS_ZEPHYR_FIXTURE_FILTER"})
 
@@ -496,7 +496,7 @@ def host_builds_for(cells, ids) -> list[str]:
 # half `host_builds_for` cannot see. `fixtures-build.sh linux <lang> <rmw>`
 # builds `[[fixture]]` rows only, so a cell whose test resolves a compile-check
 # artifact (`cpp_multi_node_entry` -> `cpp_robot_entry`, a cmake workspace
-# template) failed `FixtureNotBuilt` on every live-peer run (2026-10-06, run
+# template) failed `FixtureNotBuilt` on every ros2-interop run (2026-10-06, run
 # 37413064249) and was reported as a regression of a cell with a recorded PASS.
 # DERIVED from the test source: a row id that the test file names as a quoted
 # string literal is a row it resolves. A false match costs one extra build; a
@@ -523,7 +523,7 @@ def _strip_cfg_test_mods(text: str) -> str:
     A unit test inside the nros-tests library is not a helper any test binary
     calls, but its functions have ordinary names: `evidence.rs`'s test fixture
     `fn row()` names `threadx-linux-c-zenoh-talker`, and every cell test that
-    says `row` then "reached" it, so live-peer's host job tried to build a
+    says `row` then "reached" it, so ros2-interop's host job tried to build a
     threadx-linux row as `linux` and stopped (run 45110360962). Braces are
     matched by count, which a brace inside a string can fool; that errs toward
     keeping text, i.e. toward naming more rows, never fewer.
@@ -611,7 +611,7 @@ def host_compile_checks_for(cells, ids, known=None, read=None, helpers=None) -> 
     return host_rows_for(cells, ids, known, read, helpers)
 
 
-# The workspace rows the host cells resolve — issue: live-peer's host job built
+# The workspace rows the host cells resolve — issue: ros2-interop's host job built
 # EVERY native workspace row (`just linux build-workspace-fixtures`, 121 rows)
 # for a membership that reaches a handful, and filled a 146 G disk with 111 G
 # free after the reclaim (run 37883358718, 2026-10-09).
@@ -632,7 +632,7 @@ def host_workspace_fixtures_for(cells, ids, known=None, read=None, helpers=None,
 # `fixtures-build.sh linux <lang> <rmw>` (`host_builds_for`) stopped building
 # them, and no test names a pair row's id as a literal (they resolve through
 # `nros_tests::fixtures::workspace_image`, which COMPUTES it). The two halves
-# above therefore both missed the pair images, and live-peer's bridge and C
+# above therefore both missed the pair images, and ros2-interop's bridge and C
 # Cyclone cells came up UNMET every night from 2026-11-07.
 #
 # Two rules, both read from the manifest, never a hand list:
@@ -675,7 +675,7 @@ def _linux_pair_rows(rows=None) -> "list[dict]":
 # (`examples/linux/<lang>/<role>`, a `packages/testing` bin) that
 # `nros dev migrate-bringup` turned into a one-package workspace becomes
 # `[[workspace_fixture]]` rows, so `fixtures-build.sh linux <lang> <rmw>` stops
-# building it and the live-peer bridge cells came up UNMET for the linux Rust
+# building it and the ros2-interop bridge cells came up UNMET for the linux Rust
 # talker (run 42911987237, after #3473). A migrated row is any linux workspace
 # row outside `examples/workspaces/` -- those are the language workspaces,
 # reached by the pair and named-id rules above.
@@ -836,7 +836,7 @@ def resolved_rows_outside(evidence_dir: Path, derived: "set[str]") -> "list[str]
 # device. The SELF-HOSTED runner container (`--cap-drop ALL`) refuses them on
 # purpose, but this lane's host job runs on a GitHub-hosted VM, where its
 # container is started with `seccomp=unconfined` and `/dev/net/tun` instead
-# (live-peer.yml, issue 1800). Its guest is the `cyclone_slirp_guest`
+# (ros2-interop.yml, issue 1800). Its guest is the `cyclone_slirp_guest`
 # compile-check row, which `--host-compile-checks` derives from the test source.
 HOST_ROS2_TESTS: "list[tuple[str, str]]" = [
     ("workspace_shadowing", "workspace_std_msgs_shadows_ament_in_consumer_binary"),
@@ -2567,7 +2567,7 @@ def main(argv: list[str]) -> int:
         help="the `[[workspace_fixture]]` ids one nros-tests test binary "
         "resolves, directly or through a nros-tests helper, whatever the "
         "ledger says: for a lane that runs one test outside the cell matrix "
-        "(host-tests' rt-sched job)",
+        "(host-suite' rt-sched job)",
     )
     ap.add_argument(
         "--assert-ran",
@@ -2811,7 +2811,7 @@ def main(argv: list[str]) -> int:
     if not ok:
         return 1
     if problems:
-        print("check-interop-verdicts: the live-peer verdict ledger is wrong\n")
+        print("check-interop-verdicts: the ros2-interop verdict ledger is wrong\n")
         print("\n\n".join(problems))
         print(
             f"\n{_rel(LEDGER)} records that a cell HAS met a peer. A cell "

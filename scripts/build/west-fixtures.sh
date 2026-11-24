@@ -166,7 +166,7 @@ records="$(python3 "$repo_root/scripts/build/fixtures-manifest.py" \
 # two record types: the `[[fixture]]` west leaves (`zephyr-fixture-leaves.sh`)
 # and these `[[compile_check_fixture]]` rows. The filter reached only the first,
 # so there was no way to build ONE of these by id — verifying one cost the whole
-# lane — and a lane narrowed to one leaf (live-peer's
+# lane — and a lane narrowed to one leaf (ros2-interop's
 # `build-ws-rs-qos-entry-zenoh`) still built all of these and went red on them.
 #
 # Same variable, same REGEX semantics, same matcher as the leaves'

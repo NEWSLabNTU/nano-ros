@@ -11,7 +11,7 @@ related: [phase-590]
 
 ## What fails
 
-`run-matrix.yml` job `tier 2 (1-wise matrix)`, run 44993007292 (2026-11-22, main `98b5d8e0c7`),
+`platform-matrix.yml` job `tier 2 (1-wise matrix)`, run 44993007292 (2026-11-22, main `98b5d8e0c7`),
 reports `Real failures: 6 / 6` in its `junit-real.xml`. Outside issue 2815's Renode twin, they are:
 
 | test | owner |
@@ -34,7 +34,7 @@ that built.
 
 ## Next
 
-Once #4685 lands, dispatch `run-matrix.yml` on main and re-read `junit-real.xml`. Split this
+Once #4685 lands, dispatch `platform-matrix.yml` on main and re-read `junit-real.xml`. Split this
 issue per cause where the causes differ (CLAUDE.md, "Fix the CLASS").
 
 ## Acceptance

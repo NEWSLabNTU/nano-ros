@@ -112,7 +112,7 @@ import 'check/workflows.just'
 # named here AND derived into a lane runs twice. `cli-fresh` (0.02 s) is worth
 # it for the position. `api-parity` was not — it sat here after issue 1066
 # moved it onto the fast lane, and ran its three-language extraction a second
-# time on every `just check`: 163 s on the 4-vCPU `host-tests` runner and
+# time on every `just check`: 163 s on the 4-vCPU `host-suite` runner and
 # 4 000 lines of repeated diff in its log (issue 1500). Gate:
 # `check-lane-step-duplicates`.
 #

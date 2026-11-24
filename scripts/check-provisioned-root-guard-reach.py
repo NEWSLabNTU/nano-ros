@@ -40,7 +40,7 @@ and it is checked as four facts, three of them derived:
 
   R3 ROOT LANES       Every PROVISIONED ROOT has a platform lane that can be
                       reached without passing R2 (`just build <plat>` dispatches
-                      to `just <plat> build-fixtures`, and `live-peer.yml` does
+                      to `just <plat> build-fixtures`, and `ros2-interop.yml` does
                       exactly that). Each such lane calls the shared recipe
                       itself. The ROOT NAMES are READ from the guard script's
                       own `PROVISIONED_ROOTS` block, so a root added there
@@ -200,7 +200,7 @@ def check(tree_justfile: str, tree_modules: "dict[str, str]", script_text: str) 
                     f"R3: `{path}::{recipe}` builds against the provisioned root "
                     f"`{name}` and never reaches `{SHARED_RECIPE}`. `just build "
                     f"{path.split('/')[1].split('.')[0].replace('-ci', '')}` and "
-                    f"`live-peer.yml` reach this lane WITHOUT passing "
+                    f"`ros2-interop.yml` reach this lane WITHOUT passing "
                     f"`build-test-fixtures`, so R2's edges do not cover it — add "
                     f"`just {SHARED_RECIPE}` at the head of the body."
                 )

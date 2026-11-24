@@ -90,7 +90,7 @@ GENERATED_PATH_RE = re.compile(r'path\s*=\s*"([^"]*\bgenerated/[^"]*)"')
 # demanded `generated/px4_msgs` from every lane, including the ones that never
 # build a px4 leaf. px4 has ZERO rows in `examples/fixtures.toml` — it is in no
 # lane at all — so tier 2 died in `just build tier2` on three leaves it does not
-# build, and the scheduled `run-matrix` lane produced no verdict.
+# build, and the scheduled `platform-matrix` lane produced no verdict.
 #
 # That is CLAUDE.md's affordability rule ("a gate in an affordability tier may
 # only resolve artifacts the JOB ITSELF builds", `check-lane-contracts`) broken

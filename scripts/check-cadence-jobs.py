@@ -21,7 +21,7 @@ The binding (D8), and what "serves" means here — all static, no fixtures:
   daily   `nightly.yml` on `schedule`: the `platform` job, whose matrix is
           the `runnable="…"` list and whose run step is `just test <platform>`.
           OR, for a host witness row (`runs = "host"`, `breadth = "witness"`:
-          tier 1's pool), `run-matrix.yml`'s scheduled `tier1` job running
+          tier 1's pool), `platform-matrix.yml`'s scheduled `tier1` job running
           `just ci tier1`. A row neither reaches has no daily RUN job.
   weekly  `weekly.yml` on `schedule`, job `chapter`, and every track
           the row's `probe` names is a weekly track (scripts/probe/
@@ -77,7 +77,7 @@ PROBE_TRACKS = ROOT / "scripts" / "probe" / "probe-tracks.json"
 CADENCES = ("merge", "daily", "weekly", "manual")
 MERGE_WF, MERGE_JOB = "merge-runtime.yml", "merge-runtime"
 DAILY_WF, DAILY_JOB = "nightly.yml", "platform"
-TIER1_WF, TIER1_JOB = "run-matrix.yml", "tier1"
+TIER1_WF, TIER1_JOB = "platform-matrix.yml", "tier1"
 WEEKLY_WF, WEEKLY_JOB = "weekly.yml", "chapter"
 
 
@@ -161,7 +161,7 @@ def is_host_witness(row):
 
 
 def tier1_serves(wf_text):
-    """'' when run-matrix.yml's scheduled `tier1` job runs `just ci tier1`,
+    """'' when platform-matrix.yml's scheduled `tier1` job runs `just ci tier1`,
     else why not."""
     if wf_text is None:
         return f"no {TIER1_WF}"

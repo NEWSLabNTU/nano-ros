@@ -570,7 +570,7 @@ test-ros2-qos verbose="":
 #
 # Its sibling `test-ros2-qos` runs the same shape on `native_sim/native/64`,
 # where the sockets are the HOST's — so that cell says nothing about an RTOS
-# network stack and this one is the first live-peer cell that does.
+# network stack and this one is the first ros2-interop cell that does.
 #
 # Same aiming contract as `test-ros2-qos`: deliberately NOT sequenced after
 # `build-fixtures`, because running the whole west lane to reach one cell is not

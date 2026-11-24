@@ -13,7 +13,7 @@ Three tests need the kernel's real-time scheduling, and live in
 - S1 (1 kHz critical loop beside 5 ms telemetry; see the scenario table
   below).
 
-Only host-tests' `rt-sched` job claims the `rt-sched` capability, so
+Only host-suite' `rt-sched` job claims the `rt-sched` capability, so
 everywhere else each is a `[SKIPPED:lane]`. None of them needs `sudo`. By
 default each image runs in a throwaway docker container granted `SYS_NICE`
 and an RT priority limit, so a member of the `docker` group can run them on

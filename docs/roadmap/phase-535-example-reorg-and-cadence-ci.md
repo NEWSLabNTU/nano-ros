@@ -842,7 +842,7 @@ gate landed. Items 2 to 5 are open.
     The workflow is dispatch-only now, so a `merge` row is refused. Its
     shards need no row while it is dispatch-only.
   - `daily` is served by the nightly `platform` job's `just test <platform>`
-    over its `runnable` set, or, for a host witness row, by run-matrix.yml's
+    over its `runnable` set, or, for a host witness row, by platform-matrix.yml's
     scheduled `tier1` job running `just ci tier1`.
   - `weekly` is served by `weekly.yml`'s scheduled `chapter` job (was `probe-platforms.yml`, phase-559 W4)
     with weekly tracks. `manual` needs no job.
@@ -853,7 +853,7 @@ gate landed. Items 2 to 5 are open.
     half is `just nightly-triage`.
 - **Registry.** `board-support.toml`: Linux, Zephyr native_sim and ThreadX
   Linux are `cadence = "daily"`. The Linux row needs no `nightly_token`: its
-  daily lane is run-matrix.yml's tier 1.
+  daily lane is platform-matrix.yml's tier 1.
 
 **Status (2026-11-13): the Zephyr template copy-out is daily.** User ruling,
 verbatim: "Do Zephyr template check daily". `gate.yml`'s
@@ -1016,7 +1016,7 @@ tracks".
 | issue | why it belongs here |
 | --- | --- |
 | [#2336](../issues/archived/2336-board-net-is-per-configure-not-per-image.md) | An image's `os_config` network file is applied per cmake configure, so images sharing one configure clash: found in this phase's workspace images. Resolved 2026-11-10: each ThreadX entry gets its own config TU. |
-| [#2383](../issues/archived/2383-live-peer-host-fixtures-miss-c-workspace-rows.md) | W4 made the linux pairs C workspace images; live-peer's derived host fixture set still builds only Rust rows, so its bridge and interop cells are UNMET (found closing phase-466). Resolved: the derivation now reaches pair images by coordinate and by `linux_pair_image` call. |
+| [#2383](../issues/archived/2383-live-peer-host-fixtures-miss-c-workspace-rows.md) | W4 made the linux pairs C workspace images; ros2-interop's derived host fixture set still builds only Rust rows, so its bridge and interop cells are UNMET (found closing phase-466). Resolved: the derivation now reaches pair images by coordinate and by `linux_pair_image` call. |
 | [#2377](../issues/archived/2377-workspace-road-no-c-image-on-bare-metal.md) | The workspace road had no C/C++ image for a board with a Rust link root, so the bare-metal C/C++ pairs stayed leaves (W5). Resolved in W6: owned cargo entries of one-package workspaces. |
 | [#2427](../issues/archived/2427-threadx-riscv64-run-hint-mac-ignores-image-network.md) | The ThreadX riscv64 run plan gave every image peer 0's MAC, so the printed QEMU line for the W6 Cyclone listener image named the talker's MAC. Resolved 2026-11-10: the plan takes the image network's MAC. |
 | [#2452](../issues/archived/2452-c-custom-transport-loopback-session-connection-failed.md) | Found running W6's moved C/C++ fixtures: the C custom-transport loopback exits 1 (session ConnectionFailed) before and after its move; its row is build-only, so no lane saw it. **Resolved** — runtime row, `CustomLink` cell. |

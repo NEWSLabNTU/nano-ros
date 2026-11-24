@@ -1,4 +1,4 @@
-//! phase-441 W1 — the live-peer crossing, one BOARD over.
+//! phase-441 W1 — the ros2-interop crossing, one BOARD over.
 //!
 //! ## What this cell is for
 //!
@@ -57,7 +57,7 @@
 //! ## Prerequisites
 //!
 //! - ROS 2 + `rmw_zenoh_cpp` (an `unmet!` red when absent — a host with no
-//!   `/opt/ros` cannot run this cell at all, so only live-peer claims it)
+//!   `/opt/ros` cannot run this cell at all, so only ros2-interop claims it)
 //! - `just zephyr build-fixtures` (the west leaves lane builds
 //!   `build-cortex-m-c-talker-zenoh`)
 //! - `qemu-system-arm` with `mps2-an385` machine support

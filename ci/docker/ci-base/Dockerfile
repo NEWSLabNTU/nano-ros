@@ -137,7 +137,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         `# rmw-cyclonedds-cpp | rmw-connextdds" and apt takes the first, so` \
         `# /opt/ros/humble/lib had librmw_fastrtps_cpp.so and nothing else.` \
         `# check-rmw-cyclonedds's two ros2 cells (ros2_pubsub_e2e,` \
-        `# ros2_srv_e2e) then failed on EVERY host-tests run that reached` \
+        `# ros2_srv_e2e) then failed on EVERY host-suite run that reached` \
         `# them -- the ros2 peer died in rcl on "librmw_cyclonedds_cpp.so:` \
         `# cannot open shared object file" and the cells spent 126 s and` \
         `# 600 s on deadlines. Same package docker/ros-editions installs.` \
@@ -151,7 +151,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         `# ^ the stock Fibonacci action server ros2_action_e2e's two n2r` \
         `# cells drive (issue 1685): a separate package from the distro and` \
         `# the RMW, so without it both cells were capability skips on every` \
-        `# host-tests run and check-skip-budget refused them as undeclared.` \
+        `# host-suite run and check-skip-budget refused them as undeclared.` \
         ros-humble-rmw-zenoh-cpp \
         `# ^ the ROUTER (rmw_zenohd) and the stock zenoh RMW. We ship no` \
         `# router (RFC-0075): nros_zenohd_bin resolves rmw_zenohd under` \
@@ -162,7 +162,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # The Zephyr 3.7 line's Python tools, the same pinned set the sibling
-# `zephyr-ros` image installs. Issue 1651: host-tests' integration job now runs
+# `zephyr-ros` image installs. Issue 1651: host-suite' integration job now runs
 # `just setup tier1`, whose modules include `zephyr`, in THIS image — and the
 # first run stopped in `just zephyr setup` on `python-deps: MISSING for west,
 # zephyr-build` (run 37547660332), because only the Zephyr image carried them.

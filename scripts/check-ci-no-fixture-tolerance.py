@@ -8,7 +8,7 @@ a run nobody performs.
 
 It is never legitimate in CI. A lane names its scope, and under phase-411 naming
 IS the specification — so a gap in what CI asked for is a failure, and nothing
-else was expected in the first place. `host-tests.yml` set it unconditionally,
+else was expected in the first place. `host-suite.yml` set it unconditionally,
 which made the lane's correctness depend on remembering to unset a variable, and
 its own comment admitted as much ("the FULL `test-all` tier leaves the var
 unset and still hard-fails").

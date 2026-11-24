@@ -307,7 +307,7 @@ board-hook-weak-ref:
 # fixtures (skips covered classes whose artifacts are absent) — NOT in the fast
 # `check` aggregate; run after the fixture build / in the per-platform CI lanes.
 # The fast source-level half is `weak_symbol_audit.rs` (in `just test`).
-[metadata("tier", "exempt", "needs built fixtures, so it cannot be buildless; a step of `just ci matrix` (run-matrix.yml) after that lane's fixture build (issue 1739)")]
+[metadata("tier", "exempt", "needs built fixtures, so it cannot be buildless; a step of `just ci matrix` (platform-matrix.yml) after that lane's fixture build (issue 1739)")]
 weak-symbols-image:
     @bash scripts/check-weak-symbols-image.sh
 

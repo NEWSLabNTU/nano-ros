@@ -4,7 +4,7 @@
 #
 # Drives `scripts/ci/report-interlock-coverage.sh` end to end through its real
 # `lane-stage.py --job-label` lookup, with `gh` stubbed on PATH to return the
-# job record. The expired case is job 103881434950 (run-matrix 34814226310) as
+# job record. The expired case is job 103881434950 (platform-matrix 34814226310) as
 # the jobs API recorded it: cancelled, no steps, queued 24 h. Buildless, <1 s.
 set -euo pipefail
 

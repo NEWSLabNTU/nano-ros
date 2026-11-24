@@ -6,7 +6,7 @@
 #   1. the repo-root workspace: nano-ros's own crates. A cmake- or west-driven
 #      image builds them (`nros_c_cargo_build`) through a cargo that has no
 #      root of its own to warm, and offline it stopped on
-#      `failed to download const-default v1.0.0` (live-peer, 2026-11-14);
+#      `failed to download const-default v1.0.0` (ros2-interop, 2026-11-14);
 #   2. each pinned toolchain's std sources
 #      (`<sysroot>/lib/rustlib/src/rust/library`), so a `-Zbuild-std` run can
 #      resolve std offline.

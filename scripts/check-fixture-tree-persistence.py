@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Gate: the persistent fixture tree is used where it is safe, and only there.
 
-phase-489 W6. The self-hosted fixture lanes (run-matrix tier 1 / tier 2, the
+phase-489 W6. The self-hosted fixture lanes (platform-matrix tier 1 / tier 2, the
 tier-2 nightly) build in a persistent checkout BESIDE the job's own, kept
 across runs by `scripts/ci/fixture-tree.sh`. That only accelerates if every
 piece lines up, and each piece fails silently when it does not:

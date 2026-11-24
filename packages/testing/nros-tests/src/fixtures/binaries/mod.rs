@@ -1050,7 +1050,7 @@ pub(crate) fn require_prebuilt_binary_fresh(binary_path: &Path) -> TestResult<Pa
 ///
 /// Split so the probe's own self-test is HERMETIC (issue 1651): it called the
 /// bypassable entry point, so under a lane that exports the bypass — the
-/// `host-tests` integration job does, for its whole `test-all` step —
+/// `host-suite` integration job does, for its whole `test-all` step —
 /// `a_stale_verdict_reports_its_own_reasoning_and_its_age` got `Ok` for a
 /// fixture it had just made stale, and went red for a reason about the
 /// environment rather than the probe.
@@ -1245,7 +1245,7 @@ pub fn linux_pair_image(lang: &str, case: &str, rmw: Rmw) -> TestResult<PathBuf>
 mod linux_pair_role_tests {
     use super::*;
 
-    /// The live-peer regression of 2026-11-10: interop's Cyclone helper asked
+    /// The ros2-interop regression of 2026-11-10: interop's Cyclone helper asked
     /// `linux_pair_image` for the TALKER, which stays a witness leaf, and every
     /// `cyclone_pubsub_nano_to_ros2` run failed "not a moved pair role". The
     /// predicate callers ask first must say no to it and yes to the moved roles.

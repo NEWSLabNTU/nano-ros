@@ -468,7 +468,7 @@ def evidence_errors(row: dict, *, runtime: set[str], nightly: set[str], probe_tr
     if cadence == "daily":
         tok = row.get("nightly_token")
         # The Linux host has no nightly token: its daily runtime lane is
-        # run-matrix.yml's tier 1 (`scripts/ci/tier-health.py` HOST_TESTS_LANE),
+        # platform-matrix.yml's tier 1 (`scripts/ci/tier-health.py` HOST_TESTS_LANE),
         # which `check-cadence-jobs` holds to a scheduled job.
         if plat == "Linux" and not tok:
             pass

@@ -39,8 +39,8 @@ UNCLAIMED_OK = {
     "fsp": "the NVIDIA Orin SPE FSP tree is provisioned on no runner (phase-418 418.4)",
     # phase-565 W4 deleted `[lane.queue]`, the one lane that claimed these and
     # that no job ever ran. Their gates run BY NAME after a fixture build in
-    # run-matrix.yml's tier-2 job, not through a lane's scope.
-    "build-tree": "no gate lane runs after a fixture build; run-matrix's tier-2 job runs these gates by name after `just build tier2`",
+    # platform-matrix.yml's tier-2 job, not through a lane's scope.
+    "build-tree": "no gate lane runs after a fixture build; platform-matrix's tier-2 job runs these gates by name after `just build tier2`",
     "freertos-kernel": "no gate lane provisions the FreeRTOS kernel; gate.yml's workspace-all job provisions it and runs `just check clock-board-freertos` by name, and check-default-gates-run-somewhere holds that it is run somewhere",
     "zephyr": "no gate lane has a west workspace; workflow jobs that provision one run these gates by name, and check-default-gates-run-somewhere holds that each is run somewhere",
     # phase-575 W3 — TI Arm Clang is licence-gated ([gated.ti-arm-clang]): no

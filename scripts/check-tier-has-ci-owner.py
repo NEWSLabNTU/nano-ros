@@ -13,7 +13,7 @@ Measured 2026-08-31, before this gate:
   Tier2N `just ci matrix-nightly` nightly.yml
   Tier3  `just ci full`          0 references                       -- UNOWNED
 
-Two of four tiers were run by nothing at all, and `host-tests` hand-rolled a
+Two of four tiers were run by nothing at all, and `host-suite` hand-rolled a
 subset of tier 1 (`native build-fixture-rust-core` + `build-workspace-fixtures`
 + `test-integration`) instead of invoking it — so the tier's definition and CI's
 behaviour could drift silently, and did.

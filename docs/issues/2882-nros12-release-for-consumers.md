@@ -17,7 +17,7 @@ I42. Consumer: the safety island (autoware-safety-island fork), branches
 
 The latest release is `nros-0.6.0-nros11` (`09219edc75`, 2026-11-16). Main is
 1062 commits past it (2026-11-23, `a1cbbb6b04`). An nros12 candidate was cut
-and blocked once (phase-567: a red `host-tests` run, 2026-11-18); no open
+and blocked once (phase-567: a red `host-suite` run, 2026-11-18); no open
 issue or phase item tracks cutting the next one, so "when does a consumer get
 these fixes" has no answer in the tree.
 

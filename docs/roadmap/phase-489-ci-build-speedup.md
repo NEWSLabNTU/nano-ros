@@ -59,10 +59,10 @@ another.
 | `queue` (merge_group, self-hosted L3) | 17 | 24.8 min | 139.4 |
 | `gate` (push) | 10 | 22.8 min | 39.5 |
 | `post-submit` (push) | 25 | 9.7 min | 18.2 |
-| `live-peer regression` (schedule) | 1 | 106.4 min | |
+| `ros2-interop regression` (schedule) | 1 | 106.4 min | |
 | `gate` (schedule, compile tier) | 1 | 91.3 min | |
-| `run-matrix` (schedule) | 1 | 88.5 min | |
-| `host-tests` (schedule) | 1 | 88.1 min | |
+| `platform-matrix` (schedule) | 1 | 88.5 min | |
+| `host-suite` (schedule) | 1 | 88.1 min | |
 | `nightly` (schedule) | 2 | 53.9 min | 67.7 |
 
 Two measurements settle where the time goes:
@@ -100,13 +100,13 @@ line runs its gates in parallel, so these three set its floor.
 
 | Lane | Dominant step | Time |
 | --- | --- | --- |
-| live-peer regression, board-IS-runner job | Build the fixtures those rows resolve | **84.5 min** (the cells run in 10.4) |
-| live-peer regression, board-NOT-runner job | Build the fixtures those rows resolve | 33.7 |
+| ros2-interop regression, board-IS-runner job | Build the fixtures those rows resolve | **84.5 min** (the cells run in 10.4) |
+| ros2-interop regression, board-NOT-runner job | Build the fixtures those rows resolve | 33.7 |
 | gate (schedule) | `just check build` | **44.4** (also where issue 1353's disk runs out) |
 | gate (schedule) | generate message bindings | **21.7** |
-| host-tests (schedule) | `just ci tier1 gates` | **56.9** |
-| host-tests (schedule) | generate message bindings | **18.7** |
-| run-matrix (schedule) | `just build tier1` / `just build tier2` | 31.3 / 27.8 |
+| host-suite (schedule) | `just ci tier1 gates` | **56.9** |
+| host-suite (schedule) | generate message bindings | **18.7** |
+| platform-matrix (schedule) | `just build tier1` / `just build tier2` | 31.3 / 27.8 |
 | nightly | Build (nuttx) / Build (freertos) / `just build tier2-nightly` / Build (threadx_linux) | 46.5 / 36.2 / 28.9 / 22.7 |
 
 ### A slow runner
@@ -217,7 +217,7 @@ What was decided, and why:
 - **Its own interlock, default off.** While this was written, two of the three
   runners (`newslab-118-server`, `newslab-133`) showed online and idle and took
   no job for hours — every L3 that day ran on `newslab-server-241`, and nightly
-  and run-matrix sat queued. A required-path job routed to that pool waits
+  and platform-matrix sat queued. A required-path job routed to that pool waits
   rather than fails, so `NROS_SELF_HOSTED_READY` (on, for L3, which nothing
   requires) was not reused.
 - **`check-cli-tests` was held back, then routed (PR #2177).** With
@@ -340,7 +340,7 @@ merge-group runs, the restore step in `check-fast` took 0–1 s against the
 - **Status:** DONE (2026-10-13, PR #2072)
 
 `just generate-bindings` costs 21.7 min in the scheduled `gate` and 18.7 min
-in `host-tests`, every run. Before changing anything, find out which part is
+in `host-suite`, every run. Before changing anything, find out which part is
 codegen and which part is the cargo build of the generated crates. Then cache
 the output keyed on its real inputs: the interface packages, the CLI's
 codegen version (`codegen_version.rs`) and the ament set. Never key it on
@@ -353,7 +353,7 @@ must still fire).
 **Landed (2026-10-13, PR #2072).** Measured first, and the split was not the one the
 title assumed: almost none of it is codegen.
 
-| part of `just generate-bindings` (host-tests run 38200041441, 1153 s) | time |
+| part of `just generate-bindings` (host-suite run 38200041441, 1153 s) | time |
 | --- | --- |
 | discovery + 222 standalone `nros generate-rust` | ~18 s |
 | `nros sync` of the 9 Rust / bridge / empty workspaces | 0–39 s each, ~70 s |
@@ -370,7 +370,7 @@ the probe compiles), so a tree with fresh sidecars runs the whole verb in
 it recreates. The CI cost was missing persistence on a hit and an unshared
 runtime on a miss. Both are fixed, in that order of importance:
 
-- **The cache** (`gate` check-build and `host-tests`). `scripts/ci/bindings-cache.sh
+- **The cache** (`gate` check-build and `host-suite`). `scripts/ci/bindings-cache.sh
   key` prints the key, the fallback prefix and the cached path list; the
   workflows restore before the verb and save right after it, and the job still
   runs `just generate-bindings`, whose own freshness regenerates anything
@@ -418,9 +418,9 @@ key, and `packages/cli` or a crate it compiles changed on most days of the week
 this was written (0–64 commits a day), so night to night the scheduled lanes
 will mostly take the miss path — now ~10 min instead of ~19–22 — and the
 under-3-min hit is what the second lane of the same night (`gate` 02:1x then
-`host-tests` 03:2x, same `main` commit, one cache scope) and every re-run get.
+`host-suite` 03:2x, same `main` commit, one cache scope) and every re-run get.
 
-Measured on CI before merge, two `workflow_dispatch` runs of `host-tests` on
+Measured on CI before merge, two `workflow_dispatch` runs of `host-suite` on
 the PR branch (same commit, hosted `ubuntu-22.04`, CI image):
 
 | run | restore | `just generate-bindings` | save |
@@ -431,7 +431,7 @@ the PR branch (same commit, hosted `ubuntu-22.04`, CI image):
 The key step costs 1 s with the ament walk included.
 
 **Scheduled runs on main (2026-10-13).** Both lanes took the miss path, as
-predicted: `host-tests` 38341537002 spent 696 s in `generate message
+predicted: `host-suite` 38341537002 spent 696 s in `generate message
 bindings` (1154 s the night before), and the `gate` check-build sibling,
 38336075498, spent 673 s (1420 s the night before). Restore and save cost
 1–2 s each. Still to do: a night where the second lane lands on the first
@@ -666,20 +666,20 @@ gates cost about 80 + 39 s solo.
 
 - **Status:** BLOCKED (2026-11-17). Local acceptance is met (both no-change
   re-runs under 10 %, below). The remaining step is the CI half: a NO-CHANGE
-  second run of each self-hosted lane on the same runner. `run-matrix` cannot
+  second run of each self-hosted lane on the same runner. `platform-matrix` cannot
   pick its runner and main moves between runs, so that needs a
   `workflow_dispatch` pair on one SHA pinned to one runner. Live-peer and the
   nightly ports run on hosted VMs with no persistent tree, and are out of
   this item's reach.
   Checked 2026-11-17: that pair cannot be pinned without changing
-  `run-matrix.yml`. Its `workflow_dispatch` takes no inputs, and its
+  `platform-matrix.yml`. Its `workflow_dispatch` takes no inputs, and its
   `runs-on` (`[self-hosted, linux, nros-qemu, nros-sdk-zephyr, nros-big]`)
   matches both `newslab-118-server` and `newslab-server-241`, which carry
   identical labels. Pinning needs a runner input or a per-host label, i.e. a
   workflow or runner-registration change, so the item stays BLOCKED on that
   decision.
 
-Live-peer (84.5 + 33.7 min of fixture build), run-matrix (about 30 min a
+Live-peer (84.5 + 33.7 min of fixture build), platform-matrix (about 30 min a
 tier) and the nightly ports (23–47 min each) are build-bound, and they run on
 self-hosted runners that could keep warm build trees. Measure what the
 fixture build re-does on a second run with no source change; by the
@@ -696,12 +696,12 @@ from, measured from the job logs rather than assumed:
 
 | lane | runner | what persisted between runs |
 | --- | --- | --- |
-| run-matrix `tier 1`, `tier 2` | self-hosted | sccache (rustc only) — `actions/checkout`'s `git clean -ffdx` deleted `build/`, every `generated/`, leaf build and target dir; tier 1's clean alone took 5 min |
+| platform-matrix `tier 1`, `tier 2` | self-hosted | sccache (rustc only) — `actions/checkout`'s `git clean -ffdx` deleted `build/`, every `generated/`, leaf build and target dir; tier 1's clean alone took 5 min |
 | nightly `tier 2 nightly` | self-hosted | the same |
-| live-peer (all three build jobs) | **hosted** `ubuntu-22.04`, CI image | nothing |
+| ros2-interop (all three build jobs) | **hosted** `ubuntu-22.04`, CI image | nothing |
 | nightly ports (`nuttx`, `freertos`, `threadx_linux`, …) | **hosted** `ubuntu-22.04`, CI image | nothing |
 
-So the item's premise holds for three lanes, not all: live-peer and the
+So the item's premise holds for three lanes, not all: ros2-interop and the
 nightly ports run on hosted VMs with no tomorrow. They are left as they are —
 a persistent tree is not available there, and `actions/cache` (10 GB per repo,
 shared with W3's and W4's entries) cannot hold multi-GB fixture trees without
@@ -896,7 +896,7 @@ would let a gate report a verdict about a tree it never looked at — the
 
 The CI second-run time per lane (two runs of each lane on the same
 self-hosted runner) is still not measured as a NO-CHANGE re-run: the runners
-took jobs again on 2026-10-16, but `run-matrix` cannot pick its runner and
+took jobs again on 2026-10-16, but `platform-matrix` cannot pick its runner and
 main moved between every pair of runs, so each later build is incremental
 over real source changes. What the persistent tree gives on CI so far (all
 runs on main, each lane on the runner it landed on):
@@ -906,7 +906,7 @@ runs on main, each lane on the runner it landed on):
 | `just build tier2`, newslab-118-server | 1526 s | 1170 s | 723 s |
 | `just build tier1`, newslab-server-241 | 4611 s | 4790 s | 3396 s |
 
-38980380118 is the first run-matrix run green on both tiers since
+38980380118 is the first platform-matrix run green on both tiers since
 2026-10-14 (issues 1933, 1934 fixed on the way). tier 1 stays on 241, which
 is W7's slow runner.
 
@@ -1520,7 +1520,7 @@ Three runners are registered: `newslab-118-server`, `newslab-server-241` and
 
 **Like for like, per step (2026-11-03..17, steps that succeeded and took
 over 20 s, median minutes).** Whole-job times cannot be compared: almost
-every run-matrix job in the window failed, at different stages, so a job's
+every platform-matrix job in the window failed, at different stages, so a job's
 length says how far it got. A step that succeeded is comparable across
 runners, though not at the same commit and not from the same cache state.
 
@@ -1572,7 +1572,7 @@ window, a larger timeout) for the user.
 **What this does not settle.** No pair here is the same commit on both
 hosts with the same cache state, so the 2-2.6x mixes host speed with cache
 warmth and load. The smallest dispatch that would settle it: one
-`run-matrix.yml` `workflow_dispatch` of tier 1 at depth `build`, at one
+`platform-matrix.yml` `workflow_dispatch` of tier 1 at depth `build`, at one
 commit, run once on each of `newslab-118-server` and `newslab-server-241`
 while no local gate runs on 241, then the same pair again with warm caches.
 That is two to four ~30-75 min jobs. Today it cannot be pointed at one
@@ -1585,7 +1585,7 @@ repo: a runner started with `NROS_RUNNER_HOST=<id>` carries `nros-host-<id>`,
 derived by `scripts/lib/runner-host-label.sh` and checked by
 `runner-doctor.sh`. Once the operator re-registers the runners with it, the
 dispatch above can name one host. It still needs a `host` input on
-`run-matrix.yml` that adds the label to the job's `runs-on`; that input is
+`platform-matrix.yml` that adds the label to the job's `runs-on`; that input is
 not written yet. A follow-up moves the heavy scheduled jobs (tier 2 and the
 pairwise nightly) onto the role label `nros-heavy`, which the operator gives
 to `newslab-118-server`, so they no longer land on host 241. It lands after

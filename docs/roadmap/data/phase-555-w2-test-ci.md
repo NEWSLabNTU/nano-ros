@@ -90,8 +90,8 @@ What does not hold is the ladder's "when" column against the cadence ruling:
 
 - The table says tier 1 runs on "every commit, pre-push". `support-status.md:48`
   says the same ("`ci` (every change)").
-- In fact, tier 1's runtime half runs daily in `run-matrix.yml`'s `tier1` job
-  (`run-matrix.yml:23`, cron `0 6`; `host-tests.yml:13-17` says why it moved
+- In fact, tier 1's runtime half runs daily in `platform-matrix.yml`'s `tier1` job
+  (`platform-matrix.yml:23`, cron `0 6`; `host-suite.yml:13-17` says why it moved
   there). The PR and merge-queue lanes run only the compile gate subset and
   `test-unit`.
 - The 2026-11-04 amendment defers to RFC-0122 D8. D8 names a `merge-runtime`
@@ -131,7 +131,7 @@ package, and a configuration is a fixture axis.
 
 | # | Question | Answer the ruling gives | Measured fact | Recommendation |
 | --- | --- | --- | --- | --- |
-| 1 | Does RFC-0061's ladder still promise tier 1 "every commit"? | **No.** The rungs say what a run covers, and RFC-0122 D8 as ruled says how often CI runs it. No runtime rung gates a merge. | Tier 1's runtime half is on cron `0 6` (`run-matrix.yml:23`). The PR and queue lanes are compile, source gates and `test-unit` (`gate.yml:1093`). `support-status.md:48` still says "every change". | **Amend 0061.** Split the "when" column into "a developer runs it locally when" and "CI runs it" (daily for tier 1 runtime, the gate on every PR and queue entry). State that no runtime rung gates a merge. The book row follows. |
+| 1 | Does RFC-0061's ladder still promise tier 1 "every commit"? | **No.** The rungs say what a run covers, and RFC-0122 D8 as ruled says how often CI runs it. No runtime rung gates a merge. | Tier 1's runtime half is on cron `0 6` (`platform-matrix.yml:23`). The PR and queue lanes are compile, source gates and `test-unit` (`gate.yml:1093`). `support-status.md:48` still says "every change". | **Amend 0061.** Split the "when" column into "a developer runs it locally when" and "CI runs it" (daily for tier 1 runtime, the gate on every PR and queue entry). State that no runtime rung gates a merge. The book row follows. |
 | 2 | RFC-0122 D8 names `merge-runtime` (on `merge_group`) and `release-gate`. Do 0061's 2026-11-04 amendment and RFC-0114's cadence binding keep pointing at them? | **No.** D9's fallback is taken: the three boards move to `daily`, and `merge-runtime` is at most dispatch-only. | Neither job exists in `.github/workflows/` on `origin/main` (`be32b60ade`). RFC-0114 lines 135-137 cite `merge-runtime` as the job behind `merge`. | **RFC-0122's reviewer (`workspace-system-model`) amends D8/D9** to record the ruling, and 0061's 2026-11-04 amendment then points at the amended row. Landed: PR #3665 (phase-535 W8, merged 2026-11-13; replaced the closed #3594) records the ruling in RFC-0122 D9 and adds `merge-runtime.yml` as `workflow_dispatch`-only, never part of `CI`. |
 
 ### Open: the ruling does not decide these

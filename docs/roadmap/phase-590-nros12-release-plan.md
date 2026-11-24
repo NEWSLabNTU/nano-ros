@@ -14,8 +14,8 @@ past it (`b61082063c`, 2026-11-23). A consumer on the released CLI, such as the 
 whose default branch pins `0.6.0-nros11`, cannot take any fix made since. The island's
 `nano-ros-next` work and the commit pin (issue 2645, phase-478 I26) both wait for a release.
 An nros12 candidate was already rehearsed: dry run 44170501730 on 2026-11-17, at `2ee0286144`,
-built `0.6.0-nros12` and passed its installed probe. A red `host-tests` run on 2026-11-18 then
-blocked it, which is what made `host-tests` and `live-peer` release lanes (phase-567 W1,
+built `0.6.0-nros12` and passed its installed probe. A red `host-suite` run on 2026-11-18 then
+blocked it, which is what made `host-suite` and `ros2-interop` release lanes (phase-567 W1,
 amended 2026-11-18).
 
 ## What is in it since nros11
@@ -69,7 +69,7 @@ regeneration only if `NROS_CODEGEN_VERSION` did not move. Check it at the cut by
 ## Blockers
 
 A release cuts only from a commit that all five scheduled lanes passed: `nightly.yml`,
-`run-matrix.yml` tier 1 and tier 2, `host-tests.yml` and `live-peer.yml`. A docs-only
+`platform-matrix.yml` tier 1 and tier 2, `host-suite.yml` and `ros2-interop.yml`. A docs-only
 descendant of such a commit also counts (`scripts/release/release-lanes-green.py`). Since the
 user's ruling of 2026-11-24, a green `workflow_dispatch` of a lane counts as well, but only on
 `main`, at the release commit itself (not a docs-only ancestor), with every job of the run green.
@@ -78,12 +78,12 @@ A dispatch on a branch never counts. Run against
 
 | lane (cron, UTC) | last green | failing now |
 | --- | --- | --- |
-| `host-tests` (03:00) | 2026-11-20 `659ee14b07` | **book probe, installed track**: step 27 of `book/src/start/install.md` runs `nros completions` with a `$SHELL` it cannot name (`$SHELL names no shell nros completes in`); **feature-sweep**: `nros-node [alloc,rmw-lending]` fails clippy `-D warnings`; **rt-sched levels**: `linux_rust_thread_census_is_placed_by_the_priority_plan`, after `levels-cpp`'s Zephyr configure refused (`the metadata probe generated no bound table for builtin_interfaces`) |
-| `live-peer` (04:00) | 2026-11-20 `0a3e2755f3` | `pubsub_zephyr_cortex_m_ros2_interop_e2e` (`nros_zephyr_cortex_m_publisher_reaches_ros2_topic_echo`), and the fixture build for the runner-board rows |
+| `host-suite` (03:00) | 2026-11-20 `659ee14b07` | **book probe, installed track**: step 27 of `book/src/start/install.md` runs `nros completions` with a `$SHELL` it cannot name (`$SHELL names no shell nros completes in`); **feature-sweep**: `nros-node [alloc,rmw-lending]` fails clippy `-D warnings`; **rt-sched levels**: `linux_rust_thread_census_is_placed_by_the_priority_plan`, after `levels-cpp`'s Zephyr configure refused (`the metadata probe generated no bound table for builtin_interfaces`) |
+| `ros2-interop` (04:00) | 2026-11-20 `0a3e2755f3` | `pubsub_zephyr_cortex_m_ros2_interop_e2e` (`nros_zephyr_cortex_m_publisher_reaches_ros2_topic_echo`), and the fixture build for the runner-board rows |
 | `nightly` (05:00) | 2026-11-20 `b28c0fbaca` | **island-shaped-zephyr**: the merge-queue snapshot is stale (`NROS_DERIVED_MAX_SUBSCRIBERS` 3 vs a live 4; regenerate with `just check island-shaped-zephyr-regen`); **stack-floor drift**: 1 of 7 rows failed (issue 2795 is the open report-path item); **ThreadxLinux e2e**: `test_rtos_session_open_outlasts_a_late_router` |
-| `run-matrix` tier 1 + tier 2 (06:00) | none since nros11: red every night from 2026-11-16 | **tier 1 and tier 2-nightly builds**: the `linux` fixture stage stops at `features/src/demo_bringup`, `the parameter store cannot be sized: the entity inventory REFUSED`. This is likely a consequence of the parameter-capacity breaking changes above, with a feature-demo image not stating a capacity. **tier 2**: 6 real failures (its `junit-real.xml`; a first reading of this plan named four `[SKIPPED:lane]` tests instead, see B2): `image_features_shared_configure`, `out_of_tree_rmw_e2e`, `zephyr_cortex_m_cpp_zenoh_pubsub_e2e`, `zephyr_renode_twin` (issue 2815), `zero_copy::test_zero_copy_message_info` and `sched_dims_applied`. **From 2026-11-23 every scheduled tier 1/2 run stops before building** on `unknown lane 'lane=tier…'` (B11). |
+| `platform-matrix` tier 1 + tier 2 (06:00) | none since nros11: red every night from 2026-11-16 | **tier 1 and tier 2-nightly builds**: the `linux` fixture stage stops at `features/src/demo_bringup`, `the parameter store cannot be sized: the entity inventory REFUSED`. This is likely a consequence of the parameter-capacity breaking changes above, with a feature-demo image not stating a capacity. **tier 2**: 6 real failures (its `junit-real.xml`; a first reading of this plan named four `[SKIPPED:lane]` tests instead, see B2): `image_features_shared_configure`, `out_of_tree_rmw_e2e`, `zephyr_cortex_m_cpp_zenoh_pubsub_e2e`, `zephyr_renode_twin` (issue 2815), `zero_copy::test_zero_copy_message_info` and `sched_dims_applied`. **From 2026-11-23 every scheduled tier 1/2 run stops before building** on `unknown lane 'lane=tier…'` (B11). |
 
-`run-matrix` is the critical path: no run of it has been green since the last release.
+`platform-matrix` is the critical path: no run of it has been green since the last release.
 
 ### Blocker tracker
 
@@ -99,20 +99,20 @@ on `main` that meets the rule above, is green after the fix.
 | B4 | nightly | island-shaped Zephyr snapshot stale | [2886](../issues/archived/2886-island-shaped-zephyr-snapshot-stale.md) | NXP 175 | #4688 (merged, `d9b387f9ef`: regenerated snapshot; every delta is the stock node interfaces, phase-556 W13, plus issue 2493; one fixture defect fixed) | fixed: on main; verify on the next scheduled nightly |
 | B5 | nightly | stack-floor row: Rust action server on nucleo-f767zi-zephyr overflows RAM by 77,440 B | [2887](../issues/archived/2887-stack-floor-nucleo-action-server-rust-ram-overflow.md) | nros 175 | `617e65bd94`, `ba2fca6ee4` (on main) | fixed: the 2026-11-23 nightly links and walks the row (90,708 B); archived |
 | B6 | nightly | ThreadX-Linux `session_open_outlasts_a_late_router` | [2888](../issues/archived/2888-threadx-linux-late-router-session-open.md) | nros 133 | #4699 (docs closure, merged) | closed: a duplicate of issue 2777; the 2026-11-23 nightly passes the test |
-| B7 | host-tests | installed-track probe: `nros completions` with an unnamed `$SHELL` | [2892](../issues/archived/2892-installed-probe-completions-shell.md) | nros 139 AUO book | #4683 (merged: install step 5 runs `nros completions bash`) | fixed (issue resolved); verify on the next scheduled `host-tests` installed-track probe |
-| B8 | host-tests | feature-sweep: `nros-node [alloc,rmw-lending]` clippy | (PR only) | nros 241 | #4679 (merged, `39561fa93b`) | fixed: on main; verify on the next scheduled `host-tests` |
-| B9 | host-tests | rt-sched: `levels-cpp` Zephyr bound table missing; census test | [2890](../issues/archived/2890-levels-cpp-zephyr-bound-table-probe.md) | nros 133 (probe), nros 118 (lane) | #4682 (lane half, merged); #4699 (code half: the probe cache discard keeps the outputs, merged) | fixed: both halves on main; verify on the next scheduled `host-tests` |
-| B10 | live-peer | Zephyr Cortex-M publisher to `ros2 topic echo`; runner-board fixture build | [2889](../issues/archived/2889-live-peer-zephyr-cortex-m-ros2-echo.md) | nros 118 | #4684 (lane half, merged); #4631 (the cell failure, [2825](../issues/2825-test-wait-outlasts-nextest-kill.md), merged); `deb4c05454` (the fixture step stopped on a unit-test module's id on 11-22 and 11-23); #4718 (nros 139: the host `ros2_cli_parity_interop` cell compared `service list -t` unsorted after renaming nodes) | dispatch 45148744207 (main `4e4004bd14`): both board cells passed; the host cells failed on that ordering defect and on B17. DONE: scheduled run 45324656188 (main `11a82cf908`, 2026-11-24) green in every job; 2889 resolved |
+| B7 | host-suite | installed-track probe: `nros completions` with an unnamed `$SHELL` | [2892](../issues/archived/2892-installed-probe-completions-shell.md) | nros 139 AUO book | #4683 (merged: install step 5 runs `nros completions bash`) | fixed (issue resolved); verify on the next scheduled `host-suite` installed-track probe |
+| B8 | host-suite | feature-sweep: `nros-node [alloc,rmw-lending]` clippy | (PR only) | nros 241 | #4679 (merged, `39561fa93b`) | fixed: on main; verify on the next scheduled `host-suite` |
+| B9 | host-suite | rt-sched: `levels-cpp` Zephyr bound table missing; census test | [2890](../issues/archived/2890-levels-cpp-zephyr-bound-table-probe.md) | nros 133 (probe), nros 118 (lane) | #4682 (lane half, merged); #4699 (code half: the probe cache discard keeps the outputs, merged) | fixed: both halves on main; verify on the next scheduled `host-suite` |
+| B10 | ros2-interop | Zephyr Cortex-M publisher to `ros2 topic echo`; runner-board fixture build | [2889](../issues/archived/2889-live-peer-zephyr-cortex-m-ros2-echo.md) | nros 118 | #4684 (lane half, merged); #4631 (the cell failure, [2825](../issues/2825-test-wait-outlasts-nextest-kill.md), merged); `deb4c05454` (the fixture step stopped on a unit-test module's id on 11-22 and 11-23); #4718 (nros 139: the host `ros2_cli_parity_interop` cell compared `service list -t` unsorted after renaming nodes) | dispatch 45148744207 (main `4e4004bd14`): both board cells passed; the host cells failed on that ordering defect and on B17. DONE: scheduled run 45324656188 (main `11a82cf908`, 2026-11-24) green in every job; 2889 resolved |
 | B11 | tier 1, tier 2, tier 2-nightly | `fixture-lane: unknown lane 'lane=tier1'` (and `lane=tier2`): every scheduled tier 1/2 run stops here. This, not B1, stopped the 2026-11-23 run | [2893](../issues/archived/2893-lane-arg-spelling-stops-fixture-build.md) | nros 139 | #4685 (merged, `476a3735ba`; `lane-arg-spelling` test) | fixed: on main; verify on the next scheduled tier 1 and tier 2 runs |
 | B12 | nightly | `ClockBoard.cpp:35` uses `PRId64`, which the embedded C++ libc lacks: the QemuBaremetal, FreertosMps2 and ThreadxRiscv64 builds stop (nightly 45115997343) | [2894](../issues/archived/2894-clock-board-cpp-pri-macros-embedded.md) | nros 175 | #4707 (merged, `bd723d5a40`: the example prints without `PRId64`) | fixed: on main; verify on the next scheduled nightly |
 | B13 | nightly | freertos-posix C-port smoke does not link: the ARM TLS shim (`__aeabi_read_tp` to `__tls_base`) is compiled into the x86 host build (nightly 45115997343) | [2895](../issues/archived/2895-freertos-compat-tls-on-hosted-smoke.md) | nros 175 | #4707 (merged, `ef6cfb8122`: a hosted FreeRTOS build defaults the bare-metal shims off) | fixed: on main; verify on the next scheduled nightly |
 | B14 | nightly | ThreadxLinux C-port smoke hangs after `thread stack of 400 bytes is below PTHREAD_STACK_MIN`: the ThreadX fork's linux port refuses a below-minimum timer-thread stack instead of raising it (CLAUDE.md: a stack size is a floor the port raises, issue 0667) | [2896](../issues/archived/2896-threadx-linux-port-below-floor-stack-hangs.md) | nros 133 | #4699 (fork `ee703dae`, pin bump, merged) | fixed: on main; verify on the next scheduled nightly |
 | B15 | tier 2 | a readiness marker rides Zephyr's deferred log, which drops lines under load, so a cell that worked reads as a timeout; `sched_dims_applied` CorePinPlacement a53 (B2's last row) is the second site. The release check has no flake allowance, so this blocks | [2847](../issues/2847-zephyr-readiness-marker-rides-droppable-log.md) | nros 241 | #4704 (issue widened to both sites, merged); #4712 (code fix: Zephyr threads wait for log-buffer room instead of dropping, on every deferred-log board, plus a fast gate against opt-outs) | fix in review: draft until its full gate and the deferred-log board cells are green (the class is every Zephyr row except native_sim, 18 rows) |
-| B16 | live-peer | the host (`regression`) job's fixture step took 309 min of its 350-min cap on 11-23 (149 builds): every row re-runs a workspace-wide configure that never converges on a runner without the Zephyr SDK, and about 141 rows are built for 41 cells | [2905](../issues/2905-live-peer-regression-fixture-rows-outgrow-hosted-cap.md) | nros 118 | #4715 (configure only the row's image; name rows by test id) | fix in review (draft until its full gate) |
-| B17 | live-peer | the two zenoh `ros2_action_e2e` host cells hand the nano binary its router as `NROS_ENTRY_LOCATOR`, a build-time name no run-time reader reads, so it dials the default port (renamed in phase-581 W6) | 2908 (filed in #4718) | nros 139 | #4718 (both sites, plus a gate that a test's run-time env name has a reader) | fix gated green; in review |
+| B16 | ros2-interop | the host (`regression`) job's fixture step took 309 min of its 350-min cap on 11-23 (149 builds): every row re-runs a workspace-wide configure that never converges on a runner without the Zephyr SDK, and about 141 rows are built for 41 cells | [2905](../issues/2905-live-peer-regression-fixture-rows-outgrow-hosted-cap.md) | nros 118 | #4715 (configure only the row's image; name rows by test id) | fix in review (draft until its full gate) |
+| B17 | ros2-interop | the two zenoh `ros2_action_e2e` host cells hand the nano binary its router as `NROS_ENTRY_LOCATOR`, a build-time name no run-time reader reads, so it dials the default port (renamed in phase-581 W6) | 2908 (filed in #4718) | nros 139 | #4718 (both sites, plus a gate that a test's run-time env name has a reader) | fix gated green; in review |
 
 Owners are the sessions the manager routed each blocker to (2026-11-23). B5 is in the same family as
-issue 2772. The 118 session owns the `host-tests` / `live-peer` lane wiring itself.
+issue 2772. The 118 session owns the `host-suite` / `ros2-interop` lane wiring itself.
 
 The release workflow path itself is not a blocker. W3 of phase-567 rehearses it end to end
 (the island-shaped workspace job, both starter images, `verify-starter-image.sh` and the
@@ -145,7 +145,7 @@ The other way is a quiet night. The four crons start at 03:00, 04:00, 05:00 and 
 So a commit passes all five only if no code lands between about 02:50 and 06:20 UTC. Docs-only
 merges are fine. On the chosen night, the merge queue lands docs only in that window, or is
 paused. Then `release-lanes-green.py --shas-from <that sha>` (run read-only, as this plan did)
-must print no `REFUSED` line once the 06:00 `run-matrix` finishes, about 10:30 UTC.
+must print no `REFUSED` line once the 06:00 `platform-matrix` finishes, about 10:30 UTC.
 
 ### W3 -- cut and rehearse
 
@@ -189,7 +189,7 @@ reasoning:
   them with the merge queue's usual turnaround.
 - W2 needs one quiet night after the last fix. The night of 2026-11-25/26 is the earliest
   realistic one; 26-28 leaves two retries for a lane that flakes.
-- The rehearsal (W3) and publish (W4) fit inside the same day, after `run-matrix` finishes at
+- The rehearsal (W3) and publish (W4) fit inside the same day, after `platform-matrix` finishes at
   about 10:30 UTC.
 
 If W1 is not done by 2026-11-27, the window slides day for day. The plan holds no date the user

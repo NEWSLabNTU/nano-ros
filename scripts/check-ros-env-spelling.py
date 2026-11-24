@@ -117,13 +117,13 @@ ALLOWLIST = {
     # These source ROS before invoking `just`, so the Rust harness has an ament
     # prefix to find at all. They cannot delegate to `RosEnv` — `RosEnv` has not
     # been compiled yet. The distro literal is the runner image's own pin.
-    ".github/workflows/host-tests.yml":
+    ".github/workflows/host-suite.yml":
         "CI job bootstrap: sources ROS for the runner image before `just` runs; "
         "distro is the image pin, not a test's choice",
     ".github/workflows/nightly.yml":
-        "CI job bootstrap, as host-tests.yml",
+        "CI job bootstrap, as host-suite.yml",
     ".github/workflows/gate.yml":
-        "CI job bootstrap, as host-tests.yml",
+        "CI job bootstrap, as host-suite.yml",
 
     # --- developer environment SSoT ------------------------------------------
     "activate.fish":

@@ -12,10 +12,10 @@
 #                (`just zephyr build-one/ci-both/check-copy-out`).
 #   (the weekly `zenoh-probe` and the book bootstrap/installed probes left this
 #   file in phase-559 W4: zenoh-probe for weekly.yml, the two book probes
-#   because host-tests.yml runs the same tracks every day.)
+#   because host-suite.yml runs the same tracks every day.)
 #
 # This file is also where the DISTRIBUTED half of `just ci-matrix-nightly` lives
-# (the self-hosted monolithic job moved to run-matrix.yml, phase-559 W5a) —
+# (the self-hosted monolithic job moved to platform-matrix.yml, phase-559 W5a) —
 # RFC-0061's tier-2
 # pairwise cover over platform x lang x rmw x kind. It runs DISTRIBUTED, because
 # the fixture build scripts need per-platform toolchain env that only the
@@ -24,7 +24,7 @@
 #   - `lane`          computes the cover (`lane-coords tier2-nightly`)
 #   - `changes`       derives the platform matrix from it, instead of a hand list
 #   - `lane-coverage` asserts every lane module actually has a job somewhere in
-#                     nightly CI — `linux` in host-tests.yml, `zephyr` in the
+#                     nightly CI — `linux` in host-suite.yml, `zephyr` in the
 #                     zephyr-* jobs, the rest in the platform matrix
 # Without that last job the coverage claim would be a sentence in an RFC: a new
 # platform could join the matrix, join the lane, and never be built by anything.
@@ -54,7 +54,7 @@ on:
   schedule:
     # ONE cron (phase-559 W4b; S1: tools read "the latest scheduled run").
     # Before, 05:00 ran the Zephyr jobs and 07:00 the platform sweep, and
-    # `matrix-nightly`, which had no guard, ran on both (it is run-matrix.yml's
+    # `matrix-nightly`, which had no guard, ran on both (it is platform-matrix.yml's
     # now, phase-559 W5a).
     - cron: "0 5 * * *"
 
@@ -98,7 +98,7 @@ jobs:
       # and nothing after it writes into them, so a combined action stores
       # nothing more than the split does while risking whatever else lands
       # under `target` in a future edit to this job. Measured on the live
-      # cache under the sibling `nros-cli-*` key in host-tests.yml: 116 MB
+      # cache under the sibling `nros-cli-*` key in host-suite.yml: 116 MB
       # (restore/save split) vs 8194 MB (combined action) under the SAME key —
       # the repository's 10 GB Actions cache total was at 11.69 GB, so GitHub
       # was evicting, including `gate.yml`'s own sccache entry that the
@@ -232,7 +232,7 @@ jobs:
         run: |
           set -euo pipefail
           # Modules THIS job can run. The lane also needs `linux` and `zephyr`,
-          # which have their own homes in the tier (host-tests / the zephyr-* jobs) —
+          # which have their own homes in the tier (host-suite / the zephyr-* jobs) —
           # `lane-coverage` asserts that, rather than this list quietly implying it.
           runnable="qemu freertos nuttx threadx_linux threadx_riscv64"
           # Derived from the lane, not listed: adding a platform to `matrix::CELLS`
@@ -373,7 +373,7 @@ jobs:
       # composite action (`./.github/actions/setup-nros-cli`) is the SOLE
       # populator of `packages/cli/target` in this job, and nothing after
       # it writes into that dir. Measured on the live cache under this
-      # SAME key in host-tests.yml: 116 MB (restore/save split) vs
+      # SAME key in host-suite.yml: 116 MB (restore/save split) vs
       # 8194 MB (combined action) — the repository's 10 GB Actions cache
       # total was at 11.69 GB, so GitHub was evicting, including
       # `gate.yml`'s own sccache entry that the required PR check reads.
@@ -523,7 +523,7 @@ jobs:
           source ./setup.bash
           source /opt/ros/humble/setup.bash
           # `_nextest-platform` runs `cargo metadata` over the nros-tests
-          # workspace → the px4-sitl-tests path dep must exist (same as host-tests).
+          # workspace → the px4-sitl-tests path dep must exist (same as host-suite).
           nros setup --source px4-rs
           # `just test <platform>`, not `just <platform> test`: the scope verb
           # narrows the run to the platform's own coordinates (issue 1758).
@@ -568,7 +568,7 @@ jobs:
       # fact. `check-skip-budget` names WHICH preconditions were unmet, but the
       # per-test detail lives in the junit and nightly uploaded nothing at all —
       # so triaging `threadx_linux` meant re-deriving from a job log that
-      # records the count and not the cause. host-tests has kept its junit since
+      # records the count and not the cause. host-suite has kept its junit since
       # #29; this is the same step for the platform matrix.
       - name: Upload nextest JUnit (${{ matrix.board }})
         if: always()
@@ -761,7 +761,7 @@ jobs:
           # actually runs it, so a stale entry is legible rather than a bare
           # allow-list. `linux` also gates tier 1 on every commit.
           declare -A elsewhere=(
-            [linux]="run-matrix.yml tier1 — cron 0 6, just ci tier1 run (+ host-tests.yml test-unit)"
+            [linux]="platform-matrix.yml tier1 — cron 0 6, just ci tier1 run (+ host-suite.yml test-unit)"
             [zephyr]="nightly.yml zephyr-* jobs — cron 0 5"
           )
           ran="$(jq -r '.[]' <<<"$RAN" | tr '\n' ' ')"
@@ -927,7 +927,7 @@ jobs:
       # composite action (`./.github/actions/setup-nros-cli`) is the SOLE
       # populator of `packages/cli/target` in this job, and nothing after
       # it writes into that dir. Measured on the live cache under this
-      # SAME key in host-tests.yml: 116 MB (restore/save split) vs
+      # SAME key in host-suite.yml: 116 MB (restore/save split) vs
       # 8194 MB (combined action) — the repository's 10 GB Actions cache
       # total was at 11.69 GB, so GitHub was evicting, including
       # `gate.yml`'s own sccache entry that the required PR check reads.
@@ -978,7 +978,7 @@ jobs:
       # The image bakes bin/cargo-clippy from a non-rustup-owner layer; `rustup
       # target add` trips on the clippy-preview conflict, and Zephyr's Rust build
       # runs `cargo clippy` as a ninja step. One script for this line and
-      # live-peer; it used to be two hand copies of a sequence that deleted
+      # ros2-interop; it used to be two hand copies of a sequence that deleted
       # clippy and never reinstalled it (issue 1474 — the order is the fix).
       - name: Unblock rustup clippy-preview conflict
         run: ./scripts/ci/rustup-restore-clippy.sh
@@ -1054,7 +1054,7 @@ jobs:
       # composite action (`./.github/actions/setup-nros-cli`) is the SOLE
       # populator of `packages/cli/target` in this job, and nothing after
       # it writes into that dir. Measured on the live cache under this
-      # SAME key in host-tests.yml: 116 MB (restore/save split) vs
+      # SAME key in host-suite.yml: 116 MB (restore/save split) vs
       # 8194 MB (combined action) — the repository's 10 GB Actions cache
       # total was at 11.69 GB, so GitHub was evicting, including
       # `gate.yml`'s own sccache entry that the required PR check reads.
@@ -1300,7 +1300,7 @@ jobs:
       # composite action (`./.github/actions/setup-nros-cli`) is the SOLE
       # populator of `packages/cli/target` in this job, and nothing after
       # it writes into that dir. Measured on the live cache under this
-      # SAME key in host-tests.yml: 116 MB (restore/save split) vs
+      # SAME key in host-suite.yml: 116 MB (restore/save split) vs
       # 8194 MB (combined action) — the repository's 10 GB Actions cache
       # total was at 11.69 GB, so GitHub was evicting, including
       # `gate.yml`'s own sccache entry that the required PR check reads.

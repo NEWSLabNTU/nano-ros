@@ -1,6 +1,6 @@
 ---
 id: 2765
-title: "The AN536 Cyclone fragmented-sample live-peer cell went red twice on 2026-11-11 over slirp, where the NIC cannot drop a fragment; cause unknown"
+title: "The AN536 Cyclone fragmented-sample ros2-interop cell went red twice on 2026-11-11 over slirp, where the NIC cannot drop a fragment; cause unknown"
 status: open
 type: bug
 severity: low
@@ -11,7 +11,7 @@ found: 2026-11-20
 
 ## What happened
 
-The live-peer lane runs
+The ros2-interop lane runs
 `pubsub_freertos_an536_cyclone_ros2_interop_e2e::nros_freertos_an536_cyclone_listener_keeps_receiving_a_fragmented_sample`
 (mps3-an536 FreeRTOS, Cyclone, slirp, `-icount shift=auto`, a host ROS 2
 publisher sending a 10,576-byte sample at 10 Hz) on fixtures it builds in the
@@ -74,16 +74,16 @@ reassembly. Close this as not reproduced if the cell stays green through
 
 ## No recurrence (2026-11-24)
 
-The failed runs among the last 15 of `run-matrix`, `host-tests`, `live-peer`
+The failed runs among the last 15 of `platform-matrix`, `host-suite`, `ros2-interop`
 and `nightly` (12 failed runs, 2026-11-14 to 2026-11-23, read with
 `gh run view --log-failed`) were scanned for this cell:
 
-- The `run-matrix` hits (7 lines, `FAIL [0.004-0.008s]`) are `[SKIPPED:lane]`
+- The `platform-matrix` hits (7 lines, `FAIL [0.004-0.008s]`) are `[SKIPPED:lane]`
   panics in a bare nextest run: the cell is out of that lane, so it was never
   run there. They are not reds.
-- The only real failure is live-peer 44864729982 on 2026-11-21, already
+- The only real failure is ros2-interop 44864729982 on 2026-11-21, already
   attributed above to issue 2820, which #4589 fixed.
-- The cell passed in every live-peer run since, including the scheduled
+- The cell passed in every ros2-interop run since, including the scheduled
   45324656188 on 2026-11-24.
 
 The 2026-11-11 shape (no sample at all) has not been seen since 2026-11-11.

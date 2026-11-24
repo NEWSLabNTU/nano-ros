@@ -12,7 +12,7 @@
 # elsewhere. Removing them cannot change an artifact, only how much room the
 # next step has.
 #
-# WHAT THE NUMBERS SAY (issue 1353, measured on host-tests run 35813854577):
+# WHAT THE NUMBERS SAY (issue 1353, measured on host-suite run 35813854577):
 # the job reaches `just ci tier1` with 22 G free and the tier wants more than
 # that — `packages/cli/target` 404 M -> 13 G, a fresh `target/` at 4.1 G,
 # `build/` +3 G — so it dies on a write. Raising the runner is not available
@@ -60,7 +60,7 @@ before_kb="$(_free_kb)"
 
 # The candidates, each with the reason it is safe to remove HERE. A path is
 # only ever a candidate when the reason holds for both lanes this runs on
-# (`gate`'s `check` job and `host-tests`' integration job).
+# (`gate`'s `check` job and `host-suite`' integration job).
 #
 # 1. The hosted tool cache. GitHub mounts the runner's `/opt/hostedtoolcache`
 #    into a `container:` job as `$RUNNER_TOOL_CACHE` (`/__t`), on the same
@@ -96,7 +96,7 @@ before_kb="$(_free_kb)"
 #    freeing a measured 5.2 G per run since phase-466 W4. This is the same
 #    mechanism pointed at the rest of the preinstalled software.
 #
-#    WHY IT IS NEEDED. The `host-tests` integration job enters `just ci tier1`
+#    WHY IT IS NEEDED. The `host-suite` integration job enters `just ci tier1`
 #    with ~24.8 GiB free, three runs agreeing within 10 MB, and the tier spends
 #    all of it (issue 1353). Of the 146 G filesystem, ~57 G is the checkout
 #    (42 G `examples`, 14 G `build`) and ~71 G is outside it: the image plus
@@ -167,7 +167,7 @@ else
     done
 fi
 
-# 3. Package-manager and pip caches. These are the removals `live-peer.yml`
+# 3. Package-manager and pip caches. These are the removals `ros2-interop.yml`
 #    carried INLINE before this script existed, kept here so the repo has ONE
 #    reclaim rather than a second spelling of it (CLAUDE.md: add a shared
 #    helper, never a second idiom).

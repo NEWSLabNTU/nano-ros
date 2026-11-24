@@ -80,7 +80,7 @@ in one run, each passing alone with time to spare.
 | host 133, NXP #4171 (pre-#4165) | `required-features-tests`, `workspace-probes`, `workspace-all` | p50 5 | empty **95 %**, make lost 12 of 32 tokens |
 | host 133, W2b (with #4165) | `workspace-probes` | p50 4 | empty 91 %, lost 13 of 32 |
 | host 175, #4127 | `ament-census-sizing`, `cpp`, `census-hooks-complete`, `c`, `cli-tests` | p50 10, ~33 load | empty 35 % |
-| **daily CI**, host-tests 44228702426 shard [2/3] | `workspace-all`, `template-copy-out#scaffold:runner-package` | GitHub-hosted `ubuntu-22.04`, 4 vCPU, p50 3 | 4-token pool, empty 91 %, lost 3 of 4 |
+| **daily CI**, host-suite 44228702426 shard [2/3] | `workspace-all`, `template-copy-out#scaffold:runner-package` | GitHub-hosted `ubuntu-22.04`, 4 vCPU, p50 3 | 4-token pool, empty 91 %, lost 3 of 4 |
 
 Alone, the same gates take: `workspace-probes` 375 s (139) and 540 s (133);
 `cli-tests` 859 s (139).
@@ -461,7 +461,7 @@ configure, so a warm-up there would buy nothing.
 
 ## Status against "Done when" (2026-11-23, host 118)
 
-- **Daily build-tier shards: met.** `host-tests` scheduled runs, `check / build
+- **Daily build-tier shards: met.** `host-suite` scheduled runs, `check / build
   tier + no-std` shards [1/3], [2/3], [3/3]:
 
   | run | date | [1/3] | [2/3] | [3/3] |

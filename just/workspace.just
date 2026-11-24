@@ -628,7 +628,7 @@ rust-targets:
     # profile and no components, so on a host whose first touch of it was the
     # line below there was no `rust-src`, and every build-std image failed
     # with `…/library/Cargo.lock does not exist`. `just setup <scope>` reaches
-    # this recipe and not `rust-pinned-toolchains` (measured: the live-peer
+    # this recipe and not `rust-pinned-toolchains` (measured: the ros2-interop
     # board-zephyr job). Same two-step form as that recipe, for its reason.
     rustup toolchain install --profile minimal "{{NIGHTLY}}"
     for c in $(awk '/^components *=/ { sub(/^[^=]*= */, ""); gsub(/[][",]/, " "); print; exit }' tools/rust-toolchain.toml); do

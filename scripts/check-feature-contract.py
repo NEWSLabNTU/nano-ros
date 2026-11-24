@@ -81,7 +81,7 @@ from lib.tracked import tracked
 # package this gate used to require outright. All three expose `loads(str)`,
 # which is the only entry point below. The chain is widest-first so the gate
 # runs wherever ANY of them is present: requiring `toml` alone made it exit 2
-# on the `run-matrix` container, and a gate that cannot run reports the same
+# on the `platform-matrix` container, and a gate that cannot run reports the same
 # red as a gate that failed. Sibling spelling: `scripts/check-fixture-groups.py`.
 try:
     import tomllib  # Python 3.11+

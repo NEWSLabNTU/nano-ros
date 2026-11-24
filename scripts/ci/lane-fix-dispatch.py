@@ -4,7 +4,7 @@
 A commit that fixes a red scheduled lane says so with a trailer:
 
     Fixes-Lane: nightly
-    Fixes-Lane: tier 2, live-peer
+    Fixes-Lane: tier 2, ros2-interop
 
 When it lands on `main`, `automation.yml`'s `lane-fix` job runs this script,
 which dispatches each named lane's workflow on `main`
@@ -13,8 +13,8 @@ release commit counts as release evidence (`release-lanes-green.py`), so the
 fix is proven within hours instead of at the next night's cron.
 
 NAMES  a lane name is one `release-lanes-green.py` LANES names (`nightly`,
-       `tier 1`, `tier 2`, `host-tests`, `live-peer`), or its workflow file's
-       stem (`run-matrix`). Case, spaces, `-` and `_` do not matter (`tier-2`,
+       `tier 1`, `tier 2`, `host-suite`, `ros2-interop`), or its workflow file's
+       stem (`platform-matrix`). Case, spaces, `-` and `_` do not matter (`tier-2`,
        `Tier2`). Several lanes of one workflow dispatch it once. Any other name
        is REFUSED: the check fails, naming it and the known names, and nothing
        is dispatched for it.
@@ -113,10 +113,24 @@ def resolve(values: list[str], lanes=None) -> tuple[list[str], list[str]]:
     return sorted(wfs), bad
 
 
+# User ruling 2026-11-24 -- three lanes were renamed, with no alias: an old
+# name is REFUSED like any unknown one, and the refusal names its new spelling,
+# because a trailer written before the rename is the likeliest place to meet it.
+RENAMED = {
+    "host-tests": "host-suite",
+    "live-peer": "ros2-interop",
+    "run-matrix": "platform-matrix",
+}
+
+
 def refusal(bad: list[str], lanes=None) -> str:
     shown = ", ".join(f"`{b}`" if b else "an empty name" for b in bad)
+    renamed = {key(old): new for old, new in RENAMED.items()}
+    hints = [f"`{b}` was renamed `{renamed[key(b)]}`" for b in bad if b and key(b) in renamed]
     return (
-        f"{TRAILER}: {shown} is not a scheduled lane. Name one of: "
+        f"{TRAILER}: {shown} is not a scheduled lane"
+        + (f" ({'; '.join(hints)})" if hints else "")
+        + ". Name one of: "
         + ", ".join(known_names(lanes))
         + " (release-lanes-green.py LANES, or a lane workflow's file stem)."
     )
@@ -253,18 +267,23 @@ def self_test(quiet: bool = False) -> int:
 
     lanes = _load_release_lanes()
     chk("trailer read", trailer_values(["fix: x\n\nFixes-Lane: nightly\n"]) == ["nightly"])
+    # A pre-rename name is refused, never mapped, and the refusal names the new one.
+    old_wfs, old_bad = resolve(["live-peer"])
+    chk("an old lane name is refused, not mapped", old_wfs == [] and old_bad == ["live-peer"])
+    chk("the refusal names the new spelling",
+        "`live-peer` was renamed `ros2-interop`" in refusal(old_bad))
     chk("trailer key is case-free, values split on commas",
-        trailer_values(["x\n\nfixes-lane:  tier 2, live-peer\n"]) == ["tier 2", "live-peer"])
+        trailer_values(["x\n\nfixes-lane:  tier 2, ros2-interop\n"]) == ["tier 2", "ros2-interop"])
     chk("a line that only mentions the key is not a trailer",
         trailer_values(["see Fixes-Lane: below\n"]) == [])
     chk("no trailer", trailer_values(["fix: x\n"]) == [])
 
     wfs, bad = resolve(["nightly"], lanes)
     chk("nightly -> nightly.yml", (wfs, bad) == (["nightly.yml"], []))
-    for spelling in ("tier 2", "tier-2", "Tier2", "tier_1", "run-matrix"):
-        chk(f"{spelling} -> run-matrix.yml", resolve([spelling], lanes) == (["run-matrix.yml"], []))
-    chk("tier 1 and tier 2 dispatch run-matrix once",
-        resolve(["tier 1", "tier 2"], lanes)[0] == ["run-matrix.yml"])
+    for spelling in ("tier 2", "tier-2", "Tier2", "tier_1", "platform-matrix"):
+        chk(f"{spelling} -> platform-matrix.yml", resolve([spelling], lanes) == (["platform-matrix.yml"], []))
+    chk("tier 1 and tier 2 dispatch platform-matrix once",
+        resolve(["tier 1", "tier 2"], lanes)[0] == ["platform-matrix.yml"])
     chk("every LANES name resolves",
         all(resolve([n], lanes)[1] == [] for n, _, _ in lanes))
     # Negative control: a misspelled name is refused and dispatches nothing.
@@ -274,7 +293,7 @@ def self_test(quiet: bool = False) -> int:
     chk("a non-lane workflow is refused (automation)", resolve(["automation"], lanes)[1] == ["automation"])
     rc, lines = run_check(["x\n\nFixes-Lane: nighlty\n"], lanes)
     chk("check refuses an unknown name", rc == 1 and "nighlty" in lines[0] and "nightly" in lines[0])
-    rc, _ = run_check(["x\n\nFixes-Lane: live-peer\n"], lanes)
+    rc, _ = run_check(["x\n\nFixes-Lane: ros2-interop\n"], lanes)
     chk("check passes a known name", rc == 0)
 
     window = quiet_window(lanes)
@@ -291,19 +310,19 @@ def self_test(quiet: bool = False) -> int:
     msgs = ["a\n\nFixes-Lane: tier 2\n", "b\n\nFixes-Lane: tier 1, nightly\n", "c\n"]
     rc, _ = run_dispatch(msgs, at(12), window, sent.append, deferred=False, lanes=lanes)
     chk("a push outside the window dispatches each workflow once",
-        rc == 0 and sent == ["nightly.yml", "run-matrix.yml"])
+        rc == 0 and sent == ["nightly.yml", "platform-matrix.yml"])
     sent.clear()
     rc, lines = run_dispatch(msgs, at(window[0]), window, sent.append, deferred=False, lanes=lanes)
     chk("a push inside the window dispatches nothing and says when it will",
         rc == 0 and sent == [] and "deferred" in lines[0])
     sent.clear()
     rc, _ = run_dispatch(msgs, at(window[1]), window, sent.append, deferred=True, lanes=lanes)
-    chk("the deferred run dispatches", sent == ["nightly.yml", "run-matrix.yml"])
+    chk("the deferred run dispatches", sent == ["nightly.yml", "platform-matrix.yml"])
     sent.clear()
-    rc, lines = run_dispatch(["x\n\nFixes-Lane: nighlty, live-peer\n"], at(12), window,
+    rc, lines = run_dispatch(["x\n\nFixes-Lane: nighlty, ros2-interop\n"], at(12), window,
                              sent.append, deferred=False, lanes=lanes)
     chk("a push with one bad name fails and still dispatches the good one",
-        rc == 1 and sent == ["live-peer.yml"] and "nighlty" in lines[0])
+        rc == 1 and sent == ["ros2-interop.yml"] and "nighlty" in lines[0])
     sent.clear()
     rc, _ = run_dispatch(["x\n"], at(12), window, sent.append, deferred=False, lanes=lanes)
     chk("a push naming no lane dispatches nothing", rc == 0 and sent == [])

@@ -387,7 +387,7 @@ coordinate:
 
 A coordinate whose platform has no registry row FAILS the collector, naming
 the test and the coordinate. A board is evidenced by whichever lane ran its
-cells, so `Linux` (host-tests, merge lanes) and `ZephyrNativeSim` (the Zephyr
+cells, so `Linux` (host-suite, merge lanes) and `ZephyrNativeSim` (the Zephyr
 jobs) are covered with no job of their own.
 
 A job that never reached its tests leaves no records. The collector also
@@ -408,7 +408,7 @@ nothing.
 ### D13.3 — The results file, one per run
 
 The machine-readable input to every view. A final `board-results` job in
-`nightly.yml`, `weekly.yml`, `merge-runtime.yml` and `host-tests.yml`
+`nightly.yml`, `weekly.yml`, `merge-runtime.yml` and `host-suite.yml`
 (`needs:` every job, `if: always()`) runs `scripts/ci/board-results.py`: it
 downloads the run's junit and evidence ledgers, reads the jobs and steps
 (`gh run view --json jobs`), and uploads `board-results.json`:
@@ -504,7 +504,7 @@ so it is evidence rather than a date.
 2. **Per run: `board-results.json`** (D13.3), the input to everything below.
 3. **The standing view: the book, rendered at deploy.** `publish.yml`'s
    `deploy` gains a `workflow_run` trigger on the nightly, the weekly and
-   `host-tests`, collects the newest results (at most 30 runs per lane, plus
+   `host-suite`, collects the newest results (at most 30 runs per lane, plus
    the `board-evidence` branch), and an mdBook preprocessor fills generated
    marker regions through D13.5's derivation:
    - `support-status.md`, per board: the last N runs as a row of marks

@@ -42,10 +42,10 @@ phase-535 W8.6); the `L*` names are the original plan's.
 | **host boards' per-merge runtime (measurement)** | `workflow_dispatch` only | hosted, one shard per board | `merge-runtime.yml` (phase-535 W8): re-measures what a per-merge runtime lane would cost. The boards are `daily` since the 2026-11-12 ruling (RFC-0122 D9); never in `CI` |
 | **L3 cross-build** | `merge_group` | self-hosted | `queue.yml` `l3`, advisory, gated on `NROS_SELF_HOSTED_READY` |
 | **post-submit** | `push` to main | hosted | `post-submit.yml` `dep-chain` |
-| **tier 1 / tier 2 runtime** | `schedule` (daily) | self-hosted | `run-matrix.yml` `tier1`, `matrix` |
+| **tier 1 / tier 2 runtime** | `schedule` (daily) | self-hosted | `platform-matrix.yml` `tier1`, `matrix` |
 | **per-platform + Zephyr nightly** | `schedule` (daily) | hosted | `nightly.yml` `platform` (build + `just test <platform>`), the Zephyr jobs (build only, issue 2462), and the self-hosted `matrix-nightly` pairwise cover |
-| **host unit + feature sweep** | `schedule` (daily) | hosted | `host-tests.yml` |
-| **L5 interop** | `schedule` (daily) | hosted | `live-peer.yml` (ROS 2 peers in the CI image) |
+| **host unit + feature sweep** | `schedule` (daily) | hosted | `host-suite.yml` |
+| **L5 interop** | `schedule` (daily) | hosted | `ros2-interop.yml` (ROS 2 peers in the CI image) |
 | **book probe** | `schedule` (weekly, Sunday) | hosted | `weekly.yml` |
 | **L6 hardware** | manual | self-hosted `nros-hw` | real boards |
 
@@ -99,7 +99,7 @@ job's runner reads back as a machine.
 `queue.yml`'s L3 requests `[self-hosted, linux, nros-queue]`. `gate.yml`'s
 `merge_group` jobs do not: they feed the required `CI` and run hosted, so a
 self-hosted outage can never block the required path. Every scheduled self-hosted lane
-(run-matrix, the nightly) requests `nros-qemu`. A queue runner is registered as
+(platform-matrix, the nightly) requests `nros-qemu`. A queue runner is registered as
 `nros-queue,nros-sdk-zephyr,nros-big` and never with `nros-qemu`, so no scheduled
 job can be handed to it. GitHub gives a job only to a runner that holds every
 label the job requests. Before this split, one long scheduled run on the only
@@ -160,7 +160,7 @@ saying "containers are insufficient" is describing jobs that build images or
 start containers.
 
 Ours do neither, and that was **measured**, not assumed. Across all the
-self-hosted lanes (`run-matrix`, the `queue` L3 job, and the `nightly` matrix;
+self-hosted lanes (`platform-matrix`, the `queue` L3 job, and the `nightly` matrix;
 `build-wide` was a fourth until it was deleted): zero references to Docker, zero to KVM, zero device mounts.
 QEMU runs in pure emulation under `-icount shift=auto`, which is deterministic
 and *incompatible* with KVM, so not even `/dev/kvm` is wanted.
@@ -485,7 +485,7 @@ Consequences worth acting on:
 ## A merged lane fix names its lane
 
 A commit that fixes a red scheduled lane (`nightly`, `tier 1`, `tier 2`,
-`host-tests`, `live-peer`) says so with a trailer:
+`host-suite`, `ros2-interop`) says so with a trailer:
 
 ```text
 Fixes-Lane: tier 2

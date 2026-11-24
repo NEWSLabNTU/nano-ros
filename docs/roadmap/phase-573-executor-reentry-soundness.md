@@ -280,7 +280,7 @@ W5a's use-after-free showed only under AddressSanitizer, which no lane runs.
 A lane that builds the C run probes and the executor harness with ASan makes
 that class visible without a hand-run.
 
-Done as `just check address-sanitizer`, run daily by host-tests.yml's `asan`
+Done as `just check address-sanitizer`, run daily by host-suite.yml's `asan`
 job:
 - the guard-condition lifetime test;
 - nros-node's lib tests with `rmw-cffi`.

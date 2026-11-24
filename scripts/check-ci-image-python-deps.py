@@ -46,7 +46,7 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DOCKERFILE = os.path.join(ROOT, "ci", "docker", "zephyr-ros", "Dockerfile")
 # Every image a lane runs `just zephyr setup` in. ci-base joined when
-# host-tests' integration job moved to `just setup tier1` (issue 1651): a
+# host-suite' integration job moved to `just setup tier1` (issue 1651): a
 # second image with the same requirement is a second copy of the list, and a
 # copy this gate does not read is the drift it exists to stop.
 DOCKERFILES = (

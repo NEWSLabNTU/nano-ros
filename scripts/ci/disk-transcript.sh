@@ -16,7 +16,7 @@
 #     22, 23 and 25, all of which completed successfully, and
 #     `check-runs/107462875362/annotations` holds exactly one annotation — the
 #     runner's own `IOException`, which the SERVICE wrote, not the runner. The
-#     channel itself works: the sibling `host-tests` job 107478998501, whose
+#     channel itself works: the sibling `host-suite` job 107478998501, whose
 #     runner survived, shows all three notices in its annotations. So a
 #     workflow-emitted annotation is buffered on the runner and dies with it.
 #   * `$GITHUB_STEP_SUMMARY` does NOT survive either. The run page renders no

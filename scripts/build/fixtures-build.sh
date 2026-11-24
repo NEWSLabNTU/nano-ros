@@ -454,7 +454,7 @@ if [ "${#cargo_records[@]}" -gt 0 ]; then
         [ -n "$dir" ] || return 0
         echo "  → $dir ${args}"
         # issue 1500 — per-row wall clock, so a fixture log says which rows
-        # cost what (the `host-tests` rust-core stage was 13 minutes of
+        # cost what (the `host-suite` rust-core stage was 13 minutes of
         # `--quiet` cargo with no time anywhere in it).
         local row_t0=$SECONDS
         # Phase 210.E.3.d.native — pre-cargo `nros configure` writes the

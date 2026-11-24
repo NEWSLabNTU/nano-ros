@@ -26,7 +26,7 @@ advertising compile-tier coverage on an event where only a SMOKE runs.
 
 WHERE: the workflow that holds the `just check build` step, FOUND rather than
 named. It was `gate.yml` until phase-559 W7 moved the build tier to
-`host-tests.yml` (gate.yml lost its `schedule`); a hard-coded path would then
+`host-suite.yml` (gate.yml lost its `schedule`); a hard-coded path would then
 have reported "could not find the step" forever, or — worse, had the step's
 name survived somewhere else — checked a file the tier no longer runs in. A
 step with no event `if:` runs on every event its workflow triggers on, so the
@@ -186,7 +186,7 @@ def self_test() -> None:
         count=1,
     )
     if widened == good:
-        # The step has no event `if:` (phase-559 W7: host-tests.yml), so the
+        # The step has no event `if:` (phase-559 W7: host-suite.yml), so the
         # claim is made TRUE by triggering the workflow on pull_request.
         widened = re.sub(r"^on:\n", "on:\n  pull_request:\n", good, count=1, flags=re.M)
     assert widened != good, "the positive control could not be built"

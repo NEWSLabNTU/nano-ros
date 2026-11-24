@@ -21,7 +21,7 @@ is ignored, so a stale weights file costs balance and nothing else.
 fill, for work that shard runs outside the list (phase-489 W8: the
 `template-copy-out` job's last shard also runs `ament-census-sizing`).
 `--preload-first <unit>` does the same for the FIRST shard (issue 2141 added
-it for `host-tests`' shard 1, which also ran the fast tier; that job is gone,
+it for `host-suite`' shard 1, which also ran the fast tier; that job is gone,
 so no lane sets it today). A unit is never printed, so it
 changes balance and nothing else.
 

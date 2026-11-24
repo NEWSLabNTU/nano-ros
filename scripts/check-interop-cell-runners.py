@@ -35,7 +35,7 @@ said they did not. Measured 2026-09-06: the ROS-interop exclusion
 `just linux test` and `just test-integration`, NOT to the root sweep. Root
 `just test-all` runs `cargo nextest --workspace` and filters only by lane
 coordinate, absent toolchains and `ros_editions`, so the ten native interop
-binaries are in it -- including on `host-tests.yml`'s integration job, which
+binaries are in it -- including on `host-suite.yml`'s integration job, which
 runs `just ci tier1` on every push to main inside the
 `ghcr.io/newslabntu/nano-ros-ci:humble` container. (The one exception is
 `qos_zephyr_ros2_interop_e2e`: a zephyr coordinate, out of the tier-1 cover.)
@@ -43,7 +43,7 @@ runs `just ci tier1` on every push to main inside the
 The predicate here is a FOCUSED runner, and that is a different thing from
 being swept along:
 
-  * A sweep cannot be aimed at ONE cell, which is what running a live-peer test
+  * A sweep cannot be aimed at ONE cell, which is what running a ros2-interop test
     against a real ROS 2 node takes -- issue 1127's Direction is explicit that
     the order is "one cell end to end, by hand, recorded" BEFORE any lane.
   * A sweep brings up no peer. The named runners do (`test-ros2*` want the
@@ -810,7 +810,7 @@ def main(argv: list[str]) -> int:
             "`just test-all` sweep does reach these binaries, and does not count:\n"
             "it cannot be aimed at one cell, it brings up no peer, and an unmet\n"
             "precondition inside it becomes a <skipped> nobody can tell from a\n"
-            "pass. A live-peer cell needs a runner that sets its peer up."
+            "pass. A ros2-interop cell needs a runner that sets its peer up."
         )
         return 1
 

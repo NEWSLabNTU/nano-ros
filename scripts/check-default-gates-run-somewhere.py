@@ -29,7 +29,7 @@ production:
 
   R4 NO CRON ON CI (phase-559 W7) The workflow holding the required `CI` has
                  no `schedule` trigger. A daily gate belongs to a tier file
-                 that owns a cron (host-tests.yml, nightly.yml), where a red is
+                 that owns a cron (host-suite.yml, nightly.yml), where a red is
                  a verdict on `main`. On `CI`'s workflow a scheduled job is a
                  sibling `CI` excuses on every merge-gating event, so it looks
                  like part of the required check while gating nothing — and it
@@ -71,7 +71,7 @@ machinery below and were already covered; the rest are matched as `just <recipe>
 
 WHAT THIS DOES NOT REQUIRE
 
-Merge-gating. `check-build` is deliberately daily/manual only (host-tests.yml):
+Merge-gating. `check-build` is deliberately daily/manual only (host-suite.yml):
 it resolves artifacts no PR job builds, and making it required once turned every
 pull request red for a day (`check-lane-contracts` now forbids that shape). A
 DAILY or PER-COMMIT signal is the bar here, not a blocking one -- so both rules
@@ -687,7 +687,7 @@ def aggregator_errors(text, wf_name, recipes):
             f"{wf_name}: holds the required `{AGGREGATOR_NAME}` and has a `schedule` trigger (R4).\n"
             f"      A daily job here is a sibling `{AGGREGATOR_NAME}` excuses on every merge-gating\n"
             f"      event — it reads as part of the required check and gates nothing.\n"
-            f"      Move it to a tier file that owns a cron (host-tests.yml, nightly.yml;\n"
+            f"      Move it to a tier file that owns a cron (host-suite.yml, nightly.yml;\n"
             f"      phase-559 W7) and drop the trigger.")
     for n in needs:
         if n not in jobs:
@@ -987,7 +987,7 @@ def main() -> int:
             f"      full-tier runs and its reds accumulate until somebody finds\n"
             f"      several at once (issue 1040). It need not gate a merge — a\n"
             f"      nightly or post-submit signal is the bar. Add it to a daily\n"
-            f"      tier file (host-tests.yml, nightly.yml — gate.yml has no\n"
+            f"      tier file (host-suite.yml, nightly.yml — gate.yml has no\n"
             f"      `schedule`, R4), or to post-submit.yml if per-commit\n"
             f"      attribution is worth its cost."
         )
@@ -1014,7 +1014,7 @@ def main() -> int:
     # elsewhere is still silent HERE, and the whole cost of the 2026-09-05
     # defect was a lane reporting one red for three gates. Weakening this to
     # "all placements shadowed" lets exactly that stand — `api-parity` also
-    # reaches an unshadowed `just ci tier1` in host-tests.yml, so the weaker
+    # reaches an unshadowed `just ci tier1` in host-suite.yml, so the weaker
     # rule found only `no-std` when run against the unfixed gate.yml.
     for gate, where in sorted(place.items()):
         if gate in SHADOWED_PLACEMENT_OK:

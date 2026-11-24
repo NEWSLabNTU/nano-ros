@@ -3,7 +3,7 @@
 # Issue 2130 — release a fixture build's COMPILE intermediates once its
 # binaries are linked, on a CI lane that must keep the fixtures themselves.
 #
-# `live-peer`'s host job builds every native fixture its cells resolve on a
+# `ros2-interop`'s host job builds every native fixture its cells resolve on a
 # GitHub-hosted runner, and it ran out of disk before the cells finished: the
 # builds took 106 G free down below 49 G. Issue 2100's lever (delete a gate's
 # whole output once it has a verdict) does not apply here, because the cells
@@ -51,7 +51,7 @@
 ## The byte counts are INTEGERS from `du` itself, never through `awk` (issue
 # 2469). `awk 'END {print $1+0}'` printed a root's total as `1.74022e+10` under
 # mawk, the CI image's awk, once it passed 2^31 bytes. Bash arithmetic refused
-# that, which aborted the loop after the FIRST root: live-peer's host job
+# that, which aborted the loop after the FIRST root: ros2-interop's host job
 # released `build/` and never reached the example build dirs, and reported
 # "released 0 MiB" (run 42957501616). gawk prints the integer, so it never
 # failed on a developer host.

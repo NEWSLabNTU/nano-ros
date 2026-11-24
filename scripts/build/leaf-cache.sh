@@ -23,7 +23,7 @@
 #     Caused by: attempting to make an HTTP request, but --frozen was specified
 #
 # — a headline that reads as a network flake and invites a retry that cannot
-# help. `host-tests` died on it for 20 consecutive runs, in the step BEFORE any
+# help. `host-suite` died on it for 20 consecutive runs, in the step BEFORE any
 # test, so the only CI lane that runs E2E ran nothing at all.
 #
 # This does NOT relax `--locked` or `--frozen`. The BUILD stays hermetic, which
@@ -183,7 +183,7 @@ nros_warm_leaf_cache() {
 # root"), which held only while that cargo could reach the network. Issue 2444
 # made `nros build --offline` set `CARGO_NET_OFFLINE` for every cargo it drives,
 # west's included, so an unwarmed app graph now fails on the first crate only it
-# needs: live-peer 43675564346 (2026-11-15) died `failed to download
+# needs: ros2-interop 43675564346 (2026-11-15) died `failed to download
 # annotate-snippets v0.11.5` (zephyr-sys's `bindgen` `experimental` feature)
 # with "--offline was specified". So: seed the app's lock from the registry pins,
 # as the leaf lanes do (issue 1937), then fetch its graph ONCE with the same

@@ -155,7 +155,7 @@ nros_nextest_cpu_budget_args() {
 #
 # For anything that must BUILD what a `cargo nextest run` will then run —
 # `cargo nextest list` above all. Issue 1500: `check-nextest-test-filters`
-# listed with no profile, so on `host-tests` it compiled all 587 workspace test
+# listed with no profile, so on `host-suite` it compiled all 587 workspace test
 # binaries in the `test` profile, and `test-all` then compiled the same 587
 # again in `nros-relwithdebinfo` a minute later: two cold workspace builds in
 # one lane, the profile being a `-C metadata` input that shares nothing.

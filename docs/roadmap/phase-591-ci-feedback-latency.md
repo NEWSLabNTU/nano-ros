@@ -14,9 +14,9 @@ for a day or more, and agents could not move on. Three causes, all measured:
    | lane | failed | median | max |
    | --- | --- | --- | --- |
    | `nightly` | 29 of 30 | 127 min | 657 min |
-   | `run-matrix` (tier 1 + 2) | 27 of 30 | 269 min | 1009 min |
-   | `live-peer` | 21 of 30 | 182 min | 389 min |
-   | `host-tests` | 15 of 30 | 113 min | 200 min |
+   | `platform-matrix` (tier 1 + 2) | 27 of 30 | 269 min | 1009 min |
+   | `ros2-interop` | 21 of 30 | 182 min | 389 min |
+   | `host-suite` | 15 of 30 | 113 min | 200 min |
 
    Most reds stop in the fixture BUILD, before any cell runs, so each blocker hid the next
    one for a night: B11, then B12/B13/B14, then B19, then B22.
@@ -35,7 +35,7 @@ The fast path is healthy and is not in scope: `pr-checks` median 8 min, the requ
 - Every scheduled lane produces a verdict on every run (cells ran), even when a fixture
   build fails.
 - A merged lane fix is proven within about 6 hours.
-- Tier 2 wall time under 5 hours; the `live-peer` host job under 120 min (under half its
+- Tier 2 wall time under 5 hours; the `ros2-interop` host job under 120 min (under half its
   350-min cap).
 
 ## Work items
@@ -68,7 +68,7 @@ Acceptance: the release check accepts a qualifying dispatch and refuses one with
 job or at another commit (self-tests with a negative control); the next lane fix after this
 lands is proven within 6 hours of its merge.
 
-### W3 -- `live-peer` host job time (owner: nros 118)
+### W3 -- `ros2-interop` host job time (owner: nros 118)
 
 - **Status:** OPEN
 
@@ -84,7 +84,7 @@ Acceptance: the host job under 120 min on two consecutive scheduled runs.
 
 - **Status:** OPEN
 
-`run-matrix` runs tier 2 (269 min) and the tier-2 pairwise cover (418 min) back to back on one
+`platform-matrix` runs tier 2 (269 min) and the tier-2 pairwise cover (418 min) back to back on one
 self-hosted runner, so a run takes 11-17 h. Run them on separate runners in parallel. The
 "Sweep orphans and disk" step took 60 min in run 44030238880; find out why and shrink it.
 
@@ -101,7 +101,7 @@ a self-hosted runner is the fallback, weighed against W7 since it takes gate cap
 
 Acceptance: each nightly platform job builds in under 60 min.
 
-### W6 -- `host-tests` shard balance (owner: nros 142, taken over from nros 118 on 2026-11-24)
+### W6 -- `host-suite` shard balance (owner: nros 142, taken over from nros 118 on 2026-11-24)
 
 - **Status:** OPEN -- in review as #4754: six shards split by measured weights
   (`scripts/ci/build-gate-weights.py`), the last shard charged for its
@@ -161,7 +161,7 @@ a slot.
 - **Status:** OPEN -- in review as #4754: `scripts/ci/lane-health.py` (run daily
   by `automation.yml`'s triage job) names a scheduled lane `NO VERDICT 2d`
   when neither of its last two UTC days had a run whose cells ran. Replayed
-  over 2026-11-18..23 it names `run-matrix` on every day from 2026-11-19.
+  over 2026-11-18..23 it names `platform-matrix` on every day from 2026-11-19.
 
 A daily report that flags any scheduled lane with no verdict for two consecutive days, read in
 the morning triage, so a lane cannot sit red-without-a-verdict for a week again.

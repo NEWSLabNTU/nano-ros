@@ -9,14 +9,14 @@ the system" -- and falls back to the system qemu only when that is absent.
 That path is inside the CHECKOUT, and `just setup tier2` is what creates it:
 the tier-2 preset includes the `qemu` module, whose `setup` ends in
 `just qemu setup-qemu`. So a job that runs the doctor BEFORE `just setup` asks
-the host for something the next step supplies. On `run-matrix` that killed
+the host for something the next step supplies. On `platform-matrix` that killed
 every run at step 2 against a system qemu 6.2, having provisioned and tested
 nothing.
 
 WHY A GATE AND NOT THREE FIXES
 
 The defect had three sites and was fixed at ONE. #279 corrected
-`run-matrix.yml`; the sibling fixes for `build-wide.yml` and `queue.yml` were
+`platform-matrix.yml`; the sibling fixes for `build-wide.yml` and `queue.yml` were
 written the same week, sat on branches whose pull requests merged without
 them, and were still broken on `main` months later -- found only by auditing
 local branches for unlanded commits. Nothing was watching, so nothing said so.
@@ -200,7 +200,7 @@ def main():
                 "      `runner-doctor.sh` looks for build/qemu/bin/qemu-system-arm\n"
                 "      FIRST, and `just setup` is what creates it -- so this asks the\n"
                 "      host for what the next step supplies. Move the doctor step\n"
-                "      after `just setup` (phase-413 W2; run-matrix.yml is the\n"
+                "      after `just setup` (phase-413 W2; platform-matrix.yml is the\n"
                 "      worked example).\n\n" % (name, job, di, dname, si, sname)
             )
         return 1

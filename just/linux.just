@@ -169,7 +169,7 @@ build-fixtures: build-fixture-rust build-fixture-extras build-workspace-fixtures
 # `just setup linux` expands to the modules of the `linux` preset, which is
 # `[linux]` — and this module had NO `setup` recipe, so the verb ran the common
 # preamble (submodule init, CLI, launch resolver) and then printed "native has no
-# `setup` recipe — nothing to provision". Meanwhile `host-tests.yml` provisioned
+# `setup` recipe — nothing to provision". Meanwhile `host-suite.yml` provisioned
 # the native lane in five hand-rolled steps, because the verb genuinely did not
 # do it. That is the gap issue 0996 measured as "provisioning verbs `just setup`
 # cannot reach".
@@ -257,7 +257,7 @@ setup:
 # the codegen step anyway — sync is also what produces the generated message
 # crates.
 #
-# `host-tests` called this recipe directly and ran NO codegen step anywhere in
+# `host-suite` called this recipe directly and ran NO codegen step anywhere in
 # the job, so the facades never existed there. The features workspace declares
 # `features = ["param_services", "lifecycle"]`, so every entry compiled without
 # them and the build died in const eval, hundreds of lines away, naming neither
@@ -325,7 +325,7 @@ build-fixture-rust:
 # large-buf) each rebuild the full dep graph into their own target dir, and
 # that duplication overruns the host-integration runner disk. Those variants
 # are covered by other lanes. No workflow runs this recipe any more (the
-# host-tests job builds the tier-1 lane, issue 1684), and a run over it must
+# host-suite job builds the tier-1 lane, issue 1684), and a run over it must
 # narrow its scope: `NROS_FIXTURES_OPTIONAL`, which let the variant-spawning
 # tests skip, is gone (issue 1758). The codegen
 # prep below covers the default example dirs (the core set).
@@ -779,7 +779,7 @@ test-ros2-lifecycle verbose="":
     fi
     cargo nextest run "${cargo_nextest_args[@]}" "${args[@]}"
 
-# phase-433 / issue 1127 — the focused live-peer lanes below. Each aims at ONE
+# phase-433 / issue 1127 — the focused ros2-interop lanes below. Each aims at ONE
 # `interop::CELLS` Runtime cell's binary; a sweep reaches the same binaries but
 # cannot be aimed at one, brings up no peer, and turns an unmet precondition
 # into a `<skipped>` nobody can tell from a pass. `_test-focused` (root
@@ -832,7 +832,7 @@ test-rosout verbose="":
 test-ros2-action verbose="":
     @just _test-focused 'binary(=ros2_action_e2e)' {{verbose}}
 
-# The ZENOH half of the actions live-peer lane — phase-455 W3, cells
+# The ZENOH half of the actions ros2-interop lane — phase-455 W3, cells
 # `native-action-rust-zenoh-{r2n,n2r}`. Until W3 the ACTIONS family had no
 # zenoh interop cell at all, so the backend whose reply-slot table issue 0902
 # exhausted had never met a stock ROS 2 peer on this path.
@@ -851,7 +851,7 @@ test-ros2-action-zenoh verbose="":
     @just _test-focused 'binary(=ros2_action_e2e) and test(zenoh)' {{verbose}}
 
 # Every ACCEPTED action goal returns a RESULT, and the zenoh reply-slot table
-# refused nothing — issue 0902 / phase-455 W2. A live-peer cell, so it needs a
+# refused nothing — issue 0902 / phase-455 W2. A ros2-interop cell, so it needs a
 # runner rather than a sweep: an unmet precondition inside one renders as
 # `<skipped>`, which nobody can tell from a pass. `_test-focused` carries the
 # shared skip accounting (see the block above — a second copy of that tail is
@@ -1148,7 +1148,7 @@ zenohd model="":
     source scripts/dev/zenohd.sh
     nros_router_exec "${NROS_LOCATOR:-tcp/127.0.0.1:7447}" "{{model}}"
 
-# ── phase-433 W5 — the live-peer REGRESSION lane ────────────────────────────
+# ── phase-433 W5 — the ros2-interop REGRESSION lane ────────────────────────────
 #
 # Runs exactly the interop cells that have a RECORDED PASS in
 # `.config/interop-verdicts.toml`, and nothing else.
@@ -1192,14 +1192,14 @@ zenohd model="":
 #           NOT a verdict, and reporting it as a regression is the mislabel
 #           this whole phase kept tripping over.
 [group("debug")]
-test-live-peer-regression runner="all" verbose="":
+test-ros2-interop-regression runner="all" verbose="":
     #!/usr/bin/env bash
     set -euo pipefail
     runner="{{runner}}"
     case "$runner" in
         host|board|board-zephyr|board-ci|all) ;;
         *)
-            echo "test-live-peer-regression: runner='$runner' is not one of" >&2
+            echo "test-ros2-interop-regression: runner='$runner' is not one of" >&2
             echo "  host | board | board-zephyr | board-ci | all. host = the cells" >&2
             echo "  whose board is this machine; board = the cells that need a" >&2
             echo "  board toolchain; board-<image> = those whose CI image builds them." >&2
@@ -1208,12 +1208,12 @@ test-live-peer-regression runner="all" verbose="":
     esac
     cells=$(python3 scripts/check-interop-verdicts.py --list-passing --runner "$runner")
     if [ -z "$cells" ]; then
-        echo "test-live-peer-regression: the ledger records no passing cell on the"
+        echo "test-ros2-interop-regression: the ledger records no passing cell on the"
         echo "  '$runner' runner, so there is nothing whose regression this lane"
         echo "  could detect. Run a cell live and record it: \`just interop-verdicts\`."
         exit 0
     fi
-    echo "== live-peer regression lane ($runner runner) — cells with a recorded PASS =="
+    echo "== ros2-interop regression lane ($runner runner) — cells with a recorded PASS =="
     echo "$cells" | sed 's/^/  /'
     # Issue 1758 — one line per binary, `<binary>\t<filter>`, selecting only
     # the cases the passing cells RECORDED. `binary(=x)` alone also ran the
@@ -1222,12 +1222,12 @@ test-live-peer-regression runner="all" verbose="":
     # selected; once a missing fixture fails rather than skips, that made the
     # lane red over cases it never claimed.
     if ! filters="$(python3 scripts/check-interop-verdicts.py --list-passing --runner "$runner" --filters)"; then
-        echo "test-live-peer-regression: could not derive the recorded cases" >&2
+        echo "test-ros2-interop-regression: could not derive the recorded cases" >&2
         exit 1
     fi
     # Each binary's junit, kept: `_test-focused` resets the one nextest writes
     # on every call, so the skipped-membership check below needs its own copies.
-    junit_dir="tmp/live-peer-junit/$runner"
+    junit_dir="tmp/ros2-interop-junit/$runner"
     rm -rf "$junit_dir"
     mkdir -p "$junit_dir"
     # Failure output ON for this lane: a real failure must print why, and a

@@ -83,7 +83,7 @@ endfunction()
 # host's DEFAULT toolchain. That is not the toolchain `nros setup` provisions
 # board targets on — it adds them to the PINNED one, `rust-toolchain.toml`'s
 # `channel` — so every cross crate died with `E0463: can't find crate for
-# core` / "the `thumbv7m-none-eabi` target may not be installed" (run-matrix
+# core` / "the `thumbv7m-none-eabi` target may not be installed" (platform-matrix
 # 38658400956, `template-copy-out`). In-tree the root file governs and nothing
 # differs, which is why only a copy saw it.
 #

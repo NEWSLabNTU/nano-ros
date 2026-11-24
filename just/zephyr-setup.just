@@ -24,7 +24,7 @@ setup *ARGS:
         --index "$(pwd)/nros-sdk-index.toml"
     # The HOST tools of every backend this lane builds, the way the freertos
     # and threadx setups already get theirs (`nros_setup_board_rmws`). Zephyr's
-    # had none, so the first Zephyr Cyclone row any lane configured — live-peer's
+    # had none, so the first Zephyr Cyclone row any lane configured — ros2-interop's
     # `west_bringup_zephyr_cyclone_user_config` — died at configure on
     # `host Cyclone idlc not found`: `[rmw.cyclonedds]` declares the store's
     # idlc and nothing here requested it. The backend list is derived from

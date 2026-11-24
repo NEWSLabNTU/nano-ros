@@ -89,7 +89,7 @@ From the workflow survey of 2026-11-04 (origin/main `68573185a6`):
   threadx-linux `cadence = "merge"`, which RFC-0114 defines as "a
   merge-gating lane". But the merge gate builds no fixture: `gate.yml` is
   compile and unit tests only (CLAUDE.md, `ci gate`). The runtime evidence
-  for those three boards comes from `run-matrix.yml` on a daily cron, on one
+  for those three boards comes from `platform-matrix.yml` on a daily cron, on one
   self-hosted runner.
 - Tier 3 (`ci full`, "pre-release") is called by no workflow, including
   `release-nros.yml`.

@@ -1034,7 +1034,7 @@ fixture-staleness:
     echo "Rebuild it (\`just build-test-fixtures\`); if the count keeps climbing,"
     echo "suspect the probe before trusting the verdict (issue 0445)."
 
-# issue 1127 / phase-433 W5 — which live-peer cells have EVER produced a verdict.
+# issue 1127 / phase-433 W5 — which ros2-interop cells have EVER produced a verdict.
 # `just fixture-staleness` above answers "which coordinate is not running"; this
 # answers the same question one level up, over history rather than over one run:
 # a `Tier::Runtime` cell in `interop::CELLS` whose subject is a live ROS 2 peer
@@ -1169,7 +1169,7 @@ zenohd locator="tcp/127.0.0.1:7447":
 # Issue 1507 — and REACHABLE is not RUN. Its lanes were tier 3, which no
 # workflow runs, and the tier-2 nightly, which stopped before this step; four
 # of the tests had rotted when it was finally run. It runs nightly in
-# `host-tests.yml`'s unit job now. A test a BUILD-VARIANT lane owns is
+# `host-suite.yml`'s unit job now. A test a BUILD-VARIANT lane owns is
 # excluded through `[profile.ignored]` in `.config/nextest.toml`, which names
 # each one's owner. `nros-tests` stays out (its ignored tests need fixtures).
 #
@@ -1207,7 +1207,7 @@ test-ignored package="":
     # which lives only in a cargo `$OUT_DIR` now. The test takes its include
     # root from NROS_C_CONFIG_INCLUDE and REFUSES without it, so this lane
     # builds nros-c, places the header, and names the dir; before this, every
-    # scheduled run failed those three tests on the refusal (host-tests run
+    # scheduled run failed those three tests on the refusal (host-suite run
     # 40157702519). Built in a scoped target dir: the CLI workspace below is a
     # different cargo root and cannot build nros-c itself.
     c_target="$(nros_scoped_target_dir test-ignored-c)"
@@ -1397,7 +1397,7 @@ test-select filter verbose="":
     echo "  NOT evidence about the code. Reasons are in the [SKIPPED] lines above."
 
 # Run ONE `nros-tests` binary with `test-select`'s skip accounting — the shared
-# body of the focused live-peer lanes (phase-433, issue 1127).
+# body of the focused ros2-interop lanes (phase-433, issue 1127).
 #
 # Not `test-select` itself, for two reasons: that one is workspace-scoped, and
 # these lanes all live in `nros-tests`, so `-p` cuts the build to one package;
@@ -1423,7 +1423,7 @@ _test-focused filter verbose="":
     args=(-p nros-tests --no-fail-fast -E '{{filter}}')
     if [ -z "{{verbose}}" ]; then
         # `--failure-output` honours NROS_TEST_FAILURE_OUTPUT, default `never` —
-        # unchanged for every caller that does not set it. The live-peer lane
+        # unchanged for every caller that does not set it. The ros2-interop lane
         # sets `final`: with `never`, run 34497290149 reported "7 real failures"
         # without one line of WHY, and because a skip is a panic the
         # skip REASONS were suppressed too, so the lane's red could not be read
@@ -1758,7 +1758,7 @@ _test-summary junit="target/nextest/default/junit.xml":
             | sort | uniq -c | sort -rn | sed 's/^/  /'
     fi
     echo "Real failures: $real / $total total failures"
-    # issue 1127 — one line, and only when the run actually reached a live-peer
+    # issue 1127 — one line, and only when the run actually reached a ros2-interop
     # binary. "Real failures: 0" is also what a sweep prints when every interop
     # cell skipped, and a cell that has skipped since the day it was written is
     # indistinguishable from a passing one. This says which it was, names any
@@ -3218,7 +3218,7 @@ rust-rtos-link-check:
     # host lane runs — provisions only the index's `build_sources` (the RMW
     # sources), never an RTOS kernel. So on a fresh runner the FreeRTOS leaf
     # died inside zpico-build with `FREERTOS_DIR=…: missing include`, and the
-    # NuttX and ThreadX-Linux leaves behind it were never reached (host-tests,
+    # NuttX and ThreadX-Linux leaves behind it were never reached (host-suite,
     # 2026-10-02 — the first time tier 1 got this far, after the disk fix).
     # Each arm now provisions exactly what it consumes, right before building,
     # through the index (`dest`/`ref`/`submodule` from data, never a path
@@ -3370,7 +3370,7 @@ nightly-triage runs="3":
 # runs on push or schedule (HARVESTED from .github/workflows, never listed):
 # NO SIGNAL = red on its last N verdicts, NEVER/RARELY FINISHES = cancelled
 # before it could say anything. gate.yml's push lane sat red for 100 runs and
-# host-tests finished 3 of 29 with nothing saying so. Never gates; nightly-report
+# host-suite finished 3 of 29 with nothing saying so. Never gates; nightly-report
 # writes the same table to its job summary every day.
 #
 #   just lane-health           just lane-health --runs 20 --threshold 5
@@ -3392,7 +3392,7 @@ lane-health *args:
 #   just matrix-triage         just matrix-triage 20
 #   just matrix-triage 8 nightly.yml
 [group("ci")]
-matrix-triage runs="8" workflow="run-matrix.yml":
+matrix-triage runs="8" workflow="platform-matrix.yml":
     @python3 scripts/ci/lane-stage.py --history --runs {{runs}} --workflow {{workflow}}
 
 # Which open PRs can never merge because nothing ever ran on them? A PR with
@@ -4883,7 +4883,7 @@ setup-launch-resolve:
     # The Python half is HALF THE TOOL, so "already built" has to mean both
     # artifacts. Keyed on the binary alone, this recipe short-circuits on a tree
     # that has the resolver and no `libplay_launch_parser_pyexec.so` beside it —
-    # which is precisely the state that left `host-tests` red: the recipe
+    # which is precisely the state that left `host-suite` red: the recipe
     # reported success, and every `$(eval …)` launch file failed at parse time
     # with "this build has no Python backend" on hosts that have Python.
     if [ -x "$bin" ] && [ ! -f "$(dirname "$bin")/libplay_launch_parser_pyexec.so" ]; then
@@ -4971,7 +4971,7 @@ setup-launch-resolve:
     # and *cannot evaluate anything*: `$(eval …)` and `.launch.py` fail with "this
     # build has no Python backend" on a host that has Python installed.
     #
-    # That is exactly what happened. `host-tests` went red on main the moment the
+    # That is exactly what happened. `host-suite` went red on main the moment the
     # W2b pin removed the link, on
     # `demo_bringup/launch/multihost.launch.xml`'s `$(eval "robot1" in (...))`,
     # and stayed red — the artifact SHAPE was verified (`readelf -d` shows no
@@ -5393,7 +5393,7 @@ _setup-common *roles:
     # Host-provisioning facts that `check-tier-preconditions` asserts for EVERY
     # tier, so every `just setup <scope>` must satisfy them — otherwise the
     # documented `setup -> build -> test` chain does not clear the checks its
-    # own test step runs, which is how host-tests sat red on three unmet
+    # own test step runs, which is how host-suite sat red on three unmet
     # preconditions it had no step to provision.
     #
     # AFTER `setup-cli`: `install-corrosion` resolves its prefix with
@@ -5406,7 +5406,7 @@ _setup-common *roles:
     #
     # The reason it is provisioned is unchanged and still right: `check fast`
     # runs `c-fmt`/`cpp-fmt`, EVERY tier runs `check fast`, so clang-format is a
-    # host fact every tier asserts. Without it host-tests' `just ci tier1`
+    # host fact every tier asserts. Without it host-suite' `just ci tier1`
     # reached the gate and died on "clang-format not found".
     #
     # The reason it must not be FATAL here is what issue 1359 measured. This

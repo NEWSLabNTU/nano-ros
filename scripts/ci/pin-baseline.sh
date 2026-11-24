@@ -2,7 +2,7 @@
 #
 # The ONE answer to "which commit does `check-submodule-pins` compare against?"
 #
-# Issue 1912. Every job in gate.yml (and host-tests.yml) used to spell
+# Issue 1912. Every job in gate.yml (and host-suite.yml) used to spell
 #
 #     base="${GITHUB_BASE_REF:-main}"
 #     git fetch --depth=1 origin "+refs/heads/$base:refs/remotes/origin/$base"

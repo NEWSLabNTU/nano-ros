@@ -22,7 +22,7 @@ guards, and it is the same shape as an authored map that stops matching what it
 names.
 
 Phase-489 W4 adds a second agreement, across WORKFLOWS: every job that runs
-`just generate-bindings` (scheduled `gate` and `host-tests`, today) restores
+`just generate-bindings` (scheduled `gate` and `host-suite`, today) restores
 and saves the bindings cache under the key, prefix and path list printed by
 `scripts/ci/bindings-cache.sh key` — never a hand-written copy — restoring
 BEFORE the verb and saving AFTER it. Both lanes run on `main`'s schedule, so

@@ -136,7 +136,7 @@ def nightly_tokens(text):
     Parse `runnable="..."`, NOT `all="..."`: the `all` set is computed from the
     lane at runtime, and the only literal `all="…"` left in the file is a
     COMMENT. `zephyr` and `linux` have their own homes (the 05:00 Zephyr cron
-    and host-tests); the workflow says so and `lane-coverage` asserts it.
+    and host-suite); the workflow says so and `lane-coverage` asserts it.
     """
     m = re.search(r'^\s*runnable="([^"]+)"', text, re.M)
     toks = set(m.group(1).split()) if m else set()

@@ -35,7 +35,7 @@ This gate's remedy text used to print
 and carried that spelling as a PASSING self-test case. A command substitution's
 exit status does not propagate to the command it sits in, and `apt-get install`
 with zero package arguments exits 0 — so when the script failed, the step
-installed NOTHING and SUCCEEDED. Measured live: `live-peer regression` run
+installed NOTHING and SUCCEEDED. Measured live: `ros2-interop regression` run
 35817736997 printed a `ModuleNotFoundError` traceback three lines above
 `0 upgraded, 0 newly installed`, went green, and ran the lane without clang.
 
@@ -401,7 +401,7 @@ def main():
         print("  A command substitution's exit status does NOT reach the command it")
         print("  sits in, and `apt-get install` with zero packages exits 0 — so when")
         print("  the script fails the step installs nothing and goes GREEN. Measured:")
-        print("  live-peer run 35817736997 ran a whole lane without clang (issue 1466).")
+        print("  ros2-interop run 35817736997 ran a whole lane without clang (issue 1466).")
         print("  An assignment alone is not enough either: under `set -uo pipefail`")
         print("  with no `-e` it just leaves the variable empty. Write:")
         print(REMEDY)

@@ -25,14 +25,14 @@
 #      run ONLY when the build's ledger names rows, so a missing fixture with
 #      no recorded build failure still stops the run as a precondition.
 #   H. reach of the lanes: the Zephyr make driver, the census prepass and the
-#      stage reporter each take the ledger road, and every run-matrix build
+#      stage reporter each take the ledger road, and every platform-matrix build
 #      runs under the owner with its cells step reading the same ledger.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 # Hermetic: every case states its own ledger. `just build <lane>` runs this
 # gate INSIDE `fixture-rows-keep-going.sh`, which exports the ledger for the
 # whole build, so an inherited NROS_FIXTURE_FAILED_ROWS turned the "unset"
-# cases into ledger cases and the gate red on run-matrix 45339477050.
+# cases into ledger cases and the gate red on platform-matrix 45339477050.
 unset NROS_FIXTURE_FAILED_ROWS NROS_FIXTURE_BUILD_LEDGER
 
 GATE=check-fixture-row-keep-going
@@ -139,15 +139,15 @@ nros_grep_q -F 'nros_fixture_row_failed "build-test-fixtures stage: $stage' just
     || bad "H: build-test-fixtures does not record a failed stage in the ledger"
 nros_grep_q -F 'nros_fixture_build_ledger_lets_cells_run check-fixtures-stale' \
     scripts/check-fixtures-stale.sh || bad "H: the stale-fixture preflight ignores the build ledger"
-wf=.github/workflows/run-matrix.yml
+wf=.github/workflows/platform-matrix.yml
 [ "$(grep -c 'fixture-rows-keep-going.sh "${{ runner.temp }}/failed-rows-' "$wf")" = 3 ] \
-    || bad "H: not every run-matrix build (tier1, tier2, tier2-nightly) runs under the keep-going owner"
+    || bad "H: not every platform-matrix build (tier1, tier2, tier2-nightly) runs under the keep-going owner"
 [ "$(grep -c 'NROS_FIXTURE_BUILD_LEDGER: ${{ runner.temp }}/failed-rows-' "$wf")" = 3 ] \
-    || bad "H: not every run-matrix cells step reads its build's ledger"
+    || bad "H: not every platform-matrix cells step reads its build's ledger"
 [ "$(grep -c "steps.build.outcome == 'success' || steps.build.outcome == 'failure'" "$wf")" = 3 ] \
-    || bad "H: not every run-matrix cells step runs after a failed build"
+    || bad "H: not every platform-matrix cells step runs after a failed build"
 
 if [ "$fail" -ne 0 ]; then
     exit 1
 fi
-echo "$GATE: OK — kept-going rows are recorded, -e holds inside them, the owner fails on any, both builders, the Zephyr leaves, the census prepass and failed stages take the ledger, and run-matrix's cells run past a failed build."
+echo "$GATE: OK — kept-going rows are recorded, -e holds inside them, the owner fails on any, both builders, the Zephyr leaves, the census prepass and failed stages take the ledger, and platform-matrix's cells run past a failed build."

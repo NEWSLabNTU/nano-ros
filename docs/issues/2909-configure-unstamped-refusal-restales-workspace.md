@@ -19,7 +19,7 @@ Measured on 2026-11-23 on `examples/workspaces/rust` (96 images). The stamp of
 no Zephyr SDK. The workspace-wide configure then took 87 s, every time. With
 the stamp in place it is a digest comparison.
 
-The hosted live-peer runner is such a host. Its fixture script ran this bare
+The hosted ros2-interop runner is such a host. Its fixture script ran this bare
 configure once per row, which cost 91-133 s per language-workspace row and
 106-121 min of a 226-min fixture loop (runs 44456527279, 44672701128). That
 was nros12 blocker B16, and #4715 works around it on the fixture side by

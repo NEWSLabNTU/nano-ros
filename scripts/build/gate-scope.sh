@@ -4,7 +4,7 @@
 # Prints NROS_GATE_SCOPE when it is set. On a developer's machine an unset
 # scope is `dev` (a worktree after `just setup-worktree`). In CI an unset scope
 # is REFUSED: a job's lane is a property of the job, and a default chosen for a
-# developer's machine is wrong on every runner. Measured: run-matrix's
+# developer's machine is wrong on every runner. Measured: platform-matrix's
 # self-hosted jobs reached `check fast` through `just build tier2`, fell to
 # `dev`, and stopped in the preflight naming four capabilities that runner
 # never had (run 42346220231). No workflow step said `check fast`, so the job

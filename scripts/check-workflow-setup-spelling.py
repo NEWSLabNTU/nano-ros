@@ -14,7 +14,7 @@ it succeeds, and the lane fails later on a precondition nothing provisioned.
 
 That is not hypothetical. `nightly.yml`'s platform job used the module spelling
 and carried a hand-rolled "Install cross targets from config/rust-targets.txt"
-step to compensate -- a workaround for a defect one word wide. host-tests hit
+step to compensate -- a workaround for a defect one word wide. host-suite hit
 the same class from the other direction and cost three CI rounds to unpick.
 
 `check-preconditions-provisioned` asserts that `just setup` PROVIDES those

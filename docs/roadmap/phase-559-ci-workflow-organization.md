@@ -77,9 +77,9 @@ SOFT (chosen, each for a tool or an operator):
 | 2 | `queue.yml` | advisory L3 on the dedicated label | S2 (advisory, never `CI`) |
 | 3 | `post-submit.yml` | unchanged | S2 |
 | 4 | `nightly.yml` | ONE daily cron, board verdicts only: per-board platform jobs, tier-1 hosted per-board shards, Zephyr 2 lines × 3 languages, px4-sitl, nuttx-make-road, Zephyr template copy-out | S1 |
-| 5 | `run-matrix.yml` | self-hosted tier 2, once a day (gains `matrix-nightly`) | S1, runner class |
-| 6 | `host-tests.yml` | unit / ignored / doc, feature-sweep, rt-sched, `check-build`, lane-census, the book probe tracks, the Humble + Jazzy edition lane | S1 |
-| 7 | `live-peer.yml` | unchanged | S4 |
+| 5 | `platform-matrix.yml` | self-hosted tier 2, once a day (gains `matrix-nightly`) | S1, runner class |
+| 6 | `host-suite.yml` | unit / ignored / doc, feature-sweep, rt-sched, `check-build`, lane-census, the book probe tracks, the Humble + Jazzy edition lane | S1 |
+| 7 | `ros2-interop.yml` | unchanged | S4 |
 | 8 | `weekly.yml` | **Sunday** cron: probe-platforms, zenoh-probe, next-stable, verify-verus | S1, S4 |
 | 9 | `release-nros.yml` | release, plus the release check (`just ci full` before publishing) | S3 |
 | 10 | `starter-image.yml` | unchanged | H4 |
@@ -95,7 +95,7 @@ the user ruled; all five stand:
 
 - L3 stays advisory.
 - The release check lives in `release-nros.yml`.
-- The book probe tracks live in `host-tests.yml`.
+- The book probe tracks live in `host-suite.yml`.
 - Tier 2 keeps its 1-wise cover.
 - `merge-runtime.yml` stays as the dispatch-only re-measure tool.
 
@@ -138,11 +138,11 @@ the user ruled; all five stand:
   `setup-cli`'s freshness assert checks the binary against the tree it runs
   in. Manager's decision of 2026-11-13 (not a user ruling): no move onto
   the action. At landing:
-  - `host-tests.yml` `feature-sweep` — `just setup linux`
+  - `host-suite.yml` `feature-sweep` — `just setup linux`
   - `queue.yml` `l3` — `just setup tier2`
-  - `run-matrix.yml` `matrix` — `just setup tier2`
-  - `run-matrix.yml` `tier1` — `just setup tier1`
-  - `run-matrix.yml` `matrix-nightly` — `just setup tier2-nightly`
+  - `platform-matrix.yml` `matrix` — `just setup tier2`
+  - `platform-matrix.yml` `tier1` — `just setup tier1`
+  - `platform-matrix.yml` `matrix-nightly` — `just setup tier2-nightly`
   - `gate.yml` `scaffold-journey` — `just scaffold-journey`
 
   Jobs that run the action first and then a `just setup` verb (the rest) get
@@ -194,13 +194,13 @@ the user ruled; all five stand:
   status live there only; this phase depends on it (W4b, W5) and does not
   restate it.
 
-### W5 — `matrix-nightly` to `run-matrix.yml`; tier 1 to nightly per-board shards
+### W5 — `matrix-nightly` to `platform-matrix.yml`; tier 1 to nightly per-board shards
 
 - **Owner:** nros 175.
 - **W5a.** `nightly.yml`'s `matrix-nightly` and `coverage-matrix-nightly`
-  move to `run-matrix.yml` (self-hosted, one daily cron), chained after
+  move to `platform-matrix.yml` (self-hosted, one daily cron), chained after
   `tier1` on the single-occupancy runner.
-- **W5b.** `run-matrix.yml`'s `tier1` runs on the SELF-HOSTED runner, not a
+- **W5b.** `platform-matrix.yml`'s `tier1` runs on the SELF-HOSTED runner, not a
   hosted one. It left the hosted runner because the full tier-1 fixture build
   did not fit (issues 1684/1685: +37 G for the linux half alone against ~16 G
   free, and `just setup linux` does not provision Zephyr native_sim or
@@ -312,7 +312,7 @@ the user ruled; all five stand:
 
   **User ruling, 2026-11-14 (option a): the merge lane's zephyr shard runs on
   the SELF-HOSTED runner.** In `merge-runtime.yml`, a separate job
-  (`merge-runtime-self-hosted`, same job name, run-matrix's tier-1 steps) runs
+  (`merge-runtime-self-hosted`, same job name, platform-matrix's tier-1 steps) runs
   only that shard, and the hosted matrix drops `zephyr` for `lane=merge`
   only. Everything else stays hosted where it fits: tier-1 zephyr (low point
   4.0 G), tier-1 threadx_linux, and merge threadx_linux (being measured).
@@ -357,7 +357,7 @@ the user ruled; all five stand:
     subject.
 
   **User ruling, 2026-11-14 (option B): linux tier 1 stays SELF-HOSTED**
-  (`run-matrix.yml`'s `tier1`). Only threadx_linux and zephyr move to hosted
+  (`platform-matrix.yml`'s `tier1`). Only threadx_linux and zephyr move to hosted
   per-board shards. Measured basis: a hosted runner has ~104 G free after
   `reclaim-disk.sh`, and the linux tier-1 shard ran out of disk 97 min into its
   fixture build with 75 of its 219 rows built (run 43438754804; the first run,
@@ -433,21 +433,21 @@ the user ruled; all five stand:
   the time is bad; then 2475 defect 4 scoped as a phase-535 work item; W7
   last and alone.
 
-### W6 — `host-tests.yml` absorbs `check-build`, the census and the book probes
+### W6 — `host-suite.yml` absorbs `check-build`, the census and the book probes
 
 - **Owner:** nros 175; the Humble + Jazzy edition lane is wtf's.
 - `gate.yml`'s scheduled `check-build`, `lane-census.yml` (deleted), and
-  `probe.yml`'s three tracks (deleted) join `host-tests.yml`'s one daily cron.
+  `probe.yml`'s three tracks (deleted) join `host-suite.yml`'s one daily cron.
 - **Acceptance:** `lane-census.yml` and `probe.yml` are gone, and each of their
-  jobs runs in `host-tests.yml` under the same `just` verb. `CI` no longer
+  jobs runs in `host-suite.yml` under the same `just` verb. `CI` no longer
   lists `check-build`, which moves off `gate.yml` in W7.
 - **Status:** DONE (#3724 2026-11-13, rest with W7 2026-11-15) — the
   census and the three book-probe tracks landed (#3724, 2026-11-13):
   `lane-census.yml` and
-  `probe.yml` are deleted and their four jobs run in `host-tests.yml`
+  `probe.yml` are deleted and their four jobs run in `host-suite.yml`
   unchanged. The rest landed with W7 so `check-build` never ran in two files:
-  `check-build` itself is `host-tests.yml`'s (three shards, same steps), and
-  the `board-support.toml` linux note names `host-tests.yml`'s book probes.
+  `check-build` itself is `host-suite.yml`'s (three shards, same steps), and
+  the `board-support.toml` linux note names `host-suite.yml`'s book probes.
   `ci/docker/zephyr-ros/Dockerfile`'s comment was handled in its own PR.
   LEFT: `ci/docker/ci-base/Dockerfile`'s comment still names `probe.yml` —
   an edit there rebuilds the CI base image, so it waits for the next change
@@ -458,7 +458,7 @@ the user ruled; all five stand:
 - **Owner:** nros 175.
 - The `CI` aggregator change, ALONE in its own PR, verified on a merge-group
   dry run.
-- `gate.yml` loses `schedule`. `check-build` leaves for `host-tests.yml` (W6).
+- `gate.yml` loses `schedule`. `check-build` leaves for `host-suite.yml` (W6).
   `check-template-copy-out-zephyr` (on `gate.yml`'s schedule since #3710, user
   ruling "Do Zephyr template check daily") moves to `nightly.yml`.
 - `check-merge-group-gates`' `DEFERRED_PARTS` then names `nightly.yml`, not a
@@ -473,7 +473,7 @@ the user ruled; all five stand:
   every `if:`/`sibling` event list in it dropped `schedule` with it.
   `check-build` (three shards, same steps: compile-check fixtures, bindings
   cache, disk reports and transcripts, `just check build`, `no-std` and
-  `pristine-checkout` on shard 3) is `host-tests.yml`'s, on its 03:00 cron
+  `pristine-checkout` on shard 3) is `host-suite.yml`'s, on its 03:00 cron
   and dispatch, with gate.yml's no-DWARF `CARGO_PROFILE_*_DEBUG` variables as
   job env. `check-template-copy-out-zephyr` is `nightly.yml`'s
   `template-copy-out-zephyr` job, on its 05:00 cron and dispatch; it saves
@@ -489,7 +489,7 @@ the user ruled; all five stand:
   merge-group run is green: `gate` run 43699058961
   (`gh-readonly-queue/main/pr-3946-781c5b10de`), every `check /` job and `CI`
   success, and `CI` lists no job that left `gate.yml`. The moved jobs ran on
-  their own crons the next day: `host-tests.yml` run 43796857800 (2026-11-16,
+  their own crons the next day: `host-suite.yml` run 43796857800 (2026-11-16,
   `build tier + no-std` 1/3-3/3 success) and `nightly.yml` run 43808375964
   (2026-11-16, `template-copy-out [zephyr]` success; that run's two reds,
   `stack-floor drift` and `FreertosMps2`, are other jobs).
@@ -913,7 +913,7 @@ the user ruled; all five stand:
 - 13 workflow files, as in the table. Every split is named in the table by a
   constraint.
 - Every job has a `timeout-minutes`, and the gate reads every file.
-- `nightly.yml`, `weekly.yml`, `host-tests.yml` and `run-matrix.yml` each
+- `nightly.yml`, `weekly.yml`, `host-suite.yml` and `platform-matrix.yml` each
   carry ONE cron. `weekly.yml`'s is a Sunday.
 - No job runs in two files.
 - `docs/development/ci-workflow-reorg.md` (the phase-253 plan) is replaced by

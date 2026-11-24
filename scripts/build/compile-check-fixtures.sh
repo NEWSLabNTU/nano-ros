@@ -708,7 +708,7 @@ cmake_fixture_prereqs() {
     # issue 1454 had already MEASURED it unused here: an
     # strace over a cmake-configure build: the resolver runs, this binary never
     # does), and it was the most common reason the whole cmake lane "skipped"
-    # (issue 1718: `cpp_robot_entry` never built on live-peer). Issue 1758
+    # (issue 1718: `cpp_robot_entry` never built on ros2-interop). Issue 1758
     # retired the skip; a check for a tool nothing runs would only turn that
     # into a false failure.
     NROS_CLI_BIN="$nb"

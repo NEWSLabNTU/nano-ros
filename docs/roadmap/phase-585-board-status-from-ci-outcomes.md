@@ -30,9 +30,9 @@ the book is rendered at deploy with a published `board-status.json`, N = 6.
 
 W2b measured where Zephyr's scheduled runtime evidence comes from. The
 nightly's Zephyr jobs only build; `merge-runtime.yml` is dispatch-only; tier 2
-(`run-matrix.yml`) would run Zephyr cells but stopped in its build on each of
+(`platform-matrix.yml`) would run Zephyr cells but stopped in its build on each of
 the five scheduled runs to 2026-11-20; the one scheduled Zephyr runtime is
-`live-peer.yml`'s board-zephyr runner (two interop rows). So the registry's
+`ros2-interop.yml`'s board-zephyr runner (two interop rows). So the registry's
 "Verified on host (daily)" for ZephyrNativeSim was not backed by its matrix
 cells running.
 
@@ -71,7 +71,7 @@ in the order below.
   job-level no-verdict signal (nightly-triage's step classifier, moved to
   `scripts/lib/`), writes `board-results.json` (D13.3) and a per-board table
   into `$GITHUB_STEP_SUMMARY`. A final `board-results` job in `nightly.yml`,
-  `weekly.yml`, `merge-runtime.yml` and `host-tests.yml` runs it and uploads
+  `weekly.yml`, `merge-runtime.yml` and `host-suite.yml` runs it and uploads
   the file (90 days). The board jobs set `NROS_TEST_EVIDENCE_DIR` and upload
   the ledger with the junit.
 - **Acceptance:** the self-test over recorded inputs (a pass, a failed cell,
@@ -79,8 +79,8 @@ in the order below.
   evidenced by another job); one real nightly's summary shows every board.
 - **Landed.** `scripts/ci/board-results.py` (self-test and `--check` in
   `check lane-stage-reporting`) runs as a separate, non-required
-  `board-results` job on `nightly.yml`, `weekly.yml` and `live-peer.yml`.
-  `merge-runtime.yml` is out until a week of clean nights; `host-tests.yml`
+  `board-results` job on `nightly.yml`, `weekly.yml` and `ros2-interop.yml`.
+  `merge-runtime.yml` is out until a week of clean nights; `host-suite.yml`
   is W8. Each board job sets the ledger from `$GITHUB_WORKSPACE` (its
   container's path), not `github.workspace` (the host's).
 
@@ -113,7 +113,7 @@ in the order below.
   `supported-boards.md` (the word and a "Last run:" line), filled by an mdBook
   preprocessor through W3; the agreed wording; no region on the levels page,
   starters, Tutorial or release notes. `publish.yml`'s `deploy` gains a
-  `workflow_run` trigger on the nightly, the weekly and `host-tests`, collects
+  `workflow_run` trigger on the nightly, the weekly and `host-suite`, collects
   the newest results and the `board-evidence` branch, and publishes
   `board-status.json` at the site root.
 - **Acceptance:** `just book` builds with and without results; a recorded
@@ -153,14 +153,14 @@ in the order below.
   no row, a row with no cell, an attribution path that writes no line, a
   marker on a starter), and the tree passes.
 
-### W8 — `host-tests` keeps its junit and ledger
+### W8 — `host-suite` keeps its junit and ledger
 
 - **Status:** OPEN (approved 2026-11-22, after W2)
-- **What:** `host-tests.yml` uploads no junit today, so the Linux cells it
+- **What:** `host-suite.yml` uploads no junit today, so the Linux cells it
   runs on its schedule carry no evidence. Upload its junit with the evidence
   ledger (from `$GITHUB_WORKSPACE`, as W2 does, since its jobs run in
   containers) and add its `board-results` job.
-- **Acceptance:** a scheduled `host-tests` run's summary lists the Linux row
+- **Acceptance:** a scheduled `host-suite` run's summary lists the Linux row
   with the cells it ran.
 
 ## Not in this phase

@@ -689,7 +689,7 @@ _nros_runner_check_ros2() {
 # `nros-queue` — the merge queue's OWN runner. A ROLE, not a capability: what
 # it asserts is about the rest of the label set, so it is checked against that.
 #
-# Why it exists: the queue's L3 and the scheduled self-hosted lanes (run-matrix,
+# Why it exists: the queue's L3 and the scheduled self-hosted lanes (platform-matrix,
 # the nightly) used to ask for overlapping label sets, so one long scheduled run
 # held the only runner that could take L3, and L3's constant concurrency group
 # then held every later queue run behind it (647 min measured on 2026-11-12).

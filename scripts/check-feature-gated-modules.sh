@@ -8,7 +8,7 @@
 # are both on, always, and a module reaching across the gate between them is
 # invisible. That is exactly how phase-461 W2 landed an unconditional
 # `use crate::parameter_services::{…}` inside `lifecycle_services` — green on
-# its own pull request, and `Build rust core fixtures` red on `host-tests`
+# its own pull request, and `Build rust core fixtures` red on `host-suite`
 # minutes after the merge, because `examples/linux/rust/lifecycle-node` picks
 # `lifecycle-services` and not `param-services`.
 #

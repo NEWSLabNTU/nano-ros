@@ -3058,7 +3058,7 @@ target_dir = "target-linux-cyclonedds"
 # variant by tests/xrce_ros2_interop.rs. The RMW is the IMAGE (issue 1305); the
 # zenoh row also turns on `zenoh-reply-slots`, the reply-slot refusal probe
 # only a zenoh build can answer (issue 0902).
-# phase-455 W2 gave this row an `id` so the live-peer completion probe's
+# phase-455 W2 gave this row an `id` so the ros2-interop completion probe's
 # fixtures can be built one at a time (`fixtures-build.sh linux rust --id …`).
 # Without one the only narrowing available is the whole linux/rust lane, which
 # is ~115 GiB of target dirs for a two-binary pair. The id is not part of the

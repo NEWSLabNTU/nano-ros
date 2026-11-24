@@ -68,7 +68,7 @@ NROS_LD_LIBRARY_PATH="${LD_LIBRARY_PATH:-}"
 ROS_LD_LIBRARY_PATH="${LD_LIBRARY_PATH#*build/install/lib:}"
 
 # Asked BEFORE the server starts, through the path the CLI will actually get.
-# See the helper for the host-tests measurement that put it here.
+# See the helper for the host-suite measurement that put it here.
 nros_require_ros2_rmw_loadable "$RMW_IMPLEMENTATION" "$ROS_LD_LIBRARY_PATH" || exit 1
 
 failed=0
@@ -118,7 +118,7 @@ wait "$CALL_PID" || CALL_RC=$?
 # RETURNED -- replied, errored, or been killed by `timeout` -- the one request
 # this sub-case sends has either reached the server or never will, so the
 # server gets a short grace to reply and exit and is then stopped. The bare
-# `wait` this replaces cost 600 s on every host-tests run, for a CLI that had
+# `wait` this replaces cost 600 s on every host-suite run, for a CLI that had
 # died within its first second.
 NROS_E2E_SERVER_GRACE_S="${NROS_E2E_SERVER_GRACE_S:-10}"
 srv_grace_deadline=$(( SECONDS + NROS_E2E_SERVER_GRACE_S ))

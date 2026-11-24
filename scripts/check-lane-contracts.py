@@ -392,7 +392,7 @@ def lane_invocations(words, recipes_map):
     Testing each word against the recipe map on its own is wrong twice over.
 
       * It MISSES every module lane. Neither `ci` nor `tier1` is a recipe, so
-        `just ci tier1` resolved to nothing and host-tests.yml's tier-1 lane —
+        `just ci tier1` resolved to nothing and host-suite.yml's tier-1 lane —
         the one that runs `just check`, the whole default tier — was invisible
         to this rule.
       * It MISATTRIBUTES. `just check api-parity` has two candidate recipes and
