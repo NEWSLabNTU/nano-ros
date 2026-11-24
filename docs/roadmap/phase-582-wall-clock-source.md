@@ -350,9 +350,10 @@ SNTP never re-acquires. A consumer's board hook papers over that with
   (resolved): the SNTP source's `select DNS_RESOLVER` pulls in Zephyr's
   socket service thread; the module now sizes its stack on 64-bit, so an
   image that names `sntp` configures.
-- [Issue 2839](../issues/2839-zephyr-platform-clock-source-always-answers.md):
-  three W1 gaps from the ASI validation; Zephyr's `platform` no longer
-  answers with no clock behind it, so `epoch_failure = halt` can halt.
+- [Issue 2839](../issues/archived/2839-zephyr-platform-clock-source-always-answers.md)
+  (resolved): three W1 gaps from the ASI validation; Zephyr's `platform` no
+  longer answers with no clock behind it, so `epoch_failure = halt` can halt.
+  The three Zephyr clock cells pass on 3.7 and 4.4.
 
 - [Issue 2883](../issues/archived/2883-zephyr-clock-halt-unreachable-after-platform.md)
   (resolved, superseded): `halt` after a list ending in `platform` was
