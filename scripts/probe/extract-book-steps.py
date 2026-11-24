@@ -48,7 +48,6 @@ Usage:
 """
 
 import argparse
-import os
 import re
 import shlex
 import subprocess
@@ -665,8 +664,7 @@ def self_test() -> None:
             (Path(d) / "b.sh").write_text(cmd + "\n")
             r = subprocess.run(["bash", "-c", f". {shlex.quote(str(grepq))}; . {shlex.quote(str(helper))}; "
                                 f"nros_probe_run_exit 99 10 {want} {shlex.quote(d + '/b.sh')} {shlex.quote(expect)}"],
-                               capture_output=True, text=True,
-                               env={**os.environ, "NROS_PROBE_LOG_DIR": d})
+                               capture_output=True, text=True)
             assert (r.returncode == 0) == ok, (cmd, want, r.stdout, r.stderr)
     # `…` in an expected line: the text before it must print.
     rc, ex = extract("```bash probe=10 probe-run=5\nros2 topic echo /chatter\n```\n"
