@@ -324,8 +324,11 @@ are untouched by construction.
   own token and ring), and the queryable routes a request by the service in its
   key. Attaching is deterministic, and refuses loudly on a node mismatch or a
   sixth service; there is no fallback to five queryables.
-- [ ] `transition_event` as a put: the publisher keeps its token and gid,
-  declares no zenoh publisher, and each publish is a `zpico_put`.
+- [x] ~~`transition_event` as a put.~~ Ruled out 2026-11-24 (user, option
+  c): the put needs the full data key at publish time, and every way to keep
+  it costs about as much as the 168 B publisher slot it would save. It stays
+  an ordinary publisher; RFC-0128 D7 is amended with the numbers, and
+  issue 2956 revisits it.
 - [x] The counts state 1 queryable per managed node and still 5 servers
   (tokens, headers, rings): `infra::ZENOH_LIFECYCLE_QUERYABLES` and
   `infra_zenoh_queryables_with` in the sizing descriptor, the zenoh build's
@@ -349,8 +352,9 @@ against a two-managed-node image.
   `get_transition_graph` are built on demand from const tables.
 - Each managed node keeps its own liveliness tokens: five services, plus the
   `transition_event` topic.
-- `transition_event` is an on-demand put on `/<node>/transition_event`, not a
-  held publisher.
+- `transition_event` stays an ordinary publisher per managed node (ruled
+  2026-11-24, option c; was "an on-demand put, not a held publisher", which
+  would save 168 B per node and cost about as much to keep the key).
 
 Acceptance:
 
