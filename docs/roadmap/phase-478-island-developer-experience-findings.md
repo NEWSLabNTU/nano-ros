@@ -1033,7 +1033,7 @@ AN536) stay green.
 
 ### I54 -- the CMake road exports the image's `log.max_level`
 
-- **Issue:** [2952](../issues/2952-cmake-road-log-max-level-not-exported.md).
+- **Issue:** [2952](../issues/archived/2952-cmake-road-log-max-level-not-exported.md).
 - **What:** every CMake-road configure (FreeRTOS POSIX and AN536, S32Z2,
   linux census images) defines the image's resolved ceiling as
   `NROS_LOG_MAX_LEVEL` (0..6), the twin of `CONFIG_NROS_LOG_MAX_LEVEL`.
@@ -1291,7 +1291,7 @@ Filed from the island port at nano-ros pin
 `55d9a6d761b64d4633d3ec6820ad37f68f2acfe7`.
 
 - [issue 2951](../issues/archived/2951-zephyr-log-max-level-refuses-level-name.md): the Zephyr image hook refuses a level name for `log.max_level` (I53).
-- [issue 2952](../issues/2952-cmake-road-log-max-level-not-exported.md): the CMake road hands an image's `log.max_level` to cargo only, so C/C++ code cannot derive its log floor from it (I54).
+- [issue 2952](../issues/archived/2952-cmake-road-log-max-level-not-exported.md): the CMake road hands an image's `log.max_level` to cargo only, so C/C++ code cannot derive its log floor from it (I54).
 
 ## Issues homed here (2026-11-23)
 

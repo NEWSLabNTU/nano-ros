@@ -315,6 +315,32 @@ integrator interacts with:
   manifest, not hand-maintained cmake conditionals. Select the backend with
   `-DNROS_RMW=<zenoh|xrce|cyclonedds>`; the manifest supplies the rest.
 
+## The image's log level: `NROS_LOG_MAX_LEVEL`
+
+The image's resolved `log.max_level` (0 trace, 1 debug, 2 info, 3 warn, 4
+error, 5 fatal, 6 off, the `CONFIG_NROS_LOG_MAX_LEVEL` numbering) is exported
+to the configure on every CMake platform, so C/C++ code can compile out the
+log calls the image can never emit, as the Rust ceiling already does:
+
+```cmake
+target_link_libraries(my_lib PUBLIC NanoRos::NanoRos)   # carries the definition
+target_compile_definitions(my_lib PRIVATE RCLC_LOG_MIN_SEVERITY=NROS_LOG_MAX_LEVEL)
+```
+
+- **Compile definition** `NROS_LOG_MAX_LEVEL=<n>` on `NanoRos::NanoRos`
+  (and so `NanoRos::NanoRosCpp`): every target linking nano-ros sees it.
+- **Cache variable** `NROS_LOG_MAX_LEVEL` (INTERNAL), for a CMake-side choice.
+
+It is an output. State the level where every road reads it: the image's
+`[image.<id>.knobs] log.max_level` (a number or a level name), the board's
+`[knobs.log] max_level`, or an exported `NROS_LOG_MAX_LEVEL`, which wins. The
+value is resolved over the same ladder as the `nros-log` build script (`nros
+config explain --get log.max_level`), so the C/C++ floor and the Rust ceiling
+cannot disagree. One configure builds `nros-log` once, so a workspace member
+gets the configure's value, not its own `[image]` row. Editing the board
+descriptor or `system.toml` re-runs the configure on the next build. Zephyr
+images read `CONFIG_NROS_LOG_MAX_LEVEL` instead.
+
 ## Zephyr Integration
 
 **RMW backend selection** in `prj.conf`:

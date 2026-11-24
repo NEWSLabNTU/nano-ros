@@ -67,6 +67,14 @@ cmake-cli-rows:
 cmake-reconfigure-remedy:
     @bash packages/testing/nros-tests/tests/cmake_reconfigure_remedy.sh
 
+# Issue 2952 -- the cmake road exports the image's resolved `log.max_level` as
+# `NROS_LOG_MAX_LEVEL` (cache + compile definition on the umbrella), from the
+# board facts and the image row, and an edited board descriptor re-exports on
+# an incremental build (issue 1018's edge). A real configure of a language-less
+# project against a stub resolver: no compiler, no cargo, no CLI build.
+cmake-log-level-export:
+    @bash packages/testing/nros-tests/tests/cmake_log_level_export.sh
+
 # Issue 0726 — `find_program(VAR ...)` is a NO-OP when VAR is already defined,
 # so the "initialise then search" spelling never searches. All three sites in
 # this tree paired it with a quiet fallback (FetchContent clone, "no SDK
