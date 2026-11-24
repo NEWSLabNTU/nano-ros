@@ -1,14 +1,17 @@
 # Repository plumbing — phase-559 W8.
 #
-# Five workflows that judge no code and run none from a pull request:
+# Jobs that judge no code and run none from a pull request (five were
+# workflows of their own; the last two were written here):
 #
-#   job       from                 runs on
-#   arm       arm-auto-merge.yml   pull_request_target
-#   enqueue   arm-auto-merge.yml   workflow_run of `gate`; dispatch job=enqueue
-#   notify    queue-notify.yml     workflow_run of `gate` and `queue`
-#   sweep     pr-verdicts.yml      schedule 09:00 + 21:00; dispatch job=pr-verdicts
-#   audit     roadmap-audit.yml    schedule 07:00 on the 1st; dispatch job=roadmap-audit
-#   triage    nightly-report.yml   workflow_run of `nightly`; dispatch job=nightly-report
+#   job            from                 runs on
+#   arm            arm-auto-merge.yml   pull_request_target
+#   enqueue        arm-auto-merge.yml   workflow_run of `gate`; dispatch job=enqueue
+#   notify         queue-notify.yml     workflow_run of `gate` and `queue`
+#   sweep          pr-verdicts.yml      schedule 09:00 + 21:00; dispatch job=pr-verdicts
+#   audit          roadmap-audit.yml    schedule 07:00 on the 1st; dispatch job=roadmap-audit
+#   triage         nightly-report.yml   workflow_run of `nightly`; dispatch job=nightly-report
+#   lane-fix       (phase-591 W2)       push to main; schedule 07:15; dispatch job=lane-fix
+#   lane-fix-name  (phase-591 W2)       pull_request_target
 #
 # They share a file because nothing forces them apart (phase-559's rule: a file
 # boundary exists only where a named constraint forces it). The constraint that
@@ -282,6 +285,10 @@
 name: automation
 
 on:
+  # `lane-fix` only: a merged commit's `Fixes-Lane:` trailer dispatches that
+  # lane on main. Every other job names its own event in its `if:`.
+  push:
+    branches: [main]
   pull_request_target:
     types: [opened, reopened, ready_for_review, synchronize]
   # `workflows:` names a workflow by its `name:`. A rename of any of these
@@ -295,13 +302,14 @@ on:
     - cron: "0 9 * * *"   # sweep
     - cron: "0 21 * * *"  # sweep
     - cron: "0 7 1 * *"   # audit
+    - cron: "15 7 * * *"  # lane-fix deferred: the end of the lane crons' window (lane-fix-dispatch.py holds it there)
   workflow_dispatch:
     inputs:
       job:
         description: "Which job to run"
         type: choice
         default: enqueue
-        options: [enqueue, pr-verdicts, roadmap-audit, nightly-report]
+        options: [enqueue, pr-verdicts, roadmap-audit, nightly-report, lane-fix]
 
 permissions: {}
 
@@ -933,4 +941,79 @@ jobs:
           [ -n "${n:-}" ] || exit 0
           if [ "$n" -gt 0 ]; then
             echo "::warning title=Nightly produced no verdict for $n cell(s)::Those cells failed before running what they test, so they cannot report a regression. See the job summary."
+          fi
+
+# ============================================================================
+# lane-fix, lane-fix-name (phase-591 W2)
+# ============================================================================
+#
+# A merged fix for a red scheduled lane is proven by dispatching that lane on
+# main, instead of waiting for the next night's cron. A green dispatch on main
+# at the release commit counts as release evidence (`release-lanes-green.py`).
+#
+# A commit names the lane it fixes with a trailer, `Fixes-Lane: nightly` (any
+# name `release-lanes-green.py` LANES uses, or a lane workflow's file stem;
+# `scripts/ci/lane-fix-dispatch.py --list`). The rebase-merge keeps commit
+# messages, so the trailer reaches main with the commit.
+#
+#   lane-fix-name  refuses an unknown lane name on the pull request, before it
+#                  merges. Not a required check. It reads the commits through
+#                  the API and runs the BASE branch's script: no pull request
+#                  code is checked out (the H6 rule above).
+#   lane-fix       on a push to main, dispatches each named lane once. The
+#                  lanes' own crons own the self-hosted runners from the
+#                  earliest lane cron to an hour after the latest (03:00-07:00
+#                  UTC, read from the lane workflows), so a merge in that
+#                  window is not dispatched on push: the 07:15 cron dispatches
+#                  every lane named by a commit that landed in today's window.
+#                  An unknown name fails the job and dispatches nothing for it.
+#
+# GITHUB_TOKEN can start a `workflow_dispatch` run (the one event it may
+# trigger), so no App token is needed; the run's actor is github-actions.
+
+  lane-fix-name:
+    permissions:
+      contents: read
+      pull-requests: read
+    if: ${{ github.event_name == 'pull_request_target' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      # The base branch (pull_request_target's default), never the PR head.
+      - uses: actions/checkout@v4
+      - name: Refuse an unknown Fixes-Lane name
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          python3 scripts/ci/lane-fix-dispatch.py
+          --check-pr "${{ github.event.pull_request.number }}"
+          --repo "${{ github.repository }}"
+
+  lane-fix:
+    permissions:
+      contents: read
+      actions: write
+    concurrency:
+      # Never cancelled: each push names its own commits.
+      group: lane-fix-${{ github.run_id }}
+      cancel-in-progress: false
+    if: >-
+      ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main')
+          || (github.event_name == 'schedule' && github.event.schedule == '15 7 * * *')
+          || (github.event_name == 'workflow_dispatch' && inputs.job == 'lane-fix') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Dispatch the lanes merged commits fix
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.event.after }}
+        run: |
+          if [ "$EVENT" = push ]; then
+            python3 scripts/ci/lane-fix-dispatch.py --push "$BEFORE" "$AFTER" --repo "$GITHUB_REPOSITORY"
+          else
+            python3 scripts/ci/lane-fix-dispatch.py --deferred --repo "$GITHUB_REPOSITORY"
           fi

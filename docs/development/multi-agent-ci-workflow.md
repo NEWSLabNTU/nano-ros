@@ -482,6 +482,29 @@ Consequences worth acting on:
 - **`Esp32Qemu` at tier 2 = nightly**, which matches the stated ESP-IDF policy.
   Consistent; it should not grow.
 
+## A merged lane fix names its lane
+
+A commit that fixes a red scheduled lane (`nightly`, `tier 1`, `tier 2`,
+`host-tests`, `live-peer`) says so with a trailer:
+
+```text
+Fixes-Lane: tier 2
+```
+
+When it lands, `automation.yml`'s `lane-fix` job dispatches that lane on
+`main` (phase-591 W2), and a green dispatch on `main` at the release commit
+counts as release evidence. So the fix is proven within hours, not at the next
+night's cron. Several names go on one line, separated by commas.
+
+- **Names:** any name `release-lanes-green.py` LANES uses, or a lane
+  workflow's file stem. `python3 scripts/ci/lane-fix-dispatch.py --list`
+  prints them.
+- **Unknown names:** the `lane-fix-name` check refuses one on the pull
+  request, and the post-merge job fails rather than guess.
+- **Quiet window:** a merge between the earliest lane cron and an hour after
+  the latest (03:00-07:00 UTC) is dispatched at 07:15, so the crons keep the
+  self-hosted runners.
+
 ## Landing: batch, do not serialize
 
 Use GitHub's **native merge queue** (branch protection + the `merge_group`
