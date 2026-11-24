@@ -997,6 +997,12 @@ impl SystemToml {
 pub struct SystemLifecycle {
     #[serde(default = "default_autostart")]
     pub autostart: String,
+    /// Issue 2904 -- how many nodes the program makes managed in its own code
+    /// (an owned entry's `main`), which no model shows the inventory. Each is
+    /// a REP-2002 state machine the sizing counts. Validated, and carried to
+    /// the sizing, by `nros_orchestration_ir::leaf_system`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub managed_nodes: Option<u64>,
 }
 
 fn default_autostart() -> String {

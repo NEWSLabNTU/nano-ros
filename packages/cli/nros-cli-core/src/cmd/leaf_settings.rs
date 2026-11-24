@@ -1868,6 +1868,7 @@ mod tests {
             // states the empty claim once instead of per test.
             features: Vec::new(),
             declared_features: Vec::new(),
+            lifecycle_managed_nodes: None,
             node_interfaces: None,
             conf: Vec::new(),
             os_config: Vec::new(),

@@ -257,6 +257,32 @@ endfunction()
 # nros_record_owned_entity_facts(BRINGUP <dir> [NAME <bringup>] IMAGE <id> PACKAGE <dir>
 #                                WORKSPACE <dir>)
 #
+# Issue 2904 -- the HOST image of an owned C/C++ entry. The host build is the
+# census's own producer, so no census sizes it, and before this nothing did:
+# an XRCE build kept its header's four service-server slots while the program
+# made two nodes managed (ten lifecycle servers). Its bringup can DECLARE what
+# its `main` does, `[lifecycle] managed_nodes = N`, and this writes the sizing
+# descriptor from that declaration alone (the bringup's features, N state
+# machines, at least N nodes), before every reader. The generated cmake root
+# calls it only for a bringup that states the count.
+function(nros_record_owned_declared_facts)
+    cmake_parse_arguments(_o "" "BRINGUP;IMAGE;PACKAGE" "" ${ARGN})
+    nros_resolve_cli(_nros CONTEXT "nros_record_owned_declared_facts (${_o_IMAGE})")
+    get_filename_component(_pkg_name "${_o_PACKAGE}" NAME)
+    include("${CMAKE_CURRENT_FUNCTION_LIST_DIR}/NanoRosSizingDescriptor.cmake")
+    nros_sizing_descriptor_from_leaf(_desc
+        CLI       "${_nros}"
+        LEAF      "${_o_BRINGUP}"
+        IMAGE     "${_o_IMAGE}"
+        ENTRY     "${_pkg_name}"
+        BUILD_DIR "${CMAKE_BINARY_DIR}")
+    if(NOT "${_desc}" STREQUAL "")
+        message(STATUS
+            "nano-ros: `${_o_IMAGE}` sizes its owned entry `${_pkg_name}` from its bringup's "
+            "declaration (`[lifecycle] managed_nodes`) -- ${_desc}")
+    endif()
+endfunction()
+
 # Issue 2433 (maintainer ruling 2026-11-11) -- an image whose program is an
 # OWNED C/C++ entry (RFC-0071 D19) on a cross board has no launch and no
 # model, so nothing on the workspace road sizes it. It is sized the way a

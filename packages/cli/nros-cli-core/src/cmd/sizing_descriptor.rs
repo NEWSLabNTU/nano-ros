@@ -818,10 +818,13 @@ fn write_from_leaf(args: &SizingDescriptorArgs, leaf: &std::path::Path) -> Resul
                 infra: crate::entity_inventory::InfraServices::from_features(
                     &system.features,
                     system.components.len(),
-                ),
+                )
+                .with_declared_managed_nodes(system.lifecycle_managed_nodes),
                 // The declaration is the opt-in: an undescribed leaf states no
-                // node count, as `entity-facts --leaf` carried none.
-                model_nodes: None,
+                // node count, as `entity-facts --leaf` carried none. Issue
+                // 2904 -- except that `[lifecycle] managed_nodes = N` says the
+                // program makes N nodes managed, so it has at least N nodes.
+                model_nodes: system.lifecycle_managed_nodes,
                 roots: &[dir.as_path()],
                 census_refused: census_refused.as_deref(),
             },
@@ -1030,10 +1033,13 @@ pub(crate) fn leaf_declaration(
     // bringup states them in. `InfraServices::from_features` is also what
     // `InfraServices::from_model` reads on the model road, so the two roads
     // cannot come to disagree about which spelling turns a family on.
-    inventory.set_infra(crate::entity_inventory::InfraServices::from_features(
-        &system.features,
-        system.components.len(),
-    ));
+    inventory.set_infra(
+        crate::entity_inventory::InfraServices::from_features(
+            &system.features,
+            system.components.len(),
+        )
+        .with_declared_managed_nodes(system.lifecycle_managed_nodes),
+    );
     // Issue 2650 -- the census ran the leaf's whole program, so it says how
     // long its parameter descriptions are. A leaf with no census was never
     // watched and keeps the default room (absent, not refused).
@@ -1108,7 +1114,7 @@ fn owned_program_inventory(
     pkg: &std::path::Path,
     pkg_name: &str,
     q: &str,
-    features: &[String],
+    system: &nros_orchestration_ir::leaf_system::LeafSystem,
 ) -> Result<crate::entity_inventory::EntityInventory> {
     use crate::entity_inventory::{ComponentEntities, Declaration, EntityInventory};
     let nodes = crate::leaf_entity_env::census_node_entities_at(census, pkg)?.map_err(|why| {
@@ -1136,9 +1142,10 @@ fn owned_program_inventory(
             },
         });
     }
-    inventory.set_infra(crate::entity_inventory::InfraServices::from_features(
-        features, node_count,
-    ));
+    inventory.set_infra(
+        crate::entity_inventory::InfraServices::from_features(&system.features, node_count)
+            .with_declared_managed_nodes(system.lifecycle_managed_nodes),
+    );
     Ok(inventory)
 }
 
@@ -1204,7 +1211,7 @@ pub(crate) fn owned_declaration(
             pkg,
             &pkg_name,
             &q,
-            &system.features,
+            &system,
         )?,
         Some(programs) => {
             let mut each = Vec::with_capacity(programs.len());
@@ -1217,7 +1224,7 @@ pub(crate) fn owned_declaration(
                 );
                 each.push((
                     exe,
-                    owned_program_inventory(&census, pkg, &pkg_name, &q, &system.features)?,
+                    owned_program_inventory(&census, pkg, &pkg_name, &q, &system)?,
                 ));
             }
             let (folded, conflicts) =

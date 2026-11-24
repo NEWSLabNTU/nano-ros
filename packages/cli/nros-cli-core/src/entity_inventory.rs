@@ -1956,6 +1956,21 @@ impl InfraServices {
         }
     }
 
+    /// Issue 2904 -- the managed nodes a system DECLARES with
+    /// `[lifecycle] managed_nodes`, for a program that makes them managed in
+    /// its own code (an owned entry's `main`), which no model marks. Applied
+    /// over whatever the model marked: the larger count wins, so a declaration
+    /// can only add machines the inventory could not see, never hide one it
+    /// did. Turns the lifecycle family on (the declaration requires it).
+    #[must_use]
+    pub fn with_declared_managed_nodes(mut self, declared: Option<usize>) -> Self {
+        if let Some(n) = declared.filter(|&n| n > 0) {
+            self.lifecycle = true;
+            self.managed_nodes = self.managed_nodes.max(n);
+        }
+        self
+    }
+
     /// The `[image] infra_families` statement of these four switches -- the
     /// spelling the descriptor carries and both zenoh and XRCE build scripts
     /// parse (it was the ~~`NROS_DECLARED_INFRA_QUERYABLES`~~ carrier's until
@@ -7557,6 +7572,40 @@ pub(crate) fn bare_without_stock(
 
 #[cfg(test)]
 mod tests {
+    /// Issue 2904 -- a declared managed-node count is what the inventory
+    /// could not see: it turns the family on, prices that many machines, and
+    /// never lowers a count the model already marked.
+    #[test]
+    fn a_declared_managed_node_count_prices_its_machines() {
+        let none = InfraServices::from_features::<&str>(&[], 1);
+        assert_eq!(
+            none.with_declared_managed_nodes(None).lifecycle_machines(),
+            0
+        );
+        let d = none.with_declared_managed_nodes(Some(2));
+        assert!(d.lifecycle);
+        assert_eq!(d.lifecycle_machines(), 2);
+        assert_eq!(d.queryables(1), 2 * LIFECYCLE_SERVICE_QUERYABLES);
+        let marked = InfraServices {
+            managed_nodes: 3,
+            lifecycle: true,
+            ..InfraServices::default()
+        };
+        assert_eq!(
+            marked
+                .with_declared_managed_nodes(Some(2))
+                .lifecycle_machines(),
+            3
+        );
+        assert_eq!(
+            InfraServices::from_features(&["lifecycle"], 1)
+                .with_declared_managed_nodes(Some(0))
+                .lifecycle_machines(),
+            1,
+            "0 is no statement: the family's one machine stands"
+        );
+    }
+
     use super::*;
 
     fn stated(pkg: &str, comp: &str, specs: &[&str]) -> ComponentEntities {

@@ -169,7 +169,7 @@ pub fn read(
                     "{}: `[lifecycle]` is present but `[system] features` does not declare \
                      `lifecycle`. On a leaf the axis is the `features` entry — the sizing \
                      descriptor counts the five lifecycle servers from it — and the table \
-                     only carries `autostart`.",
+                     carries `autostart` and `managed_nodes`.",
                     file.display()
                 ));
             }
