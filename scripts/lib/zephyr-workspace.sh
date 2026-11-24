@@ -226,7 +226,7 @@ nros_zephyr_ws_resolve_or_default() {
 #
 # So the build root is a BUILD CACHE of this checkout:
 #
-#   $NROS_ZEPHYR_BUILD_ROOT                       explicit operator choice, as is
+#   $NROS_ZEPHYR_BUILD_ROOT/<version>             explicit operator choice (issue 2925)
 #   <nros_build_root>/zephyr-workspace-builds/<version>   otherwise
 #
 # `nros_build_root` is RFC-0070's one root (`<checkout>/build`, `NROS_BUILD_ROOT`
@@ -247,7 +247,11 @@ nros_zephyr_build_root() {
     local version="${1:-}" root="${2:-}"
     [ -n "$version" ] || version="$(nros_zephyr_ws_version)"
     if [ -n "${NROS_ZEPHYR_BUILD_ROOT:-}" ]; then
-        printf '%s\n' "${NROS_ZEPHYR_BUILD_ROOT%/}"
+        # Issue 2925 -- the override RELOCATES the build root; it does not
+        # drop the line. Taken "as is", it put a 3.7 and a 4.4 build of one
+        # leaf in one directory, and the second configure inherited the
+        # first's ZEPHYR_BASE and Python.
+        printf '%s/%s\n' "${NROS_ZEPHYR_BUILD_ROOT%/}" "$version"
         return 0
     fi
     local lib

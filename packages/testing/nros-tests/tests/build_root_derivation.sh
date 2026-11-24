@@ -698,9 +698,12 @@ scenario '
     check "NROS_BUILD_ROOT relocates it with the rest of the cache" \
         "/scratch/nros/$S/zephyr-workspace-builds/3.7" \
         "$(NROS_BUILD_ROOT=/scratch/nros bash scripts/lib/zephyr-workspace.sh build-root)"
-    check "NROS_ZEPHYR_BUILD_ROOT wins, trailing slash stripped" \
-        "/z/builds" \
+    check "NROS_ZEPHYR_BUILD_ROOT wins, trailing slash stripped, line kept" \
+        "/z/builds/3.7" \
         "$(NROS_ZEPHYR_BUILD_ROOT=/z/builds/ bash scripts/lib/zephyr-workspace.sh build-root)"
+    check "under NROS_ZEPHYR_BUILD_ROOT the line is still a coordinate (issue 2925)" \
+        "/z/builds/4.4" \
+        "$(NROS_ZEPHYR_BUILD_ROOT=/z/builds bash scripts/lib/zephyr-workspace.sh --version 4.4 build-root)"
     check "the kind is the vocabulary constant" "zephyr-workspace-builds" \
         "$NROS_KIND_ZEPHYR_WORKSPACE_BUILDS"
 '
@@ -708,6 +711,7 @@ scenario '
     f=packages/testing/nros-tests/src/zephyr.rs
     if nros_grep_q "pub fn zephyr_build_root() -> PathBuf" "$f" \
        && nros_grep_q "var_os(\"NROS_ZEPHYR_BUILD_ROOT\")" "$f" \
+       && nros_grep_q ".join(zephyr_line())" "$f" \
        && nros_grep_q "var(\"NROS_ZEPHYR_VERSION\")" "$f" \
        && nros_grep_q "build_dir(crate::kind::ZEPHYR_WORKSPACE_BUILDS, &\[&zephyr_line()\])" "$f" \
        && nros_grep_q "unwrap_or_else(|| \"3.7\".to_string())" "$f"; then
