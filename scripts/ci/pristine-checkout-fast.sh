@@ -144,14 +144,23 @@ done
 # against that old local main, so the clone's gates get this checkout's own
 # `origin/main` as the branch base (scripts/changelog-audit.py branch_base).
 main_baseline="$(git -C "$repo_root" rev-parse --verify -q 'origin/main^{commit}' || true)"
+# The event the run serves, read before the clone's environment clears it.
+changelog_event="${NROS_CHANGELOG_EVENT:-${GITHUB_EVENT_NAME:-}}"
 
 run_in_clone() {
     (
         cd "$clone" || exit 2
-        unset NROS_CHECK_SKIP_STRICT NROS_SUBMODULE_PIN_BASELINE NROS_MAIN_BASELINE \
+        unset NROS_CHECK_SKIP_STRICT NROS_SUBMODULE_PIN_BASELINE NROS_MAIN_BASELINE NROS_CHANGELOG_EVENT \
             GITHUB_ACTIONS CI GITHUB_EVENT_NAME GITHUB_EVENT_PATH
         if [ -n "$main_baseline" ]; then
             export NROS_MAIN_BASELINE="$main_baseline"
+        fi
+        # Issue 2936 -- the CI identity is cleared above, but which event this
+        # run serves decides whether `changelog-required` has a pull request to
+        # judge: a schedule or dispatch run has none, and its shallow checkout
+        # cannot read a moved-on branch's merge base.
+        if [ -n "$changelog_event" ]; then
+            export NROS_CHANGELOG_EVENT="$changelog_event"
         fi
         if [ -n "$pin_baseline" ]; then
             export NROS_SUBMODULE_PIN_BASELINE="$pin_baseline"

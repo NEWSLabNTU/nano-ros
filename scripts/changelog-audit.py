@@ -63,7 +63,13 @@ branch as ONE pull request with this script's own selector: the same SHIPPED
 paths and exclusions, the same docs-only skip, the same fragment and trailer
 tests. A merge-queue or push run has no branch of its own to judge (the PR
 was judged before it queued), so under `GITHUB_EVENT_NAME` merge_group or
-push it says so and passes.
+push it says so and passes. Neither does a schedule or workflow_dispatch run
+(issue 2936): no pull request is judged there, and a dispatched branch's own
+pull request runs this gate on its `pull_request` lane. Such a run's checkout
+is shallow, so the diff it would read is often not there, and the gate
+harness fails a gate that answers NOT VERIFIED. `$NROS_CHANGELOG_EVENT`, when
+set, names the event in place of `GITHUB_EVENT_NAME`: `pristine-checkout`
+clears the CI identity in its clone and hands the run's event over in it.
 
 Every invocation runs the self-test first; a report from a selector whose
 cases fail is not printed (a note says so), and the exit status is still 0.
@@ -594,6 +600,27 @@ def self_test():
                 "c2": None}}}
             if parse_graphql(resp, many[:3]) != {many[0]: (7, "t7")}:
                 fails.append("graphql parse: want only the merged PR of c0")
+        # Issue 2936 -- a run that judges no pull request answers OK without
+        # reading history: the pristine clone of a dispatched branch could not
+        # read its merge base's tree, and its NOT VERIFIED failed the shard.
+        # A directory with no repository stands in for unreadable history.
+        with tempfile.TemporaryDirectory() as bare:
+            for event, via in (("workflow_dispatch", EVENT_ENV), ("schedule", EVENT_ENV),
+                               ("workflow_dispatch", "GITHUB_EVENT_NAME")):
+                os.environ.pop(EVENT_ENV, None)
+                os.environ.pop("GITHUB_EVENT_NAME", None)
+                os.environ[via] = event
+                out = _captured(lambda: require_main(bare, []))
+                if out[0] != 0 or f"OK ({event}:" not in out[1]:
+                    fails.append(f"--require on {event} (via {via}) read history: {out}")
+            os.environ.pop(EVENT_ENV, None)
+            os.environ.pop("GITHUB_EVENT_NAME", None)
+            os.environ[EVENT_ENV] = "workflow_dispatch"
+            os.environ["GITHUB_EVENT_NAME"] = "pull_request"
+            if run_event() != "workflow_dispatch":
+                fails.append(f"${EVENT_ENV} does not win over GITHUB_EVENT_NAME")
+            os.environ.pop(EVENT_ENV, None)
+            os.environ.pop("GITHUB_EVENT_NAME", None)
     finally:
         os.environ.clear()
         os.environ.update(saved)
@@ -601,8 +628,18 @@ def self_test():
         print(f"changelog-audit self-test FAIL: {f}", file=sys.stderr)
     if fails:
         return 1
-    print("changelog-audit self-test: OK (tag choice, fragment, trailer, exclusions, book navigation, docs-only skip, PR grouping, batched lookup, /pull/ citation, none-list, --require, fragment types)")
+    print("changelog-audit self-test: OK (tag choice, fragment, trailer, exclusions, book navigation, docs-only skip, PR grouping, batched lookup, /pull/ citation, none-list, --require, fragment types, no-PR events)")
     return 0
+
+
+def _captured(fn):
+    """(fn's return value, its stdout and stderr together)."""
+    import contextlib
+    import io
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
+        rc = fn()
+    return rc, buf.getvalue()
 
 
 def quiet(fn):
@@ -650,6 +687,20 @@ def main(argv):
 
 
 BASELINE_ENV = "NROS_MAIN_BASELINE"
+EVENT_ENV = "NROS_CHANGELOG_EVENT"
+# The events with no pull request of their own to judge, and why.
+NO_PR_EVENTS = {
+    "merge_group": "the pull request was judged before it queued",
+    "push": "the pull request was judged before it queued",
+    "schedule": "a scheduled run judges no pull request",
+    "workflow_dispatch": "a dispatched run judges no pull request; a branch's own "
+    "pull request runs this gate on its pull_request lane",
+}
+
+
+def run_event():
+    """The event this run judges for: $NROS_CHANGELOG_EVENT, else GitHub's."""
+    return os.environ.get(EVENT_ENV) or os.environ.get("GITHUB_EVENT_NAME", "")
 
 
 def branch_base(cwd, main=None):
@@ -675,9 +726,9 @@ def require_main(cwd, argv):
     base, a tree not here). Truncation can only hide history, so it is never
     read as a pass or a refusal (git_history's rule)."""
     name = "changelog-required"
-    event = os.environ.get("GITHUB_EVENT_NAME", "")
-    if event in ("merge_group", "push"):
-        print(f"{name}: OK ({event}: the pull request was judged before it queued)")
+    event = run_event()
+    if event in NO_PR_EVENTS:
+        print(f"{name}: OK ({event}: {NO_PR_EVENTS[event]})")
         return 0
     if "--base" in argv:
         base = argv[argv.index("--base") + 1]
