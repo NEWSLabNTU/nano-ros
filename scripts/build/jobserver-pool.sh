@@ -135,6 +135,42 @@ nros_pool_make_args() {
     printf '%s\n' "-j$jobs" "--jobserver-style=fifo"
 }
 
+# The make a CONFIGURE should cache, for a build that may later run under the
+# fifo pool. Prints its path. run-matrix 45351389552 (2026-11-24): Zephyr's
+# native_sim runner does `find_program(MAKE make)` and runs `${MAKE} -f
+# .../native_simulator/Makefile` by ABSOLUTE path, so PATH ordering (issue
+# 2119) cannot steer it. A west fixture configured with no `-DMAKE` cached
+# `/usr/bin/make` (4.3); built under the pool it died with
+#   make[1]: *** internal error: invalid --jobserver-auth string 'fifo:...'
+# The pinned make when it resolves, else the one on PATH -- but NEVER a
+# pre-4.4 make silently when a fifo jobserver is already in MAKEFLAGS: that
+# fallback is exactly the failure, so it refuses and names it.
+nros_configure_make() {
+    local m
+    if m="$(nros_pinned_make)"; then
+        printf '%s\n' "$m"
+        return 0
+    fi
+    m="$(command -v make || true)"
+    if [ -z "$m" ]; then
+        echo "nros_configure_make: no make (no pinned make 4.4, none on PATH)" >&2
+        return 1
+    fi
+    case " ${MAKEFLAGS:-} " in
+        *"--jobserver-auth=fifo:"*)
+            local ver
+            ver="$("$m" --version 2>/dev/null | head -1)"
+            if ! [[ "$ver" =~ ^GNU\ Make\ ([0-9]+)\.([0-9]+) ]] \
+                || [ "${BASH_REMATCH[1]}" -lt 4 ] \
+                || { [ "${BASH_REMATCH[1]}" -eq 4 ] && [ "${BASH_REMATCH[2]}" -lt 4 ]; }; then
+                echo "nros_configure_make: a fifo jobserver is in MAKEFLAGS but only $m ($ver) resolves, and it cannot read one -- provision the pinned make (nros setup --tool make)" >&2
+                return 1
+            fi
+            ;;
+    esac
+    printf '%s\n' "$m"
+}
+
 nros_pool_available() {
     local units="$2"
     [ "${NROS_JOBSERVER:-}" = "1" ] && return 1

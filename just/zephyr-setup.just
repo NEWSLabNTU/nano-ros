@@ -394,7 +394,7 @@ build-fvp-ws-entry:
     nros_cargo_ensure_codegen_c
     codegen_tool="$(nros_cargo_codegen_c_bin)"
     source "$nros_root/scripts/build/jobserver-pool.sh"
-    make_bin="$(nros_pinned_make)" || make_bin="$(command -v make)"
+    make_bin="$(nros_configure_make)"
     # The SDK prefixes are resolved BEFORE `cd "$workspace"`: `nros dev sdk path`
     # locates `nros-sdk-index.toml` relative to the CWD, and a Zephyr
     # workspace has none. Resolving after the cd printed two `failed to read
@@ -632,7 +632,7 @@ build-fvp-board-import:
     nros_cargo_ensure_codegen_c
     codegen_tool="$(nros_cargo_codegen_c_bin)"
     source "$nros_root/scripts/build/jobserver-pool.sh"
-    make_bin="$(nros_pinned_make)" || make_bin="$(command -v make)"
+    make_bin="$(nros_configure_make)"
     src="$nros_root/packages/testing/nros-tests/fixtures/board_import_fvp"
     # The SDK prefixes are resolved BEFORE `cd "$workspace"`: `nros dev sdk path`
     # locates `nros-sdk-index.toml` relative to the CWD, and a Zephyr

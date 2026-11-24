@@ -68,7 +68,7 @@ fi
 
 # The Zephyr build environment, as `just zephyr build-c-port` sets it up.
 source scripts/build/jobserver-pool.sh
-make_bin="$(nros_pinned_make)" || make_bin="$(command -v make)"
+make_bin="$(nros_configure_make)"
 source scripts/lib/sdk-tool-path.sh
 sdk_tool_prefix="$(nros_sdk_tool_path_prefix make ninja)"
 export PATH="${sdk_tool_prefix:+$sdk_tool_prefix:}$PATH"

@@ -27,6 +27,10 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 # shellcheck source=scripts/lib/deadline.sh
 . "$PROJECT_ROOT/scripts/lib/deadline.sh"
 nros_module_arg="$(nros_zephyr_module_cmake_arg "$PROJECT_ROOT")"
+# The make native_sim's runner runs by absolute path (run-matrix 45351389552).
+# shellcheck source=scripts/build/jobserver-pool.sh
+. "$PROJECT_ROOT/scripts/build/jobserver-pool.sh"
+nros_make_arg="-DMAKE=$(nros_configure_make)"
 
 # issue 0660 — the router comes from ROS, not from a vendored build.
 #
@@ -211,7 +215,7 @@ build_zephyr_examples() {
 
     # Build C talker for native_sim/native/64
     log_info "Building zephyr-c-talker for native_sim/native/64..."
-    if west build -b native_sim/native/64 "$example_path" -d build-c-talker -p auto -- -DCONF_FILE="prj.conf" -DNROS_IMAGE=zephyr_zenoh "$nros_module_arg" 2>&1 | tee "$(tmpfile zephyr_build.txt)" | tail -10; then
+    if west build -b native_sim/native/64 "$example_path" -d build-c-talker -p auto -- -DCONF_FILE="prj.conf" -DNROS_IMAGE=zephyr_zenoh "$nros_module_arg" "$nros_make_arg" 2>&1 | tee "$(tmpfile zephyr_build.txt)" | tail -10; then
         log_success "Talker build complete"
     else
         log_error "Talker build failed"

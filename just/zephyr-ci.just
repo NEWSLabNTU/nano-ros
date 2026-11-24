@@ -165,7 +165,7 @@ build-fixtures:
     ccache_tmpdir="${NROS_ZEPHYR_CCACHE_TEMPDIR:-$nros_root/build/zephyr-cache/ccache-tmp}"
     mkdir -p "$ccache_dir" "$ccache_tmpdir"
     source "$nros_root/scripts/build/jobserver-pool.sh"
-    make_bin="$(nros_pinned_make)" || make_bin="$(command -v make)"
+    make_bin="$(nros_configure_make)"
     # issue 1638 — only store dirs that EXIST go first, and a missing pin is
     # said out loud with the binary PATH resolves instead. The unconditional
     # prepend was a silent no-op on a host with no store ninja, so the leaf
