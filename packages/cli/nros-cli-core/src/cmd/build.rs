@@ -1242,6 +1242,21 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
         if !missing.is_empty() {
             return Err(crate::builder::preflight::PreflightRefusal(missing).into());
         }
+        // Issue 2909 -- the preflight QUERY must answer for Zephyr's absence
+        // too. A full plan refuses it at stage 4 (`ZephyrAbsent`, the west
+        // command), so `nros configure` skips the image with a stamp; the
+        // re-check of that stamp (Ruling R19) runs only stages 1-3, which
+        // passed without a Zephyr, read "toolchain now present", and staled
+        // the stamp on every run.
+        if planning == Planning::Preflight
+            && driver == Driver::West
+            && zephyr_base(&root, args.zephyr_workspace.as_deref()).is_none()
+        {
+            return Err(crate::builder::preflight::ZephyrAbsent(format!(
+                "no Zephyr found, so `west build` cannot be run for `{image_id}`"
+            ))
+            .into());
+        }
         crate::cmd::setup::expose_store_tools(descriptor, nano_ros_root.as_deref());
 
         // phase-581 W3 (RFC-0140 D5/D6) — the catalog configure wrote holds
@@ -3254,7 +3269,9 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
                         if opts.is_empty() { "" } else { " -- " },
                         opts.join(" ")
                     );
-                    eyre::bail!(
+                    // Issue 2909 -- typed, so `nros configure` treats it as a
+                    // host refusal (skip with a stamp), not a broken image.
+                    return Err(crate::builder::preflight::ZephyrAbsent(format!(
                         "no Zephyr found, so `west build` cannot be run for \
                          `{image_id}`.\n\n\
                          Zephyr differs from the other drivers: YOU own the west \
@@ -3274,7 +3291,8 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
                          <workspace>/zephyr-workspace, \
                          ../nano-ros-workspace[-4.4]; <line> is \
                          $NROS_ZEPHYR_VERSION, default 3.7)"
-                    );
+                    ))
+                    .into());
                 }
                 // Issue 2916 -- a build dir configured against ANOTHER Zephyr
                 // tree (the other line) keeps that tree: Zephyr re-reads the

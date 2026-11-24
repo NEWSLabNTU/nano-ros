@@ -17,7 +17,6 @@ use eyre::{Result, WrapErr};
 use nros_orchestration_ir::leaf_system;
 
 use crate::{
-    builder::preflight::PreflightRefusal,
     cmd::{build, ws},
     configure_stamp::{self, Currency},
     file_lock::lock_exclusive_path,
@@ -499,9 +498,11 @@ fn configure_project(
             Err(e) if t.named => {
                 return Err(e.wrap_err(format!("configure: image `{}`", t.key)));
             }
-            Err(e) => match e.downcast_ref::<PreflightRefusal>() {
-                Some(refusal) => {
-                    let why = refusal.summary();
+            // Issue 2909 -- a host refusal is a stage-3 `PreflightRefusal` or
+            // planning's "no Zephyr found" (`ZephyrAbsent`): either way this
+            // host cannot build the image, so it is skipped WITH a stamp.
+            Err(e) => match crate::builder::preflight::host_refusal(&e) {
+                Some(why) => {
                     eprintln!("configure: {}: skipped — {why}", t.key);
                     out.skipped.push((t.key.clone(), why));
                 }
@@ -1040,6 +1041,7 @@ pub(crate) fn owned_interface_search_arg(ws: &Path) -> Option<String> {
 mod tests {
 
     use super::*;
+    use crate::builder::preflight::PreflightRefusal;
 
     fn record_ament(project: &Path, key: &str, ament: Option<&str>, resolver: Option<&Path>) {
         let stamp = configure_stamp::Stamp {
@@ -1217,6 +1219,33 @@ mod tests {
     fn bare_id_strips_one_qualifier() {
         assert_eq!(bare_id("linux"), "linux");
         assert_eq!(bare_id("demo_bringup:linux"), "linux");
+    }
+
+    /// Issue 2909 -- planning's "no Zephyr found" is a HOST refusal like
+    /// stage 3's, so configure skips it with a stamp; any other planning
+    /// error is not one, and stays R22's unstamped "not configured".
+    #[test]
+    fn a_missing_zephyr_is_a_host_refusal_and_other_errors_are_not() {
+        use crate::builder::preflight::{ZephyrAbsent, host_refusal};
+        let e: eyre::Report = ZephyrAbsent("no Zephyr found, so `west build` ...".into()).into();
+        let e = e.wrap_err("configure: image `demo_bringup:zephyr`");
+        let why = host_refusal(&e).expect("typed through wrap_err");
+        assert!(
+            why.contains("Zephyr") && why.contains("--zephyr-workspace"),
+            "{why}"
+        );
+        // `nros build <image>` still prints the planner's whole message.
+        assert!(format!("{e:#}").contains("no Zephyr found, so `west build`"));
+        let m = crate::builder::preflight::Missing {
+            what: "Rust target `x`".into(),
+            remedy: "rustup target add x".into(),
+        };
+        let r: eyre::Report = PreflightRefusal(vec![m]).into();
+        assert_eq!(
+            host_refusal(&r).as_deref(),
+            Some("missing Rust target `x` (run: rustup target add x)")
+        );
+        assert_eq!(host_refusal(&eyre::eyre!("a malformed system.toml")), None);
     }
 
     #[test]

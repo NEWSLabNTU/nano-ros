@@ -1,11 +1,12 @@
 ---
 id: 2909
 title: "A workspace with an image whose SDK is absent never reads as configured, so every bare `nros configure` redoes every image"
-status: open
+status: resolved
 type: limitation
 area: [cli, build, ux]
 severity: medium
 found: 2026-11-23
+resolved: 2026-11-24
 ---
 
 ## What happens
@@ -60,3 +61,40 @@ Acceptance:
   `nros configure` with nothing changed reports `up to date`.
 - Installing (or pointing at) the SDK makes that image stale and configures
   it on the next run.
+
+## Resolution
+
+Fixed 2026-11-24. The refusal stamp the direction asks for already existed
+(Ruling R15 records a skip stamp; R19 re-checks it with the image's preflight
+and stales it once the preflight passes). The defect was that a missing
+Zephyr never reached it:
+
+- Planning refused a Zephyr image on a host with no Zephyr tree with a plain
+  `eyre::bail!("no Zephyr found, ...")`. That is not a `PreflightRefusal`, so
+  `nros configure` filed it under R22 ("not configured", no stamp) and
+  re-planned the workspace on every bare configure. The live-peer fixture
+  log of run 44672701128 shows the line for each Zephyr image 51-52 times.
+- Now it is a typed `ZephyrAbsent` (same message, so `nros build <image>`
+  prints what it did), and one helper, `preflight::host_refusal`, decides
+  "this host cannot build the image" for both the configure loop and the
+  R19 re-check. A stage-3 `PreflightRefusal` or a `ZephyrAbsent` is
+  skipped with a stamp; any other planning error is still R22's.
+- The R19 re-check runs stages 1-3 only (`preflight_query`), which passed
+  without a Zephyr, so the first fix alone read "toolchain now present"
+  every run. The workspace road's stage 3 now also refuses a West-driven
+  image with no Zephyr tree in `Planning::Preflight`.
+
+Measured on `examples/workspaces/island-shaped` (3 images, one Zephyr), with
+Zephyr hidden by `NROS_ZEPHYR_VERSION=9.9`:
+
+| run | result |
+| --- | --- |
+| 1 (fresh) | 217 s; `zephyr: skipped -- missing a Zephyr tree (run: nros setup zephyr, or pass --zephyr-workspace <dir>)` |
+| 2, nothing changed | 1 s, `configure: up to date (3 image(s))` |
+| 3, Zephyr found (variable unset) | 3 s, `zephyr: toolchain now present`, configured |
+| 4, nothing changed | 1 s, `up to date` |
+
+The skip line still prints on every configure that plans the image. Test:
+`a_missing_zephyr_is_a_host_refusal_and_other_errors_are_not` (a
+`ZephyrAbsent` through `wrap_err` is a host refusal and keeps its full text;
+a `PreflightRefusal` gives its summary; any other error is none).
