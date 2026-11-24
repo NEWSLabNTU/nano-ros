@@ -7,7 +7,7 @@
 #                   then `just test-ignored` (issue 1507) and
 #                   `just test-doc` (doctests, both workspaces).
 #   - feature-sweep : `just check feature-sweep` — per-feature clippy.
-#   - check-build : `just check build` (3 shards) + `no-std` + `pristine-checkout`,
+#   - check-build : `just check build` (4 shards) + `no-std` + `pristine-checkout`,
 #                   the full compile tier — was gate.yml's scheduled job until
 #                   phase-559 W7 took gate.yml's `schedule` away.
 #   - rt-sched    : `rt_sched_levels_e2e` (phase-162) in a container granted
@@ -465,19 +465,29 @@ jobs:
   # every `build-serial` gate keeps its build tree until the job ends, and on
   # 2026-11-03 (run 41563531517) the step started with 44 G free and ended
   # with 292 K. Every scheduled run from 2026-10-29 was red. The job is now
-  # three matrix entries on this ONE job id, and each runs one shard of
+  # matrix entries on this ONE job id, and each runs one shard of
   # `just check build` (`NROS_BUILD_GATE_SHARD`, issue 2141's mechanism:
   # `scripts/build/gate-shard.py` puts every gate in exactly one shard). Each
   # shard therefore has its own 146 G disk.
   # `check-merge-group-gates` rule 5 refuses a shard spec whose matrix does not
   # list 1..n. `no-std` and `pristine-checkout` are not part of the lane and
   # run once, on the last shard.
+  #
+  # FOUR shards (phase-591 W6), not three. The target is every shard under 80
+  # min on a scheduled run, and the runner's CPU decides more than the split:
+  # the same gates take about 1.5x longer on an EPYC 7763 than on a 9V45, and
+  # about 18 min of each job is setup (CLI, bindings, disk reclaim). Over the
+  # eight runs 44008425700 .. 45317814567 the `just check build` step took
+  # 32-61 / 46-108 / 51-79 min on shards 1/2/3, and its jobs 54-112 min. With
+  # the median weights the gates' summed time is 274 min: three balanced
+  # shards are about 58 min of step wall each, 75 on a 7763, so a slow runner
+  # still lands over 80 with setup; four are about 44, 57 on a 7763.
   check-build:
-    name: check / build tier + no-std [${{ matrix.shard }}/3] (daily + manual)
+    name: check / build tier + no-std [${{ matrix.shard }}/4] (daily + manual)
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3]
+        shard: [1, 2, 3, 4]
     runs-on: ubuntu-22.04
     concurrency:
       group: host-tests-check-build-${{ matrix.shard }}-${{ github.ref }}-${{ github.event_name }}
@@ -866,7 +876,7 @@ jobs:
       - name: just check build (daily / manual)
         if: ${{ !cancelled() }}
         env:
-          NROS_BUILD_GATE_SHARD: ${{ matrix.shard }}/3
+          NROS_BUILD_GATE_SHARD: ${{ matrix.shard }}/4
           NROS_GATE_SCOPE: build
         run: |
           source ./activate.sh
@@ -899,7 +909,7 @@ jobs:
           retention-days: 7
 
       - name: just check no-std (daily / manual)
-        if: ${{ !cancelled() && matrix.shard == 3 }}
+        if: ${{ !cancelled() && matrix.shard == 4 }}
         run: |
           source ./activate.sh
           just check no-std
@@ -913,7 +923,7 @@ jobs:
       # on every pre-push; here it is the nightly / manual signal that
       # `check-default-gates-run-somewhere` requires.
       - name: just check pristine-checkout (daily / manual)
-        if: ${{ !cancelled() && matrix.shard == 3 }}
+        if: ${{ !cancelled() && matrix.shard == 4 }}
         run: |
           source ./activate.sh
           just check pristine-checkout
