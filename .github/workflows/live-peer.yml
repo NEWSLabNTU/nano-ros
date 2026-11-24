@@ -199,10 +199,18 @@ jobs:
           fi
           just setup xrce
 
+      # MEASUREMENT BRANCH ONLY: an in-job cache per shard, Rust and C/C++.
+      - name: Compiler cache for this shard
+        run: scripts/ci/sccache-configure.sh --wrapper --cc-launcher --size 3G
+
       - name: Build this shard's fixture rows
         run: |
           source ./activate.sh
           bash scripts/ci/live-peer-host-fixtures.sh build "${{ matrix.shard }}/4"
+
+      - name: Compiler cache hit rate for this shard
+        if: ${{ !cancelled() }}
+        run: scripts/ci/sccache-configure.sh --stats
 
       - name: Pack what the cells read
         if: ${{ !cancelled() }}

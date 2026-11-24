@@ -30,6 +30,7 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 dir="${RUNNER_TEMP:-/tmp}/sccache"
 size=4G
 wrapper=0
+cc_launcher=0
 log="${RUNNER_TEMP:-/tmp}/sccache-server.log"
 skip_self_hosted=0
 what="this step's compiles"
@@ -38,6 +39,7 @@ while [ "$#" -gt 0 ]; do
         --dir) dir="${2:?--dir needs a value}"; shift 2 ;;
         --size) size="${2:?--size needs a value}"; shift 2 ;;
         --wrapper) wrapper=1; shift ;;
+        --cc-launcher) cc_launcher=1; shift ;;
         --log) log="${2:?--log needs a value}"; shift 2 ;;
         --skip-self-hosted) skip_self_hosted=1; shift ;;
         --what) what="${2:?--what needs a value}"; shift 2 ;;
@@ -89,6 +91,10 @@ if env -u MAKEFLAGS -u MFLAGS -u CARGO_MAKEFLAGS \
         echo "SCCACHE_ERROR_LOG=$log"
         echo "SCCACHE_LOG=warn"
         echo "SCCACHE_CACHE_SIZE=$size"
+        if [ "$cc_launcher" = 1 ]; then
+            echo "CMAKE_C_COMPILER_LAUNCHER=$repo_root/scripts/bin/sccache-no-jobserver"
+            echo "CMAKE_CXX_COMPILER_LAUNCHER=$repo_root/scripts/bin/sccache-no-jobserver"
+        fi
         if [ "$wrapper" = 1 ]; then
             echo "RUSTC_WRAPPER=$repo_root/scripts/bin/rustc-wrapper/sccache"
         fi
