@@ -323,6 +323,13 @@ pub struct RunArgs {
     // A blocking constructor is issue 0286's shape.
     #[arg(long, default_value = "60", value_name = "SECS")]
     pub timeout_secs: u64,
+
+    /// Issue 2900 -- the source directories of a hand-written program the
+    /// census is stale against, when the caller knows them: an owned entry's
+    /// package and its workspace dependencies ([`owned_entry_closure`]). Not a
+    /// flag; empty keeps the rules of `collect_inputs`.
+    #[arg(skip)]
+    pub program_dirs: Vec<PathBuf>,
 }
 
 /// `nros ws entity-census check`.
@@ -892,6 +899,7 @@ fn take_census(args: TakeArgs) -> Result<()> {
         model: Some(model_path),
         out: None,
         timeout_secs: args.timeout_secs,
+        program_dirs: Vec::new(),
     });
     if census.is_file() {
         write_host_build_record(&census, &record)?;
@@ -1360,6 +1368,7 @@ fn take_model_in_build_with(
         model: Some(model.to_path_buf()),
         out: None,
         timeout_secs,
+        program_dirs: Vec::new(),
     })?;
     refuse_if_moved_when(fail_if_changed, &before, &digest)
 }
@@ -1761,6 +1770,66 @@ pub(crate) fn owned_entry_closure(pkg: &Path) -> Result<Vec<ProbeDep>> {
     })
 }
 
+/// Issue 2900 -- the directories an owned entry's census is stale against:
+/// the entry's package, then each workspace package its census build adds.
+pub(crate) fn owned_entry_dirs(pkg: &Path, deps: &[ProbeDep]) -> Vec<PathBuf> {
+    std::iter::once(pkg.to_path_buf())
+        .chain(deps.iter().map(|d| d.dir.clone()))
+        .collect()
+}
+
+/// Issue 2900 -- the freshness inputs of a program whose source directories
+/// the caller named: each directory's source tree, and the first one's
+/// `CMakeLists.txt` and `package.xml` by name, so a stale verdict says which
+/// file of the entry moved. The tree digest already covers both files; the
+/// named rows are what a reader of the refusal sees.
+fn program_inputs(
+    dirs: &[PathBuf],
+    rel: &dyn Fn(&Path) -> String,
+    inputs: &mut Vec<Input>,
+) -> Result<()> {
+    for dir in dirs {
+        inputs.push(Input {
+            role: "source_tree",
+            path: rel(dir),
+            digest: crate::orchestration::metadata_refresh::source_digest(dir)?,
+        });
+    }
+    if let Some(entry) = dirs.first() {
+        for name in [OWNED_ENTRY_BUILD_FILE, "package.xml"] {
+            let file = entry.join(name);
+            if file.is_file() {
+                inputs.push(Input {
+                    role: "build_file",
+                    path: rel(&file),
+                    digest: file_digest(&file)?,
+                });
+            }
+        }
+    }
+    Ok(())
+}
+
+/// The file an owned entry's census must record to be believed (issue 2900).
+const OWNED_ENTRY_BUILD_FILE: &str = "CMakeLists.txt";
+
+/// Issue 2900 -- whether the census at `path` records its entry's build file.
+/// A census taken before that was an input records only the binary, so it
+/// would read fresh after the very edit this issue is about; it is re-taken.
+fn records_entry_build_file(path: &Path) -> bool {
+    std::fs::read_to_string(path)
+        .ok()
+        .and_then(|raw| serde_json::from_str::<serde_json::Value>(&raw).ok())
+        .and_then(|c| c.get("provenance")?.get("inputs")?.as_array().cloned())
+        .is_some_and(|rows| {
+            rows.iter().any(|r| {
+                r.get("role").and_then(serde_json::Value::as_str) == Some("build_file")
+                    && r.get("path").and_then(serde_json::Value::as_str)
+                        == Some(OWNED_ENTRY_BUILD_FILE)
+            })
+        })
+}
+
 /// Issue 2899 -- the lines of the census project include that add `deps`, as
 /// the probe project does (issue 2680): once, after the TOP project's own
 /// `project()` (the include runs after every `project()`, a dependency's
@@ -1946,6 +2015,7 @@ pub(crate) fn take_leaf_census_with(
         &HostProgram {
             src: &leaf,
             workspace_deps: &[],
+            freshness_dirs: Vec::new(),
             build: leaf.join("build").join("census-host"),
             out,
             named,
@@ -2064,6 +2134,7 @@ pub(crate) fn take_owned_census(
             .collect();
         let all_fresh = each.iter().all(|c| {
             matches!(census_freshness(c, pkg), Freshness::Fresh)
+                && records_entry_build_file(c)
                 && std::fs::read_to_string(c)
                     .ok()
                     .and_then(|raw| serde_json::from_str::<serde_json::Value>(&raw).ok())
@@ -2080,7 +2151,9 @@ pub(crate) fn take_owned_census(
             ));
             return Ok(());
         }
-    } else if let Freshness::Fresh = census_freshness(&out, pkg) {
+    } else if let Freshness::Fresh = census_freshness(&out, pkg)
+        && records_entry_build_file(&out)
+    {
         let complete = std::fs::read_to_string(&out)
             .ok()
             .and_then(|raw| serde_json::from_str::<serde_json::Value>(&raw).ok())
@@ -2107,6 +2180,7 @@ pub(crate) fn take_owned_census(
         &HostProgram {
             src: pkg,
             workspace_deps: &deps,
+            freshness_dirs: owned_entry_dirs(pkg, &deps),
             build: root
                 .join("build")
                 .join("nros")
@@ -2201,6 +2275,10 @@ pub(crate) struct HostProgram<'a> {
     /// program's own sources ([`owned_entry_closure`]). Empty on the leaf
     /// road, whose CMakeLists adds what it needs itself.
     pub workspace_deps: &'a [ProbeDep],
+    /// Issue 2900 -- the directories the census is stale against
+    /// ([`RunArgs::program_dirs`]). Empty on the leaf road, whose own rules
+    /// keep its `system.toml` out of them.
+    pub freshness_dirs: Vec<PathBuf>,
 }
 
 /// phase-583 W4 -- the programs the host census build states,
@@ -2307,6 +2385,7 @@ pub(crate) fn census_host_program(
                 model: None,
                 out: Some(out),
                 timeout_secs,
+                program_dirs: p.freshness_dirs.clone(),
             })
             .wrap_err_with(p.run_failure)?;
         }
@@ -2340,6 +2419,7 @@ pub(crate) fn census_host_program(
         model: None,
         out: Some(p.out.clone()),
         timeout_secs,
+        program_dirs: p.freshness_dirs.clone(),
     })
     .wrap_err_with(p.run_failure)
     .map(|()| None)
@@ -2975,7 +3055,7 @@ fn run_census(args: RunArgs) -> Result<()> {
         entry: args.entry.clone(),
         provenance: Provenance {
             tool: format!("nros-cli {}", env!("CARGO_PKG_VERSION")),
-            inputs: collect_inputs(&ws, &binary, args.model.as_deref())?,
+            inputs: collect_inputs(&ws, &binary, args.model.as_deref(), &args.program_dirs)?,
         },
         incomplete,
         stated: None,
@@ -3257,7 +3337,12 @@ fn file_digest(path: &Path) -> Result<String> {
 /// a reader needs to decide whether that binary is still the right one to have
 /// run -- the sources it was built from, and the model the entry was generated
 /// from with the model's own recorded inputs carried through.
-fn collect_inputs(ws: &Path, binary: &Path, model: Option<&Path>) -> Result<Vec<Input>> {
+fn collect_inputs(
+    ws: &Path,
+    binary: &Path,
+    model: Option<&Path>,
+    program_dirs: &[PathBuf],
+) -> Result<Vec<Input>> {
     let rel = |p: &Path| -> String {
         p.strip_prefix(ws)
             .unwrap_or(p)
@@ -3269,6 +3354,11 @@ fn collect_inputs(ws: &Path, binary: &Path, model: Option<&Path>) -> Result<Vec<
         path: rel(binary),
         digest: file_digest(binary)?,
     }];
+
+    if model.is_none() && !program_dirs.is_empty() {
+        program_inputs(program_dirs, &rel, &mut inputs)?;
+        return Ok(inputs);
+    }
 
     let Some(model_path) = model else {
         // Issue 1556 item 4 -- a STANDALONE leaf has no model, so its
@@ -4267,7 +4357,7 @@ executable=prog_b=/b/b
             entry: "composed".into(),
             provenance: Provenance {
                 tool: "test".into(),
-                inputs: collect_inputs(leaf, &bin, None).unwrap(),
+                inputs: collect_inputs(leaf, &bin, None, &[]).unwrap(),
             },
             incomplete: None,
             stated: None,
@@ -4303,6 +4393,66 @@ executable=prog_b=/b/b
             !text.contains("zephyr_interface"),
             "the stub must not look like Zephyr to find_package(nano_ros)"
         );
+    }
+
+    /// Issue 2900 -- an owned entry's census is stale when the entry's
+    /// `CMakeLists.txt` or `package.xml` changes, or a workspace dependency's
+    /// source does, by content; and a census recorded before those were
+    /// inputs (the binary alone) is not believed.
+    #[test]
+    fn an_owned_census_goes_stale_when_the_entrys_build_files_change() {
+        let tmp = tempfile::tempdir().unwrap();
+        let ws = tmp.path();
+        let pkg = ws.join("src/entry_pkg");
+        let dep = ws.join("src/dep_lib");
+        std::fs::create_dir_all(pkg.join("src")).unwrap();
+        std::fs::create_dir_all(dep.join("include")).unwrap();
+        std::fs::write(pkg.join("CMakeLists.txt"), "project(entry_pkg)\n").unwrap();
+        std::fs::write(pkg.join("package.xml"), "<package/>\n").unwrap();
+        std::fs::write(pkg.join("src/main.c"), "int main(void){return 0;}\n").unwrap();
+        std::fs::write(dep.join("include/dep.h"), "#define DEP 1\n").unwrap();
+        let bin = ws.join("build/census-host/entry_pkg");
+        std::fs::create_dir_all(bin.parent().unwrap()).unwrap();
+        std::fs::write(&bin, b"\x7fELF").unwrap();
+        let dirs = vec![pkg.clone(), dep.clone()];
+        let out = ws.join("census.json");
+        let write = |inputs: Vec<Input>| {
+            let census = Census {
+                schema: CENSUS_SCHEMA,
+                entry: "entry_pkg".into(),
+                provenance: Provenance {
+                    tool: "test".into(),
+                    inputs,
+                },
+                incomplete: None,
+                stated: None,
+                census: serde_json::json!({
+                    "version": crate::orchestration::metadata_refresh::RECORDER_SCHEMA_VERSION,
+                    "nodes": []}),
+            };
+            std::fs::write(&out, serde_json::to_string(&census).unwrap()).unwrap();
+        };
+        let fresh = || matches!(census_freshness(&out, &pkg), Freshness::Fresh);
+
+        // The shape before this fix: the binary alone. Fresh by digest, and
+        // still not believed.
+        write(collect_inputs(&pkg, &bin, None, &[]).unwrap());
+        assert!(fresh());
+        assert!(!records_entry_build_file(&out));
+
+        write(collect_inputs(&pkg, &bin, None, &dirs).unwrap());
+        assert!(fresh() && records_entry_build_file(&out));
+        for edit in [
+            pkg.join("CMakeLists.txt"),
+            pkg.join("package.xml"),
+            dep.join("include/dep.h"),
+        ] {
+            write(collect_inputs(&pkg, &bin, None, &dirs).unwrap());
+            assert!(fresh());
+            let before = std::fs::read_to_string(&edit).unwrap();
+            std::fs::write(&edit, format!("{before}# edited\n")).unwrap();
+            assert!(!fresh(), "editing {} left the census fresh", edit.display());
+        }
     }
 
     /// Issue 2899 -- the census project include adds the owned entry's
@@ -4409,7 +4559,7 @@ executable=prog_b=/b/b
                 entry: "c_server".into(),
                 provenance: Provenance {
                     tool: "test".into(),
-                    inputs: collect_inputs(leaf, &bin, None).unwrap(),
+                    inputs: collect_inputs(leaf, &bin, None, &[]).unwrap(),
                 },
                 incomplete: None,
                 stated: None,
