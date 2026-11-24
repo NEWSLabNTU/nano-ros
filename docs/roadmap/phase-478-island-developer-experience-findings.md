@@ -1267,6 +1267,7 @@ unowned.
 - [issue 2633](../issues/2633-board-owned-can-frame-driver.md): the S32Z2 CAN frame driver's vendor backend and the `board`-stack hand-off (I47; phase-560 W9 stays its design home).
 - [issue 2769](../issues/2769-zenoh-can-link-over-frame-driver.md): the zenoh-pico CAN link over the frame driver (I48).
 - [issue 2911](../issues/archived/2911-census-prepass-skips-compile-check-nros-image-rows.md) (resolved 2026-11-24 by PR #4723): the census pre-pass never took the census of a compile-check row configured by `nros build`, so the issue-2862 rows `west_owned_entry_census_flat` / `_nested` refused on the self-hosted runner.
+- [issue 2924](../issues/archived/2924-seed-bound-tables-span-language-roots.md) (resolved 2026-11-24): a west image's message-bound seed read one language root of the probe's bound tables, so `west_owned_entry_workspace_module` (a C node's `std_msgs` under `nano_ros_c`, the workspace's `demo_msgs` under `nano_ros_cpp`) refused in the tier-1 census pre-pass on a fresh tree.
 
 ## Issues homed here (2026-11-02)
 
