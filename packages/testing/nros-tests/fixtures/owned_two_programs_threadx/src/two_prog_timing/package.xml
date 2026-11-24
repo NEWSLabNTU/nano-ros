@@ -1,0 +1,11 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>two_prog_timing</name>
+  <version>0.1.0</version>
+  <description>Issue 2899 -- a header-only workspace library an owned entry depends on.</description>
+  <maintainer email="dev@example.com">Developer</maintainer>
+  <license>Apache-2.0</license>
+  <export>
+    <build_type>nros_cmake</build_type>
+  </export>
+</package>

@@ -16,6 +16,9 @@
 // Generated message bindings
 #include "std_msgs.h"
 
+// Issue 2899 -- a header of a sibling workspace package this one <depend>s on.
+#include "two_prog_timing/periods.h"
+
 // ----------------------------------------------------------------------------
 // Application state
 // ----------------------------------------------------------------------------
@@ -113,7 +116,7 @@ int main(int argc, char** argv) {
     };
     std_msgs__msg__String__init_in(&app.talker_ctx.message, &app.talker_ctx.message_storage);
 
-    RCLC_CHECK_RET(rclc_timer_init_default(&app.timer, &app.support, 1000000000ULL, timer_callback),
+    RCLC_CHECK_RET(rclc_timer_init_default(&app.timer, &app.support, TWO_PROG_TIMER_PERIOD_NS, timer_callback),
                    1);
     RCLC_CHECK_RET(rclc_executor_add_timer(&app.executor, &app.timer), 1);
 
@@ -128,7 +131,7 @@ int main(int argc, char** argv) {
                        1);
     }
     for (int i = 0; i < 2; i++) {
-        RCLC_CHECK_RET(rclc_timer_init_default(&app.extra_timer[i], &app.support, 1000000000ULL,
+        RCLC_CHECK_RET(rclc_timer_init_default(&app.extra_timer[i], &app.support, TWO_PROG_TIMER_PERIOD_NS,
                                                timer_callback),
                        1);
         RCLC_CHECK_RET(rclc_executor_add_timer(&app.executor, &app.extra_timer[i]), 1);
