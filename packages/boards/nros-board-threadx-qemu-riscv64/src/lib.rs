@@ -524,6 +524,10 @@ extern "C" fn nros_platform_panic(msg: *const u8, len: usize) -> ! {
 /// # Safety
 /// Called by C `assert()`; the four pointers are newlib-supplied NUL-terminated
 /// C strings (`file`, `func`, `failedexpr`) or null. We only read them to print.
+// Issue 2932 -- bare metal only: the crate also compiles as a host shell (so
+// host tooling can build what depends on it), and there a `no_mangle`
+// `__assert_func` would replace glibc's for that whole process.
+#[cfg(target_os = "none")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn __assert_func(
     file: *const core::ffi::c_char,

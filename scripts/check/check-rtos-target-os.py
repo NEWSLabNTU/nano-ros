@@ -172,6 +172,28 @@ CLASSIFIED: dict[tuple[str, str], str] = {
         "packages/platform/nros-baremetal-common/src/libc_stubs.rs",
         'cfg(not(all(target_arch = "arm", target_os = "none")))',
     ): "The other arm of the same bare-metal split.",
+    (
+        "packages/platform/nros-baremetal-common/src/lib.rs",
+        'cfg(all(feature = "libc-stubs", not(feature = "c-libc"), target_os = "none"))',
+    ): "Is there a libc? Issue 2932: the `no_mangle` libc names are exported "
+    "only where none exists. NuttX brings its own libc, so naming it here "
+    "would be wrong, and a host build must not replace glibc's.",
+    (
+        "packages/platform/nros-platform-mps2-an385/src/lib.rs",
+        'cfg(all(feature = "libc-heap", not(feature = "c-libc"), target_os = "none"))',
+    ): "Is there a libc allocator? Issue 2932: `malloc`/`free`/`realloc`/`calloc` "
+    "over the board arena are exported only on bare metal; on the host they "
+    "replaced glibc's for the whole test process with a single-threaded heap.",
+    (
+        "packages/testing/qemu-smoltcp-bridge/src/lib.rs",
+        'cfg(target_os = "none")',
+    ): "Is there a libc? Issue 2932: the bare-metal QEMU examples' libc "
+    "stand-ins are exported only where no libc exists.",
+    (
+        "packages/boards/nros-board-threadx-qemu-riscv64/src/lib.rs",
+        'cfg(target_os = "none")',
+    ): "Is there a libc? Issue 2932: the board's `__assert_func` stands in for "
+    "newlib's on the bare-metal image; the host shell build has glibc's.",
 }
 
 

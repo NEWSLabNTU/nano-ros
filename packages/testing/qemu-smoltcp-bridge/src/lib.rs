@@ -36,6 +36,10 @@
 
 pub mod bridge;
 pub mod clock;
+// Issue 2932 -- the libc stand-ins are for bare metal only. On a host build
+// (`cargo` over the workspace, clippy) these `no_mangle` names would replace
+// glibc's `memcpy`/`strlen`/... for the whole process.
+#[cfg(target_os = "none")]
 pub mod libc_stubs;
 
 pub use bridge::SmoltcpZenohBridge;

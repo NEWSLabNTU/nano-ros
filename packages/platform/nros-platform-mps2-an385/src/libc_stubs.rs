@@ -10,13 +10,19 @@
 //! `nros-baremetal-common::libc_stubs`, which this crate enables via the
 //! `libc-stubs` feature.
 //!
-//! Always-emit (no Cargo feature gate): the mps2-an385 platform is
-//! bare-metal-only (`target_os = "none"`), so there's no hosted libc to
-//! collide with; emitting these symbols on every build keeps the surface
-//! predictable + lets a zenoh build use them too (zenoh-pico's
-//! `Z_MALLOC_FUNCTION` already routes via `crate::memory`, but linking
-//! `malloc` doesn't pull anything new from zenoh-pico — it stays gc'd
-//! when unreferenced).
+//! Emitted only on `target_os = "none"`, behind the `libc-heap` feature: on a
+//! host build these names would replace the host C library's allocator for
+//! the whole process.
+
+// Issue 2932 -- this header used to say the platform is bare-metal-only, so
+// there is no hosted libc to collide with. The IMAGE is, but the crate is also
+// built for the host: its own unit tests (`just check bare-metal-wall-clock`)
+// and host clippy. There these `no_mangle` names replaced glibc's allocator for
+// the whole test process, every thread of libtest included, with
+// `FreeListHeap`, whose `Sync` impl assumes one context. A race corrupted the
+// TLSF bitmap and aborted a gate ("bitmap contradiction").
+// `check-host-libc-symbols` keeps every host build of a bare-metal crate free
+// of libc names.
 
 #![allow(clippy::missing_safety_doc)]
 

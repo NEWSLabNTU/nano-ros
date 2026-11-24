@@ -18,8 +18,10 @@
 
 pub mod clock;
 // `c-libc` overrides `libc-heap`: newlib's allocator is the only `malloc` in a
-// C-rooted image (phase-553 W1).
-#[cfg(all(feature = "libc-heap", not(feature = "c-libc")))]
+// C-rooted image (phase-553 W1). Issue 2932 -- and only on bare metal: a host
+// build (this crate's unit tests, a host clippy) has glibc, and exporting
+// `malloc` there replaced it for the whole process with a single-threaded arena.
+#[cfg(all(feature = "libc-heap", not(feature = "c-libc"), target_os = "none"))]
 pub mod libc_stubs;
 pub mod memory;
 pub mod net;
