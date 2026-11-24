@@ -1,0 +1,1 @@
+On a Linux host board, an image that receives messages larger than 64 KiB no longer needs the zenoh fragment size raised by hand: the build sizes it from the largest message the image receives. An image that receives a message type with no size bound, such as a string, now gets a build warning saying which size to state.

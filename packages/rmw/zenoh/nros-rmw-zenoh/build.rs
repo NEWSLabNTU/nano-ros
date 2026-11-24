@@ -101,7 +101,10 @@ fn main() {
     // below); the carrier is the fallback for a road that names no descriptor
     // (a multi-entry cmake configure, a Zephyr west entry -- issue 1407) or one
     // whose rows cannot be the whole subscribed set.
-    let size_threshold: usize = env_usize("NROS_ZENOH_SUBSCRIBER_LARGE_THRESHOLD_BYTES", 2048);
+    let size_threshold: usize = env_usize(
+        "NROS_ZENOH_SUBSCRIBER_LARGE_THRESHOLD_BYTES",
+        nros_sizing_descriptor::receive_ceiling::LARGE_THRESHOLD_DEFAULT,
+    );
     let described_classes = described_payload_classes(sizing.as_ref(), size_threshold);
     let sub_size: usize = env_usize_rung(
         "NROS_SUBSCRIBER_BUFFER_BYTES",
@@ -342,27 +345,39 @@ fn main() {
         std::env::var("DEP_ZPICO_FRAG_MAX_SIZE"),
         std::env::var("DEP_ZPICO_BATCH_UNICAST_SIZE"),
     ) {
-        use nros_sizing_descriptor::receive_ceiling::{receive_ceiling_refusal, receive_need};
+        use nros_sizing_descriptor::receive_ceiling::{
+            receive_ceiling, receive_ceiling_refusal, stated_receive, unpriced_receive_warning,
+        };
         let parse = |v: String| -> usize {
             v.trim()
                 .parse()
                 // issue 1368.
                 .expect("zpico-sys publishes the reassembly ceiling as a number")
         };
-        let need = receive_need(
-            nros_zephyr_build::knob("NROS_ZENOH_MAX_LARGE_SUBSCRIBERS")
-                .rung(described_classes.map(|c| c.large_count))
-                .stated(),
-            nros_zephyr_build::knob("NROS_ZENOH_SUBSCRIBER_LARGE_BYTES")
-                .rung(described_classes.and_then(|c| (c.large_count > 0).then_some(c.large_max)))
-                .stated(),
-            nros_zephyr_build::knob("NROS_SUBSCRIBER_BUFFER_BYTES")
-                .rung(described_classes.and_then(|c| (c.small_max > 0).then_some(c.small_max)))
-                .stated(),
-        );
-        if let Some(msg) = receive_ceiling_refusal(need, parse(frag), parse(batch)) {
+        let (frag, batch) = (parse(frag), parse(batch));
+        // Issue 2853 -- the ONE receive-need computation, shared with the
+        // zpico runner's hosted derivation.
+        let stated = stated_receive(sizing.as_ref(), &|name, derived| {
+            nros_zephyr_build::knob(name).rung(derived).stated()
+        });
+        if let Some(msg) = receive_ceiling_refusal(stated.need, frag, batch) {
             panic!("nros-rmw-zenoh: {msg}");
         }
+        if let Some(reason) = stated.unpriced.as_deref() {
+            warn(&unpriced_receive_warning(
+                reason,
+                Some(receive_ceiling(frag, batch).0),
+            ));
+        }
+    } else if let Some(reason) = nros_sizing_descriptor::receive_ceiling::stated_receive(
+        sizing.as_ref(),
+        &|name, derived| nros_zephyr_build::knob(name).rung(derived).stated(),
+    )
+    .unpriced
+    {
+        // The Zephyr road: the configure compares the ceiling it baked; this
+        // crate does not know it, so the warning names none.
+        warn(&nros_sizing_descriptor::receive_ceiling::unpriced_receive_warning(&reason, None));
     }
     // Phase 268 — per-session per-node NN liveliness token cap. One zenoh
     // session hosts at most the executor's node cap of graph nodes, so this
@@ -806,14 +821,9 @@ fn described_payload_classes(
     match nros_sizing_descriptor::subscriber_payload_classes(desc?, ceiling) {
         Fact::Stated(c) => Some(c),
         Fact::Absent => None,
-        Fact::Refused(reason) => {
-            warn(&format!(
-                "sizing descriptor cannot size the subscriber payload classes: {reason}. \
-                 NROS_DECLARED_SUBSCRIBER_BUFFER_SIZE / _LARGE_SIZE / LARGE_SUBSCRIBERS \
-                 (or the crate defaults) decide them instead"
-            ));
-            None
-        }
+        // Issue 2853 -- reported once, by the receive-ceiling check
+        // (`unpriced_receive_warning`), and only when no class was stated.
+        Fact::Refused(_) => None,
     }
 }
 

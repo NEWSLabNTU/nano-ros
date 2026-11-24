@@ -12,7 +12,10 @@ third is the number the RUNTIME routes on:
   2. `DEFAULT_SMALL_CLASS_CEILING` — packages/cli/rosidl-codegen/src/bounds.rs
      (the cargo-leaf lane's `nros_cli_core::leaf_payload_classes`, issue 1125)
   3. `NROS_ZENOH_SUBSCRIBER_LARGE_THRESHOLD_BYTES`'s crate default —
-     packages/rmw/zenoh/nros-rmw-zenoh/build.rs, which becomes
+     `LARGE_THRESHOLD_DEFAULT` in
+     packages/tooling/nros-sizing-descriptor/src/receive_ceiling.rs (issue
+     2853 moved it there from nros-rmw-zenoh's build.rs, which reads it, so
+     the receive-ceiling derivation shares it), which becomes
      `SUBSCRIBER_SIZE_THRESHOLD` and half of the shim's `SMALL_CLASS_CEILING`
 
 If (1) or (2) is LARGER than (3), a type between them is classified `small` by
@@ -58,8 +61,8 @@ SPELLINGS = [
     ),
     (
         "crate default NROS_ZENOH_SUBSCRIBER_LARGE_THRESHOLD_BYTES",
-        "packages/rmw/zenoh/nros-rmw-zenoh/build.rs",
-        r'env_usize\("NROS_ZENOH_SUBSCRIBER_LARGE_THRESHOLD_BYTES",\s*(\d+)\)',
+        "packages/tooling/nros-sizing-descriptor/src/receive_ceiling.rs",
+        r"pub const LARGE_THRESHOLD_DEFAULT:\s*usize\s*=\s*(\d+)",
     ),
 ]
 
@@ -133,7 +136,7 @@ def selftest():
     samples = [
         "set(NROS_MESSAGE_BOUNDS_DEFAULT_SMALL_CEILING 2048 CACHE INTERNAL\n",
         "pub const DEFAULT_SMALL_CLASS_CEILING: usize = 2048;\n",
-        'let t: usize = env_usize("NROS_ZENOH_SUBSCRIBER_LARGE_THRESHOLD_BYTES", 2048);\n',
+        "pub const LARGE_THRESHOLD_DEFAULT: usize = 2048;\n",
     ]
     for (label, _, pattern), text in zip(SPELLINGS, samples):
         assert read_spelling(text, pattern) == 2048, label

@@ -1,0 +1,33 @@
+---
+id: 2943
+title: "The receive-ceiling refusal passes a class equal to the ceiling, but the reassembled zenoh message is ~88 B larger, so every such sample is dropped"
+status: open
+type: bug
+severity: low
+area: [rmw, zenoh, sizing]
+related: [issue-1368, issue-2853]
+found: 2026-11-24
+---
+## What
+`receive_ceiling_refusal` (`nros-sizing-descriptor/src/receive_ceiling.rs`)
+and its Zephyr twin (`_nros_rx_ceiling`, `zephyr/cmake/nros_cargo_build.cmake`)
+refuse only when the receive class EXCEEDS `max(frag, batch)`. But zenoh-pico
+reassembles the whole zenoh message, which is the sample plus the push header,
+its extensions and the RMW attachment. Measured for issue 2853 (Linux, a
+100,012 B class over a local `rmw_zenohd`): a 100,095 B reassembly ceiling
+delivered nothing and 100,100 B delivered every sample, so about 88 B of
+headers. A class in `(ceiling - ~88, ceiling]` passes the check and every
+sample is dropped silently, the failure 1368 exists to prevent.
+
+The hosted derivation from 2853 already adds `REASSEMBLY_HEADROOM_BYTES`
+(256). The refusal does not, on either road.
+
+## Fix direction
+Compare `need + REASSEMBLY_HEADROOM_BYTES` against the ceiling in both
+arms. This can newly refuse an embedded image whose class sits within the
+headroom of its ceiling, so measure the overhead on an embedded road (the
+batch path too) before changing it there.
+
+## Acceptance
+An image whose class is within the headroom of its ceiling is refused with the
+same message, on both roads; one with room passes.
