@@ -55,6 +55,9 @@ pub struct Args {
     /// (`*.contract.yaml`) and `system.toml` files are rewritten from
     /// spellings the contract checker no longer reads to the current ones.
     /// A rewrite changes only the renamed keys; comments and layout stay.
+    /// With an installed SDK, the project's `nros-sdk.lock` also accepts this
+    /// release's pin for each vendored source and host tool it pinned
+    /// differently, as `nros update --source` / `--tool` would.
     // Issue 2394, RFC-0117 amendment "user-tier verbs for 2394"; the move is
     // RFC-0121 D8.
     #[arg(long, conflicts_with_all = ["check", "dry_run"])]
@@ -284,7 +287,23 @@ fn migrate(project: &Path) -> Result<()> {
             );
         }
     }
-    if !moved_any && rewritten.is_empty() {
+    // On an installed SDK the project's `nros-sdk.lock` still pins what the
+    // release that last built it had, and a build refuses a source or tool
+    // off those pins. Accept this release's, through `nros update`'s own
+    // writer. In a checkout the pin set is the tree's and moves only by
+    // `nros update`, so nothing is accepted there.
+    let mut accepted = Vec::new();
+    if let Some(root) = crate::orchestration::nano_ros_root::resolve(None, project)
+        && !crate::orchestration::nano_ros_root::is_checkout(&root)
+    {
+        let index =
+            crate::orchestration::sdk_index::SdkIndex::load(&root.join("nros-sdk-index.toml"))?;
+        accepted = crate::cmd::update::accept_sdk_pins(&index, project)?;
+        for m in &accepted {
+            eprintln!("nros configure --migrate: nros-sdk.lock accepts this SDK's {m}");
+        }
+    }
+    if !moved_any && rewritten.is_empty() && accepted.is_empty() {
         eprintln!("nros configure --migrate: nothing to migrate");
     }
     Ok(())

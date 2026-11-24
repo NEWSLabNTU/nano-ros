@@ -94,8 +94,9 @@ impl std::fmt::Display for Drift {
             } => write!(
                 f,
                 "{kind} `{name}`: this project's nros-sdk.lock pins {pinned}, the SDK now has \
-                 {now} — `nros update --{kind} {name}` accepts the SDK's, or build against the \
-                 SDK the lock was written with"
+                 {now} — `nros update --{kind} {name}` accepts the SDK's (`nros configure \
+                 --migrate` accepts every one), or build against the SDK the lock was written \
+                 with"
             ),
             Drift::Tool { name, have, pinned } => write!(
                 f,

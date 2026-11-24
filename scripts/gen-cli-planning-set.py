@@ -105,7 +105,6 @@ LEAF_VERBS = {
     "cmd/runner_verb.rs",
     "cmd/sdk_front.rs",
     "cmd/template_verb.rs",
-    "cmd/update.rs",
     "cmd/user.rs",
 }
 

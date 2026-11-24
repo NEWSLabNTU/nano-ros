@@ -88,7 +88,7 @@ Inspect:
 Toolchain:
   toolchain    List, remove and garbage-collect installed toolchains and SDK packages
   pin          Report this project's `nros-toolchain.toml`, or move it
-  update       Move one pin, editing the pin set and leaving one diff
+  update       Move one pin, leaving one diff to review
   locate       Print where a resource is, and with `--why`, which rung answered
 
 Other:
@@ -687,7 +687,7 @@ Options:
           Take the entity census first: build the native image generated from the same launch file, run it, and record what it registers. Every image this configure covers, or only `BRINGUP:IMAGE`: the image whose build checks the census, usually a cross image, as in `nros build BRINGUP:IMAGE`. A plain configure only reports a census that is missing or stale, because taking one builds and runs a program
 
       --migrate
-          Apply the known, reversible migrations first, printing every file moved and every key rewritten: a `system.toml` beside a package's code moves into a bringup package, and the project's contracts (`*.contract.yaml`) and `system.toml` files are rewritten from spellings the contract checker no longer reads to the current ones. A rewrite changes only the renamed keys; comments and layout stay
+          Apply the known, reversible migrations first, printing every file moved and every key rewritten: a `system.toml` beside a package's code moves into a bringup package, and the project's contracts (`*.contract.yaml`) and `system.toml` files are rewritten from spellings the contract checker no longer reads to the current ones. A rewrite changes only the renamed keys; comments and layout stay. With an installed SDK, the project's `nros-sdk.lock` also accepts this release's pin for each vendored source and host tool it pinned differently, as `nros update --source` / `--tool` would
 
   -h, --help
           Print help (see a summary with '-h')
@@ -2037,9 +2037,11 @@ Options:
 ### `nros update`
 
 ```text
-Move one pin, editing the pin set and leaving one diff.
+Move one pin, leaving one diff to review.
 
 A pin is a registry crate (`--crate`), a vendored source (`--source`), a host tool (`--tool`) or a west project (`--west`).
+
+With an installed SDK, the SDK's pins are the release and do not move: the project's own `nros-sdk.lock` does. `--source <name>` and `--tool <name>` accept this SDK's pin after an upgrade (no `--ref` or `--to-version`); `nros configure --migrate` accepts every one at once. `--crate <name>` records a project override. In a nano-ros checkout, each flag edits the checkout's pin set instead.
 
 Usage: nros update [OPTIONS] <--pins|--crate <NAME>|--source <NAME>|--tool <NAME>|--west <MODULE>>
 
@@ -2051,25 +2053,25 @@ Options:
           With `--pins`: also DROP every pinned range no locked root resolves and `locks/leaf-only-pins.toml` does not keep. Regeneration alone never drops a range, so a bump leaves the old one pinned
 
       --crate <NAME>
-          Move a Rust registry crate's pin: every locked root that uses it is re-resolved with `cargo update`, the roots are brought into agreement, and the pin set is regenerated from them
+          A Rust registry crate. In a checkout: every locked root that uses it is re-resolved with `cargo update`, the roots are brought into agreement, and the pin set is regenerated from them. With an installed SDK: it is re-resolved in this project and recorded as a project override
 
       --precise <VERSION>
           The exact version to move to. Without it, cargo picks the newest semver-compatible one. A different MAJOR is a manifest edit first
 
       --source <NAME>
-          Move a vendored source (`[source.<name>]`) to a commit: its submodule is checked out there and the index `ref` rewritten, forward only
+          A vendored source (`[source.<name>]`). With an installed SDK: the project's lock accepts this SDK's commit. In a checkout: with `--ref`, its submodule is checked out there and the index `ref` rewritten, forward only
 
       --ref <SHA>
-          The commit for `--source`
+          The commit for `--source` (a checkout only)
 
       --allow-rewind
           Let `--source` move a pin BACKWARDS (the submodule-pin rule forbids it otherwise; say why in the commit)
 
       --tool <NAME>
-          Move a host tool (`[tool.<name>]`) to a version: the row's version strings are rewritten and every dist artifact is downloaded to recompute its sha256
+          A host tool (`[tool.<name>]`). With an installed SDK: the project's lock accepts this SDK's version. In a checkout: with `--to-version`, the row's version strings are rewritten and every dist artifact is downloaded to recompute its sha256
 
       --to-version <VERSION>
-          The version for `--tool`
+          The version for `--tool` (a checkout only)
 
       --west <MODULE>
           Move a Zephyr west project's revision in every manifest that lists it
