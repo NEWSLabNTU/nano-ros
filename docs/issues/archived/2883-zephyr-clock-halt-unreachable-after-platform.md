@@ -80,7 +80,7 @@ What stands in for this issue's acceptance:
   `zephyr_clock_halt_stops_when_no_source_answers` in
   `packages/testing/nros-tests/tests/zephyr_clock_resolve.rs`. It checks that
   the image prints the halt line, latches nothing, exits and never publishes.
-  It runs on both Zephyr lines as [issue 2839](../2839-zephyr-platform-clock-source-always-answers.md)'s
+  It runs on both Zephyr lines as [issue 2839](2839-zephyr-platform-clock-source-always-answers.md)'s
   closing condition.
 - On POSIX, `platform` keeps answering from `CLOCK_REALTIME`.
 - RFC-0141 D1's `platform` bullet states the amended rule.
