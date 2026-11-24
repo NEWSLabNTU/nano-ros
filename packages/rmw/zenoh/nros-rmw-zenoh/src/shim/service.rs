@@ -1026,11 +1026,15 @@ const LIFECYCLE_TYPE_PREFIX: &str = "lifecycle_msgs::srv::dds_::";
 /// twice, or a full group table is refused with the reason.
 pub(super) struct LifecycleGroup {
     /// Whether this entry is a node's group.
-    in_use: core::sync::atomic::AtomicBool,
-    /// The node, as a hash of its FQN (the entry stores no string).
-    node: core::sync::atomic::AtomicU64,
+    in_use: AtomicBool,
+    /// The node, as a 32-bit hash of its FQN (the entry stores no string).
+    /// 32 bits because a Cortex-M3 has no 64-bit atomics, and `portable_atomic`
+    /// (as `bump.rs`) because a Cortex-M0 has no compare-and-swap. Two nodes of one
+    /// image colliding (about 1 in 4e9) is not silent: the second node's
+    /// services meet the first's members and are refused as duplicates.
+    node: portable_atomic::AtomicU32,
     /// The C shim's handle of the node's queryable.
-    queryable: core::sync::atomic::AtomicI32,
+    queryable: portable_atomic::AtomicI32,
     /// Each endpoint's request header, as `buffer index + 1` (0 = absent).
     members: [AtomicUsize; 5],
 }
@@ -1038,9 +1042,9 @@ pub(super) struct LifecycleGroup {
 impl LifecycleGroup {
     const fn new() -> Self {
         Self {
-            in_use: core::sync::atomic::AtomicBool::new(false),
-            node: core::sync::atomic::AtomicU64::new(0),
-            queryable: core::sync::atomic::AtomicI32::new(-1),
+            in_use: AtomicBool::new(false),
+            node: portable_atomic::AtomicU32::new(0),
+            queryable: portable_atomic::AtomicI32::new(-1),
             members: [const { AtomicUsize::new(0) }; 5],
         }
     }
@@ -1053,13 +1057,13 @@ const LIFECYCLE_GROUP_COUNT: usize = ZPICO_MAX_SESSIONS * LIFECYCLE_GROUPS_PER_S
 static LIFECYCLE_GROUPS: [LifecycleGroup; LIFECYCLE_GROUP_COUNT] =
     [const { LifecycleGroup::new() }; LIFECYCLE_GROUP_COUNT];
 
-/// FNV-1a over a node FQN, with its surrounding `/`s trimmed so `/ns/node`
-/// and `ns/node` name one node.
-fn node_hash(fqn: &str) -> u64 {
-    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+/// 32-bit FNV-1a over a node FQN, with its surrounding `/`s trimmed so
+/// `/ns/node` and `ns/node` name one node.
+fn node_hash(fqn: &str) -> u32 {
+    let mut h: u32 = 0x811c_9dc5;
     for b in fqn.trim_matches('/').bytes() {
-        h ^= u64::from(b);
-        h = h.wrapping_mul(0x0000_0100_0000_01b3);
+        h ^= u32::from(b);
+        h = h.wrapping_mul(0x0100_0193);
     }
     h
 }
@@ -1127,7 +1131,7 @@ extern "C" fn lifecycle_group_callback(
 /// The node's group in `session_index`'s table, or a free entry claimed for
 /// it: `(group index, whether it was just claimed)`. `None` when the table is
 /// full.
-fn lifecycle_group_for(session_index: usize, node: u64) -> Option<(usize, bool)> {
+fn lifecycle_group_for(session_index: usize, node: u32) -> Option<(usize, bool)> {
     let base = session_index * LIFECYCLE_GROUPS_PER_SESSION;
     let table = &LIFECYCLE_GROUPS[base..base + LIFECYCLE_GROUPS_PER_SESSION];
     for (i, e) in table.iter().enumerate() {
