@@ -157,6 +157,30 @@ pub fn assert_row_dials_port(fixture_id: &str, port: u16) {
     );
 }
 
+/// Issue 2780 -- the XRCE twin of [`assert_row_dials_port`]: a row's
+/// `west_xrce_agent_port` must be its cell's `alloc::xrce_agent_port_of(...)`,
+/// because the test starts the Agent THERE. The fixture lane checks this only
+/// for the role leaves it can map to a cell (`zephyr-fixture-leaves.sh`'s
+/// `workload_for_image`), so a workspace image row has no other check. The
+/// lifecycle-pair row baked 5680 against an Agent on 5780 (C's language
+/// index is 1, not 0): the image booted, sent CREATE_CLIENT to a port nobody
+/// listened on, and the cell failed in `Executor::open` with no fault anywhere.
+pub fn assert_row_dials_agent_port(fixture_id: &str, port: u16) {
+    let manifest = read_doc(&crate::project_root().join("examples/fixtures.toml"))
+        .unwrap_or_else(|e| panic!("issue 2780: {e}"));
+    let row = manifest_row(&manifest, fixture_id)
+        .unwrap_or_else(|| panic!("issue 2780: no fixture row `{fixture_id}`"));
+    let baked = row.get("west_xrce_agent_port").and_then(|v| v.as_integer());
+    assert_eq!(
+        baked,
+        Some(i64::from(port)),
+        "issue 2780: fixture row `{fixture_id}` bakes west_xrce_agent_port = {baked:?}, but its \
+         cell's Agent is `alloc::xrce_agent_port_of(...)` = {port}. The image would send \
+         CREATE_CLIENT to a port no Agent listens on and fail `Executor::open` before any \
+         code under test runs. Fix the row's `west_xrce_agent_port`."
+    );
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

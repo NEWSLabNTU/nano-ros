@@ -795,6 +795,9 @@ fn zephyr_cortex_m_two_managed_xrce_nodes_boot_on_the_derived_heap() {
     if !is_qemu_available() {
         nros_tests::unmet!("qemu-system-arm not found");
     }
+    // The port the row bakes must be the one the Agent starts on, checked
+    // before booting: a mismatch reads as a networking fault (issue 2780).
+    lifecycle_pair_row_dials_its_agent_port();
     let binary = build_zephyr_cortex_m_workspace_c_lifecycle_pair_xrce()
         .require("the mps2_an385 two-managed-node XRCE image");
     if !is_xrce_agent_available() {
@@ -833,6 +836,21 @@ fn zephyr_cortex_m_two_managed_xrce_nodes_boot_on_the_derived_heap() {
     if let Some(peak) = output.lines().rfind(|l| l.contains(ZEPHYR_HEAP_PEAK)) {
         eprintln!("lifecycle-pair (XRCE): {}", peak.trim());
     }
+}
+
+/// Issue 2780 -- the lifecycle-pair row bakes its cell's Agent port. Static:
+/// reads the manifest, needs no fixture, so a wrong port is red in every lane
+/// rather than only in the one that boots the image.
+#[test]
+fn lifecycle_pair_row_dials_its_agent_port() {
+    nros_tests::fixtures::baked_locator::assert_row_dials_agent_port(
+        "workspace-zephyr-cortex-m-c-lifecycle-pair-xrce",
+        nros_tests::alloc::xrce_agent_port_of(
+            PlatformId::ZephyrQemuCortexM,
+            Lang::C,
+            Workload::Lifecycle,
+        ),
+    );
 }
 
 /// Runtime cells `matrix::consumer_of` assigns to it. Fixture-free: a cell
