@@ -96,7 +96,11 @@ Each piece of hand wiring is a work item below.
 
 ### W7 — 1 kHz timers
 
-- **Status:** OPEN (issue 2854).
+- **Owner:** nros 175.
+- **Status:** BLOCKED (a run on the musl board, issue 2854)
+- **Note:** the musl park fallback to whole milliseconds is fixed
+  (2026-11-24); measured on a glibc host, it does not explain 845 Hz alone.
+  What the board run must read is listed in the issue.
 - **What:** find why a 1 kHz timer reaches 845 Hz. The executor keeps its
   phase grid, so the cause is below it (sleep granularity, kernel preemption).
 - **Acceptance:** in the issue.
