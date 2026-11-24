@@ -15,21 +15,23 @@
 //! gate that property — it is the reason the shim package is unnecessary and
 //! the reason issue 0277 is closed.
 //!
-//! Fixture: the `workspace-cpp-native` row (`examples/workspaces/cpp`), built
-//! by `workspace-fixtures-build.sh` during `build-test-fixtures`. On posix that
-//! workspace configures talker_pkg/listener_pkg (msg deps: `std_msgs`)
-//! alongside the action and service packages (msg deps: `action_msgs`,
-//! `example_interfaces`, `builtin_interfaces`) — disjoint subsets, each package
-//! calling `nros_find_interfaces` from its own package.xml, all linked into the
-//! native entries.
+//! Fixture: the `workspace-cpp-mps3-an536-freertos-slirp-bulk` row
+//! (`examples/workspaces/cpp`, `slirp_bringup`), built by
+//! `workspace-fixtures-build.sh` during `build-test-fixtures`. That bringup
+//! launches `talker_pkg` (msg deps: `std_msgs`) and `bulk_listener_pkg`
+//! (`example_interfaces`): disjoint subsets, each package calling
+//! `nros_find_interfaces` from its own package.xml, both linked into one image.
+//! The archives are cross-built (armv8r); the host `nm` reads their ELF symbol
+//! tables all the same.
 //!
-//! It read the `metadata_cpp` COMPILE-CHECK fixture until phase-383 W10.a. That
-//! fixture was retargeted onto `examples/templates/multi-node-workspace-cpp`
-//! when `examples/workspaces/cpp` lost its hand-written root, and the template
-//! cannot carry this property: both its packages depend on `std_msgs` alone, so
-//! there is exactly ONE subset and the disjointness this file exists to prove
-//! has nothing to stand on. The workspace with the disjoint subsets is the one
-//! to read, and the workspace-fixture row is how to reach it.
+//! It read `workspace-cpp-native` (`demo_bringup`) until issue 2945. Issue
+//! 2754 scoped a generated root to its bringup, so that row configures only
+//! `talker_pkg` and `listener_pkg`, both `std_msgs`: one subset, every archive
+//! under one package, and the mixed-subset test could no longer pass. Before
+//! that it read the `metadata_cpp` compile-check fixture, which phase-383
+//! W10.a retargeted onto a template with a single subset. Twice now the
+//! subject lost the property while keeping its name, so the first test below
+//! asserts the property before the second relies on it.
 //!
 //! The tests read the PREBUILT fixture rather than running cmake (issue 0034
 //! / AGENTS.md "No compilation inside tests").
@@ -43,11 +45,14 @@ use std::{
 /// Every per-package FFI archive in the fixture, excluding cargo's
 /// `deps/`-mangled copies (which are the same objects under a hashed name and
 /// would register as false duplicates).
+/// The row whose bringup has disjoint msg-dep subsets (issue 2945).
+const ROW: &str = "workspace-cpp-mps3-an536-freertos-slirp-bulk";
+
 fn ffi_archives() -> nros_tests::TestResult<Vec<PathBuf>> {
     // Anchor on the entry binary, so a missing or unbuilt fixture fails with
     // the standard prebuilt hint rather than an empty-vec pass.
-    nros_tests::fixtures::build_native_workspace_cpp_entry()?;
-    let root = nros_tests::fixtures::groups::workspace_artifact_dir("workspace-cpp-native")?;
+    nros_tests::fixtures::build_freertos_workspace_cpp_an536_slirp_bulk_entry()?;
+    let root = nros_tests::fixtures::groups::workspace_artifact_dir(ROW)?;
 
     // The whole build dir, not `src/` — a MIGRATED workspace's generated root
     // lives under `build/<coord>/` while its packages stay in the source tree,
