@@ -96,15 +96,20 @@ zenoh with two managed nodes boots on the same arm, peak 181,536.
 
 ## Fix
 
-- **The heap derivation (part 2)** is in PR #4569, which derives the Zephyr
-  heap from the parameter-serving node and lifecycle machine counts, with an
-  XRCE lifecycle remainder measured from the peaks above, and adds a cell that
-  boots two managed C nodes on XRCE on mps2 with no heap stated.
+- **The heap derivation (part 2) LANDED** in PR #4569 (`a7080032e0`,
+  2026-11-24). It derives the Zephyr heap from the parameter-serving node and
+  lifecycle machine counts, with an XRCE lifecycle remainder measured from the
+  peaks above. It adds a cell that boots two managed C nodes on XRCE on mps2
+  with no heap stated (peak 251,120 of 320,000 B), so a second managed node no
+  longer exhausts the heap at boot. Its count is
+  `InfraServices::lifecycle_machines()`, which issue 2904's declared
+  `[lifecycle] managed_nodes` feeds too.
 - **The buffers (part 1)**: size the lifecycle servers' buffers from the
   lifecycle messages' own bounds, not the parameter service buffer
   (RFC-0128 D7's "inbox sized for lifecycle requests"). That is phase-554 W5.
 
-Workaround until then: state `[image.<id>.knobs.memory] heap_bytes` (327,680
-boots the two-machine image above).
+With part 2 landed, what remains is part 1: each machine's 44,200 bytes is
+an efficiency cost, not a boot failure. The nros12 release page drops this
+issue's "two managed XRCE nodes, HEAP EXHAUSTED" known issue for that reason.
 
-This closes when both parts have landed.
+This closes when part 1 (phase-554 W5) lands too.
