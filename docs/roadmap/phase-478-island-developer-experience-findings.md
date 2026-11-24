@@ -1007,6 +1007,24 @@ AN536) stay green.
   `wheel_base`, `max_pitch_rad`, `min_pitch_rad` split between
   `system_model.yaml` and `system_carla_model.yaml` keeps all 148).
 
+### I53 -- the Zephyr hook takes a level name for `log.max_level`
+
+- **Issue:** [2951](../issues/2951-zephyr-log-max-level-refuses-level-name.md).
+- **What:** a level name stated for `log.max_level` reaches Kconfig as its
+  index, as `knobs.toml`'s `names` column documents and the cargo road
+  already accepts.
+- **Acceptance:** 2951's test; the island's Zephyr images write
+  `log.max_level = "info"` instead of `2`.
+
+### I54 -- the CMake road exports the image's `log.max_level`
+
+- **Issue:** [2952](../issues/2952-cmake-road-log-max-level-not-exported.md).
+- **What:** every CMake-road configure (FreeRTOS POSIX and AN536, S32Z2,
+  linux census images) defines the image's resolved ceiling as
+  `NROS_LOG_MAX_LEVEL` (0..6), the twin of `CONFIG_NROS_LOG_MAX_LEVEL`.
+- **Acceptance:** 2952's test; the island derives `RCLC_LOG_MIN_SEVERITY` /
+  `RCLCPP_LOG_MIN_SEVERITY` from it on those images instead of a fixed INFO.
+
 ### T4 -- the island drops each workaround
 
 - **What:** for every row above marked fixed, and for each item as it lands,
@@ -1251,6 +1269,14 @@ this phase will fix it.
 - [issue 0772](../issues/0772-freertos-lwip-wall-clock-epoch.md) — FreeRTOS/lwIP has no wall-clock epoch — the same consumer that drove the Zephyr one runs a FreeRTOS board too
 - [issue 0913](../issues/archived/0913-the-debugger-is-not-a-passive-instrument.md) -- attaching pyocd RTT kills the zenoh session. Moved to phase-512 and resolved there 2026-11-09: halts under the 60 s lease keep the session, longer ones recover without a router restart.
 - [issue 1957](../issues/1957-s32ds-image-crate-unverified-in-ide.md) — s32ds builds its staticlib through the generated image crate since phase-506 W4a and has not been built in the S32 Design Studio since
+
+## Issues homed here (2026-11-24)
+
+Filed from the island port at nano-ros pin
+`55d9a6d761b64d4633d3ec6820ad37f68f2acfe7`.
+
+- [issue 2951](../issues/2951-zephyr-log-max-level-refuses-level-name.md): the Zephyr image hook refuses a level name for `log.max_level` (I53).
+- [issue 2952](../issues/2952-cmake-road-log-max-level-not-exported.md): the CMake road hands an image's `log.max_level` to cargo only, so C/C++ code cannot derive its log floor from it (I54).
 
 ## Issues homed here (2026-11-23)
 
