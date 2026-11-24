@@ -3,6 +3,7 @@
 # out, into a directory of the caller's choosing, for one build (issue 2811).
 #
 #   scripts/zephyr/fetch-job-module.sh <module> <dest> [--zephyr-base DIR]
+#                                      [--manifest FRAGMENT]
 #
 # WHY. `nros-sdk-index.toml` declares some modules with `lines = []`: known,
 # not fetched, so no fresh workspace pays for them (`hal_nxp` is 1.3 GB). A
@@ -14,16 +15,22 @@
 #
 # WHICH REVISION. The one the workspace's own Zephyr pins (`zephyr/west.yml`),
 # so the module matches the tree it builds against, exactly as `west update`
-# would have fetched it. Fetched shallow, blobless and sparse: only the paths
-# the module's build reads for the boards that need it (`SPARSE_EXCLUDES`
-# below), so `hal_nxp` costs tens of MB, not 1.3 GB.
+# would have fetched it. With `--manifest`, the board's downstream west
+# fragment (`west-downstream.yml`, what a consumer imports) supplies it, and a
+# fragment whose revision differs from the Zephyr tree's pin is refused: the
+# job then builds with exactly what a consumer imports, and a Zephyr bump that
+# moves the pin fails here until the fragment follows.
+#
+# Fetched shallow, blobless and sparse: only the paths the module's build
+# reads for the boards that need it (`SPARSE_EXCLUDES` below), so `hal_nxp`
+# costs tens of MB, not 1.3 GB.
 #
 # Idempotent: a `<dest>` already at the pinned revision is reused. Prints the
 # module directory on stdout; everything else goes to stderr.
 set -euo pipefail
 
 usage() {
-    sed -n '2,22p' "${BASH_SOURCE[0]}" >&2
+    sed -n '2,29p' "${BASH_SOURCE[0]}" >&2
     exit 2
 }
 
@@ -32,9 +39,11 @@ dest="${2:-}"
 [ -n "$module" ] && [ -n "$dest" ] || usage
 shift 2
 zephyr_base="${ZEPHYR_BASE:-}"
+fragment=""
 while [ "$#" -gt 0 ]; do
     case "$1" in
         --zephyr-base) zephyr_base="${2:-}"; shift 2 ;;
+        --manifest) fragment="${2:-}"; shift 2 ;;
         -h | --help) usage ;;
         *) echo "fetch-job-module: unknown argument $1" >&2; exit 2 ;;
     esac
@@ -56,30 +65,48 @@ if [ -z "$zephyr_base" ] || [ ! -f "$zephyr_base/west.yml" ]; then
     exit 1
 fi
 
+if [ -n "$fragment" ] && [ ! -f "$fragment" ]; then
+    echo "fetch-job-module: no such fragment: '$fragment'" >&2
+    exit 1
+fi
+
 # `<name> <url> <revision>` from the Zephyr tree's own manifest: the
 # project's remote url-base (or the manifest default) + `repo-path` or name.
+# With a fragment, the fragment's, after checking its revision is the tree's.
 # A command substitution, so the reader's exit status is the assignment's.
-project="$(python3 - "$zephyr_base/west.yml" "$module" <<'PY'
+project="$(python3 - "$zephyr_base/west.yml" "$module" "$fragment" <<'PY'
 import sys
 try:
     import yaml
 except ImportError:
     sys.exit("fetch-job-module: PyYAML missing (the Zephyr venv carries it: "
              "source scripts/build/zephyr-python.sh; nros_zephyr_activate)")
-doc = yaml.safe_load(open(sys.argv[1]))["manifest"]
 want = sys.argv[2]
-remotes = {r["name"]: r["url-base"] for r in doc.get("remotes", [])}
-default = (doc.get("defaults") or {}).get("remote")
-for p in doc.get("projects", []):
-    if p.get("name") != want:
-        continue
-    base = remotes.get(p.get("remote", default))
-    if not base or "revision" not in p:
-        sys.exit(f"fetch-job-module: {want}: no remote or revision in the manifest")
-    print(want, f"{base}/{p.get('repo-path', want)}", p["revision"])
-    break
-else:
-    sys.exit(f"fetch-job-module: {want} is not a project of {sys.argv[1]}")
+
+
+def find(path):
+    doc = yaml.safe_load(open(path))["manifest"]
+    remotes = {r["name"]: r["url-base"] for r in doc.get("remotes", [])}
+    default = (doc.get("defaults") or {}).get("remote")
+    for p in doc.get("projects", []):
+        if p.get("name") != want:
+            continue
+        base = remotes.get(p.get("remote", default))
+        if not base or "revision" not in p:
+            sys.exit(f"fetch-job-module: {want}: no remote or revision in {path}")
+        return f"{base}/{p.get('repo-path', want)}", str(p["revision"])
+    sys.exit(f"fetch-job-module: {want} is not a project of {path}")
+
+
+url, rev = find(sys.argv[1])
+if sys.argv[3]:
+    furl, frev = find(sys.argv[3])
+    if frev != rev:
+        sys.exit(f"fetch-job-module: {want} at {frev} in {sys.argv[3]}, but the Zephyr "
+                 f"tree pins {rev} ({sys.argv[1]})\n"
+                 f"  remedy: set the fragment's {want} revision to {rev}")
+    url = furl
+print(want, url, rev)
 PY
 )" || exit 1
 read -r name url rev <<< "$project"

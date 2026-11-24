@@ -210,13 +210,18 @@ tree (Phase 215.J.4, option B).
 
 ### Board west fragment (not a `board.cmake` variable)
 
-Each Zephyr consumer board also ships
-`packages/boards/nros-board-<name>/west-downstream.yml` (Phase 215.J.3):
-an `import:false`-compatible west manifest fragment declaring ONLY
-`zephyr-lang-rust` at nano-ros's supported rev. A consumer adds one
-`manifest.self.import: - file: <…>/west-downstream.yml` line +
-`west update` to fetch the module. This is the one genuinely west-native
-piece (module fetch); everything else flows through `nros setup board`.
+A Zephyr board may also ship `west-downstream.yml` next to its
+`nros-board.toml` (Phase 215.J.3): an `import:false`-compatible west manifest
+fragment declaring the west projects a consumer would otherwise pin by hand:
+`zephyr-lang-rust` at nano-ros's supported rev, plus any Zephyr module the
+board needs that nano-ros's own allowlist leaves out, at the revision the
+pinned Zephyr tree names (`s32z270-rtu0-zephyr`: `hal_nxp` and `cmsis`). A
+consumer adds one `manifest.self.import: - file: <...>/west-downstream.yml`
+line + `west update` to fetch them. `just check zephyr-west-downstream` holds
+every fragment to those pins, and `just zephyr build-module-fixtures` fetches
+a module row's modules through its board's fragment. This is the one
+genuinely west-native piece (module fetch); everything else flows through
+`nros setup board`.
 
 ## Consumers
 

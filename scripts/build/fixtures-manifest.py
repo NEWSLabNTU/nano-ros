@@ -957,6 +957,21 @@ def west_leaf_board_lines(entry):
     return lines
 
 
+def board_west_fragment(west_board):
+    """The downstream west fragment (`west-downstream.yml`, repo-relative) of
+    the Zephyr board whose descriptor states `west_board`, or "" when that
+    board ships none. `check-zephyr-west-downstream` refuses a
+    `zephyr_modules` row whose board has no fragment declaring its modules."""
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
+    import zephyr_board_lines
+
+    for rel, wb, _lines in zephyr_board_lines.zephyr_boards():
+        frag = Path(rel).parent / "west-downstream.yml"
+        if wb == west_board and (zephyr_board_lines.REPO / frag).is_file():
+            return str(frag)
+    return ""
+
+
 def west_build_name(entry):
     """The west build-dir NAME, authored or derived as `build-<tag>-<role>-<rmw>`."""
     return entry.get("west_build_name") or (
@@ -2774,12 +2789,15 @@ def main():
         return
 
     if a.command == "compile-check-modules":
-        # Issue 2811 -- `<id>\t<name>[,<name>...]` per compile-check row that
-        # names `zephyr_modules`: the rows a module job builds, and what it
-        # must fetch for each. Every such row, whatever this run supplies.
+        # Issue 2811 -- `<id>\t<name>[,<name>...]\t<fragment>` per
+        # compile-check row that names `zephyr_modules`: the rows a module job
+        # builds, what it must fetch for each, and the board's downstream west
+        # fragment the revisions come from ("" when the board ships none).
+        # Every such row, whatever this run supplies.
         for e in load_compile_check_fixtures(a.manifest):
             if e.get("zephyr_modules"):
-                sys.stdout.write(f"{e['id']}\t{','.join(e['zephyr_modules'])}\n")
+                frag = board_west_fragment(str(e.get("west_board", "")))
+                sys.stdout.write(f"{e['id']}\t{','.join(e['zephyr_modules'])}\t{frag}\n")
         return
 
     if a.command == "compile-check-platforms":
