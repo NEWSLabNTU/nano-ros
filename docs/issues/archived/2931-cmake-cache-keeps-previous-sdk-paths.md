@@ -47,6 +47,19 @@ cached dir has no `nros/platform.h`) never fired. nros12's `platform.c` was
 then compiled against nros11's `nros/platform.h`, which predates the
 wall-clock state type.
 
+The harness's diagnostic run read the probe's cache after the failure. Two
+entries still named nros11, and everything else named the new SDK:
+
+```text
+NROS_PLATFORM_CFFI_INCLUDE:PATH=/root/.nros/sdk/nros/0.6.0-nros11/share/nano-ros/packages/platform/nros-platform-api/include
+_NANO_ROS_PREFIX:INTERNAL=/root/.nros/sdk/nros/0.6.0-nros11/share/nano-ros
+```
+
+The second is the same shape in an INTERNAL entry:
+`NanoRosGenerateInterfaces.cmake` writes `_NANO_ROS_PREFIX` only
+`if(NOT DEFINED CACHE{_NANO_ROS_PREFIX})`. So the cache TYPE does not
+separate a write-once tree path from a refreshed one.
+
 Issue 1593 already re-pins `nano_ros_DIR` and `CMAKE_PREFIX_PATH` on every
 probe configure, but those are two of the cache's tree paths. 70
 `CACHE PATH`/`FILEPATH` definitions exist across `cmake/` and the
@@ -60,7 +73,8 @@ Issue 1280's rule, applied to the CMake cache, with one helper for all 70:
 `nros_reroot_cached_checkout_paths()` in `cmake/NanoRosCheckoutRoot.cmake`.
 It runs at the top of every configure that loads nano-ros
 (`nano_rosConfig.cmake`, and the root `CMakeLists.txt` for a bare
-`add_subdirectory`). For each cached `PATH`/`FILEPATH` value:
+`add_subdirectory`). For each cached value that is one absolute path (any
+type but `STATIC` and `BOOL`, so INTERNAL entries are covered):
 
 | Where the value points | What happens |
 | --- | --- |
@@ -79,8 +93,11 @@ build dir all converge, without wiping anything.
   are). It configures a project against one root and then another, and
   asserts:
   - the tree default follows to the new root;
+  - a write-once INTERNAL entry follows too;
   - an outside path is kept;
   - a path in the project's own build tree is kept.
-- Negative control: with the helper turned into a no-op, the gate fails on
-  the tree default in both shapes, which is the state of `main` before this
-  change.
+- Negative controls:
+  - with the helper turned into a no-op, the gate fails on the tree default in
+    both shapes, which is the state of `main` before this change;
+  - with the helper limited to `PATH`/`FILEPATH`, it fails on the INTERNAL
+    entry in both shapes.
