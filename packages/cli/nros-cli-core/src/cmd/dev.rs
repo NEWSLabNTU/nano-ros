@@ -85,6 +85,28 @@ pub enum Noun {
     // the same check after every build; this is its negative-control entry.
     #[command(name = "shared-build-dir-check")]
     SharedBuildDirCheck(SharedBuildDirCheckArgs),
+    /// Whether a Zephyr SDK holds the GNU toolchain a board builds with, read
+    /// from the board's YAML and the SDK's own arch table. Prints the toolchain
+    /// when present; refuses, naming the fetch, when missing; prints nothing
+    /// when the question cannot be asked (a board outside the Zephyr tree).
+    // Issue 2913. Born under `nros dev`: no old spelling. The shell lanes ask
+    // the rule `nros build` applies, rather than keeping a second copy.
+    #[command(name = "zephyr-toolchain")]
+    ZephyrToolchain(ZephyrToolchainArgs),
+}
+
+/// `nros dev zephyr-toolchain`.
+#[derive(Debug, ClapArgs)]
+pub struct ZephyrToolchainArgs {
+    /// The board target, as west takes it (`qemu_cortex_a53/qemu_cortex_a53/smp`).
+    #[arg(long)]
+    pub board: String,
+    /// The Zephyr tree (`ZEPHYR_BASE`).
+    #[arg(long)]
+    pub zephyr_base: std::path::PathBuf,
+    /// The Zephyr SDK root (`ZEPHYR_SDK_INSTALL_DIR`).
+    #[arg(long)]
+    pub sdk: std::path::PathBuf,
 }
 
 /// `nros dev shared-build-dir-check`.
@@ -285,7 +307,8 @@ pub fn lower(args: Args) -> Cmd {
         | Noun::MigrateBringup(_)
         | Noun::Bindings(_)
         | Noun::Jobserver(_)
-        | Noun::SharedBuildDirCheck(_)) => Cmd::Dev(Args { noun }),
+        | Noun::SharedBuildDirCheck(_)
+        | Noun::ZephyrToolchain(_)) => Cmd::Dev(Args { noun }),
     }
 }
 
@@ -298,6 +321,7 @@ pub const BORN_IN_DEV: &[&str] = &[
     "dev bindings",
     "dev jobserver repair-makes",
     "dev shared-build-dir-check",
+    "dev zephyr-toolchain",
     "dev image entity-facts",
     "dev image system-toml",
 ];
@@ -325,6 +349,17 @@ pub fn run_unlowered(args: Args) -> eyre::Result<()> {
                 a.build_dir.display()
             );
             Ok(())
+        }
+        Noun::ZephyrToolchain(a) => {
+            use crate::builder::zephyr::{ToolchainCheck, board_toolchain_check};
+            match board_toolchain_check(&a.zephyr_base, &a.sdk, &a.board) {
+                ToolchainCheck::Present(t) => {
+                    println!("{}", t.toolchain);
+                    Ok(())
+                }
+                ToolchainCheck::Missing(t) => eyre::bail!("{}", t.refusal(&a.board, &a.sdk)),
+                ToolchainCheck::Unknown => Ok(()),
+            }
         }
         other => unreachable!("`nros dev` lowers {other:?}"),
     }

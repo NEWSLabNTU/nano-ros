@@ -588,6 +588,120 @@ fn sdk_registered(home: &Path, version: &str) -> Option<PathBuf> {
     })
 }
 
+/// Issue 2913 -- one board's GNU toolchain, as upstream states it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BoardToolchain {
+    /// The board's `arch:` in Zephyr's own board YAML (`arm64`).
+    pub arch: String,
+    /// The SDK's `CROSS_COMPILE_TARGET_<arch>` (`aarch64-zephyr-elf`).
+    pub toolchain: String,
+}
+
+impl BoardToolchain {
+    /// The refusal for an SDK that lacks this toolchain, with the one command
+    /// that fetches it into that SDK. The SDK's own `setup.sh -t` is
+    /// idempotent and is what the index's `post_install` runs.
+    pub fn refusal(&self, board: &str, sdk: &Path) -> String {
+        format!(
+            "board `{board}` (arch {arch}) builds with the `{tc}` toolchain, and the \
+             Zephyr SDK at {sdk} does not have it. Zephyr SDK 1.0 and later fetch each \
+             toolchain separately, and this one was never fetched.\n\
+             Remedy: {sdk}/setup.sh -t {tc}",
+            arch = self.arch,
+            tc = self.toolchain,
+            sdk = sdk.display(),
+        )
+    }
+}
+
+/// What [`board_toolchain_check`] could establish.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ToolchainCheck {
+    /// The SDK holds the board's toolchain.
+    Present(BoardToolchain),
+    /// The SDK does not hold it.
+    Missing(BoardToolchain),
+    /// No answer: the board's YAML is not in this Zephyr tree (an out-of-tree
+    /// board root), it states no `arch:`, or the SDK's table names none for it
+    /// (or names one only through a CMake variable, as xtensa does). Nothing is
+    /// refused on a question that could not be asked.
+    Unknown,
+}
+
+/// Issue 2913 -- does the SDK at `sdk` hold the GNU toolchain `board` needs?
+///
+/// Both halves come from upstream's own data, never from a table here: the
+/// board's `arch:` from `<zephyr_base>/boards/**/<board with / as _>.yaml`
+/// (hwmv2 names the file after the full board target), and the toolchain for
+/// that arch from the SDK's `cmake/zephyr[/gnu]/target.cmake`. Where that file
+/// sets one arch twice behind a Kconfig `if()` (`arm`, `arc`), the LAST
+/// setting is the default arm, which is the right answer for `arm` (64-bit Arm
+/// is its own arch, `arm64`). The toolchain is looked for under both SDK
+/// layouts: `<sdk>/<tc>` (0.16.x) and `<sdk>/gnu/<tc>` (1.0.x).
+pub fn board_toolchain_check(zephyr_base: &Path, sdk: &Path, board: &str) -> ToolchainCheck {
+    let Some(arch) = board_arch(zephyr_base, board) else {
+        return ToolchainCheck::Unknown;
+    };
+    let Some(toolchain) = sdk_toolchain_for_arch(sdk, &arch) else {
+        return ToolchainCheck::Unknown;
+    };
+    let gcc = format!("{toolchain}-gcc");
+    let present = [sdk.join(&toolchain), sdk.join("gnu").join(&toolchain)]
+        .iter()
+        .any(|d| d.join("bin").join(&gcc).is_file());
+    let t = BoardToolchain { arch, toolchain };
+    if present {
+        ToolchainCheck::Present(t)
+    } else {
+        ToolchainCheck::Missing(t)
+    }
+}
+
+/// The `arch:` of `board`'s YAML in the Zephyr tree, if the tree has one.
+fn board_arch(zephyr_base: &Path, board: &str) -> Option<String> {
+    if board.is_empty() || board.contains("//") {
+        return None;
+    }
+    let file = format!("{}.yaml", board.trim_end_matches('/').replace('/', "_"));
+    let mut stack = vec![(zephyr_base.join("boards"), 0usize)];
+    while let Some((dir, depth)) = stack.pop() {
+        let Ok(rd) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        for e in rd.flatten() {
+            let p = e.path();
+            if p.is_dir() {
+                if depth < 4 {
+                    stack.push((p, depth + 1));
+                }
+            } else if p.file_name().and_then(|n| n.to_str()) == Some(file.as_str()) {
+                let text = std::fs::read_to_string(&p).ok()?;
+                return text.lines().find_map(|l| {
+                    let v = l.strip_prefix("arch:")?.trim();
+                    (!v.is_empty()).then(|| v.to_string())
+                });
+            }
+        }
+    }
+    None
+}
+
+/// The SDK's `CROSS_COMPILE_TARGET_<arch>`, the last one it sets.
+fn sdk_toolchain_for_arch(sdk: &Path, arch: &str) -> Option<String> {
+    let text = ["cmake/zephyr/gnu/target.cmake", "cmake/zephyr/target.cmake"]
+        .iter()
+        .find_map(|f| std::fs::read_to_string(sdk.join(f)).ok())?;
+    let key = format!("CROSS_COMPILE_TARGET_{arch}");
+    text.lines()
+        .filter_map(|l| {
+            let rest = l.trim().strip_prefix("set(")?.strip_suffix(')')?;
+            let mut it = rest.split_whitespace();
+            (it.next()? == key).then(|| it.next().map(str::to_string))?
+        })
+        .last()
+        .filter(|t| !t.contains("${"))
+}
+
 /// The variant and SDK for `board` against the Zephyr tree `zephyr_base`.
 ///
 /// `Err` is the refusal for an SDK board whose pinned SDK is not installed,
@@ -598,7 +712,16 @@ pub fn resolve_toolchain(
     inputs: &ToolchainInputs<'_>,
 ) -> Result<ZephyrToolchain, String> {
     let variant = toolchain_variant(board, inputs.env_variant);
-    let done = |sdk| {
+    let done = |sdk: Option<PathBuf>| {
+        // Issue 2913 -- an SDK of the pinned version is not yet an SDK that
+        // HOLDS this board's toolchain: 1.0.x ships each toolchain as its own
+        // download, and a missing one used to surface only at configure, as
+        // "C compiler not found", naming neither the toolchain nor the fetch.
+        if let Some(dir) = &sdk {
+            if let ToolchainCheck::Missing(t) = board_toolchain_check(zephyr_base, dir, board) {
+                return Err(t.refusal(board, dir));
+            }
+        }
         Ok(ZephyrToolchain {
             variant: variant.clone(),
             sdk,
@@ -1091,6 +1214,57 @@ mod toolchain_tests {
         let reg = home.join(".cmake/packages/Zephyr-sdk");
         std::fs::create_dir_all(&reg).unwrap();
         std::fs::write(reg.join(name), format!("{}/cmake\n", root.display())).unwrap();
+    }
+
+    /// Issue 2913 -- a 1.0.x-shaped SDK holding only arm + x86_64: an arm64
+    /// board is refused naming the toolchain and the fetch, an arm board is
+    /// not, and a board the tree has no YAML for is not asked.
+    #[test]
+    fn an_sdk_without_the_boards_toolchain_is_refused_naming_it() {
+        let tmp = tempfile::tempdir().unwrap();
+        let z = tree(tmp.path(), "1.0.1");
+        let w = |p: &Path, t: &str| {
+            std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+            std::fs::write(p, t).unwrap();
+        };
+        w(
+            &z.join("boards/qemu/cortex_a53/qemu_cortex_a53_qemu_cortex_a53_smp.yaml"),
+            "identifier: qemu_cortex_a53/qemu_cortex_a53/smp\narch: arm64\n",
+        );
+        w(&z.join("boards/arm/mps2/mps2_an385.yaml"), "arch: arm\n");
+        let s = sdk(&tmp.path().join("store"), "1.0.1");
+        w(
+            &s.join("cmake/zephyr/gnu/target.cmake"),
+            "if(CONFIG_ARM64)\n  set(CROSS_COMPILE_TARGET_arm         aarch64-zephyr-elf)\n\
+             else()\n  set(CROSS_COMPILE_TARGET_arm         arm-zephyr-eabi)\nendif()\n\
+             set(CROSS_COMPILE_TARGET_arm64   aarch64-zephyr-elf)\n\
+             set(CROSS_COMPILE_TARGET_xtensa   xtensa-${SOC_TOOLCHAIN_NAME}_zephyr-elf)\n",
+        );
+        w(&s.join("gnu/arm-zephyr-eabi/bin/arm-zephyr-eabi-gcc"), "");
+        let inputs = ToolchainInputs {
+            store: vec![s.clone()],
+            ..Default::default()
+        };
+
+        let err =
+            resolve_toolchain("qemu_cortex_a53/qemu_cortex_a53/smp", &z, &inputs).unwrap_err();
+        assert!(err.contains("`aarch64-zephyr-elf`"), "{err}");
+        assert!(err.contains("setup.sh -t aarch64-zephyr-elf"), "{err}");
+
+        let t = resolve_toolchain("mps2/an385", &z, &inputs).unwrap();
+        assert_eq!(t.sdk, Some(s.clone()));
+        assert!(matches!(
+            board_toolchain_check(&z, &s, "mps2/an385"),
+            ToolchainCheck::Present(BoardToolchain { ref toolchain, .. }) if toolchain == "arm-zephyr-eabi"
+        ));
+        // Not in this tree (an out-of-tree board root): not asked.
+        assert_eq!(
+            board_toolchain_check(&z, &s, "my_board/my_soc"),
+            ToolchainCheck::Unknown
+        );
+        // Once fetched, at either layout, it passes.
+        w(&s.join("aarch64-zephyr-elf/bin/aarch64-zephyr-elf-gcc"), "");
+        assert!(resolve_toolchain("qemu_cortex_a53/qemu_cortex_a53/smp", &z, &inputs).is_ok());
     }
 
     #[test]

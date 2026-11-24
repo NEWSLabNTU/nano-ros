@@ -374,8 +374,12 @@ build-fvp-ws-entry:
     # issue 1254 — ASK the resolver. This literal was one of four copies of a
     # path the store now owns, and of a version `setup.sh` already chooses.
     sdk="$(bash scripts/lib/zephyr-sdk.sh resolve)"
-    if [ ! -x "$sdk/aarch64-zephyr-elf/bin/aarch64-zephyr-elf-gcc" ]; then
-        nros_lane_skip "Zephyr/FVP-ws-entry skip: aarch64-zephyr-elf toolchain missing"
+    # issue 2913 — asked of the one rule `nros build` applies, which reads the
+    # board's arch and the SDK's own table and knows both SDK layouts (1.0.x
+    # keeps each toolchain under `gnu/`, where this probe used to not look).
+    if ! _tc_err="$(nros dev zephyr-toolchain --board fvp_baser_aemv8r/fvp_aemv8r_aarch64/smp \
+            --zephyr-base "$workspace/zephyr" --sdk "$sdk" 2>&1 >/dev/null)"; then
+        nros_lane_skip "Zephyr/FVP-ws-entry skip: $_tc_err"
     fi
     # issue 1777 — the FVP board crate defaults `NROS_RMW` to cyclonedds, so
     # this image's configure needs a host idlc. Asked here, before configuring,
@@ -605,8 +609,12 @@ build-fvp-board-import:
     # issue 1254 — ASK the resolver. This literal was one of four copies of a
     # path the store now owns, and of a version `setup.sh` already chooses.
     sdk="$(bash scripts/lib/zephyr-sdk.sh resolve)"
-    if [ ! -x "$sdk/aarch64-zephyr-elf/bin/aarch64-zephyr-elf-gcc" ]; then
-        nros_lane_skip "Zephyr/FVP board-import skip: aarch64-zephyr-elf toolchain missing"
+    # issue 2913 — asked of the one rule `nros build` applies, which reads the
+    # board's arch and the SDK's own table and knows both SDK layouts (1.0.x
+    # keeps each toolchain under `gnu/`, where this probe used to not look).
+    if ! _tc_err="$(nros dev zephyr-toolchain --board fvp_baser_aemv8r/fvp_aemv8r_aarch64/smp \
+            --zephyr-base "$workspace/zephyr" --sdk "$sdk" 2>&1 >/dev/null)"; then
+        nros_lane_skip "Zephyr/FVP board-import skip: $_tc_err"
     fi
     # issue 1777 — the FVP board crate defaults `NROS_RMW` to cyclonedds, so
     # this image's configure needs a host idlc. Asked here, before configuring,
