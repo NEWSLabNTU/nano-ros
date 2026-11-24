@@ -52,6 +52,43 @@ its status:
 The two refusal steps cannot become plain steps either, since a plain step
 must exit 0.
 
+## Could a reported PASS have been vacuous?
+
+A PASS is vacuous here if a step's command printed its expected text and
+then failed anyway, or, for a refusal, printed the refusal and exited 0.
+
+- **The 2912 upgrade trial (B21/B23 acceptance, 2026-11-24): not affected.**
+  Its page steps are plain steps: each ran to its end and had to exit 0,
+  and the verifier checks the result. One earlier Rust upgrade "pass",
+  under the old `probe-run` steps, WAS vacuous: the build was cut off after
+  6 crates. It was discarded. Every refusal those runs reported stands.
+- **The four steps above, and the tracks that replay them:**
+
+  | Step | Tracks |
+  | --- | --- |
+  | `tutorial/tell-the-build.md` probe=855 | tutorial-8, tutorial-9, tutorial-10, tutorial-c, tutorial-cpp |
+  | `tutorial/qos.md` probe=2030 | lab-qos, lab-qos-c, lab-qos-cpp |
+  | `guide/build/install-options.md` probe=50 | pinned, pinned-newer |
+  | `guide/platforms/px4.md` probe=70 | px4 |
+
+  In all four the expected lines are the command's last output, and a
+  refusal stops the build. So a vacuous PASS would need a wrong exit status,
+  not a skipped failure. None is known, but none is ruled out: on these 11
+  tracks the status was never read.
+- **Evidence cited from these tracks.**
+  - Chapter 8's size figures (tutorial-10, tutorial-c, tutorial-cpp) come
+    from plain steps (probe=815 and 835, `arm-none-eabi-size`), which are
+    exit-checked.
+  - Chapter 10's graph comparison (probe=1045) is plain too.
+  - Only "the chapter 8 refusal step passed" is weaker than it reads: it
+    proves the refusal printed, not that `nros build` exited non-zero.
+- **The other 45 `probe-run` steps** run until stopped, so their PASS means
+  the expected output printed. A crash after that line is not seen. That is
+  their design, not this bug, but it bounds what such a PASS proves.
+
+After the fix: re-run the 11 tracks above once, to read the statuses. No
+other track needs it.
+
 ## What would close it
 
 Let a `probe-run` step say how it ends:
