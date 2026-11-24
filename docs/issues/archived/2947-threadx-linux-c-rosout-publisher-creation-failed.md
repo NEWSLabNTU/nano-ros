@@ -80,6 +80,19 @@ It is not a regression from 0.6.0-nros11: nros11 created no automatic C
   and `/` share one slot. Test
   `root_namespace_has_one_spelling_in_the_node_table` (fails with the
   normalisation removed).
+- The root namespace has ONE helper, `nros_rmw::canonical_namespace` (with
+  `ROOT_NAMESPACE` and `same_namespace`, re-exported from `nros-node`). The
+  `if ns.is_empty() { "/" } else { ns }` idiom had been written by hand at 13
+  sites across nros-node, nros-rmw-cffi, nros-rmw-zenoh and nros-bridge; each
+  now calls it. Four lookups compared a namespace raw while their writers
+  normalised (node rank, sched context, group sched context, node id); they
+  now use `same_namespace`, as does the metadata writer's root check.
+  Not changed, and why: the parameter and lifecycle service names trim `/`,
+  under which `""` and `/` are already equal; the XRCE and Cyclone C backends
+  carry their own `NULL`/`""` to `/` helper and are reached only through the
+  cffi node table, which now hands them `/`; Cyclone's endpoint-owner `""`
+  means "owner unknown", not the root; the CLI and orchestration IR model
+  launch files, not the RMW seam.
 - A full node table is now `TransportError::InvalidConfig`, not
   `ConnectionFailed`, and logs which node did not fit and that
   `NROS_RMW_MAX_NODES` sizes the table.

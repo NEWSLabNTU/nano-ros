@@ -465,7 +465,7 @@ unsafe fn node_name_of<'a>(node: *const NrosRmwNode) -> Option<&'a str> {
 
 unsafe fn node_namespace_of<'a>(node: *const NrosRmwNode) -> &'a str {
     let namespace = unsafe { cstr_to_str((*node).namespace_) };
-    if namespace.is_empty() { "/" } else { namespace }
+    nros_rmw::canonical_namespace(namespace)
 }
 
 // ============================================================================

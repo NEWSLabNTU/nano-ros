@@ -2432,7 +2432,7 @@ impl CffiSession {
         // were two triples: a one-node image's table (NROS_RMW_MAX_NODES = 1,
         // derived) refused the second, so the node's `/rosout` writer was never
         // created, and a larger table would have declared the node twice.
-        let namespace = if namespace.is_empty() { "/" } else { namespace };
+        let namespace = nros_rmw::canonical_namespace(namespace);
 
         // Truncating would MERGE two distinct nodes into one record and then
         // declare the wrong identity on the graph, so it is refused. The

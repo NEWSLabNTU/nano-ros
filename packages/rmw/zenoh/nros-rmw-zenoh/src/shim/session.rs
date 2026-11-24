@@ -1336,7 +1336,7 @@ impl ZenohSession {
             return;
         }
         // Treat empty namespace as root "/" — same as the #104 primary path.
-        let ns = if namespace.is_empty() { "/" } else { namespace };
+        let ns = nros_rmw::canonical_namespace(namespace);
         let Some(tok) = self.declare_node_liveliness(domain_id, ns, node_name) else {
             // phase-412 — this was an `if let Some` with no `else`. The reason
             // is logged one frame down in `declare_entity_liveliness`; what
