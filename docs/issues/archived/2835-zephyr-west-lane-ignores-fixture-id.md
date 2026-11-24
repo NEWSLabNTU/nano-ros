@@ -1,12 +1,14 @@
 ---
 id: 2835
 title: "`NROS_FIXTURE_ID=<id> just zephyr build-fixtures` builds the whole Zephyr family: the west lane never reads the id, though the refusal hint says to use it"
-status: open
+status: resolved
 type: bug
 severity: low
 area: [zephyr, fixtures, ux]
 related: [issue-0406, issue-1325]
 found: 2026-11-22
+resolved: 2026-11-24
+resolved_in: "the west lane honours NROS_FIXTURE_ID (#4614): one leaf per id through the manifest's `west-leaf-id`, an id with no west leaf refused"
 ---
 
 ## What happens
@@ -48,7 +50,7 @@ The record `west-leaves` emits is 16 fields wide and has many readers, so
 the id → build-name answer gets its own manifest command, not a new field.
 
 
-## Fix (2026-11-22, in review)
+## Fix (2026-11-22, merged in #4614)
 
 - `scripts/lib/fixture-filter.sh` gains `nros_fixture_id_selects` and
   `nros_fixture_narrowing`, one spelling for both Zephyr builders.
@@ -86,3 +88,14 @@ Each platform's `build-fixtures` dependency chain was read:
   three XRCE companions in its own loop. They have no manifest row and so no
   id, which means `NROS_FIXTURE_ID` names nothing there. Honouring it would
   need rows for them first. Not changed here.
+
+## Resolution (2026-11-24)
+
+The fix above merged in #4614 (047f909d20, 2026-11-22), with its test
+`just check zephyr-fixture-id` (`tests/zephyr-fixture-id-tests.sh`). That
+test runs on main's checks, so the hint `NROS_FIXTURE_ID=<id> just zephyr
+build-fixtures` now builds exactly the leaf it names. The issue was never
+archived when the fix landed; archived now, with no live run needed (manager,
+2026-11-24). PX4's companions, which have no manifest rows, stay as noted
+above.
+
