@@ -1,11 +1,13 @@
 ---
 id: 2933
 title: "A probe-run step ends at its expected output and never checks the command's exit status"
-status: open
+status: resolved
 type: test-gap
 area: [testing, book]
 severity: medium
 found: 2026-11-24
+resolved: 2026-11-24
+resolved_in: "a `probe-exit=0|fail` tag makes a probe-run step wait for its command and require its exit status (#4759)"
 ---
 
 ## What happens
@@ -110,3 +112,29 @@ Let a `probe-run` step say how it ends:
 - `scripts/probe/probe-run.sh` (`nros_probe_run_expect`)
 - `scripts/probe/extract-book-steps.py` (the `probe-run` / `probe-expect` tags)
 - issue 2912 (the upgrade tracks, where this showed)
+
+## Resolution (2026-11-24)
+
+#4759 (3d88d31d68) added the `probe-exit=0|fail` tag and its helper
+`nros_probe_run_exit` (`scripts/probe/probe-run.sh`). A tagged step waits
+for its command to exit within SECS, then requires that status and the
+expected lines in the full log. The extractor refuses `probe-exit` without
+`probe-run` or with `probe-keep`. The four steps in the table above carry
+it: `probe-exit=0` on install-options probe=50 and px4 probe=70,
+`probe-exit=fail` on qos.md probe=2030 and tell-the-build.md probe=855.
+Item 5 (a warning for terminating verbs) was not done.
+
+The 11 tracks were re-run on main at 3d88d31d68, all green, each printing
+the status it read:
+
+| Track | Step | Status |
+| --- | --- | --- |
+| tutorial-8, tutorial-9, tutorial-10, tutorial-c, tutorial-cpp | probe=855 | exited 1, as documented |
+| lab-qos, lab-qos-c, lab-qos-cpp | probe=2030 | exited 1, as documented |
+| pinned (on the branch), pinned-newer | probe=50 | exited 0, as documented |
+| px4 | probe=70 | exited 0, as documented |
+
+Each status matches the chapter, so the earlier PASSes on these tracks
+rested on the right exit status too, though nothing read it then. The
+chapter 8 refusal step now proves `nros build` exits non-zero, not only
+that the refusal printed.
