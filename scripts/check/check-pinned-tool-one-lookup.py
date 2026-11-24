@@ -17,6 +17,20 @@ one.
 Rule: no tracked shell or `just` file outside those two helpers names
 `sdk path make` or `sdk path ninja`.
 
+Rule 2 (run-matrix 45351389552, 2026-11-24): the make a CONFIGURE caches comes
+from `nros_configure_make`, never a hand-spelled `nros_pinned_make || command -v
+make`. Zephyr's native_sim runs that make by its cached ABSOLUTE path under
+the fifo pool, and the silent fallback to a pre-4.4 make is what died
+`invalid --jobserver-auth string`. The helper refuses that fallback when a
+fifo jobserver is in MAKEFLAGS; the self-test drives it with fake makes.
+
+Rule 3: a file that configures a Zephyr image (it names
+`nros_zephyr_module_cmake_arg`, the one spelling of the module flag every
+configure passes) also passes `-DMAKE=`. `west-fixtures.sh` passed none, which
+is how its nine native_sim dirs cached /usr/bin/make. File-level on purpose:
+the module flag and `-DMAKE=` sit in the same argument list, and a finer
+reading would need a shell parser.
+
 Run: python3 scripts/check/check-pinned-tool-one-lookup.py [--self-test]
 """
 
@@ -25,6 +39,7 @@ import subprocess
 import sys
 
 LOOKUP = re.compile(r"\bsdk[- ]path\s+(make|ninja)\b")
+FALLBACK = re.compile(r"nros_pinned_make\)\"?\s*\|\|\s*\w+=\"?\$\(command -v make")
 HELPERS = {"scripts/build/jobserver-pool.sh", "scripts/lib/sdk-tool-path.sh"}
 
 
@@ -32,8 +47,17 @@ def problems(name, text):
     if name in HELPERS:
         return []
     out = []
+    if "nros_zephyr_module_cmake_arg" in text and "-DMAKE=" not in text \
+            and name != "scripts/lib/zephyr-module.sh":
+        out.append(f"{name}: configures a Zephyr image (nros_zephyr_module_cmake_arg) and passes no "
+                   "-DMAKE=; Zephyr's native_sim runs the make it caches by absolute path, so pass "
+                   "-DMAKE=\"$(nros_configure_make)\"")
     for n, line in enumerate(text.splitlines(), 1):
         if line.lstrip().startswith("#"):
+            continue
+        if FALLBACK.search(line):
+            out.append(f"{name}:{n}: a hand-spelled pinned-or-PATH make; use nros_configure_make "
+                       "(it refuses a pre-4.4 make under a fifo jobserver)")
             continue
         if LOOKUP.search(line):
             out.append(f"{name}:{n}: {line.strip()}")
@@ -47,6 +71,10 @@ def self_test():
         ("the helper", 'make_bin="$(nros_pinned_make)"\n', False),
         ("a comment", "# was $(nros dev sdk path make)\n", False),
         ("another tool", 'd="$(nros dev sdk path qemu)"\n', False),
+        ("a hand-spelled fallback", 'make_bin="$(nros_pinned_make)" || make_bin="$(command -v make)"\n', True),
+        ("the configure helper", 'make_bin="$(nros_configure_make)"\n', False),
+        ("a Zephyr configure with no -DMAKE", 'args+=("$(nros_zephyr_module_cmake_arg "$r")")\n', True),
+        ("a Zephyr configure with -DMAKE", 'args+=("$(nros_zephyr_module_cmake_arg "$r")" "-DMAKE=$m")\n', False),
     ]
     bad = 0
     for desc, text, want in cases:
@@ -56,7 +84,39 @@ def self_test():
     if problems("scripts/build/jobserver-pool.sh", cases[0][1]):
         print("  FAIL the helper itself is refused")
         bad += 1
+    bad += drive_configure_make()
     return 1 if bad else 0
+
+
+def drive_configure_make():
+    """Drive nros_configure_make with fake makes: no pinned make, a 4.3 on PATH."""
+    import os
+    import tempfile
+    bad = 0
+    with tempfile.TemporaryDirectory() as tmp:
+        for name, ver in (("old", "4.3"), ("new", "4.4.1")):
+            d = os.path.join(tmp, name)
+            os.mkdir(d)
+            with open(os.path.join(d, "make"), "w") as f:
+                f.write(f"#!/bin/sh\necho 'GNU Make {ver}'\n")
+            os.chmod(os.path.join(d, "make"), 0o755)
+        fifo = os.path.join(tmp, "fifo")
+        os.mkfifo(fifo)
+        script = ('source scripts/build/jobserver-pool.sh; nros_pinned_make() { return 1; }; '
+                  'nros_configure_make')
+        cases = [
+            ("4.3 on PATH, no jobserver: used", "old", "", True),
+            ("4.3 on PATH, fifo jobserver: REFUSED", "old", f"-j4 --jobserver-auth=fifo:{fifo}", False),
+            ("4.4 on PATH, fifo jobserver: used", "new", f"-j4 --jobserver-auth=fifo:{fifo}", True),
+        ]
+        for desc, which, flags, want_ok in cases:
+            env = dict(os.environ, PATH=os.path.join(tmp, which) + os.pathsep + "/usr/bin:/bin",
+                       MAKEFLAGS=flags)
+            r = subprocess.run(["bash", "-c", script], env=env, capture_output=True, text=True)
+            ok = r.returncode == 0 and r.stdout.strip().endswith(f"{which}/make")
+            print(f"  {'ok  ' if ok == want_ok else 'FAIL'} nros_configure_make: {desc}")
+            bad += ok != want_ok
+    return bad
 
 
 def main(argv):

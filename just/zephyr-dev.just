@@ -335,7 +335,7 @@ build-c-port:
         exit 2
     fi
     source scripts/build/jobserver-pool.sh
-    make_bin="$(nros_pinned_make)" || make_bin="$(command -v make)"
+    make_bin="$(nros_configure_make)"
     # issue 1638 — existing store dirs only; a missing pin is reported.
     source scripts/lib/sdk-tool-path.sh
     sdk_tool_prefix="$(nros_sdk_tool_path_prefix make ninja)"
@@ -414,7 +414,7 @@ test-tracing-custom-backend:
     source scripts/lib/zephyr-patchset.sh
     line="$(nros_zephyr_workspace_line "$WORKSPACE")"
     source scripts/build/jobserver-pool.sh
-    make_bin="$(nros_pinned_make)" || make_bin="$(command -v make)"
+    make_bin="$(nros_configure_make)"
     source scripts/lib/sdk-tool-path.sh
     sdk_tool_prefix="$(nros_sdk_tool_path_prefix make ninja)"
     export PATH="${sdk_tool_prefix:+$sdk_tool_prefix:}$PATH"

@@ -26,6 +26,18 @@ source "$repo_root/scripts/build/zephyr-toolchain.sh"
 source "$repo_root/scripts/lib/zephyr-module.sh"
 # shellcheck source=scripts/build/codegen-fingerprint.sh
 source "$repo_root/scripts/build/codegen-fingerprint.sh"   # nros_cli_source_stamp (issue 2439)
+# shellcheck source=scripts/build/jobserver-pool.sh
+source "$repo_root/scripts/build/jobserver-pool.sh"
+# run-matrix 45351389552 -- Zephyr's native_sim runs its runner's make by the
+# ABSOLUTE path it cached at configure (`find_program(MAKE make)`), so every
+# configure here names the make, as zephyr-fixture-leaves.sh always did. This
+# lane named none, cached /usr/bin/make (4.3), and under the fifo pool two
+# rows died `invalid --jobserver-auth string`. `--` args make west re-run cmake
+# every build, so an existing dir picks the right make up on its next build.
+if ! _wf_make="$(nros_configure_make)"; then
+    echo "west-fixtures: no make a pooled build can run (see above)" >&2
+    exit 1
+fi
 
 out_root="$(nros_build_dir "$NROS_KIND_WEST_FIXTURES")"
 mkdir -p "$out_root"
@@ -415,7 +427,7 @@ while IFS= read -r record; do
         read -r -a _wf_extra <<< "$extra"
         args+=("${_wf_extra[@]}")
     fi
-    args+=("$(nros_zephyr_module_cmake_arg "$repo_root")")
+    args+=("$(nros_zephyr_module_cmake_arg "$repo_root")" "-DMAKE=$_wf_make")
     # Issue 2811 -- the row's job-fetched modules (`zephyr_modules`, supplied
     # as `<name>=<dir>` in NROS_ZEPHYR_JOB_MODULES; a row whose modules this
     # run does not supply is not listed at all). Zephyr reads
@@ -483,6 +495,7 @@ while IFS= read -r record; do
             nargs+=("${_wf_extra[@]}")
         fi
         [ -z "$module_def" ] || nargs+=("$module_def")
+        nargs+=("-DMAKE=$_wf_make")
         echo "   nros ${nargs[*]}"
         env "${tc_env[@]}" "$_wf_cli" "${nargs[@]}" || true
     else

@@ -212,7 +212,7 @@ if [ -z "$make_bin" ]; then
     # PATH: in a linked worktree PATH names the parent checkout's binary.
     # shellcheck source=scripts/build/jobserver-pool.sh
     source "$(dirname "${BASH_SOURCE[0]}")/jobserver-pool.sh"
-    make_bin="$(nros_pinned_make)" || make_bin="$(command -v make || true)"
+    make_bin="$(nros_configure_make)" || make_bin=""
 fi
 
 log_dir="$nros_root/build/zephyr-fixtures"
