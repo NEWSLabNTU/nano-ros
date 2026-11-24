@@ -579,6 +579,17 @@ impl KnobRow {
             .replace("{group}", group)
             .replace("{name}", name)
     }
+
+    /// The integer a level NAME stands for on an `int` row that lists
+    /// `names` (its index there, case-insensitive), or `None` when the row
+    /// lists none or `text` is not one of them. Issue 2951: a name is
+    /// mapped once, where the row is validated, so every road downstream
+    /// (cargo env, Zephyr Kconfig, the CMake export) carries the number.
+    #[must_use]
+    pub fn name_index(&self, text: &str) -> Option<usize> {
+        let text = text.trim();
+        self.names.iter().position(|n| n.eq_ignore_ascii_case(text))
+    }
 }
 
 /// Every env spelling of the knob `name` names, canonical first, then the

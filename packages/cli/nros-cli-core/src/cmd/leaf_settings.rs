@@ -941,15 +941,17 @@ fn knob_env_row(
             }
             n.to_string()
         }
-        (Some("int"), KnobValue::Str(s)) if !row.names.is_empty() => {
-            if !row.names.iter().any(|n| n.eq_ignore_ascii_case(s)) {
+        // Issue 2951 -- a name renders as its index, so every road carries
+        // the number (Zephyr's Kconfig `int` refused the name).
+        (Some("int"), KnobValue::Str(s)) if !row.names.is_empty() => match row.name_index(s) {
+            Some(i) => i.to_string(),
+            None => {
                 return Err(bad(&format!(
                     "an integer or one of {}",
                     row.names.join("/")
                 )));
             }
-            s.clone()
-        }
+        },
         (Some("int"), _) => return Err(bad("an integer")),
         (Some("hex"), _) => return Err(bad("an integer")),
         (Some("bool") | None, KnobValue::Bool(b)) => if *b { "1" } else { "0" }.to_string(),
@@ -1996,7 +1998,8 @@ mod tests {
         let from_env = env_rows(&[
             ("NROS_MEMORY_HEAP_BYTES", "98304"),
             ("NROS_EXECUTOR_MAX_CBS", "16"),
-            ("NROS_LOG_MAX_LEVEL", "warn"),
+            // Issue 2951 -- a level name is stated as its index on every road.
+            ("NROS_LOG_MAX_LEVEL", "3"),
             ("NROS_ZENOH_TX_BATCH", "1"),
             ("NROS_XRCE_MAX_SUBSCRIBERS", "0"),
             ("NROS_ZENOH_SOCKET_TIMEOUT_MS", "5"),

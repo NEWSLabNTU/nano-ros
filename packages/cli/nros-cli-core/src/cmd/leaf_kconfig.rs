@@ -603,12 +603,16 @@ pub fn render_over(
         }
         let ty = syms.get(&symbol).map_or(SymType::Int, |s| s.ty);
         // A CHOICE knob's override is a value of it, or refused like any other.
-        if let Some(row) = nros_zephyr_build::knob_row(&format!("NROS_{}", knob.id))
+        let row = nros_zephyr_build::knob_row(&format!("NROS_{}", knob.id));
+        if let Some(row) = row
             && let Some(why) =
                 nros_zephyr_build::choice_refusal(row, &format!("-DNROS_OVERRIDE_{id}"), value)
         {
             return Err(why);
         }
+        // Issue 2951 -- a level name overrides as its index, as in the image.
+        let named = row.and_then(|r| r.name_index(value)).map(|i| i.to_string());
+        let value = named.as_deref().unwrap_or(value);
         let v = kconfig_value(ty, value).map_err(|why| format!("{from}: {symbol} is {why}"))?;
         out.knobs.retain(|l| l.symbol != symbol);
         out.knobs.push(Line {
@@ -1343,6 +1347,46 @@ endif # NROS
         );
     }
 
+    /// Issue 2951 -- `log.max_level` written as a level NAME (the registry
+    /// row's `names`, any case) renders as its index, as a number does; a
+    /// name the row does not list is still refused, naming the list.
+    #[test]
+    fn a_log_level_name_renders_as_its_index() {
+        let syms = KconfigSymbols::parse(KCONFIG);
+        for (written, want) in [("\"info\"", "2"), ("\"WARN\"", "3"), ("2", "2")] {
+            let (_d, l) = leaf(
+                &format!(
+                    "[system]\nname = \"t\"\nrmw = \"zenoh\"\n\n\
+                     [image.zephyr]\nboard = \"zephyr\"\n\
+                     knobs = {{ log = {{ max_level = {written} }} }}\n"
+                ),
+                &[],
+            );
+            let r = render(&l, None, &syms, &BTreeMap::new()).unwrap();
+            assert_eq!(
+                knob_rows(&r)["CONFIG_NROS_LOG_MAX_LEVEL"],
+                want,
+                "log.max_level = {written}"
+            );
+        }
+        let (_d, l) = leaf(
+            "[system]\nname = \"t\"\nrmw = \"zenoh\"\n\n[image.zephyr]\nboard = \"zephyr\"\n\
+             knobs = { log = { max_level = \"loud\" } }\n",
+            &[],
+        );
+        let e = render(&l, None, &syms, &BTreeMap::new()).unwrap_err();
+        assert!(e.contains("an integer or one of trace/"), "{e}");
+
+        // `-DNROS_OVERRIDE_LOG_MAX_LEVEL=error` (this build only) too.
+        let (_d, l) = leaf(
+            "[system]\nname = \"t\"\nrmw = \"zenoh\"\n\n[image.zephyr]\nboard = \"zephyr\"\n",
+            &[],
+        );
+        let over = BTreeMap::from([("LOG_MAX_LEVEL".to_string(), "error".to_string())]);
+        let r = render(&l, None, &syms, &over).unwrap();
+        assert_eq!(knob_rows(&r)["CONFIG_NROS_LOG_MAX_LEVEL"], "4");
+    }
+
     /// The refusals name the row: a value the symbol's type cannot hold, a
     /// symbol another RMW's `if` guards, and one symbol stated twice.
     #[test]
@@ -1350,12 +1394,12 @@ endif # NROS
         let syms = KconfigSymbols::parse(KCONFIG);
         let (_d, l) = leaf(
             "[system]\nname = \"t\"\nrmw = \"zenoh\"\n\n[image.zephyr]\nboard = \"zephyr\"\n\
-             knobs = { log = { max_level = \"warn\" } }\n",
+             env = { NROS_SOME_HEX = \"zz\" }\n",
             &[],
         );
         let e = render(&l, None, &syms, &BTreeMap::new()).unwrap_err();
         assert!(
-            e.contains("log.max_level = \"warn\"") && e.contains("an int"),
+            e.contains("NROS_SOME_HEX = \"zz\"") && e.contains("a hex value"),
             "{e}"
         );
 
