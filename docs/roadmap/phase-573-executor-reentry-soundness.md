@@ -151,7 +151,7 @@ As built:
   The test drives the C++ API over a stub backend with the lock installed,
   and it fails on the code before the fix (the second thread waited 553 ms).
   Whether C should sleep-poll too, where it refuses today, is
-  [issue 2848](../issues/2848-c-wait-for-service-in-callback-parity.md).
+  [issue 2848](../issues/archived/2848-c-wait-for-service-in-callback-parity.md).
 - **Review fixes.** The C action client's poll paths took the core through the
   locked derive and then ran the user's callbacks still holding it; each step
   now copies the reply out and gives the lock back first. The C++ wait's own

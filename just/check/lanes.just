@@ -5741,9 +5741,9 @@ board-transport-variants:
 
 # phase-467 Row 11, C++ half — the `rmw-cffi`-gated unit tests of nros-cpp's
 # FFI edge (`nros_cpp_install_argv_remaps`: the NULL-handle validate path, the
-# reason buffer, a bad argv), and `tests_wait_lock` (issue 2843: a callback
-# waiting for a service leaves the executor to other threads, driven over a
-# stub backend with the executor lock installed). `test-unit` builds nros-cpp with its DEFAULT
+# reason buffer, a bad argv), and `tests_wait_lock` (issues 2843/2848: a
+# callback waiting for a service is refused at once and leaves the executor to
+# other threads, driven over a stub backend with the executor lock installed). `test-unit` builds nros-cpp with its DEFAULT
 # features, which carry no `rmw-cffi`, so without this recipe these tests are
 # compiled by nothing and pass by not existing (issue 1226's shape).
 #

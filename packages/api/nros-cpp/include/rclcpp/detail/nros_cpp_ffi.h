@@ -4424,6 +4424,9 @@ nros_cpp_ret_t nros_cpp_service_client_server_available(void *storage,
  * * `NROS_CPP_RET_UNSUPPORTED` — the backend cannot know (XRCE), returned at
  *   once rather than after the budget; a caller that may send
  *   blind proceeds.
+ * * `NROS_CPP_RET_REENTRANT` — called from inside a callback: a blocking
+ *   wait there would stall the pass, so it refuses at once, as the C API
+ *   does. Use `service_is_ready` inside a callback.
  * * `NROS_CPP_RET_INVALID_ARGUMENT` — null executor, or neither road resolves.
  * * `NROS_CPP_RET_TRANSPORT_ERROR` — transport-level failure.
  *

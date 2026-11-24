@@ -57,5 +57,12 @@ thread got the executor lock 553 ms after asking, at 606 ms; the callback's
 
 `check-ffi-executor-derive` no longer lists this function: nothing reads
 `in_dispatch` outside the refusals. Option 3, C parity, is
-[issue 2848](../2848-c-wait-for-service-in-callback-parity.md), for the user.
+[issue 2848](2848-c-wait-for-service-in-callback-parity.md), for the user.
 
+
+## Superseded (2026-11-25)
+[Issue 2848](2848-c-wait-for-service-in-callback-parity.md) converged C++ on C:
+a `wait_for_service` inside a callback now refuses with `REENTRANT` instead of
+sleep-polling. The test above is now
+`tests_wait_lock::a_callback_waiting_for_a_service_is_refused_at_once`, which
+asserts that refusal with the executor lock installed.
