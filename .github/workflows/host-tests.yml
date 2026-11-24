@@ -345,6 +345,10 @@ jobs:
       # missed `workspace-rust-native-realtime` when issue 2617 added the Rust
       # census test, so the job ran it against no fixture ([UNMET
       # PRECONDITION], run 45104661214).
+      # phase-591 W3 -- plain `bash` builders, outside `just`: start the
+      # compiler cache they would otherwise never see (scripts/ci/sccache-configure.sh).
+      - name: Compiler cache for the fixture rows
+        run: scripts/ci/sccache-configure.sh --wrapper
       - name: Build the fixtures rt_sched_levels_e2e resolves
         run: |
           source ./activate.sh

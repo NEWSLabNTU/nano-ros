@@ -300,6 +300,14 @@ jobs:
       # "the cells ran and failed", i.e. as a live-peer regression. Run
       # 34186427723 is exactly that failure. The self-test pins the old spelling
       # as a misclassification so the rename cannot be undone by accident.
+      # phase-591 W3 -- the rows below are built by plain `bash`, outside
+      # `just`, so the justfile's RUSTC_WRAPPER never reached them: every row
+      # compiled uncached, and `release` below drops each row's intermediates,
+      # so each one rebuilt nros's core chain from scratch. One in-job local
+      # cache (no actions/cache entry, nothing in the repo's 10 GB pool) makes
+      # every row after the first hit the crates that did not change.
+      - name: Compiler cache for the fixture rows
+        run: scripts/ci/sccache-configure.sh --wrapper
       - name: Build the fixtures those rows resolve
         id: fixtures
         run: |
@@ -410,6 +418,10 @@ jobs:
       #
       # The exit code carries the one thing a step outcome cannot — whether the
       # cells produced RESULTS. 2 is the recipe's "this lane could not run".
+      # The hit rate is phase-591 W3's evidence: printed whatever the build did.
+      - name: Compiler cache hit rate for the fixture rows
+        if: ${{ !cancelled() }}
+        run: scripts/ci/sccache-configure.sh --stats
       - name: Run the cells with a recorded PASS
         id: cells
         run: |
