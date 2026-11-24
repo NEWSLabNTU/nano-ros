@@ -526,12 +526,21 @@ mod imp {
     };
 
     /// rclc's `rclc_parameter_server_init_default`.
+    ///
+    /// The quota is rclc's default of 4, capped at the store's capacity. The
+    /// caller stated no quota, and the build sizes the store from what the
+    /// image declares (each node's own parameters, its launch seeds and the
+    /// seeded `use_sim_time`), so a node declaring fewer than 4 lives in a
+    /// smaller store. Asking for 4 there refused a server whose parameters all
+    /// fit. A quota the caller states, through
+    /// `rclc_parameter_server_init_with_option`, is still refused when it is
+    /// over the store.
     #[unsafe(no_mangle)]
     pub unsafe extern "C" fn rclc_parameter_server_init_default(
         server: *mut rclc_parameter_server_t,
         node: *mut rcl_node_t,
     ) -> rcl_ret_t {
-        rclc_parameter_server_init_with_option(server, node, &DEFAULT_OPTIONS)
+        init_server(server, node, &DEFAULT_OPTIONS, Quota::Default)
     }
 
     /// rclc's `rclc_parameter_server_init_with_option`.
@@ -546,6 +555,22 @@ mod imp {
         server: *mut rclc_parameter_server_t,
         node: *mut rcl_node_t,
         options: *const rclc_parameter_options_t,
+    ) -> rcl_ret_t {
+        init_server(server, node, options, Quota::Stated)
+    }
+
+    /// Whether the caller stated `max_params` or took rclc's default.
+    #[derive(Clone, Copy, PartialEq, Eq)]
+    enum Quota {
+        Stated,
+        Default,
+    }
+
+    unsafe fn init_server(
+        server: *mut rclc_parameter_server_t,
+        node: *mut rcl_node_t,
+        options: *const rclc_parameter_options_t,
+        quota: Quota,
     ) -> rcl_ret_t {
         let (Some(s), Some(node), Some(opts)) = (server.as_mut(), node.as_ref(), options.as_ref())
         else {
@@ -579,14 +604,18 @@ mod imp {
             nros_log::log_error!(logger, "{}", nros::STORE_SIZE_KNOB);
             return RCLC_RET_FULL;
         };
-        if opts.max_params > capacity {
+        let max_params = match quota {
+            Quota::Default => opts.max_params.min(capacity),
+            Quota::Stated => opts.max_params,
+        };
+        if max_params > capacity {
             nros_log::log_error!(
                 logger,
                 "node {}/{}: parameter server not started: it asks for max_params = {}, and \
                  the image's parameter store holds {} (all nodes).",
                 node.get_namespace_str().trim_end_matches('/'),
                 node.get_name_str(),
-                opts.max_params,
+                max_params,
                 capacity
             );
             nros_log::log_error!(logger, "{}", nros::STORE_SIZE_KNOB);
@@ -620,7 +649,7 @@ mod imp {
         }
         *s = rclc_parameter_server_t {
             executor,
-            max_params: opts.max_params,
+            max_params,
             on_modification: None,
             context: core::ptr::null_mut(),
             node_id: node.node_id,

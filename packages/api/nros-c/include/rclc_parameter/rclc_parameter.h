@@ -171,7 +171,8 @@ typedef struct rclc_parameter_server_t {
  * rclc's functions
  * =================================================================== */
 
-/** Defaults: events on, 4 parameters, undeclared sets refused. */
+/** Defaults: events on, 4 parameters (no more than the image's parameter store
+ * holds: the store is sized from what the image declares), undeclared sets refused. */
 NROS_PUBLIC rcl_ret_t rclc_parameter_server_init_default(rclc_parameter_server_t* parameter_server,
                                                          struct rcl_node_t* node);
 NROS_PUBLIC rcl_ret_t rclc_parameter_server_init_with_option(

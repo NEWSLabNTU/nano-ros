@@ -31,8 +31,11 @@ const BRINGUP: &str = "packages/testing/nros-tests/fixtures/image_config_ws/src/
 const BUILTIN_MAX_CBS: usize = 4;
 
 /// What `plain`'s declarations derive for `NROS_EXECUTOR_MAX_CBS`: its one
-/// component declares one timer, one callback slot (`Probe.c`).
-const PLAIN_DERIVED_MAX_CBS: usize = 1;
+/// component declares one timer (`Probe.c`), one callback slot, and the
+/// runtime reserves one more for its `/clock` subscription, which every image
+/// whose nodes carry `use_sim_time` holds (phase-556 W11; the descriptor's
+/// `infra_families` names `clock`).
+const PLAIN_DERIVED_MAX_CBS: usize = 2;
 
 /// `[image.warn.knobs]`, as authored — read rather than restated, so the test
 /// cannot pass against a fixture that changed under it.

@@ -1299,6 +1299,27 @@ c: c-fmt c-link-smoke
         "$param_dir/debug/libnros_c.a" -lpthread -ldl -lm \
         -o tmp/rclc_parameter_server
     ./tmp/rclc_parameter_server
+    # rclc's DEFAULT server in a store smaller than rclc's default quota of 4:
+    # the build sizes the store from what the image declares, so a node with
+    # one parameter lives in a store of two. A third shape, its own target dir
+    # for the same reason as the one above.
+    test -f packages/api/nros-c/tests/run/rclc_parameter_default_quota.c || { \
+        echo "ERROR: rclc_parameter_default_quota.c is MISSING -- this check passes on absence." >&2; exit 1; }
+    # profile-literal-ok: unprofiled, as above.
+    quota_dir="$PWD/target/nros-c-param-quota"
+    NROS_PARAMS_MAX_PARAMETERS=2 CARGO_TARGET_DIR="$quota_dir" \
+        nros_cargo_placed "$quota_dir/placed" nros-c -- build -p nros-c --no-default-features \
+        --features "{{C_API_SHIPPED_FEATURES}},param-services,sim-time" --quiet
+    cc -std=c11 -Wall -Wextra -D_GNU_SOURCE \
+        -I"$(nros_locate_artifact c-include --placed-dir "$quota_dir/placed")" \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/core/nros-rmw-abi/include \
+        -Ipackages/platform/nros-platform-api/include \
+        packages/api/nros-c/tests/run/rclc_parameter_default_quota.c \
+        packages/api/nros-c/tests/run/stub_rmw_backend.c \
+        "$quota_dir/debug/libnros_c.a" -lpthread -ldl -lm \
+        -o tmp/rclc_parameter_default_quota
+    ./tmp/rclc_parameter_default_quota
     echo "All C checks passed!"
 
 # issue 0379 — clippy gate for the CLI sub-workspace. No lane ran clippy on
