@@ -5,6 +5,10 @@ project(NanoRos VERSION 0.1.0 LANGUAGES C CXX)
 # `NROS_*` replacement; refuse it before the first option() below reads a name.
 include("${CMAKE_CURRENT_LIST_DIR}/cmake/NanoRosRetiredNames.cmake")
 nros_refuse_retired_names()
+# Issue 2931 -- a bare `add_subdirectory(<nano-ros>)` reaches here without
+# nano_rosConfig.cmake, so it re-roots another root's cached paths too.
+include("${CMAKE_CURRENT_LIST_DIR}/cmake/NanoRosCheckoutRoot.cmake")
+nros_reroot_cached_checkout_paths("${CMAKE_CURRENT_LIST_DIR}")
 
 # phase-530 W5 (RFC-0120 D5) -- a project that pulls nano-ros in with a bare
 # `add_subdirectory(<nano-ros>)` (no `find_package(nano_ros)`) is a hooked

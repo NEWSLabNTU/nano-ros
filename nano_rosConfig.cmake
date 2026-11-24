@@ -30,6 +30,11 @@
 include("${CMAKE_CURRENT_LIST_DIR}/cmake/NanoRosRetiredNames.cmake")
 nros_refuse_retired_names()
 set(NROS_REPO_DIR "${CMAKE_CURRENT_LIST_DIR}")
+# Issue 2931 -- a build dir first configured against another nano-ros root
+# (the previous SDK, after `nros pin`) keeps that root's cached paths; move
+# them here before anything below reads one.
+include("${CMAKE_CURRENT_LIST_DIR}/cmake/NanoRosCheckoutRoot.cmake")
+nros_reroot_cached_checkout_paths("${CMAKE_CURRENT_LIST_DIR}")
 
 # --- Zephyr arm (287-W6) ------------------------------------------------------
 # On Zephyr, nano-ros is already IN the build as a west/Zephyr module (the

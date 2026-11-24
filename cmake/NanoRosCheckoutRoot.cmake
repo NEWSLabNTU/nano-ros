@@ -91,3 +91,84 @@ function(nros_checkout_scoped_root out_var root)
     endif()
     set(${out_var} "${_root}/checkouts/${_name}" PARENT_SCOPE)
 endfunction()
+
+# nros_reroot_cached_checkout_paths(<here>)
+#
+# Issue 2931 — issue 1280's rule, applied to the CMake CACHE. Every
+# `set(<var> <default> CACHE PATH|FILEPATH ...)` whose default is derived from
+# the tree (`${CMAKE_CURRENT_LIST_DIR}/../nros-platform-api/include`, a board's
+# config dir, ...) is written ONCE, on the first configure of a build dir, and
+# a later configure against ANOTHER nano-ros root keeps it. After `nros pin`
+# moves an installed project from one SDK to the next, the old SDK is still in
+# the store, so the cached path still exists: nothing refuses it, and the new
+# SDK's sources compile against the old SDK's headers (the nros11 -> nros12
+# upgrade: `platform.c: unknown type name 'nros_wall_clock_state_t'`).
+#
+# So, before any project reads one: a cached PATH or FILEPATH value whose
+# owning nano-ros root (deepest marker walk) is a DIFFERENT root than <here> is
+# re-rooted onto <here>, same sub-path, and said once. A value outside every
+# nano-ros root (a toolchain, an SDK in the store, a user's own tree), one
+# already inside <here>, and one inside the consuming project's own source or
+# build tree are kept. Only when <here> is itself a root: there is
+# nothing to re-root onto otherwise. The shell spelling of the rule is
+# `scripts/lib/checkout-paths.sh`.
+function(nros_reroot_cached_checkout_paths here)
+    get_filename_component(_here "${here}" REALPATH)
+    _nros_find_root("${_here}" _here_root)
+    if(NOT _here_root)
+        return()
+    endif()
+    get_filename_component(_here_root "${_here_root}" REALPATH)
+    if(NOT _here_root STREQUAL _here)
+        return()
+    endif()
+    get_cmake_property(_vars CACHE_VARIABLES)
+    set(_moved "")
+    foreach(_v IN LISTS _vars)
+        get_property(_type CACHE "${_v}" PROPERTY TYPE)
+        if(NOT _type STREQUAL "PATH" AND NOT _type STREQUAL "FILEPATH")
+            continue()
+        endif()
+        set(_value "$CACHE{${_v}}")
+        if(_value STREQUAL "" OR NOT IS_ABSOLUTE "${_value}" OR _value MATCHES ";")
+            continue()
+        endif()
+        # The consuming project's own source and build trees are its paths,
+        # even when that project sits inside another checkout (an in-repo
+        # example configured by a worktree's nano-ros).
+        set(_own FALSE)
+        foreach(_d IN ITEMS "${CMAKE_SOURCE_DIR}" "${CMAKE_BINARY_DIR}")
+            cmake_path(IS_PREFIX _d "${_value}" NORMALIZE _in)
+            if(_in)
+                set(_own TRUE)
+            endif()
+        endforeach()
+        if(_own)
+            continue()
+        endif()
+        _nros_find_root("${_value}" _owner)
+        if(NOT _owner)
+            continue()
+        endif()
+        get_filename_component(_owner_real "${_owner}" REALPATH)
+        if(_owner_real STREQUAL _here)
+            continue()
+        endif()
+        file(RELATIVE_PATH _rel "${_owner}" "${_value}")
+        if(_rel STREQUAL "")
+            set(_new "${_here}")
+        else()
+            set(_new "${_here}/${_rel}")
+        endif()
+        get_property(_doc CACHE "${_v}" PROPERTY HELPSTRING)
+        set(${_v} "${_new}" CACHE ${_type} "${_doc}" FORCE)
+        list(APPEND _moved "${_v}")
+    endforeach()
+    if(_moved)
+        list(LENGTH _moved _n)
+        list(JOIN _moved ", " _names)
+        message(STATUS
+            "nano-ros: ${_n} cached path(s) named another nano-ros root and were "
+            "re-rooted onto ${_here}: ${_names}")
+    endif()
+endfunction()
