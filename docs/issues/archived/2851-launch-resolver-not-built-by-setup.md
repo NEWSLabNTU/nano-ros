@@ -1,12 +1,13 @@
 ---
 id: 2851
 title: "`nros-launch-resolve` is built by no step of the normal setup, so a fresh user's first build fails for a missing resolver"
-status: open
+status: resolved
 type: bug
 severity: medium
 area: [cli, setup]
 related: [phase-589, issue-0409, issue-0797]
 found: 2026-11-23
+resolved: 2026-11-24
 ---
 Found by a downstream proof of concept on an embedded Linux camera SoC (HiSilicon Hi3519DV500: 2x Cortex-A55, Linux 5.10, musl 1.2.3, BusyBox), built as an out-of-tree hosted board; see phase-589.
 
@@ -24,3 +25,13 @@ so one documented step yields both binaries.
 ## Acceptance
 From a fresh clone, the documented setup steps followed by `nros build` of a
 launch-file example succeed with no separate resolver step.
+
+## Resolution
+`just setup-cli` now builds the resolver too, through `setup-launch-resolve`,
+whenever the play_launch submodule is initialised and the resolver is missing
+or stale. It runs on the no-op path as well, since a fresh CLI says nothing
+about the resolver. With the submodule absent there is nothing to build, and
+setup-cli prints the two commands that build it rather than skipping
+silently (issue 0409's rule). Measured: with the resolver binary moved away,
+`just setup-cli` rebuilt it; a second run was a no-op. AGENTS.md's install
+line says so.

@@ -4593,7 +4593,8 @@ install-nros-cli: setup-cli
 # is newer than `packages/cli/Cargo.lock`. Required by every recipe that
 # shells out to `nros setup …` / `nros dev codegen …`; `just setup` runs
 # this first so downstream provisioning has the binary on hand.
-# Build the in-tree nros CLI (packages/cli/target/release/nros).
+# Build the in-tree nros CLI (packages/cli/target/release/nros) and, when its
+# sources are present and it is stale, the launch resolver.
 [group("setup")]
 setup-cli:
     #!/usr/bin/env bash
@@ -4686,7 +4687,34 @@ setup-cli:
         # profile-literal-ok: host tool: builds the in-tree runner and command packages
         cargo build -q --release --locked --manifest-path "$root/$manifest" $args
     done < "$root/scripts/lib/cli-companion-packages.txt"
+    # Issue 2851 -- the resolver is part of what this recipe hands over. It was
+    # built only by `setup-launch-resolve`, `post-rebase` and bootstrap.sh, so
+    # a user who followed `setup-cli` met a missing resolver at their first
+    # launch-file build. Built whenever its sources are present and it is
+    # missing or stale (a no-op otherwise); run on BOTH paths below, because
+    # a fresh CLI says nothing about the resolver. With the play_launch
+    # submodule absent (a CLI-only checkout) there is nothing to build, and
+    # that is said rather than skipped silently (issue 0409's rule): a later
+    # `nros configure` of a launch file then refuses for the missing resolver.
+    ensure_launch_resolve() {
+        # shellcheck source=scripts/build/launch-resolve-stale.sh
+        source "$root/scripts/build/launch-resolve-stale.sh"
+        if [ ! -f "$root/packages/cli/third-party/play_launch/src/ros-launch-resolve/resolve/Cargo.toml" ]; then
+            if nros_launch_resolve_stale "$root"; then
+                echo "[setup-cli] NOTE: nros-launch-resolve is not built: the play_launch" >&2
+                echo "            submodule is not initialised. A launch-file build needs it:" >&2
+                echo "                git submodule update --init packages/cli/third-party/play_launch" >&2
+                echo "                just setup-launch-resolve" >&2
+            fi
+            return 0
+        fi
+        if nros_launch_resolve_stale "$root"; then
+            echo "[setup-cli] building nros-launch-resolve (packages/cli/nros-launch-resolve)…"
+            just --justfile "$root/justfile" setup-launch-resolve
+        fi
+    }
     if [ -x "$bin" ] && "$bin" source-stamp >/dev/null 2>&1; then
+        ensure_launch_resolve
         # Quiet on no-op — `just setup` invokes us unconditionally.
         warn_stale_shadow
         exit 0
@@ -4701,23 +4729,11 @@ setup-cli:
     # which legitimately asks "which of these two artifacts was built later".
     touch "$bin"
     echo "[setup-cli] built: $bin"
-    # Issue 0363 C — the CLI and `nros-launch-resolve` are built by SEPARATE
-    # recipes and must agree on an argument list, with nothing gating the pair.
-    # A CLI rebuilt past a resolver invocation change leaves the resolver older
-    # and the mismatch surfaces deep in a fixture build. Warn (do not fail):
-    # setup-cli's job is to produce the binary, and the resolver has its own
-    # skip conditions (submodule absent, no CPython), so hard-failing here would
-    # block a legitimate CLI-only setup.
-    # issue 0596 — SOURCE staleness, not `bin -nt resolver`. Having just built
-    # the CLI, that comparison was true forever: `setup-launch-resolve` no-ops
-    # when the resolver's sources are unchanged, so it never relinks. Same
-    # helper as check::tier-preconditions, one spelling.
-    source scripts/build/launch-resolve-stale.sh
-    if nros_launch_resolve_stale "$root"; then
-        echo "[setup-cli] WARNING: nros-launch-resolve is older than its own SOURCES." >&2
-        echo "            It and this CLI must agree on an argument list" >&2
-        echo "            (issue 0363 C). Rebuild it:  just setup-launch-resolve" >&2
-    fi
+    # Issue 0363 C — the CLI and `nros-launch-resolve` must agree on an
+    # argument list, and they are built by separate cargo workspaces; since
+    # issue 2851 this recipe builds the resolver too whenever it is stale, so
+    # the pair leaves here together.
+    ensure_launch_resolve
     warn_stale_shadow
 
 # After a rebase / pull / stash — restore the derived state, in ORDER.

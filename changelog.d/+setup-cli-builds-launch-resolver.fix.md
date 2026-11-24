@@ -1,0 +1,1 @@
+`just setup-cli` now also builds the launch resolver (`nros-launch-resolve`) when it is missing or stale, so following the documented setup no longer ends in a missing-resolver error at the first launch-file build. With the play_launch submodule not initialised, it prints the commands that build the resolver.
