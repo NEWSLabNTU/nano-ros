@@ -1,16 +1,18 @@
 ---
 id: 2883
 title: "`epoch_failure = \"halt\"` after a source list ending in `platform` never applies on a port whose `platform` is \"none\", and configure accepts it"
-status: open
+status: resolved
 type: enhancement
 severity: low
 area: [clock, zephyr, freertos, cli]
 related: [phase-582, phase-478, rfc-0141, 0758]
 found: 2026-11-23
+resolved: 2026-11-24
+resolved_in: "superseded by RFC-0141 D1's amendment (issue 2839): `platform` no longer answers on a port with no wall clock, so `halt` after it is reachable and no configure check is needed"
 ---
 
-**Home:** [phase-582](../roadmap/phase-582-wall-clock-source.md), rehomed
-2026-11-23 from [phase-478](../roadmap/phase-478-island-developer-experience-findings.md)
+**Home:** [phase-582](../../roadmap/phase-582-wall-clock-source.md), rehomed
+2026-11-23 from [phase-478](../../roadmap/phase-478-island-developer-experience-findings.md)
 I43, where the consumer found it. Consumer: the safety island (autoware-safety-island fork), branch
 `nano-ros-next`, nano-ros pin `8d4e70a382`.
 
@@ -55,3 +57,34 @@ is a real clock (POSIX, the freertos-posix board), nothing changes.
   warned, per the owner's choice) with the remedy; POSIX + the same accepted;
   Zephyr + `sntp` + `halt` accepted.
 - RFC-0141's `platform` paragraph names the check.
+
+## Resolution (2026-11-24)
+
+Superseded: the defect this issue asks configure to warn about no longer exists.
+
+The premise was RFC-0141 D1's first text, "`platform` always answers". D1 was
+amended on 2026-11-22 with issue 2839's fix: `platform` answers only where the
+port has a wall clock. On Zephyr, bare-metal FreeRTOS and ThreadX there is none
+behind it, so it does not answer, and a list ending in it reaches
+`epoch_failure`. There, `sntp,platform` + `halt` now halts when SNTP fails, and
+the default `unstamped` runs on and says that no source answered. On POSIX and
+the freertos-posix board, `platform` is the host's `CLOCK_REALTIME` and still
+answers, as before.
+
+So the pair is no longer unreachable, and refusing or warning about it at
+configure would now be wrong.
+
+What stands in for this issue's acceptance:
+
+- "Zephyr + `sntp,platform` + `halt`" is the `+ [ClockHalt]` cell,
+  `zephyr_clock_halt_stops_when_no_source_answers` in
+  `packages/testing/nros-tests/tests/zephyr_clock_resolve.rs`. It checks that
+  the image prints the halt line, latches nothing, exits and never publishes.
+  It runs on both Zephyr lines as [issue 2839](../2839-zephyr-platform-clock-source-always-answers.md)'s
+  closing condition.
+- On POSIX, `platform` keeps answering from `CLOCK_REALTIME`.
+- RFC-0141 D1's `platform` bullet states the amended rule.
+
+The island's workaround ("a `halt` image names `sntp` alone") is still valid,
+and is no longer required: `sntp,platform` + `halt` behaves the same on Zephyr.
+

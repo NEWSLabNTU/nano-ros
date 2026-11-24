@@ -915,7 +915,7 @@ AN536) stay green.
 
 ### I43 -- an unreachable `halt` is refused or warned
 
-- **Issue:** [2883](../issues/2883-zephyr-clock-halt-unreachable-after-platform.md).
+- **Issue:** [2883](../issues/archived/2883-zephyr-clock-halt-unreachable-after-platform.md) (resolved 2026-11-24, superseded by RFC-0141 D1's amendment).
 - **Tracked by:** [phase-582](phase-582-wall-clock-source.md), which owns
   RFC-0141 and took the issue (2026-11-23). Linked here, not worked here.
 
@@ -1265,7 +1265,7 @@ unowned.
 - [issue 2880](../issues/2880-s32z270-rtu0-zephyr-no-west-downstream.md): `s32z270-rtu0-zephyr` has no `west-downstream.yml` (I40).
 - [issue 2881](../issues/archived/2881-rclcpp-log-min-severity-missing.md): no compile-time log floor, `RCLCPP_LOG_MIN_SEVERITY` (I41).
 - [issue 2882](../issues/2882-nros12-release-for-consumers.md): no release past nros11 (I42; planned by phase-590).
-- [issue 2883](../issues/2883-zephyr-clock-halt-unreachable-after-platform.md): `halt` after `platform` on a "none" port is unreachable and accepted (I43; homed in phase-582).
+- [issue 2883](../issues/archived/2883-zephyr-clock-halt-unreachable-after-platform.md): `halt` after `platform` on a "none" port was unreachable and accepted (I43; homed in phase-582; resolved, superseded by RFC-0141 D1's amendment).
 - [issue 2884](../issues/2884-sntp-resync-paced-on-guest-time.md): the SNTP re-sync interval runs on guest time (I44; homed in phase-582).
 - [issue 2871](../issues/archived/2871-census-for-entry-without-nano-ros.md): an owned entry that never starts nano-ros gets no census (I45; resolved by PR #4671).
 - [issue 2899](../issues/2899-owned-census-omits-entry-workspace-depends.md): an owned entry's census builds its package without the workspace packages it `<depend>`s on (I50).
