@@ -371,13 +371,17 @@ jobs:
       # is a server already up? `--show-stats` with NO server would start one
       # at the default size and change what the build then runs, so the start
       # only reports, and reads stats only from a server that already exists.
-      - name: sccache at start (W5 experiment)
+      - name: sccache with the C/C++ launcher (W5 experiment)
         run: |
-          source ./activate.sh
-          # The justfile exports RUSTC_WRAPPER (the sccache shim) exactly when
-          # `command -v sccache` resolves (justfile:20-21), so this answers it.
-          echo "sccache: $(command -v sccache || echo absent)"
-          if pgrep -x sccache >/dev/null; then sccache --show-stats || true; else echo "no sccache server running yet"; fi
+          # The server's dir and size are fixed when it starts, and the
+          # justfile exports SCCACHE_CACHE_SIZE=30G inside every recipe, so
+          # it starts HERE, before any `just` step, at a size a hosted
+          # container's disk holds. The justfile's RUSTC_WRAPPER (its shim)
+          # then reaches this server for Rust; CMake reads the launchers from
+          # the env for C/C++ (issue 2284: the no-jobserver wrapper).
+          bash scripts/ci/sccache-configure.sh --size 6G --what "this job's fixture build"
+          echo "CMAKE_C_COMPILER_LAUNCHER=$GITHUB_WORKSPACE/scripts/bin/sccache-no-jobserver" >> "$GITHUB_ENV"
+          echo "CMAKE_CXX_COMPILER_LAUNCHER=$GITHUB_WORKSPACE/scripts/bin/sccache-no-jobserver" >> "$GITHUB_ENV"
 
       # RFC-0114 D13.1 (phase-585 W2) -- where this job's tests write their
       # evidence ledger. From `$GITHUB_WORKSPACE` in the shell, because the job
@@ -540,8 +544,7 @@ jobs:
       # those from the log beside these numbers).
       - name: sccache after build (W5 experiment)
         if: ${{ !cancelled() }}
-        run: |
-          if command -v sccache >/dev/null; then sccache --show-stats || true; else echo "no sccache on PATH"; fi
+        run: bash scripts/ci/sccache-configure.sh --stats
 
       - name: Test / e2e (${{ matrix.board }})
         if: ${{ false }}  # phase-591 W5 experiment branch only: build time is what is measured
