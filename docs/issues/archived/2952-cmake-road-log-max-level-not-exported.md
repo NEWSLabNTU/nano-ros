@@ -1,12 +1,13 @@
 ---
 id: 2952
 title: "On the CMake road an image's `log.max_level` reaches cargo only; a consumer's C/C++ code cannot derive its log floor from it"
-status: open
+status: resolved
 type: enhancement
 severity: low
 area: [cmake, config, logging]
 related: [phase-478, 2881, 2951, 1712]
 found: 2026-11-24
+resolved: 2026-11-25
 ---
 
 ## What is missing
@@ -62,9 +63,45 @@ image row, then the board rung, then the builtin), so the floor and the
 Rust ceiling cannot disagree. Workspace members of a census configure
 included, since that is where the island's linux images build.
 
+## Fix
+
+`cmake/NanoRosLogLevel.cmake`, `nros_log_max_level_export(NanoRos)`, called
+from the checkout's `CMakeLists.txt` on every non-Zephyr platform (the
+`find_package(nano_ros)` road adds that same directory):
+
+- **Value.** `nros config explain --get log.max_level` (new `--get`) prints
+  the index from `PlatformsTree::resolve_log`, the same ladder the `nros-log`
+  build script reads: exported variable, image row, board `[knobs.log]`,
+  platform, builtin 0. The configure asks it with the inputs cargo gets: the
+  board facts' `NROS_PLATFORM_NAME`, `NROS_BOARD_TOML` and
+  `NROS_PLATFORMS_DIR`, and the image row (from the image-env file) as the
+  env rung when nothing is exported. No platform resolved: a stated number,
+  else 0; a stated name is refused rather than guessed.
+- **Export.** `NROS_LOG_MAX_LEVEL` as a CACHE INTERNAL (an output) and as an
+  INTERFACE compile definition on `NanoRos::NanoRos`, which
+  `NanoRos::NanoRosCpp` reaches. (The issue named `nros_c` / `nros_cpp`; the
+  umbrella is what a consumer links.)
+- **Freshness (issue 1018).** The CLI and the board descriptor are configure
+  dependencies; `system.toml` already was (`nano_ros_read_leaf_system`).
+- **Workspace members.** One configure builds `nros-log` once, so a member
+  gets that build's value; its own rows are not claimed, as the existing
+  warning says. The island's images each have their own configure and one
+  level, so this costs them nothing (NXP 175, 2026-11-25).
+
+Documented in `docs/reference/c-api-cmake.md` and the rclcpp compatibility
+table.
+
+
 ## Test
 
-A cmake-road fixture image stating `log.max_level = "warn"` configures with
-`NROS_LOG_MAX_LEVEL=3` visible to a consumer target; one stating nothing
-gets the board's or the builtin value; the value matches the `MAX_LEVEL`
-the `nros-log` build script generated for the same image.
+- `packages/testing/nros-tests/tests/cmake_log_level_export.sh`
+  (`just check cmake-log-level-export`), a real configure against a stub
+  resolver: the board's level lands in the cache and the definition, and the
+  resolver is asked for the board facts' platform and board (T1); editing the
+  board descriptor re-exports on `cmake --build` (T2, mutation-tested: drop
+  the configure dependency and it fails); the image row reaches the resolver
+  (T3); an exported variable outranks it (T4); with no platform a number is
+  taken and the builtin is 0 (T5), and a name is refused (T6).
+- `config::tests::a_board_log_level_resolves_through_the_ladder`: a board
+  descriptor's `warn` / `error` resolve to 3 / 4 through `resolve_ladder`;
+  `ladder_get_prints_the_log_level_as_its_index` pins `--get`'s index.

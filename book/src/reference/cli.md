@@ -1793,6 +1793,9 @@ Options:
       --workspace <WORKSPACE>
           Workspace whose platform packages are searched (default: the current directory)
 
+      --get <KEY>
+          Print only this knob's resolved value (e.g. `log.max_level`), for a build that must agree with what a build script bakes. `log.max_level` prints its INDEX (0 trace .. 6 off), not the name the table shows
+
   -h, --help
           Print help (see a summary with '-h')
 

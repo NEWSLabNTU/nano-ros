@@ -89,6 +89,12 @@ pub struct ExplainArgs {
     /// directory).
     #[arg(long)]
     pub workspace: Option<PathBuf>,
+
+    /// Print only this knob's resolved value (e.g. `log.max_level`), for a
+    /// build that must agree with what a build script bakes. `log.max_level`
+    /// prints its INDEX (0 trace .. 6 off), not the name the table shows.
+    #[arg(long, value_name = "KEY")]
+    pub get: Option<String>,
 }
 
 /// phase-290 (RFC-0049) — the porter's debugging surface: every knob, its
@@ -98,6 +104,10 @@ pub struct ExplainArgs {
 /// build will bake.
 fn explain(args: ExplainArgs) -> Result<()> {
     let ladder = resolve_ladder(&args)?;
+    if let Some(key) = &args.get {
+        println!("{}", ladder_get(&ladder, key)?);
+        return Ok(());
+    }
     println!(
         "platform: {}   (platforms root: {})",
         args.platform,
@@ -129,6 +139,27 @@ fn explain(args: ExplainArgs) -> Result<()> {
         println!("warning: {w}");
     }
     Ok(())
+}
+
+/// `--get <key>`: one resolved value, bare. Issue 2952 -- the cmake road
+/// exports `log.max_level` to C/C++ as an integer, so it is printed as its
+/// index into the level names, the numbering `CONFIG_NROS_LOG_MAX_LEVEL`
+/// uses too.
+pub fn ladder_get(ladder: &Ladder, key: &str) -> Result<String> {
+    let Some(v) = ladder.values.iter().find(|v| v.key == key) else {
+        let keys: Vec<&str> = ladder.values.iter().map(|v| v.key.as_str()).collect();
+        return Err(eyre!(
+            "--get {key}: no such ladder knob on this platform (one of: {})",
+            keys.join(", ")
+        ));
+    };
+    if key == "log.max_level" {
+        let levels = nros_board_common::platform_config::LOG_LEVELS;
+        if let Some(i) = levels.iter().position(|l| *l == v.value) {
+            return Ok(i.to_string());
+        }
+    }
+    Ok(v.value.clone())
 }
 
 /// One resolved knob of the platform/board ladder: its `[knobs]` key, its
@@ -896,6 +927,67 @@ fn line(out: &mut String, key: &str, value: &str, source: &str) {
 mod tests {
     use super::*;
     use std::fs;
+
+    /// Issue 2952 -- `--get log.max_level` prints the INDEX the cmake road
+    /// exports (the table shows the name); another key prints as shown; an
+    /// unknown key is refused naming the keys there are.
+    #[test]
+    fn ladder_get_prints_the_log_level_as_its_index() {
+        let row = |key: &str, value: &str| LadderValue {
+            key: key.into(),
+            value: value.into(),
+            source: "board",
+            env: None,
+        };
+        let ladder = Ladder {
+            root: PathBuf::new(),
+            capabilities: Vec::new(),
+            values: vec![row("log.max_level", "warn"), row("log.buffer_bytes", "256")],
+            warnings: Vec::new(),
+        };
+        assert_eq!(ladder_get(&ladder, "log.max_level").unwrap(), "3");
+        assert_eq!(ladder_get(&ladder, "log.buffer_bytes").unwrap(), "256");
+        let e = ladder_get(&ladder, "log.max_levle")
+            .unwrap_err()
+            .to_string();
+        assert!(e.contains("one of: log.max_level, log.buffer_bytes"), "{e}");
+    }
+
+    /// Issue 2952 -- the board rung reaches `--get`: a board descriptor's
+    /// `[knobs.log] max_level` is what the cmake road exports when nothing is
+    /// exported and the image states no row (the build script's ladder).
+    #[test]
+    fn a_board_log_level_resolves_through_the_ladder() {
+        // The env rung outranks the board's; this test is about the board.
+        // The name comes from the ladder's own table, so this crate holds no
+        // second literal reader of the knob (`check-knob-single-reader`).
+        let env_key = nros_board_common::platform_config::log_env_key("max_level");
+        assert!(
+            std::env::var_os(env_key).is_none(),
+            "unset {env_key} to run this test: it outranks the board rung"
+        );
+        let dir = tempfile::tempdir().unwrap();
+        let board = dir.path().join("nros-board.toml");
+        let ladder_for = |level: &str| {
+            fs::write(&board, format!("[knobs.log]\nmax_level = \"{level}\"\n")).unwrap();
+            resolve_ladder(&ExplainArgs {
+                platform: "posix".into(),
+                board_toml: Some(board.clone()),
+                platforms_dir: None,
+                workspace: Some(dir.path().to_path_buf()),
+                get: None,
+            })
+            .unwrap()
+        };
+        assert_eq!(
+            ladder_get(&ladder_for("warn"), "log.max_level").unwrap(),
+            "3"
+        );
+        assert_eq!(
+            ladder_get(&ladder_for("error"), "log.max_level").unwrap(),
+            "4"
+        );
+    }
 
     /// phase-315 — a capability declared via the GENERIC `[system] features`
     /// list must report as enabled, not `(absent)`.
