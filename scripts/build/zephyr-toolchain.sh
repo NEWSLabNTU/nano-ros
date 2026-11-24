@@ -142,6 +142,26 @@ nros_zephyr_board_label() {
 # stderr, for an SDK board whose pinned SDK is missing. Written as an `env`
 # argument so a caller can splice it into the same array as the variant, and
 # a caller must test the status: `_sdk_env="$(nros_zephyr_sdk_env …)" || …`.
+# nros_zephyr_sdk_has_board_toolchain <board> <zephyr-tree> <sdk>
+#
+# Issue 2913 -- whether <sdk> holds the GNU toolchain <board> builds with. The
+# rule is `nros build`'s own (`board_toolchain_check`), asked through
+# `nros dev zephyr-toolchain` rather than kept here as a second copy: the
+# board's `arch:` from Zephyr's board YAML, the toolchain from the SDK's arch
+# table. A missing one returns 1 after the refusal (naming the toolchain and
+# `<sdk>/setup.sh -t <toolchain>`) is on stderr; it used to surface at
+# configure as "C compiler not found". No `nros` on PATH, or a board the
+# question cannot be asked of, answers 0: nothing is refused on a question
+# nobody could ask.
+nros_zephyr_sdk_has_board_toolchain() {
+    local board="${1:-}" tree="${2:-}" sdk="${3:-}" nros_bin
+    # The one resolver (issue 1850): this checkout's CLI before PATH's.
+    declare -F nros_cli_bin >/dev/null \
+        || source "$(dirname "${BASH_SOURCE[0]}")/cargo.sh"
+    nros_bin="$(nros_cli_bin 2>/dev/null)" && [ -n "$nros_bin" ] || return 0
+    "$nros_bin" dev zephyr-toolchain --board "$board" --zephyr-base "$tree" --sdk "$sdk" >/dev/null
+}
+
 nros_zephyr_sdk_env() {
     local board="${1:-}" zephyr_tree="${2:-}" want sdk
     [ "$(nros_zephyr_toolchain_variant "$board")" = "zephyr" ] || return 0
@@ -150,6 +170,7 @@ nros_zephyr_sdk_env() {
     [ -n "$want" ] || return 0
     if sdk="$(bash "$(dirname "${BASH_SOURCE[0]}")/../lib/zephyr-sdk.sh" --version "$want" resolve 2>/dev/null)" \
         && [ -n "$sdk" ]; then
+        nros_zephyr_sdk_has_board_toolchain "$board" "$zephyr_tree" "$sdk" || return 1
         printf 'ZEPHYR_SDK_INSTALL_DIR=%s' "$sdk"
         return 0
     fi
@@ -158,6 +179,7 @@ nros_zephyr_sdk_env() {
     # registers it, and that is the pin. Only the version decides; the
     # registry's own ordering is the defect this function exists to bypass.
     if sdk="$(nros_zephyr_sdk_registered "$want")" && [ -n "$sdk" ]; then
+        nros_zephyr_sdk_has_board_toolchain "$board" "$zephyr_tree" "$sdk" || return 1
         printf 'ZEPHYR_SDK_INSTALL_DIR=%s' "$sdk"
         return 0
     fi

@@ -1,11 +1,12 @@
 ---
 id: 2913
 title: "The Zephyr 4.4 line's SDK is provisioned without aarch64-zephyr-elf, so no 64-bit Arm image (qemu_cortex_a53, FVP) builds on it"
-status: open
+status: resolved
 type: bug
 area: [zephyr, toolchain, setup]
 severity: medium
 found: 2026-11-24
+resolved: 2026-11-24
 related: [issue-1259, issue-2902]
 ---
 
@@ -86,3 +87,49 @@ On a host provisioned by `NROS_ZEPHYR_VERSION=4.4 just zephyr setup`, a
 qemu_cortex_a53 SMP row builds on the 4.4 line. Or it is refused before
 configure, with a message naming the missing toolchain and the command that
 fetches it. The FVP recipes find aarch64 under either SDK layout.
+
+## Resolution
+
+Fixed 2026-11-24 with the early refusal, which is direction 1's minimum and
+neither direction's provisioning half.
+
+**Why the refusal rather than setup fetching what the rows need.** Fetching
+by row means `nros setup` has to map every declared Zephyr row to its board,
+its arch and its toolchain, and then decide which rows a host means to build.
+The manifest has no Zephyr-line coordinate, so a 4.4 host would fetch the
+toolchains of rows it may never build, about 1 GiB each. It would also have to
+re-run a `post_install` that `.nros-provenance` already records as done. The
+refusal costs nothing on a host that never builds a 64-bit image, and names the
+one idempotent command that fixes the host that does. If 4.4 a53/FVP rows
+join a lane, fetching becomes worth it and can call the same rule.
+
+**One rule, read from upstream.** `board_toolchain_check`
+(`packages/cli/nros-cli-core/src/builder/zephyr.rs`) takes the board's `arch:`
+from Zephyr's own board YAML (`boards/**/<board, / as _>.yaml`) and the
+toolchain for that arch from the SDK's own `cmake/zephyr[/gnu]/target.cmake`.
+It looks for the toolchain under both SDK layouts. Nothing in nano-ros states
+an arch or a toolchain. A board the tree has no YAML for (an out-of-tree board
+root), or an arch the table names only through a variable (xtensa), is not
+refused.
+
+- `nros build` refuses before west, through `resolve_toolchain`.
+- The shell lanes ask the same rule through `nros dev zephyr-toolchain`:
+  `nros_zephyr_sdk_env` for the fixture builder, and the two FVP recipes,
+  whose old probe looked only at the 0.16.x layout.
+
+The refusal reads:
+
+    board `qemu_cortex_a53/qemu_cortex_a53/smp` (arch arm64) builds with the
+    `aarch64-zephyr-elf` toolchain, and the Zephyr SDK at <sdk> does not have it.
+    Zephyr SDK 1.0 and later fetch each toolchain separately, and this one was
+    never fetched.
+    Remedy: <sdk>/setup.sh -t aarch64-zephyr-elf
+
+Measured on host 241:
+
+- `nros dev zephyr-toolchain` refuses a53 and FVP against the 4.4 tree and
+  SDK 1.0.1.
+- It answers `arm-zephyr-eabi` for mps2/an385 on 4.4 and `aarch64-zephyr-elf`
+  for a53 on 3.7 (0.16.9).
+- It says nothing for native_sim.
+- A unit test covers both layouts and the unknown case.
