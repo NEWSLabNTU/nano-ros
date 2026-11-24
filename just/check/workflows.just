@@ -1082,3 +1082,13 @@ bundled-interfaces-provisioned:
 [private]
 release-rehearsal:
     @python3 scripts/check/check-release-rehearsal.py
+
+# phase-591 W6 -- `host-tests`' build-tier shards are split by
+# `scripts/build/gate-shard.py` from `.config/build-gate-weights.txt`, which
+# `scripts/ci/build-gate-weights.py` measures from the shard jobs' own logs.
+# Both self-tests: the split covers every gate exactly once whatever the
+# weights say, and the measurement parses a real shard log line. ~0.1 s.
+[private]
+build-gate-shards:
+    @python3 scripts/build/gate-shard.py --self-test
+    @python3 scripts/ci/build-gate-weights.py --self-test

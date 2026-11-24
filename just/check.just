@@ -251,8 +251,14 @@ build:
             exit 2
         fi
         awk -F'\t' 'NF == 1 && /^build::/' <<<"$listed" > "$work/tests"
+        # phase-591 W6 -- a lane whose last shard runs work outside the list
+        # names it (a weights row) so every shard computes the same split.
+        preload=()
+        if [ -n "${NROS_BUILD_GATE_PRELOAD_LAST:-}" ]; then
+            preload=(--preload-last "$NROS_BUILD_GATE_PRELOAD_LAST")
+        fi
         if ! mine="$(python3 scripts/build/gate-shard.py "$work/tests" .config/build-gate-weights.txt \
-                "$NROS_BUILD_GATE_SHARD")"; then
+                "$NROS_BUILD_GATE_SHARD" "${preload[@]}")"; then
             echo "check build: could not compute shard $NROS_BUILD_GATE_SHARD (gate-shard.py)" >&2
             exit 2
         fi
