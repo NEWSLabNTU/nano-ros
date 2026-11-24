@@ -326,6 +326,15 @@ changelog-issue-links:
 release-lanes-green:
     @python3 scripts/release/release-lanes-green.py --self-test
 
+# phase-591 W2 — a merged commit's `Fixes-Lane:` trailer dispatches that
+# scheduled lane on main (`automation.yml` `lane-fix`). The self-test holds the
+# name table to release-lanes-green.py's LANES, refuses a misspelled lane, and
+# holds automation.yml's deferred cron to the end of the window the lane crons
+# span. Buildless, ~0.1 s.
+[private]
+lane-fix-dispatch:
+    @python3 scripts/ci/lane-fix-dispatch.py --gate
+
 # phase-567 W2 — a release branch may be re-cut while `nros-<ver>` does not
 # exist; once it does the branch is frozen at the tag, and anything on top of
 # a cut is a `git cherry-pick -x` of a main commit. `release-nros.yml`'s
