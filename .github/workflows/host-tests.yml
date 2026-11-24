@@ -7,7 +7,7 @@
 #                   then `just test-ignored` (issue 1507) and
 #                   `just test-doc` (doctests, both workspaces).
 #   - feature-sweep : `just check feature-sweep` — per-feature clippy.
-#   - check-build : `just check build` (5 shards) + `no-std` + `pristine-checkout`,
+#   - check-build : `just check build` (6 shards) + `no-std` + `pristine-checkout`,
 #                   the full compile tier — was gate.yml's scheduled job until
 #                   phase-559 W7 took gate.yml's `schedule` away.
 #   - rt-sched    : `rt_sched_levels_e2e` (phase-162) in a container granted
@@ -465,7 +465,7 @@ jobs:
   # every `build-serial` gate keeps its build tree until the job ends, and on
   # 2026-11-03 (run 41563531517) the step started with 44 G free and ended
   # with 292 K. Every scheduled run from 2026-10-29 was red. The job is now
-  # matrix entries (five since phase-591 W6) on this ONE job id, and each runs one shard of
+  # matrix entries (six since phase-591 W6) on this ONE job id, and each runs one shard of
   # `just check build` (`NROS_BUILD_GATE_SHARD`, issue 2141's mechanism:
   # `scripts/build/gate-shard.py` puts every gate in exactly one shard). Each
   # shard therefore has its own 146 G disk.
@@ -473,7 +473,7 @@ jobs:
   # list 1..n. `no-std` and `pristine-checkout` are not part of the lane and
   # run once, on the last shard.
   #
-  # FIVE shards (phase-591 W6). With three, the last shard took 102-113 min
+  # SIX shards (phase-591 W6). With three, the last shard took 102-113 min
   # against 55-81 min for the others over the five scheduled runs to
   # 2026-11-23 (44449694164..45104661214): its share of the list was the
   # slowest, and it also runs `no-std` + `pristine-checkout` (~15 min). Even
@@ -483,18 +483,23 @@ jobs:
   # test-targets, cpp, required-features-tests: 12-20 min each on average)
   # vary by up to 70% run to run with what they share a 4-vCPU runner with,
   # and each shard spends ~23 min outside the build step, so four left no
-  # margin. Five measure ~64 min, and stay under 80 with the build steps 35%
-  # slower than their mean. The split
+  # margin. Five were dispatched too and measured 61 / 79 / 53 / 67 / 53 min
+  # (dispatch 45331627283): the 79 ran on an EPYC 7763, which runs these
+  # gates ~1.5x slower than an EPYC 9V45 (nros 118's measurement over eight
+  # scheduled runs). Both weight sets (six-run means, eight-run medians)
+  # predicted every shard flat at ~60 min of test time against 78..34 measured,
+  # so the CPU a shard draws, not the weights, decides its time. Six shards
+  # give ~60 min on a 7763. The split
   # comes from `.config/build-gate-weights.txt`, which
   # `scripts/ci/build-gate-weights.py <run-id>...` measures from these jobs'
   # own logs, and `NROS_BUILD_GATE_PRELOAD_LAST` charges the last shard with
   # the two extra steps (the file's `@host-tests-last-shard` row).
   check-build:
-    name: check / build tier + no-std [${{ matrix.shard }}/5] (daily + manual)
+    name: check / build tier + no-std [${{ matrix.shard }}/6] (daily + manual)
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4, 5]
+        shard: [1, 2, 3, 4, 5, 6]
     runs-on: ubuntu-22.04
     concurrency:
       group: host-tests-check-build-${{ matrix.shard }}-${{ github.ref }}-${{ github.event_name }}
@@ -883,7 +888,7 @@ jobs:
       - name: just check build (daily / manual)
         if: ${{ !cancelled() }}
         env:
-          NROS_BUILD_GATE_SHARD: ${{ matrix.shard }}/5
+          NROS_BUILD_GATE_SHARD: ${{ matrix.shard }}/6
           NROS_BUILD_GATE_PRELOAD_LAST: '@host-tests-last-shard'
           NROS_GATE_SCOPE: build
         run: |
@@ -917,7 +922,7 @@ jobs:
           retention-days: 7
 
       - name: just check no-std (daily / manual)
-        if: ${{ !cancelled() && matrix.shard == 5 }}
+        if: ${{ !cancelled() && matrix.shard == 6 }}
         run: |
           source ./activate.sh
           just check no-std
@@ -931,7 +936,7 @@ jobs:
       # on every pre-push; here it is the nightly / manual signal that
       # `check-default-gates-run-somewhere` requires.
       - name: just check pristine-checkout (daily / manual)
-        if: ${{ !cancelled() && matrix.shard == 5 }}
+        if: ${{ !cancelled() && matrix.shard == 6 }}
         run: |
           source ./activate.sh
           just check pristine-checkout

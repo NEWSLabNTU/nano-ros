@@ -103,11 +103,17 @@ Acceptance: each nightly platform job builds in under 60 min.
 
 ### W6 -- `host-tests` shard balance (owner: nros 142, taken over from nros 118 on 2026-11-24)
 
-- **Status:** OPEN -- in review as #4754: five shards split by measured weights
+- **Status:** OPEN -- in review as #4754: six shards split by measured weights
   (`scripts/ci/build-gate-weights.py`), the last shard charged for its
-  `no-std` + `pristine-checkout`. Three balanced shards measure ~85 min; four
-  were dispatched and measured 73 / 76 / 91 / 63 min (run 45319129706).
-  Acceptance waits on the five-shard dispatch (run 45331627283).
+  `no-std` + `pristine-checkout`. Measured on branch dispatches: three balanced
+  shards ~85 min each; four 73 / 76 / 91 / 63 min (run 45319129706); five
+  61 / 79 / 53 / 67 / 53 min (run 45331627283), the 79 on an EPYC 7763.
+  **The CPU a shard draws decides its time, not the weights:** a 7763 runs
+  these gates ~1.5x slower than an EPYC 9V45 (nros 118, eight scheduled runs),
+  and both weight sets (six-run means, eight-run medians) predicted the five
+  shards flat at ~60 min of test time against 78 / 77 / 68 / 59 / 34 measured.
+  Six shards give ~60 min on a 7763. Acceptance is the first scheduled run
+  after merge (no further branch dispatch, the nros 241 manager's call).
 
 The three build-tier shards take 102 / 68 / 68 min (run 45104661214). Rebalance the rows so no
 shard exceeds 80 min.
