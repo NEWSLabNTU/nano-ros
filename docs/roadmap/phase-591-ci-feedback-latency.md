@@ -63,7 +63,11 @@ summary names each failed row; the lane is still red.
 
 ### W2 -- evidence from a dispatch, and automatic re-runs (owners: nros 243 rule, nros 118 automation)
 
-- **Status:** OPEN
+- **Status:** OPEN -- the automatic re-run fired live: #4790 (phase-590 B24, carrying a
+  `Fixes-Lane:` trailer) merged at 15:12:53Z as `730dfbebeb`, and the `automation` push run
+  45422883315 dispatched `run-matrix.yml` on `main` at that commit 16 s later (run
+  45422927491, 15:13:09Z). Acceptance's second half closes when that run is green, inside
+  6 hours of the merge.
 
 User ruling 2026-11-24: a green `workflow_dispatch` of a scheduled workflow, on `main` at the
 release commit, with every job green, counts as release evidence like a scheduled run.
@@ -83,7 +87,8 @@ lands is proven within 6 hours of its merge.
   `scripts/ci/live-peer-host-fixtures.sh`). The pack set is derived from the fixtures
   manifest, with a coverage check on the normal path. Proof dispatch 45370439146: shards
   26/60/45/37 min, host side 86 min end to end against about 138 min single. Shards were
-  re-weighted from that run's measured unit times (about 24 min each predicted). A compiler
+  re-weighted from that run's measured unit times. Final-head proof 45394588495: shards
+  44/45/57/51 min including setup, cells 29 min with 85 of 85 passed, 86 min end to end. A compiler
   cache gained nothing, neither in the shards (#4750's and the 45371554201 measurements)
   nor in nightly (W5), so the shards run without one. Acceptance (two consecutive
   scheduled runs under 120 min) waits for merge.
