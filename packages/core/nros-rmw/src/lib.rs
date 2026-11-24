@@ -43,6 +43,7 @@ pub mod event;
 // unstable) for entity-creation paths that have an error return.
 #[cfg(feature = "alloc")]
 pub mod fallible;
+pub mod namespace;
 pub mod service_inbox;
 pub mod sync;
 pub mod traits;
@@ -57,6 +58,7 @@ pub use event::{
     IncompatibleTypeCounter, IncompatibleTypeStatus, LivelinessChangedStatus, MatchedCounter,
     MatchedStatus, MessageLostStatus, payload_from_raw,
 };
+pub use namespace::{ROOT_NAMESPACE, canonical_namespace, same_namespace};
 
 // Issue 2009 — the one request/reply correlation rule every client surface
 // applies to the ids `ClientTrait` carries.

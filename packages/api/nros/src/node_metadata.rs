@@ -1205,7 +1205,8 @@ impl<const MAX_NODES: usize, const MAX_ENTITIES: usize, const MAX_CALLBACKS: usi
                 SourceNameKind::from_source_name(&node.name),
             )?;
             out.write_char(',')?;
-            if node.namespace.as_str() == "/" {
+            if nros_node::canonical_namespace(node.namespace.as_str()) == nros_node::ROOT_NAMESPACE
+            {
                 write!(out, "\"namespace\":null,")?;
             } else {
                 write_json_field(out, "namespace", node.namespace.as_str())?;

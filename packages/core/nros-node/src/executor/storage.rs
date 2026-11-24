@@ -87,7 +87,7 @@ pub(crate) type GroupName = heapless::String<32>;
 pub(crate) fn node_identity_hash(name: &str, namespace: &str) -> u64 {
     const OFFSET: u64 = 0xcbf2_9ce4_8422_2325;
     const PRIME: u64 = 0x0000_0100_0000_01b3;
-    let norm_ns = if namespace.is_empty() { "/" } else { namespace };
+    let norm_ns = nros_rmw::canonical_namespace(namespace);
     let mut h = OFFSET;
     for b in name
         .as_bytes()
