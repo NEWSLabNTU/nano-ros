@@ -23,6 +23,8 @@ fail=0
 fake="$WORK/repo"
 mkdir -p "$fake/scripts/build" "$fake/bin"
 cp "$ROOT/scripts/build/census-prepass.sh" "$fake/scripts/build/"
+# The real ledger, not a stub: case 5 is about what it records.
+cp "$ROOT/scripts/build/fixture-row-ledger.sh" "$fake/scripts/build/"
 cat > "$fake/scripts/build/cargo.sh" <<'SH'
 nros_cmake_frontend_jobs() {
     if [ -n "${FAKE_WIDTH_FAILS:-}" ]; then return 1; fi
@@ -73,6 +75,17 @@ out="$(env NROS_BUILD_LOG_DIR=logs FAKE_LEAVES=ok1 NROS_CENSUS_PREPASS_FAKE_BASH
 [ "$rc" = 1 ] || { echo "FAIL [3]: exit $rc, want 1"; fail=1; }
 expect 3 "needs bash 5.1"
 
+# 5. issue 1671 -- the lane keeps going: both failures recorded as rows, the
+#    prepass returns 0 so the platform stages still run, and the owner of the
+#    ledger is what fails the lane.
+ledger="$WORK/ledger.tsv"
+: > "$ledger"
+out="$(env NROS_BUILD_LOG_DIR=logs NROS_FIXTURE_FAILED_ROWS="$ledger" FAKE_LEAVES=ok1,bad1,ok2,bad2 bash "$fake/scripts/build/census-prepass.sh" --only leaves 2>&1)" && rc=0 || rc=$?
+[ "$rc" = 0 ] || { echo "FAIL [5]: exit $rc, want 0 with a ledger"; fail=1; }
+expect 5 "2 leaf census(es) FAILED"
+[ "$(grep -c '^census-prepass leaf: ' "$ledger")" = 2 ] \
+    || { echo "FAIL [5]: ledger does not hold both failed leaves:"; sed 's/^/    /' "$ledger"; fail=1; }
+
 # 4. all pass.
 out="$(env NROS_BUILD_LOG_DIR=logs FAKE_LEAVES=ok1,ok2,ok3 bash "$fake/scripts/build/census-prepass.sh" --only leaves 2>&1)" && rc=0 || rc=$?
 [ "$rc" = 0 ] || { echo "FAIL [4]: exit $rc, want 0"; echo "$out"; fail=1; }
@@ -80,4 +93,4 @@ out="$(env NROS_BUILD_LOG_DIR=logs FAKE_LEAVES=ok1,ok2,ok3 bash "$fake/scripts/b
 if [ "$fail" -ne 0 ]; then
     exit 1
 fi
-echo "census-prepass-parallel-tests: OK (failures named with log tails, width failure and old bash refused)"
+echo "census-prepass-parallel-tests: OK (failures named with log tails, width failure and old bash refused, a keep-going lane records failed leaves and goes on)"

@@ -129,6 +129,12 @@ NOT_A_STAGE = ("upload", "sweep", "complete job", "post ")
 LABELS = {
     "verdict-pass": "VERDICT: cells ran and passed",
     "verdict-fail": "VERDICT: cells ran and FAILED",
+    # issue 1671 in the lanes. A build that KEEPS GOING records the rows it
+    # could not build and still fails its step, and the cells step then runs
+    # for everything that did build. The cells' outcome alone would call a run
+    # whose every built cell passed `cells ran and passed` while rows did not
+    # build: green-looking text on a red lane.
+    "verdict-build-rows": "VERDICT: cells ran, and fixture row(s) FAILED to build",
     "no-verdict-provisioning": "NO VERDICT: stopped in provisioning",
     "no-verdict-build": "NO VERDICT: stopped in the build",
     # phase-441 W4. The cells STEP ran and failed, and the runner it invoked
@@ -232,6 +238,9 @@ def classify(steps, job_conclusion=None, cells_ran=None, inner=None):
     first_failing = failed[0].get("name", "") if failed else ""
 
     cells = concl.get(CELLS)
+    if cells == "success" and concl.get(BUILD) == "failure":
+        return Result("verdict-fail", BUILD, LABELS["verdict-build-rows"],
+                      first_failing, True)
     if cells == "success":
         return Result("verdict-pass", CELLS, LABELS["verdict-pass"], "", True)
     if cells == "failure":
@@ -972,6 +981,20 @@ def selftest(verbose=False):
         classify(ran_and_failed, "failure").kind == "verdict-fail")
     chk("...and it reports having reached the cells",
         classify(ran_and_failed, "failure").reached_cells)
+    # issue 1671 -- a kept-going build that failed rows, then cells that all
+    # passed: a verdict, and a FAILING one, naming the build.
+    kept_going = _steps(("just setup tier2", "success"),
+                        ("just build tier2", "failure"),
+                        ("just ci matrix", "success"), *_TAIL)
+    chk("cells that passed after a kept-going build that failed rows are a FAIL verdict",
+        classify(kept_going, "failure").kind == "verdict-fail"
+        and classify(kept_going, "failure").label == LABELS["verdict-build-rows"]
+        and classify(kept_going, "failure").reached_cells)
+    chk("...and cells that failed after it are still the cells' verdict",
+        classify(_steps(("just setup tier2", "success"),
+                        ("just build tier2", "failure"),
+                        ("just ci matrix", "failure"), *_TAIL),
+                 "failure").label == LABELS["verdict-fail"])
     chk("a run whose cells passed is a verdict too",
         classify(_steps(("just setup tier2", "success"),
                         ("just build tier2", "success"),

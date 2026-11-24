@@ -84,6 +84,14 @@ fi
 source "$repo_root/scripts/build/cargo.sh"
 # shellcheck source=scripts/build/leaf-cache.sh
 source "$repo_root/scripts/build/leaf-cache.sh"
+# Issue 1671 -- each leaf census and each image take is a ROW: with
+# NROS_FIXTURE_FAILED_ROWS set, one that fails is recorded and the prepass goes
+# on, so one refused census no longer withholds every platform stage after it.
+# The image whose census failed then refuses in its own stage, where the same
+# ledger records it again under its row; whoever set the variable fails the
+# lane on a non-empty ledger.
+# shellcheck source=scripts/build/fixture-row-ledger.sh
+source "$repo_root/scripts/build/fixture-row-ledger.sh"
 # Resolved on first use: a builder with nothing in scope (a cargo-only
 # platform's rows) must not need a current CLI to learn that.
 nros_cli=""
@@ -178,13 +186,15 @@ if [ "$only" != "images" ]; then
         done
         if [ "${#failed[@]}" -gt 0 ]; then
             echo "census-prepass: ${#failed[@]} leaf census(es) FAILED:" >&2
+            leaves_stop=0
             for f in "${failed[@]}"; do
                 name="${f%|*}"
                 log="$log_dir/$(echo "$name" | tr / _).log"
                 echo "  - $name (exit ${f##*|}; log: $log), last lines:" >&2
                 tail -n 20 "$log" 2>/dev/null | sed 's/^/      | /' >&2 || true
+                nros_fixture_row_failed "census-prepass leaf: $name" "${f##*|}" || leaves_stop=1
             done
-            exit 1
+            [ "$leaves_stop" = 0 ] || exit 1
         fi
     fi
 fi
@@ -206,18 +216,16 @@ fi
 
 need_cli
 synced=""
-while IFS=$'\t' read -r dir image; do
-    [ -n "$dir" ] || continue
-    case " $synced " in
-        *" $dir "*) ;;
-        *)
-            # `take` resolves the model the configure will read, and that model
-            # is what `nros configure` writes; the builders sync before they build,
-            # and this runs before them.
-            ( cd "$repo_root/$dir" && "$nros_cli" configure --no-provider-index >/dev/null )
-            synced="$synced $dir"
-            ;;
-    esac
+# One image's take, run as a row (`nros_fixture_row`): `set -e` holds inside
+# it, and a failure ends this image only when the lane keeps going.
+census_image() {
+    local dir="$1" image="$2" sync="$3"
+    if [ "$sync" = 1 ]; then
+        # `take` resolves the model the configure will read, and that model
+        # is what `nros configure` writes; the builders sync before they build,
+        # and this runs before them.
+        ( cd "$repo_root/$dir" && "$nros_cli" configure --no-provider-index >/dev/null )
+    fi
     echo "census-prepass: $dir $image"
     # Issue 1848 -- `take --offline` BUILDS the host sibling image, and an
     # offline build can only use crates already in the cache. Ask `take` which
@@ -239,4 +247,11 @@ while IFS=$'\t' read -r dir image; do
     fi
     ( cd "$repo_root/$dir" && "$nros_cli" dev image entity-census take --image "$image" \
         --workspace . --offline )
+}
+while IFS=$'\t' read -r dir image; do
+    [ -n "$dir" ] || continue
+    sync=1
+    case " $synced " in *" $dir "*) sync=0 ;; esac
+    nros_fixture_row "census-prepass image: $dir $image" census_image "$dir" "$image" "$sync"
+    synced="$synced $dir"
 done <<< "$rows"

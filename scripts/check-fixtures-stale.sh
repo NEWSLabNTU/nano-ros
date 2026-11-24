@@ -422,5 +422,12 @@ if [ "$stale_families" -gt 0 ]; then
     echo "  them are listed above, deliberately: rebuilding one re-stamps inputs the" >&2
     echo "  next one's signature covers, so discovering them one per run costs a" >&2
     echo "  rebuild cycle each time." >&2
+    # Issue 1671 -- unless the lane's build kept going past failed rows: then
+    # every other cell runs, and the missing ones fail as cells.
+    # shellcheck source=scripts/build/fixture-row-ledger.sh
+    source scripts/build/fixture-row-ledger.sh
+    if nros_fixture_build_ledger_lets_cells_run check-fixtures-stale; then
+        exit 0
+    fi
     exit 1
 fi

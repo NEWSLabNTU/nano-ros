@@ -2308,6 +2308,20 @@ build-test-fixtures-leaves lane="all": (_require-owned-provisioned-roots lane) (
         if [ -n "$failed" ]; then
             echo "build-test-fixtures: FAILED stage(s): ${failed% }" >&2
             echo "  every other stage ran; per-stage logs in $log_dir" >&2
+            # Issue 1671 -- a lane that keeps going records each failed STAGE
+            # in its ledger too (a stage that failed outside any row: a missing
+            # SDK, a sync error), so the build still writes its stamp and the
+            # cells of every other stage get their verdicts. The ledger's owner
+            # fails the lane on it.
+            if [ -n "${NROS_FIXTURE_FAILED_ROWS:-}" ]; then
+                # shellcheck source=scripts/build/fixture-row-ledger.sh
+                source scripts/build/fixture-row-ledger.sh
+                awk -F'\t' 'NR>1 && $5!=0 && $5!=78 {print $1 "\t" $5}' "$joblog" |
+                    while IFS=$'\t' read -r stage rc; do
+                        nros_fixture_row_failed "build-test-fixtures stage: $stage (log: $log_dir)" "$rc"
+                    done
+                return 0
+            fi
             return 1
         fi
         return 0
