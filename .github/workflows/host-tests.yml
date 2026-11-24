@@ -562,27 +562,9 @@ jobs:
         run: scripts/ci/report-runner-hardware.sh
 
       - name: Configure sccache (compiling events)
-        run: |
-          if ! command -v sccache >/dev/null 2>&1; then
-            echo "::warning::sccache absent from the image — the compile tier runs UNCACHED."
-            exit 0
-          fi
-          sccache --version
-          export SCCACHE_DIR=/tmp/sccache
-          export SCCACHE_CACHE_SIZE=2G
-          export SCCACHE_ERROR_LOG=/tmp/sccache-server.log
-          export SCCACHE_LOG=warn
-          if sccache --start-server >/tmp/sccache-start.log 2>&1; then
-            {
-              echo "SCCACHE_DIR=/tmp/sccache"
-              echo "SCCACHE_ERROR_LOG=/tmp/sccache-server.log"
-              echo "SCCACHE_LOG=warn"
-              echo "SCCACHE_CACHE_SIZE=2G"
-            } >> "$GITHUB_ENV"
-          else
-            echo "::warning::sccache unavailable — the compile tier runs UNCACHED (issue 0874)."
-            sed 's/^/  /' /tmp/sccache-start.log || true
-          fi
+        # issue 0874's contract, one spelling (issue 2930): prove the server
+        # starts and publish to $GITHUB_ENV only if it did; otherwise warn.
+        run: scripts/ci/sccache-configure.sh --dir /tmp/sccache --size 2G --log /tmp/sccache-server.log --what 'the compile tier'
 
       # The one CLI build road (`.github/actions/setup-nros-cli`): binary cache
       # keyed on the whole source stamp, `just setup-cli`, the stamp assertion.
