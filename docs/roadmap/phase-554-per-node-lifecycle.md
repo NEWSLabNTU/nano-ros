@@ -314,11 +314,11 @@ are untouched by construction.
 
 - [x] A reply goes out on its own query's key (the shim reads it from the
   clone in the reply slot), so one queryable can serve several service keys.
-- [ ] A service's request header and its zenoh queryable stop sharing one
-  index and one table: each header records the queryable it is served by,
-  and the header table is sized by request rings, the queryable table by
-  queryables.
-- [ ] The node's lifecycle group: the first of its five lifecycle servers
+- [x] A service's request header and its zenoh queryable stop sharing one
+  index: each header records the queryable it is served by. (The two TABLES
+  are still one size; splitting them is the counts item below, where the
+  header table becomes rings and the queryable table queryables.)
+- [x] The node's lifecycle group: the first of its five lifecycle servers
   declares the node's queryable, the other four attach to it (each keeping its
   own token and ring), and the queryable routes a request by the service in its
   key. Attaching is deterministic, and refuses loudly on a node mismatch or a
