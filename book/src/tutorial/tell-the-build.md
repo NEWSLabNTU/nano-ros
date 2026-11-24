@@ -14,13 +14,14 @@ them is set aside when the image is built, so the build must size it before
 any node has run. Until now it has not known what the nodes create, so it
 sized every pool for a generous default. In this chapter you write the
 **contract**: a file beside the launch file that states what the system
-creates. You measure the image's static RAM before and after, and watch it
-fall by more than 200 KB:
+creates. You measure the image's static RAM before and after, and see what
+the contract decides that the build could not guess, such as how many
+samples a subscription keeps:
 
 ```text
-   text    data     bss     dec     hex filename
-1029108    7624 1240176 2276908  22be2c .../freertos_entry      (before)
-1028636    5992 1022448 2057076  1f6374 .../freertos_entry      (after)
+ text    data     bss     dec     hex filename
+646932   12648 1331684 1991264  1e6260 .../freertos_entry      (before)
+651004   10872 1334020 1995896  1e7478 .../freertos_entry      (after)
 ```
 
 Then you break the contract on purpose and read the refusal, which shows
@@ -83,23 +84,23 @@ Read the image's sizes with the `size` tool of the Arm toolchain
 <!-- /tabs -->
 
 ```text
-   text    data     bss     dec     hex filename
-1029108    7624 1240176 2276908  22be2c build/freertos-zenoh/freertos_entry/target/thumbv7m-none-eabi/release/freertos_entry
+ text    data     bss     dec     hex filename
+646932   12648 1331684 1991264  1e6260 build/freertos-zenoh/freertos_entry/target/thumbv7m-none-eabi/release/freertos_entry
 ```
 
 Those are the numbers of a Rust project; a C or C++ project's differ.
 `text` is flash: the code and its constants. `data` and `bss` are RAM that
 exists from the moment the board boots, `data` with initial values and `bss`
-zeroed. This image claims 1,240,176 bytes of zeroed RAM before its first
-instruction. FreeRTOS's heap is 720,896 bytes of it, which the board sizes;
-this chapter shrinks the part nano-ros sizes.
-The build is a debug build, so `text` is large; `bss` is not affected by
-optimization.
+zeroed. This image claims 1,331,684 bytes of zeroed RAM before its first
+instruction. FreeRTOS's heap is 966,656 bytes of it; the rest is what
+nano-ros sizes.
 
 Where does it go? Each node's slots, the executor's storage for every
 callback, the middleware's sessions and receive buffers, and a parameter
-store, each sized for the most the system might create: up to 32 parameters,
-four samples per subscription, and so on. The build warned about some of it
+store. The parameter store is sized from the parameters the code declares.
+The rest is sized for the most the system might create: four samples per
+subscription, a copy of each topic's last sample kept for late joiners, and
+so on. The build warned about some of it
 on every run, in lines like this one:
 
 ```text
@@ -246,20 +247,20 @@ nros build
 <!-- /tabs -->
 
 ```text
-   text    data     bss     dec     hex filename
-1028636    5992 1022448 2057076  1f6374 build/freertos-zenoh/freertos_entry/target/thumbv7m-none-eabi/release/freertos_entry
+ text    data     bss     dec     hex filename
+651004   10872 1334020 1995896  1e7478 build/freertos-zenoh/freertos_entry/target/thumbv7m-none-eabi/release/freertos_entry
 ```
 
-Static RAM fell from 1,240,176 to 1,022,448 bytes of `bss`, and `data` from
-7,624 to 5,992: 219,360 bytes, 18 percent of the image's RAM, from a file of
-about 50 lines. The parameter store is now sized for the one parameter the
-system declares instead of 32, and the middleware's receive buffers for one
-sample instead of four, with no retention for late joiners. The FreeRTOS
-heap did not change.
+The totals barely moved: `data` fell by 1,776 bytes and `bss` grew by
+2,336. What changed is what the image keeps. `/sensor/reading`'s receive
+buffers hold one sample instead of four, and no copy is kept for late
+joiners, because the contract says so. The parameter store was already
+sized from the code, contract or not. On a C or C++ image `bss` grows by more
+today, because the build reserves executor capacity the image does not use.
 
 ## Run it
 
-The image runs as before, with less RAM:
+The image runs as before:
 
 ```bash probe=840 probe-run=900 track=installed variant=qemu
 source /opt/ros/humble/setup.bash
