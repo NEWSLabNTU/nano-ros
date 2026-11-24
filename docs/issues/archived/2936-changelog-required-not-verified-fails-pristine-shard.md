@@ -1,11 +1,13 @@
 ---
 id: 2936
 title: "`changelog-required` cannot read a dispatched branch inside `pristine-checkout`, and its NOT VERIFIED fails the host-tests shard"
-status: open
+status: resolved
 type: bug
 area: [ci, testing]
 severity: medium
 found: 2026-11-24
+resolved: 2026-11-24
+resolved_in: "changelog-audit.py: a schedule or workflow_dispatch run judges no pull request; pristine-checkout hands its event into the clone"
 related: [2612]
 ---
 
@@ -74,3 +76,26 @@ A `host-tests` dispatch on a branch whose base `main` has moved past passes
 `pristine-checkout`. The clone either reports `changelog-required` as not
 applicable to the event, or reads the branch. A test replays the shallow-clone
 case.
+
+## Resolution
+
+Direction 1. `changelog-audit.py --require` passes, with the reason, on every
+event that has no pull request of its own to judge: `merge_group` and `push`
+as before, plus `schedule` and `workflow_dispatch`. A dispatched branch's own
+pull request runs the gate on its `pull_request` lane, so nothing is left
+unjudged. The event is read from `$NROS_CHANGELOG_EVENT` when set, else
+`GITHUB_EVENT_NAME`.
+
+`scripts/ci/pristine-checkout-fast.sh` still clears the CI identity in its
+clone, so the clone behaves like a person's fresh worktree. It reads the run's
+event first and hands it over as `NROS_CHANGELOG_EVENT`.
+
+Direction 3 was not taken. Under the gate harness a skip is a failure on
+purpose (phase-543 W3: a gate never passes by skipping), so the fix is a gate
+that can answer, not a NOT VERIFIED that passes.
+
+The self-test replays the case: `--require` run in a directory with no
+repository, under `workflow_dispatch` and `schedule` (through
+`NROS_CHANGELOG_EVENT` and through `GITHUB_EVENT_NAME`), must answer OK
+without reading history. With `schedule` removed from the no-PR events, it
+fails.
