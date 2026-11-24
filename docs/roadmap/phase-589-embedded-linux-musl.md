@@ -94,7 +94,13 @@ Each piece of hand wiring is a work item below.
 
 ### W6 — Large messages without hand-set transport sizes
 
-- **Status:** OPEN (issue 2853).
+- **Owner:** nros 175.
+- **Status:** DONE (2026-11-24, issue 2853)
+- **Result:** on a hosted POSIX board the zenoh reassembly ceiling is derived
+  from the image's receive class plus a measured header headroom (user
+  ruling); embedded boards keep the refusal. A 100 kB message delivers with
+  no zenoh knob. The executor's subscription buffer still has to be stated
+  for such a message until issue 2942 is fixed.
 - **What:** the zenoh fragment size is derived from the image's stated message
   sizes on POSIX, as the large-subscriber class already is.
 - **Acceptance:** in the issue.

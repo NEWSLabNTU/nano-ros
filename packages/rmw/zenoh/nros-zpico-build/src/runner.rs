@@ -2155,6 +2155,7 @@ pub fn run() {
         let mut rx_budget_frames: Option<usize> = None;
         let mut rx_budget_rest_us = RX_TASK_BUDGET_REST_US_BUILTIN;
         let mut rx_budget_rest_us_stated = false;
+        let mut frag_stated = false;
         for (name, r) in resolved {
             match name {
                 "rx_task_budget_frames" => {
@@ -2168,7 +2169,10 @@ pub fn run() {
                 }
                 "batch_unicast_bytes" => buf_config.batch_unicast_size = r.value,
                 "batch_multicast_bytes" => buf_config.batch_multicast_size = r.value,
-                "frag_max_bytes" => buf_config.frag_max_size = r.value,
+                "frag_max_bytes" => {
+                    frag_stated = r.source != platform_config::KnobSource::Builtin;
+                    buf_config.frag_max_size = r.value;
+                }
                 "get_reply_buffer_bytes" => shim_config.get_reply_buf_size = r.value,
                 "get_poll_interval_ms" => shim_config.get_poll_interval_ms = r.value,
                 other => unreachable!("unknown wire knob `{other}`"),
@@ -2191,6 +2195,26 @@ pub fn run() {
         buf_config.rx_task_budget =
             crate::RxTaskBudget::from_knobs(rx_budget_frames, rx_budget_rest_us)
                 .unwrap_or_else(|e| panic!("{e}"));
+        // Issue 2853 (user ruling 2026-11-24) -- on a HOSTED POSIX build the
+        // reassembly ceiling is derived from the image's receive class, as a
+        // rung below every stated value: the buffer comes from the process
+        // heap, not a sized arena, so issue 1368's reason to leave it underived
+        // does not hold here. Embedded builds keep 1368's refusal
+        // (`nros_sizing_descriptor::receive_ceiling`'s module doc).
+        if use_posix && !use_zephyr && !frag_stated {
+            let desc = nros_sizing_descriptor::from_build_env().unwrap_or_else(|e| panic!("{e}"));
+            let stated = nros_sizing_descriptor::receive_ceiling::stated_receive(
+                desc.as_ref(),
+                &|name, derived| nros_zephyr_build::knob(name).rung(derived).stated(),
+            );
+            if let Some(frag) = nros_sizing_descriptor::receive_ceiling::hosted_frag_max(
+                stated.need,
+                buf_config.frag_max_size,
+                buf_config.batch_unicast_size,
+            ) {
+                buf_config.frag_max_size = frag;
+            }
+        }
     }
     // Issue 1368 — publish the reassembly ceiling this script bakes into
     // zenoh-pico (`Z_FRAG_MAX_SIZE` / `Z_BATCH_UNICAST_SIZE`) on the `links =

@@ -26,6 +26,29 @@
 //!
 //! cmake cannot call Rust, so the Zephyr arm restates the rule; the message
 //! names the same knobs in both.
+//!
+//! ## Scope: derived on a hosted POSIX board, refused everywhere else
+//!
+//! Issue 1368 left the reassembly ceiling underived on purpose, for three
+//! reasons: fragmentation is a property of the transport and the link (the
+//! path MTU), not of a message; the reassembly buffer is one allocation of the
+//! whole ceiling out of the platform's arena, so a derived ceiling raises the
+//! RAM demand of every image; and a bound taken over the linked closure
+//! over-states what an image actually receives. Those reasons hold on an
+//! embedded board, which keeps the refusal above.
+//!
+//! On a HOSTED POSIX board (issue 2853, user ruling 2026-11-24) the second
+//! reason does not apply: the buffer comes from the process heap, not a
+//! sized arena. There the ceiling IS derived ([`hosted_frag_max`]), as a rung
+//! below every stated value, from the image's RECEIVE class (the payload class
+//! its largest subscription routes into, the same need the refusal compares),
+//! never from the whole closure: max(the builtin, that class plus
+//! [`REASSEMBLY_HEADROOM_BYTES`]). An image that
+//! receives a type with no size bound and states no class gets a build
+//! warning ([`unpriced_receive_warning`]) rather than a refusal, since nothing
+//! states a number to compare.
+
+use crate::{Fact, SizingDescriptor};
 
 /// The receive side of the comparison: a STATED number and the knob it came
 /// from. `None` when no rung stated one (a crate builtin), so a default is
@@ -60,6 +83,104 @@ pub fn receive_need<'a>(
         (Some(n), Some(size)) if n > 0 => Some((size, "NROS_ZENOH_SUBSCRIBER_LARGE_BYTES")),
         _ => subscriber_buffer_size.map(|size| (size, "NROS_SUBSCRIBER_BUFFER_BYTES")),
     }
+}
+
+/// The large-class split's builtin, bytes: a subscription whose bound exceeds
+/// it routes into the large class.
+pub const LARGE_THRESHOLD_DEFAULT: usize = 2048;
+
+/// An image's stated receive need, and why its classes could not be derived.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StatedReceive<'a> {
+    /// [`receive_need`] over the stated rungs: a stated knob, else the class
+    /// the descriptor derives.
+    pub need: ReceiveNeed<'a>,
+    /// The descriptor's refusal of the payload classes (a subscription whose
+    /// type has no size bound, for one), when no class was stated either.
+    pub unpriced: Option<String>,
+}
+
+/// The image's receive need, from the sizing descriptor's payload classes and
+/// the stated knobs, the ONE computation the refusal and the hosted
+/// derivation share. `knob(env_name, derived)` is the stated value of a knob
+/// with `derived` as its lowest rung (`nros_zephyr_build::knob(..).rung(..)
+/// .stated()`), so a builtin is never mistaken for a statement.
+#[must_use]
+pub fn stated_receive<'a>(
+    desc: Option<&SizingDescriptor>,
+    knob: &dyn Fn(&str, Option<usize>) -> Option<usize>,
+) -> StatedReceive<'a> {
+    let threshold = knob("NROS_ZENOH_SUBSCRIBER_LARGE_THRESHOLD_BYTES", None)
+        .unwrap_or(LARGE_THRESHOLD_DEFAULT);
+    let (classes, unpriced) = match desc.map(|d| crate::subscriber_payload_classes(d, threshold)) {
+        Some(Fact::Stated(c)) => (Some(c), None),
+        Some(Fact::Refused(reason)) => (None, Some(reason)),
+        _ => (None, None),
+    };
+    let need = receive_need(
+        knob(
+            "NROS_ZENOH_MAX_LARGE_SUBSCRIBERS",
+            classes.map(|c| c.large_count),
+        ),
+        knob(
+            "NROS_ZENOH_SUBSCRIBER_LARGE_BYTES",
+            classes.and_then(|c| (c.large_count > 0).then_some(c.large_max)),
+        ),
+        knob(
+            "NROS_SUBSCRIBER_BUFFER_BYTES",
+            classes.and_then(|c| (c.small_max > 0).then_some(c.small_max)),
+        ),
+    );
+    StatedReceive {
+        unpriced: unpriced.filter(|_| need.is_none()),
+        need,
+    }
+}
+
+/// Bytes a reassembled zenoh message carries beyond the sample's payload
+/// class: the push header, its extensions and the RMW attachment.
+///
+/// MEASURED (issue 2853, Linux talker/listener over a local `rmw_zenohd`, a
+/// `uint8[100000]` message whose receive class is 100,012 B): a reassembly
+/// ceiling of 100,095 B delivered nothing, 100,100 B delivered every sample,
+/// so the overhead was about 88 B. Rounded up for margin. The ceiling a
+/// hosted image derives is the class plus this, never the class alone, which
+/// drops every sample.
+pub const REASSEMBLY_HEADROOM_BYTES: usize = 256;
+
+/// The reassembly ceiling a HOSTED POSIX image derives (see the module doc):
+/// `Some(need + REASSEMBLY_HEADROOM_BYTES)` when that exceeds
+/// `max(frag, batch)` at the builtins, else `None` (the builtin stands).
+/// Applied only when no rung stated the frag size, so a stated value always
+/// wins.
+#[must_use]
+pub fn hosted_frag_max(
+    need: ReceiveNeed<'_>,
+    frag_builtin: usize,
+    batch_unicast_size: usize,
+) -> Option<usize> {
+    let (need, _) = need?;
+    let want = need.saturating_add(REASSEMBLY_HEADROOM_BYTES);
+    (want > receive_ceiling(frag_builtin, batch_unicast_size).0).then_some(want)
+}
+
+/// The build warning for an image whose receive class could not be derived
+/// and was not stated: a sample over `ceiling` is dropped in the transport
+/// with no error.
+#[must_use]
+pub fn unpriced_receive_warning(reason: &str, ceiling: Option<usize>) -> String {
+    let over = match ceiling {
+        Some(c) => format!("larger than {c} bytes"),
+        None => "larger than the transport's reassembly ceiling".to_string(),
+    };
+    format!(
+        "this image's receive class has no size: {reason}. A received sample {over} \
+         is dropped inside the transport with no error. State the largest sample this \
+         image receives: `[image.<id>.knobs.zenoh] subscriber_large_bytes` and \
+         `max_large_subscribers` (or NROS_ZENOH_SUBSCRIBER_LARGE_BYTES / \
+         NROS_ZENOH_MAX_LARGE_SUBSCRIBERS); on a host board the build then sizes the \
+         reassembly ceiling from it."
+    )
 }
 
 /// `Some(message)` when the image is built to receive a sample its transport
@@ -108,6 +229,46 @@ mod tests {
             "{msg}"
         );
         assert!(msg.contains("= 1400 (NROS_ZENOH_FRAG_MAX_BYTES)"), "{msg}");
+    }
+
+    /// Issue 2853 -- a hosted image whose receive class exceeds the builtin
+    /// ceiling derives the ceiling from it; one that fits keeps the builtin.
+    #[test]
+    fn a_hosted_ceiling_rises_to_the_receive_class_only() {
+        let big = receive_need(Some(1), Some(100_012), Some(1024));
+        let derived = hosted_frag_max(big, 65_535, 65_535).expect("100,012 B > 64 KiB");
+        // The class plus the measured header headroom, never the class alone.
+        assert_eq!(derived, 100_012 + REASSEMBLY_HEADROOM_BYTES);
+        let fits = receive_need(Some(1), Some(16_384), Some(1024));
+        assert_eq!(hosted_frag_max(fits, 65_535, 65_535), None);
+        assert_eq!(hosted_frag_max(None, 65_535, 65_535), None);
+        // The derived ceiling then passes the refusal it would have failed.
+        assert!(receive_ceiling_refusal(big, 65_535, 65_535).is_some());
+        assert_eq!(receive_ceiling_refusal(big, derived, 65_535), None);
+    }
+
+    /// A stated knob outranks the descriptor's class, and an unpriced class
+    /// warns only when nothing was stated.
+    #[test]
+    fn a_stated_class_wins_and_silences_the_unsized_warning() {
+        let none = |_: &str, d: Option<usize>| d;
+        let r = stated_receive(None, &none);
+        assert_eq!(
+            r,
+            StatedReceive {
+                need: None,
+                unpriced: None
+            }
+        );
+
+        let stated = |k: &str, d: Option<usize>| match k {
+            "NROS_ZENOH_MAX_LARGE_SUBSCRIBERS" => Some(1),
+            "NROS_ZENOH_SUBSCRIBER_LARGE_BYTES" => Some(200_000),
+            _ => d,
+        };
+        let r = stated_receive(None, &stated);
+        assert_eq!(r.need, Some((200_000, "NROS_ZENOH_SUBSCRIBER_LARGE_BYTES")));
+        assert!(unpriced_receive_warning("x", Some(65_535)).contains("subscriber_large_bytes"));
     }
 
     #[test]
