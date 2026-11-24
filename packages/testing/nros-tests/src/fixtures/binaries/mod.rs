@@ -2770,6 +2770,36 @@ fn current_workspace_fixture_signature(fixture_id: &str) -> TestResult<String> {
         .to_owned())
 }
 
+/// Is a workspace row's build on disk the build of THIS checkout? The content
+/// check `require_prebuilt_workspace_binary` applies before a resolver hands a
+/// binary out: the row's `.inputsig` stamp against the signature its record
+/// derives now. `Ok(true)` fresh, `Ok(false)` no stamp (never built here),
+/// `Err` names a STALE row.
+///
+/// For a test that AUDITS rows (walks `manifest_rows()` and reads whatever was
+/// built) instead of resolving one. Issue 2940: `rmw_coordinate_truth` located
+/// binaries by path alone, so on the tier-2 runner's persistent tree it ran
+/// `workspace-features-mixed-params` as an earlier run had built it, before
+/// phase-581 W6's renames: a museum binary in run-matrix 45351389552.
+pub fn workspace_row_build_is_current(fixture_id: &str) -> TestResult<bool> {
+    let stamp = crate::fixtures::groups::workspace_artifact_dir(fixture_id)?
+        .join(workspace_fixture_stamp_name(fixture_id));
+    let Ok(actual) = fs::read_to_string(&stamp) else {
+        return Ok(false);
+    };
+    let expected = current_workspace_fixture_signature(fixture_id)?;
+    if actual.trim_end() == expected {
+        Ok(true)
+    } else {
+        Err(TestError::BuildFailed(format!(
+            "Workspace fixture {fixture_id} is stale: {} records a build of other \
+             inputs than this checkout's. Rebuild it (`just linux \
+             build-workspace-fixtures`, or the lane's own build).",
+            stamp.display()
+        )))
+    }
+}
+
 fn require_prebuilt_workspace_binary(
     fixture_id: &str,
     binary_path: &Path,
