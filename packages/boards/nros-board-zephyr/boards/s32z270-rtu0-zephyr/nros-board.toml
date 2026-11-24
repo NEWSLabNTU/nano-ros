@@ -60,6 +60,15 @@ threads = true
 [board.net]
 stack = "os"
 links = ["tcp", "udp"]
+# The one interface Zephyr's NET_CONFIG configures (the first auto-started):
+# the NETC switch's ENETC PSI0, the only ENETC port the RTU0 devicetree
+# enables (`enetc_psi0`; the VSIs stay disabled). Declaring it lets an image
+# name a board network file in `os_config`; `nros build` renders it into
+# NET_CONFIG_* / NET_DHCPV4, appended last to EXTRA_CONF_FILE. `vlan = true`:
+# the NETC driver reports ETHERNET_HW_VLAN under CONFIG_NET_VLAN, so the file
+# may state `vlan = <tag>`, which the nros module brings up as Zephyr's VLAN
+# interface. No default `network`: the image's file names it.
+interfaces = { eth0 = { kind = "ethernet", dhcp = true, vlan = true } }
 
 # The nros allocator funnel's arena (CONFIG_NROS_MEMORY_HEAP_BYTES). The R52 is
 # 32-bit, so the rlsf heap holds at most 4 MiB, and the image must fit the

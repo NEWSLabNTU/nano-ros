@@ -245,6 +245,10 @@ pub struct ImageNetIf {
     /// The interface's MAC (`02:00:00:00:00:01`). Derived when absent.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mac: Option<String>,
+    /// An 802.1Q VLAN tag (1-4094) the interface's traffic carries. Taken only
+    /// on a board interface that declares `vlan = true`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub vlan: Option<u16>,
 }
 
 /// An interface's address as the image stated it, checked against its
@@ -1098,6 +1102,7 @@ mod tests {
             host,
             address: address.map(str::to_string),
             mac: None,
+            vlan: None,
         }
     }
 

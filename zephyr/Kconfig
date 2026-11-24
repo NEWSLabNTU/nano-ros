@@ -3597,6 +3597,24 @@ endif # NROS_RMW_XRCE
 configdefault NET_SOCKETS_SERVICE_STACK_SIZE
     default 4096 if 64BIT
 
+# The VLAN tag a board network file states on its interface (`vlan = <tag>`).
+# `nros build` renders it with the interface's address in Zephyr's own
+# NET_CONFIG_MY_IPV4_* rows and NET_CONFIG_AUTO_INIT=n; the module then tags
+# the first Ethernet interface and configures the VLAN interface Zephyr
+# attaches to it (packages/platform/nros-platform-zephyr/src/net_vlan.c).
+config NROS_NET_VLAN_TAG
+    int "VLAN tag of the board network file's interface"
+    default 0
+    range 0 4094
+    help
+      0: untagged, nothing is done. 1-4094: at boot (APPLICATION level) the
+      first Ethernet interface is tagged with this id, the VLAN interface
+      takes the NET_CONFIG_MY_IPV4_* address (or a DHCPv4 lease) and becomes
+      the default interface, and the boot waits for its IPv4 address up to
+      NET_CONFIG_INIT_TIMEOUT. Needs NET_VLAN and NET_CONFIG_SETTINGS with
+      NET_CONFIG_AUTO_INIT off, as the rendered fragment states. Set by the
+      rendered fragment, not by hand.
+
 endif # NROS
 
 # Issue 2724 -- a native-simulator image (native_sim, native_sim/native/64,

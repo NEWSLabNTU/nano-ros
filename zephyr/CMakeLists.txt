@@ -320,6 +320,12 @@ if(CONFIG_NET_SOCKETS)
         # mis-filed as zpico_zephyr_wait_network in the zenoh-only zpico_zephyr.c).
         ${NROS_REPO_DIR}/packages/platform/nros-platform-zephyr/src/net_wait.c
     )
+    # A board network file's `vlan` tag (CONFIG_NROS_NET_VLAN_TAG, rendered by
+    # `nros build`): the VLAN interface's boot-time bring-up.
+    if(CONFIG_NROS_NET_VLAN_TAG GREATER 0)
+        zephyr_library_sources(
+            ${NROS_REPO_DIR}/packages/platform/nros-platform-zephyr/src/net_vlan.c)
+    endif()
 else()
     # Issue 2078 -- `nros_platform_zephyr_wait_network` is still DEFINED without
     # a stack: the Rust entry (`nros::main!`) calls it unconditionally, and a
