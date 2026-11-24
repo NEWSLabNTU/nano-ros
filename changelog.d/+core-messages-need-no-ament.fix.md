@@ -1,0 +1,1 @@
+A build whose messages are all core interfaces (std_msgs, builtin_interfaces, geometry_msgs, sensor_msgs and the rest bundled with nano-ros) no longer asks for a ROS 2 install: a cross build on a host without ROS 2 configures and builds. A package that needs other ROS messages still asks for one.

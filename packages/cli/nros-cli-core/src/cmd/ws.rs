@@ -5907,20 +5907,26 @@ fn resolves_to_message_package(
         || interface_index(search).is_some_and(|i| i.find_package(name).is_some())
 }
 
-/// Ruling R44 — does a sync of `project` have a message package to generate:
-/// a workspace interface package, or a `<depend>` sync's own predicate
-/// ([`resolves_to_message_package`]) resolves to one? Only such a C1 needs
-/// an ament install; a project with no message dependency configures with
-/// none, on any host.
-pub(crate) fn has_messages_to_generate(project: &Path, search: Option<&std::ffi::OsStr>) -> bool {
+/// Ruling R44 — does a sync of `project` generate messages that need an ament
+/// install: a workspace interface package, or a `<depend>` sync's own
+/// predicate ([`resolves_to_message_package`]) resolves to one? A project with
+/// no message dependency configures with none, on any host.
+///
+/// Issue 2850 -- a dependency the bundled core interfaces satisfy
+/// (`std_msgs`, `builtin_interfaces`, ...; a closed set, every dependency of
+/// one is another) is generated from those, never from ament, so it needs
+/// none: a cross build on a host with no ROS 2 configures.
+pub(crate) fn needs_ament_for_messages(project: &Path, search: Option<&std::ffi::OsStr>) -> bool {
     let Ok((_, scan, build_root)) = scan_for_query(Some(project), Path::new("generated")) else {
         // No package layout sync can scan: nothing for it to generate.
         return false;
     };
     let in_workspace: HashSet<&str> = scan.iter().map(|p| p.name.as_str()).collect();
+    let bundled = cargo_nano_ros::bundled_interface_packages();
     scan.iter().any(|p| p.is_msg_pkg)
         || scan.iter().flat_map(|p| p.deps.iter()).any(|d| {
             !in_workspace.contains(d.as_str())
+                && !bundled.contains(d.as_str())
                 && resolves_to_message_package(d, &scan, search, &build_root)
         })
 }

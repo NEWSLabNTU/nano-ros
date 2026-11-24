@@ -61,7 +61,11 @@ Each piece of hand wiring is a work item below.
 
 ### W3 — A cross build needs no ROS 2 for the core messages
 
-- **Status:** OPEN (issue 2850).
+- **Owner:** nros 175.
+- **Status:** DONE (2026-11-24, issue 2850). A dependency the bundled core
+  interfaces satisfy no longer counts as a reason to require ament; the
+  Linux talker builds with no ROS 2 in the environment. The musl half of the
+  acceptance waits on W5's in-tree board (the check is target-independent).
 - **What:** messages the tree's committed core interfaces satisfy do not
   require ament on the build host.
 - **Acceptance:** in the issue.

@@ -1,12 +1,13 @@
 ---
 id: 2850
 title: "A hosted cross `nros build` refuses with NROS-0001 when no ROS 2 is installed, even for messages the tree already carries"
-status: open
+status: resolved
 type: limitation
 severity: medium
 area: [cli, interfaces, build]
 related: [phase-589, issue-1248]
 found: 2026-11-23
+resolved: 2026-11-24
 ---
 Found by a downstream proof of concept on an embedded Linux camera SoC (HiSilicon Hi3519DV500: 2x Cortex-A55, Linux 5.10, musl 1.2.3, BusyBox), built as an out-of-tree hosted board; see phase-589.
 
@@ -32,3 +33,28 @@ generate, so it does not need ament.
 ## Acceptance
 The Linux talker cross-builds for a musl target on a host with no ROS 2 and no
 `AMENT_PREFIX_PATH`. A package that does need ament still gets NROS-0001.
+
+## Resolution
+The predicate (`ws::needs_ament_for_messages`, was
+`has_messages_to_generate`) skips a dependency the bundled core interfaces
+supply (`cargo_nano_ros::bundled_interface_packages`: std_msgs,
+builtin_interfaces, geometry_msgs, sensor_msgs and the rest). That set is
+closed (every dependency of a bundled package is bundled), and sync already
+generates those crates from it on a host with no ROS 2. A workspace
+interface package, or a dependency found only through the search path or an
+earlier generated crate, still needs ament and still gets NROS-0001.
+
+Measured: a fresh copy of `examples/linux/rust/talker` (`<depend>std_msgs`)
+built with `nros build` with `AMENT_PREFIX_PATH`, `ROS_DISTRO` and every
+`/opt/ros` PATH entry removed. Unit test
+`a_project_on_core_messages_alone_configures_without_ament` fails with the
+fix removed; the refusal test now uses a workspace interface package.
+
+The musl half of the acceptance (the same build for an
+`aarch64-unknown-linux-musl` board) waits on phase-589 W5's in-tree musl
+board; the refusal does not depend on the target.
+
+Known gap, not new: on a host with no ament, a dependency on a non-bundled
+ROS package (e.g. `nav_msgs`) resolves to nothing, so it is not recognised
+as a message package and gets no NROS-0001; sync then fails later for the
+unknown package.
