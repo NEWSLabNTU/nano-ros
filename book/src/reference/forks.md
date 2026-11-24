@@ -30,11 +30,11 @@ nano-ros builds `packages/rmw/zenoh/zpico-sys/zenoh-pico` from the fork [jerry73
 | | |
 | --- | --- |
 | Upstream base | `1.10.1` (merge base [e1ab223a28aa](https://github.com/eclipse-zenoh/zenoh-pico/commit/e1ab223a28aaebb5dec1e70d98eab152332f777a)) |
-| Commits on top | 99 |
+| Commits on top | 100 |
 | Upstream commits the pin lacks | 0 |
-| Files changed | 130, +11816/−307 |
+| Files changed | 130, +11841/−307 |
 
-**Pinned commit:** `e9675d97b462c8fca0d8140efa02f7156c7e4297`
+**Pinned commit:** `57bab09cf6c1a0c0c6809bb96ee3b4459eeacb09`
 
 ### Commits on top of upstream
 
@@ -139,12 +139,13 @@ nano-ros builds `packages/rmw/zenoh/zpico-sys/zenoh-pico` from the fork [jerry73
 | [d7d0094c38](https://github.com/jerry73204/zenoh-pico/commit/d7d0094c38c2c98723c8286eb090935438a66693) | fix: under split lock, no send waits for the link holding the tx mutex |
 | [e0b8077c4e](https://github.com/jerry73204/zenoh-pico/commit/e0b8077c4e34b09f9a64e5d367b3775bf189c678) | fix: a client whose link reaches end-of-stream closes and reopens |
 | [e9675d97b4](https://github.com/jerry73204/zenoh-pico/commit/e9675d97b462c8fca0d8140efa02f7156c7e4297) | fix: the BSD-recv TCP links report end-of-stream too |
+| [57bab09cf6](https://github.com/jerry73204/zenoh-pico/commit/57bab09cf6c1a0c0c6809bb96ee3b4459eeacb09) | fix(tcp): bound the connect of a one-attempt and of a forever open |
 
 Reproduce:
 
 ```bash
 base=1.10.1
-head=jerry73204:zenoh-pico:e9675d97b462c8fca0d8140efa02f7156c7e4297
+head=jerry73204:zenoh-pico:57bab09cf6c1a0c0c6809bb96ee3b4459eeacb09
 gh api "repos/eclipse-zenoh/zenoh-pico/compare/$base...$head" --jq '.ahead_by'
 ```
 
