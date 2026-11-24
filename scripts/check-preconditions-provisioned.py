@@ -5,7 +5,7 @@
 <scope>` is what a user runs to satisfy them. Nothing kept the two in agreement,
 and the cost was paid one CI round-trip at a time:
 
-  - `just ci tier1` in host-tests failed on three unmet preconditions at once
+  - `just ci tier1` in host-suite failed on three unmet preconditions at once
     (cross Rust targets, pinned corrosion, fixtures). Two were provisioning gaps
     that `just setup` simply did not cover, for ANY scope.
   - Fixing those let the lane run 40 minutes further and fail on `c-fmt` --

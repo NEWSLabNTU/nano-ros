@@ -152,7 +152,7 @@ fn main() -> Result<()> {
         // is not a missing nicety: after W2b removed the compile-time libpython
         // link, nothing installed a backend here at all, and every `$(eval …)`
         // or `.launch.py` failed with "this build has no Python backend" — on
-        // hosts that have Python. `host-tests` was red on main from that pin
+        // hosts that have Python. `host-suite` was red on main from that pin
         // until this line changed. A failure to load stays non-fatal, so a host
         // with no usable interpreter still resolves XML and YAML.
         parse_launch_file(&launch_path, arg_binding.clone())

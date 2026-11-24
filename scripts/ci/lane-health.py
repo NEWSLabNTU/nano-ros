@@ -4,7 +4,7 @@
 `nightly-triage` answers "did the nightly report?" for ONE workflow, and
 `tier-health` answers "does each platform's evidence support its tier?". Neither
 asks the question that let `gate.yml`'s push lane sit red for 100 consecutive
-runs (issue 1345) and `host-tests.yml` complete 3 of 29 (2026-10-03): across
+runs (issue 1345) and `host-suite.yml` complete 3 of 29 (2026-10-03): across
 EVERY lane that runs on `main` without a pull request in front of it, which ones
 have been red, or have never finished, for long enough that a new regression
 landing in them would be invisible?
@@ -27,7 +27,7 @@ ONLY CONCLUSIVE OUTCOMES ARE VERDICTS
 `success` and `failure` are verdicts; `cancelled`, `skipped` and a run still in
 flight are not (`tier-health`'s rule, for its reason: counting a cancellation as
 a failure reports a scheduling artifact as a defect). But a lane whose window is
-ALL inconclusive is reported too, as NEVER FINISHES — that is `host-tests`'
+ALL inconclusive is reported too, as NEVER FINISHES — that is `host-suite`'
 shape, and it is exactly as silent as a standing red.
 
 STATES
@@ -36,7 +36,7 @@ STATES
   red             newest verdict is red, streak below the threshold
   NO SIGNAL       red on the last N verdicts (default 3) — fix the lane
   NEVER FINISHES  runs in the window, none conclusive — fix the trigger
-  RARELY FINISHES fewer than 3 in 10 runs (of 5+) conclusive — host-tests'
+  RARELY FINISHES fewer than 3 in 10 runs (of 5+) conclusive — host-suite'
                   measured 3-of-29; what it says is about whichever commit
                   happened to finish, not about `main`
   no runs         nothing on main in the window (dispatch-only, or new)
@@ -296,7 +296,7 @@ def selftest(verbose: bool = False) -> int:
     chk("three reds with a cancellation between them is NO SIGNAL (cancelled is skipped, "
         "not a reset)", a["state"] == "NO SIGNAL" and a["streak"] == 3)
     chk("...and the last green is reported", a["last_green"] == "2026-09-01")
-    # host-tests' measured shape.
+    # host-suite' measured shape.
     chk("all-cancelled is NEVER FINISHES, not OK and not `no runs`",
         assess([r("cancelled")] * 5 + [r(None)], 3)["state"] == "NEVER FINISHES")
     chk("a success reached through cancellations still counts",

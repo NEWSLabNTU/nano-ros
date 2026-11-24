@@ -25,7 +25,7 @@ And no command line may pass `--success-output never`: a nextest CLI flag
 outranks every per-test override, so that flag silently undid the rule above
 on every lane recipe that ran these binaries. The first fix landed the
 override and the summaries still never reached a log (issue 2004, measured on
-run-matrix 41013529125); only the junit carried them. Without the flag the
+platform-matrix 41013529125); only the junit carried them. Without the flag the
 profile decides, and the profile's default for every other binary is already
 `never`.
 """

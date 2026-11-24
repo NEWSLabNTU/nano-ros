@@ -10,10 +10,10 @@ and the self-test fails a scheduled workflow that is neither.
 imported, never a second spelling (the changelog audit uses the same one).
 
   LANES     nightly    nightly.yml, the whole run's conclusion
-            tier 1     run-matrix.yml, job `tier 1 (cells)`
-            tier 2     run-matrix.yml, job `tier 2 (1-wise matrix)`
-            host-tests host-tests.yml, the whole run's conclusion
-            live-peer  live-peer.yml, the whole run's conclusion
+            tier 1     platform-matrix.yml, job `tier 1 (cells)`
+            tier 2     platform-matrix.yml, job `tier 2 (1-wise matrix)`
+            host-suite host-suite.yml, the whole run's conclusion
+            ros2-interop  ros2-interop.yml, the whole run's conclusion
   COVERAGE  every `.github/workflows/*.yml` with a `schedule:` trigger is in
             LANES or in NOT_LANES (with its reason), never both, and every
             NOT_LANES entry names a scheduled workflow that exists.
@@ -63,10 +63,10 @@ from git_history import UNKNOWN, ancestry  # noqa: E402  (a NO from a shallow cl
 # (name, workflow file, job name or None for the whole run)
 LANES = (
     ("nightly", "nightly.yml", None),
-    ("tier 1", "run-matrix.yml", "tier 1 (cells)"),
-    ("tier 2", "run-matrix.yml", "tier 2 (1-wise matrix)"),
-    ("host-tests", "host-tests.yml", None),
-    ("live-peer", "live-peer.yml", None),
+    ("tier 1", "platform-matrix.yml", "tier 1 (cells)"),
+    ("tier 2", "platform-matrix.yml", "tier 2 (1-wise matrix)"),
+    ("host-suite", "host-suite.yml", None),
+    ("ros2-interop", "ros2-interop.yml", None),
 )
 # Scheduled workflows that are NOT a release lane, each with why. A new
 # scheduled workflow must land in LANES or here: `coverage()` refuses one that
@@ -306,7 +306,7 @@ def self_test():
 
             def scenario(nightly, matrix, jobs, daily):
                 def runs_of(wf):
-                    pick = {"nightly.yml": nightly, "run-matrix.yml": matrix}.get(wf)
+                    pick = {"nightly.yml": nightly, "platform-matrix.yml": matrix}.get(wf)
                     if pick is None:
                         pick = daily.get(wf, [run(5, a)])
                     return sorted(pick, key=lambda x: x["createdAt"], reverse=True)
@@ -323,8 +323,8 @@ def self_test():
                 rs, js = scenario(nightly, matrix, jobs, daily or {})
                 return {n: (ok, m) for n, ok, m in decide(sha, str(r), set(included), rs, js)}
 
-            ALL = {"nightly", "tier 1", "tier 2", "host-tests", "live-peer"}
-            none = {"host-tests.yml": [], "live-peer.yml": []}
+            ALL = {"nightly", "tier 1", "tier 2", "host-suite", "ros2-interop"}
+            none = {"host-suite.yml": [], "ros2-interop.yml": []}
             cases = [
                 ("every lane green on the commit itself", a,
                  [run(1, a)], [run(2, a)], {2: green}, {}, set()),
@@ -343,15 +343,15 @@ def self_test():
                 ("an older green run counts when the newest is red", b,
                  [run(3, b, "failure"), run(1, a)], [run(2, a)], {2: green}, {}, set()),
                 ("no run at all", a, [], [], {}, {}, ALL, none),
-                ("a red host-tests blocks with every other lane green", b,
-                 [run(1, a)], [run(2, a)], {2: green}, {}, {"host-tests"},
-                 {"host-tests.yml": [run(6, a, "failure")]}),
-                ("a red live-peer blocks with every other lane green", b,
-                 [run(1, a)], [run(2, a)], {2: green}, {}, {"live-peer"},
-                 {"live-peer.yml": [run(6, a, "failure")]}),
+                ("a red host-suite blocks with every other lane green", b,
+                 [run(1, a)], [run(2, a)], {2: green}, {}, {"host-suite"},
+                 {"host-suite.yml": [run(6, a, "failure")]}),
+                ("a red ros2-interop blocks with every other lane green", b,
+                 [run(1, a)], [run(2, a)], {2: green}, {}, {"ros2-interop"},
+                 {"ros2-interop.yml": [run(6, a, "failure")]}),
                 ("a green dispatch on main at the commit counts", a,
                  [disp(1, a)], [disp(2, a)], {1: [], 2: green, 5: [], 6: []}, {}, set(),
-                 {"host-tests.yml": [disp(5, a)], "live-peer.yml": [disp(6, a)]}),
+                 {"host-suite.yml": [disp(5, a)], "ros2-interop.yml": [disp(6, a)]}),
                 ("a dispatch at a docs-only ancestor does not count", b,
                  [disp(1, a)], [run(2, a)], {1: [], 2: green}, {}, {"nightly"}),
                 ("a dispatch on a branch does not count", a,
@@ -408,8 +408,8 @@ def self_test():
     if fails:
         return 1
     print("release-lanes-green self-test: OK (exact commit, docs-only descendant, red nightly, "
-          "side branch, red tier 2, code since, Rust-read page, older green, no runs, red host-tests, "
-          "red live-peer; dispatch: at the commit, docs-only ancestor, branch, skipped job, red over "
+          "side branch, red tier 2, code since, Rust-read page, older green, no runs, red host-suite, "
+          "red ros2-interop; dispatch: at the commit, docs-only ancestor, branch, skipped job, red over "
           "green; coverage: covered, unlisted, stale, both, no reason, this tree)")
     return 0
 

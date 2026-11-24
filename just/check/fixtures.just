@@ -589,7 +589,7 @@ log-first-errors:
 # sources. It needs the test binaries, so it runs from `test-all` rather than
 # `just check`, which builds none.
 [private]
-[metadata("tier", "exempt", "needs the test binaries (listing IS building, issue 1500); `test-all` (justfile) runs it first, which `just ci tier1 run` / `just ci matrix` (run-matrix.yml) reach (issue 1739)")]
+[metadata("tier", "exempt", "needs the test binaries (listing IS building, issue 1500); `test-all` (justfile) runs it first, which `just ci tier1 run` / `just ci matrix` (platform-matrix.yml) reach (issue 1739)")]
 nextest-test-filters:
     @python3 scripts/check-nextest-test-filters.py
 
@@ -783,7 +783,7 @@ fixture-filter-fields:
 # entry every road shares (`nros_warm_leaf_cache`, scripts/build/leaf-cache.sh).
 # Since issue 2444 an offline build reaches zephyr-lang-rust's own cargo inside
 # west, so a driver that warmed only the repo root's graph failed offline on
-# the first crate only the west app needed (live-peer, 2026-11-15:
+# the first crate only the west app needed (ros2-interop, 2026-11-15:
 # `annotate-snippets … --offline was specified`). File-level, buildless;
 # self-tests a refusal on the normal path.
 [group("check")]

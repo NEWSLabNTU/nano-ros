@@ -204,7 +204,7 @@ claim-protocol:
 # answer without its input, and says which.
 #
 # `just doctor` examines the developer's store with it, and since issue 1744 it
-# is also on `build-serial`, which `host-tests.yml` runs nightly over the store that
+# is also on `build-serial`, which `host-suite.yml` runs nightly over the store that
 # job provisions (Corrosion, clang-format). It was held off every lane while
 # both Zephyr SDK dists read red; 1744 ruled that an UPSTREAM dist is held to
 # the programs nano-ros RUNS from it (its `smoke` probes), so it is green.
@@ -262,7 +262,7 @@ platform-provider-features:
 # Every tier precondition must have a provisioner, and it must be reachable
 # from `just setup <scope>`. `check-tier-preconditions` asserts host facts;
 # `_setup-common` provisions them; nothing kept the two lists in agreement, so
-# the gaps surfaced one 40-minute CI run at a time (issue: host-tests tier1 ->
+# the gaps surfaced one 40-minute CI run at a time (issue: host-suite tier1 ->
 # three unmet preconditions -> then clang-format one layer deeper).
 #
 # Classifies each precondition as setup / build / manual and checks the map in
@@ -762,7 +762,7 @@ tier-has-ci-owner:
 # for it twice: the gate runner starts each gate as its own `just` process, so
 # just's once-per-invocation dependency rule does not reach inside `fast`/
 # `build`. `api-parity` ran twice per `just check` / `ci gate` / tier for a
-# phase that way, 163 s a run on the 4-vCPU `host-tests` runner.
+# phase that way, 163 s a run on the 4-vCPU `host-suite` runner.
 [private]
 lane-step-duplicates:
     @python3 scripts/check-lane-step-duplicates.py
@@ -873,7 +873,7 @@ lane-health-selftest:
 queue-timeout-selftest:
     @python3 scripts/ci/queue-timeout-agreement.py --selftest >/dev/null
 
-# issue 1158 — `run-matrix.yml`'s stage report must still describe the steps that
+# issue 1158 — `platform-matrix.yml`'s stage report must still describe the steps that
 # exist. The step->stage map is AUTHORED (the workflow hands `lane-stage.py` a
 # copy of its own `- name:` lines), and an authored map drifts the moment a step
 # is renamed — silently, and in the safe-looking direction: the tool keeps
@@ -937,7 +937,7 @@ queue-notify-decision:
     @python3 scripts/ci/queue-batch.py --selftest
     @bash scripts/ci/queue-l3-advisory.sh --selftest
 
-# issue 2469 — live-peer's intermediates release: every root reached and
+# issue 2469 — ros2-interop's intermediates release: every root reached and
 # reported (a mawk exponent once stopped it after the first), build-script
 # executables released, what the cells and probes read kept.
 [private]
@@ -1002,7 +1002,7 @@ workflow-matrix-expansion:
 # a job that keeps it: `merge` a `merge-runtime.yml` that runs on merge_group
 # (it is dispatch-only since the 2026-11-12 ruling, so no row may be `merge`),
 # `daily` the nightly `platform` job's `just test <platform>` or, for a host
-# witness board, run-matrix.yml's scheduled tier 1, `weekly` the probe
+# witness board, platform-matrix.yml's scheduled tier 1, `weekly` the probe
 # workflow. A cadence no job serves is refused unless
 # `.config/cadence-job-baseline.toml` lists it with an issue. Static, no
 # fixtures; the selftest runs first on every call as a negative control.
@@ -1048,14 +1048,14 @@ workflow-setup-spelling:
 hook-repo-side-effects:
     @bash scripts/check-hook-repo-side-effects.sh
 
-# Issue 1758 -- a live-peer board job builds once per value of a narrowing key
+# Issue 1758 -- a ros2-interop board job builds once per value of a narrowing key
 # it repeats. Both board jobs exported each `KEY=value` line in turn, so a
 # repeated key kept only its last value, and the producer's `|`-join was a
 # union only for a regex: for `NROS_FIXTURE_ID` it named a row nobody has, and
 # the board-ci job stopped in its build every night. The selftest plans the
 # ledger's real board-ci narrowing too.
-live-peer-board-build:
-    @bash scripts/ci/live-peer-board-build.sh selftest
+ros2-interop-board-build:
+    @bash scripts/ci/ros2-interop-board-build.sh selftest
 
 # phase-535 W4 fallout — every leaf a workflow builds with `just <platform>
 # build-one` exists, literal or through a matrix list. #3233 deleted two
@@ -1083,7 +1083,7 @@ bundled-interfaces-provisioned:
 release-rehearsal:
     @python3 scripts/check/check-release-rehearsal.py
 
-# phase-591 W6 -- `host-tests`' build-tier shards are split by
+# phase-591 W6 -- `host-suite`' build-tier shards are split by
 # `scripts/build/gate-shard.py` from `.config/build-gate-weights.txt`, which
 # `scripts/ci/build-gate-weights.py` measures from the shard jobs' own logs.
 # Both self-tests: the split covers every gate exactly once whatever the

@@ -10,7 +10,7 @@ AND named beside it runs twice.
 That is how `api-parity` ran twice in every `just check`, `just ci gate`, tier 1
 and tier 2 after issue 1066 moved it onto the fast lane: once inside the fan-out
 and once as `default`'s trailing dependency (and as a `steps=(...)` entry of
-`ci gate`). Measured on `host-tests` run 37176625915: 163 s of a 4-vCPU runner's
+`ci gate`). Measured on `host-suite` run 37176625915: 163 s of a 4-vCPU runner's
 time, plus ~4 000 lines of identical diff output in a log that already had no
 timestamps — while the job was being killed by its 150-minute ceiling.
 

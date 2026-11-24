@@ -2,7 +2,7 @@
 //!
 //! Every test here needs the kernel to honour a level's scheduling: its
 //! `SCHED_FIFO` priority (W1, W2) or its `SCHED_DEADLINE` budget (W1). Both
-//! need `CAP_SYS_NICE`, which only host-tests' `rt-sched` job claims, so each
+//! need `CAP_SYS_NICE`, which only host-suite' `rt-sched` job claims, so each
 //! test asks the lane's scope FIRST (`rt-sched`,
 //! [`nros_tests::lane_scope::require_rt_sched_claimed`]) and is a
 //! `[SKIPPED:lane]` everywhere that does not claim it. A run that claims it

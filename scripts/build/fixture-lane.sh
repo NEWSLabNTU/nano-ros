@@ -341,7 +341,7 @@ nros_lane_unclaimed() {
     nros_lane_validate "$lane" || return 2
     case "$lane" in
         # The tier runners carry the zenoh router and no ROS 2 CLI; their ROS 2
-        # interop tests belong to live-peer (`.config/interop-verdicts.toml`).
+        # interop tests belong to ros2-interop (`.config/interop-verdicts.toml`).
         # No lane claims a host bridge (phase-497 W3) or real-time scheduling
         # (phase-162 W1): both need root to grant, so their e2e runs only where
         # a person claims it on purpose.
@@ -612,7 +612,7 @@ nros_fixtures_stamp_clear() {
     # why the UPPER bound survived and only the 0499 lower bound went missing:
     # every consumer that asks "which artifacts did THIS build produce?" falls
     # back to "cannot filter", and that is the permanent skip 0499 exists to
-    # prevent. Seen in run-matrix 35826999550 and every scheduled run before it.
+    # prevent. Seen in platform-matrix 35826999550 and every scheduled run before it.
     mkdir -p "$(dirname "$NROS_FIXTURE_STAMP")" 2>/dev/null || true
     printf '%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "${NROS_FIXTURE_STAMP}.started" 2>/dev/null || true
 }

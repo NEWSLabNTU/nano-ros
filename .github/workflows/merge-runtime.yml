@@ -33,7 +33,7 @@
 # merge lane: `just build tier1` then `just ci tier1 run`, each narrowed to the
 # board by `NROS_LANE_MODULE`. It exists to MEASURE whether one board's tier-1
 # slice fits a hosted runner. Tier 1 runs on the self-hosted runner today
-# (run-matrix.yml) because the WHOLE tier did not fit a hosted one (issues
+# (platform-matrix.yml) because the WHOLE tier did not fit a hosted one (issues
 # 1684/1685: +37 G for the linux half alone against ~16 G free). The disk
 # report after each step and each step's time are the measurement; phase-559
 # W5b records them, and tier 1 moves to hosted shards only if they fit.
@@ -91,7 +91,7 @@ jobs:
         password: ${{ secrets.GITHUB_TOKEN }}
       # Issue 2382 — the host's preinstalled toolchains, mounted so
       # `reclaim-disk.sh` can remove them (candidate 3 there). Same list as
-      # gate.yml's `check-build` and host-tests.yml's gate shards, where the
+      # gate.yml's `check-build` and host-suite.yml's gate shards, where the
       # reclaim measured 32,744 MB freed and 51 GiB free after, in 107-153 s
       # (scheduled run 42747790725). A container cannot delete host tooling
       # any other way.
@@ -112,7 +112,7 @@ jobs:
         # Linux tier 1 ran out of disk on a hosted runner twice (~104 G after
         # reclaim, ENOSPC at row 75 of 219, run 43438754804), and a shard that
         # runs out of disk measures nothing. Linux is measured on the
-        # self-hosted lane (run-matrix.yml), where it lives.
+        # self-hosted lane (platform-matrix.yml), where it lives.
         #
         # No hosted `zephyr` shard for the MERGE lane either (user ruling
         # 2026-11-14, phase-559 W5b option a): run 43613091093 stopped it at
@@ -355,7 +355,7 @@ jobs:
   # Zephyr fixture stage (zephyr-workspace-builds 49 G, the cmake workspace
   # builds ~13 G, sizes-probe 9.8 G, corrosion-cargo 9.0 G). Its coordinates
   # are zephyr c, cpp and rust over zenoh; the C++ one brings the cpp
-  # workspaces with it. The steps are run-matrix.yml's `tier1` job's: a
+  # workspaces with it. The steps are platform-matrix.yml's `tier1` job's: a
   # persistent fixture tree beside the checkout, the label doctor, the pin
   # baseline, then this lane's two verbs. The job NAME is the hosted shard's,
   # so `merge-runtime-p95.py` keeps reading one series per board; note its
@@ -371,7 +371,7 @@ jobs:
     env:
       NROS_LANE_MODULE: zephyr
       # The self-hosted runner's gate lane (.config/gate-lanes.toml
-      # [lane.runner]), as in run-matrix.yml.
+      # [lane.runner]), as in platform-matrix.yml.
       NROS_GATE_SCOPE: runner
       # phase-565 W4: this lane is not provisioned by the provision-gate-lane
       # action; this says what provides its claims instead.

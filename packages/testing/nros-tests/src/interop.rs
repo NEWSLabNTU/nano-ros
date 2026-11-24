@@ -370,7 +370,7 @@ pub const CELLS: &[InteropCell] = &[
        LinuxFixtures, RosEdition(Cyclonedds), NanoToRos, "ros2_action_e2e"),
 
     // ── phase-455 W3 — the SAME two directions over zenoh ────────────────
-    // The rows above are the whole of the ACTIONS family's live-peer
+    // The rows above are the whole of the ACTIONS family's ros2-interop
     // coverage and both are Cyclone, so the backend phase-455 is about —
     // zenoh-pico, whose `ZPICO_MAX_PENDING_REPLIES` reply-slot table is the
     // bounded resource issue 0902 exhausted — had never met a stock ROS 2
@@ -469,7 +469,7 @@ pub const CELLS: &[InteropCell] = &[
     // The row above is `ZephyrNativeSim`, i.e. `native_sim/native/64`:
     // `CONFIG_NET_SOCKETS_OFFLOAD=y`, so its sockets, its libc and its 64-bit
     // pointers are the HOST's and no RTOS network stack is ever in the path.
-    // Until this row, that was the whole of our non-Linux live-peer coverage —
+    // Until this row, that was the whole of our non-Linux ros2-interop coverage —
     // one platform, one language, one RMW, one workload — and calling it
     // "on-target" was doing work the artifact did not support.
     //
@@ -502,7 +502,7 @@ pub const CELLS: &[InteropCell] = &[
     // tests/pubsub_freertos_ros2_interop_e2e.rs. Every other on-target row in
     // this list is Zephyr native_sim, whose sockets, pointer width and libc are
     // the HOST's (`matrix.rs`: "Zephyr native_sim (NSOS host sockets)"). So
-    // before this row the live-peer coverage of the RTOS ports was one kernel,
+    // before this row the ros2-interop coverage of the RTOS ports was one kernel,
     // one board, and a network stack that is not an RTOS network stack.
     //
     // This one is a different kernel (FreeRTOS), a different IP stack (lwIP
@@ -586,7 +586,7 @@ pub const CELLS: &[InteropCell] = &[
        LinuxFixtures, NanoBridge { ingress: Zenoh, egress: Cyclonedds }, NanoToRos,
        "bridge_zenoh_to_cyclonedds"),
 
-    // ── Native nano ↔ stock ROS 2, the previously-unbound live-peer lanes
+    // ── Native nano ↔ stock ROS 2, the previously-unbound ros2-interop lanes
     //    (phase-329 W3). Each file mixes host-only cases with a ROS-2-facing
     //    lane; the coordinate below is the interop lane's. ─────────────────
     // tests/qos_override_e2e.rs — a plan QoS override reaches the ADVERTISED

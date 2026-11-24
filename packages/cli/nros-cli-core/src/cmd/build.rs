@@ -12070,7 +12070,7 @@ rmw = "zenoh"
 domain_id = 0
 "#;
 
-    /// The form that produced the `host-tests` red: capabilities declared with
+    /// The form that produced the `host-suite` red: capabilities declared with
     /// the phase-261 `[system].features` list and no typed block in sight.
     /// Reading only the typed blocks would return empty here and re-open the bug.
     #[test]

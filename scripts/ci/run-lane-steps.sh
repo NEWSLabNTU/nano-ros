@@ -9,7 +9,7 @@
 # `just/ci.just` makes for feedback — and the table at the end names what that
 # withdrew, so a red count is never read as a coverage report (issue 0952).
 #
-# WHY THIS EXISTS. `host-tests` ran `just ci tier1` for 75 minutes on
+# WHY THIS EXISTS. `host-suite` ran `just ci tier1` for 75 minutes on
 # 2026-10-04 (run 37176625915) and the ceiling killed it. Its 5 579-line log had
 # no timestamp anywhere, so "where did the time go" was answerable only by
 # reading cargo's own `Finished … in` lines and the gate runner's busy/wall

@@ -197,9 +197,9 @@ def just_files(repo=None):
     #
     # That is not hypothetical. `just zenohd setup` built the VENDORED router;
     # RFC-0075 / phase-362 deleted it and made the router ROS's own
-    # `rmw_zenohd`, but two host-tests steps kept calling the old form. The
+    # `rmw_zenohd`, but two host-suite steps kept calling the old form. The
     # top-level recipe is `zenohd locator="tcp/..."`, so `setup` was passed as a
-    # LOCATOR and the step could never work. host-tests was red on it for days,
+    # LOCATOR and the step could never work. host-suite was red on it for days,
     # and nothing in the tree could see it.
     # phase-472 W1 — and composite actions: `setup-nros-cli` runs
     # `just setup-launch-resolve`, and a rename there was never read.

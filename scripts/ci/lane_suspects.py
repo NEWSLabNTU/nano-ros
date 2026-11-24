@@ -8,7 +8,7 @@ read its head commit, list the commits between, and look up each one's pull
 request. This is that procedure, once, for `nightly-triage.py` and for
 `lane-stage.py --history` (`just matrix-triage`).
 
-A LANE is a workflow, or one job of a workflow (`run-matrix.yml` holds the tier-1
+A LANE is a workflow, or one job of a workflow (`platform-matrix.yml` holds the tier-1
 and tier-2 lanes as two jobs). Its last green run is the newest earlier run on
 `main` in which the lane passed: the workflow's conclusion, or that job's.
 
@@ -31,7 +31,7 @@ What it refuses to guess:
 Never gates: it reports, like the two tools that call it.
 
     lane_suspects.py --workflow nightly.yml            # the latest run
-    lane_suspects.py --workflow run-matrix.yml --job "tier 1 (cells)" --run <id>
+    lane_suspects.py --workflow platform-matrix.yml --job "tier 1 (cells)" --run <id>
     lane_suspects.py --selftest
 """
 

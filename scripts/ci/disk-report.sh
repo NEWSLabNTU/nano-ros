@@ -12,7 +12,7 @@
 #    `du -sh` of the cargo target dir, the sccache dir and `third-party/`) so
 #    the next failure says how much was used and by what."
 #
-# ...and the 2026-09-17/18 section extends that to `host-tests`, which fills the
+# ...and the 2026-09-17/18 section extends that to `host-suite`, which fills the
 # same disk without entering the compile tier at all.
 #
 # This is a MEASUREMENT, not a remedy. It never fails a job: every probe is
@@ -114,7 +114,7 @@ if [ -d "$ex" ]; then
     du -sh "$ex"/* 2>/dev/null | sort -rh | head -12 || true
 fi
 
-# ...and of `build/`, the largest entry after the tier-1 gates: host-tests run
+# ...and of `build/`, the largest entry after the tier-1 gates: host-suite run
 # 40263677513 (2026-10-26) reclaimed to 75 G free, then `just ci tier1 gates`
 # grew `build/` from 29 G to 61 G and the runner hit ENOSPC, on 4 of the 7
 # nights to that date. The top-level line could not say which gate's fixtures
@@ -160,7 +160,7 @@ echo "::endgroup::"
 # again), all three of which COMPLETED SUCCESSFULLY, and its annotation list
 # holds exactly one entry: the runner's `IOException`, which the service wrote
 # rather than the runner. Its run page renders no job summary at all. The
-# annotation channel is not broken — the sibling `host-tests` job
+# annotation channel is not broken — the sibling `host-suite` job
 # 107478998501, whose runner lived, shows all three notices — it is simply
 # flushed by the runner, so it dies when the runner does, and so does the step
 # summary.

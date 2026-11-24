@@ -16,7 +16,7 @@
 //!
 //! Fails as an unmet precondition when no AMENT layer ships `std_msgs`
 //! (nothing to shadow → the contract degenerates) or `nm` is absent. A lane
-//! that does not claim ROS 2 deselects it; live-peer's host job runs it
+//! that does not claim ROS 2 deselects it; ros2-interop's host job runs it
 //! (issue 1800, `HOST_ROS2_TESTS` in `scripts/check-interop-verdicts.py`).
 
 use std::{

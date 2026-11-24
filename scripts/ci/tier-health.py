@@ -165,7 +165,7 @@ class Lane:
 # The per-merge runtime lane. EMPTY, and that is the finding, not an oversight:
 # tier 1 promises runtime evidence every merge and no lane delivers it today.
 # The host-executable group's runtime cells run only in the nightly sweep and in
-# host-tests' nightly lane. `ci-l2` is phase-395 W16 and has not landed.
+# host-suite' nightly lane. `ci-l2` is phase-395 W16 and has not landed.
 #
 # When W16 lands, add its (workflow, job) here — one line. Until then every
 # tier-1 row reports its obligation as ABSENT, which is the true state.
@@ -178,24 +178,24 @@ class Lane:
 PER_MERGE_RUNTIME_LANES = []
 
 # `Linux` carries no `nightly_token` — it is the native host, and its runtime
-# evidence lives in host-tests.yml. `nightly.yml`'s own `lane-coverage` job says
-# so in its `elsewhere` map ("native -> host-tests.yml — cron 0 3"), so this
+# evidence lives in host-suite.yml. `nightly.yml`'s own `lane-coverage` job says
+# so in its `elsewhere` map ("native -> host-suite.yml — cron 0 3"), so this
 # agrees with the workflow rather than inventing a second answer.
 #
 # The `unit` job is NOT here. It is `just test-unit`: no fixtures, no runtime
 # cells. `integration` is the one that spawns prebuilt example binaries, so it
-# is the only host-tests job that is runtime evidence for the Linux board.
+# is the only host-suite job that is runtime evidence for the Linux board.
 #
-# Issues 1684/1685 — that job is now `run-matrix.yml`'s `tier1`, on the
-# self-hosted runner: host-tests' runner had neither the disk for the tier's
+# Issues 1684/1685 — that job is now `platform-matrix.yml`'s `tier1`, on the
+# self-hosted runner: host-suite' runner had neither the disk for the tier's
 # fixtures nor its Zephyr/ThreadX provisioning, so it ran a subset under a
 # preflight bypass. The name stays `HOST_TESTS_LANE` for its importers; what
 # it names is the tier-1 runtime lane, wherever that runs.
 HOST_TESTS_LANE = Lane(
     "daily",
-    "run-matrix.yml",
+    "platform-matrix.yml",
     "tier 1 (cells)",
-    "run-matrix.yml — cron 0 6, just ci tier1 run",
+    "platform-matrix.yml — cron 0 6, just ci tier1 run",
 )
 
 # `nightly_token = "zephyr"` does not name a job in the platform matrix: the
@@ -621,7 +621,7 @@ def selftest(quiet=False):
 
     lanes, notes = resolve_lanes(
         {"runs": "host", "cadence": "merge", "matrix_platform": "Linux"}, toks)
-    check([lane.workflow for lane in lanes] == ["run-matrix.yml"] and not [
+    check([lane.workflow for lane in lanes] == ["platform-matrix.yml"] and not [
         txt for _, txt in notes if "nightly_token" in txt],
         "the native host resolves to the tier-1 lane, not to a missing nightly token")
 

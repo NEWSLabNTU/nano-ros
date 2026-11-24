@@ -17,7 +17,7 @@ It has happened three times:
 - issue 2032's second route, `nros_posix_apply_current_deadline`. Issue 2018
   added it to nros-cpp's native level runner four minutes after the first
   fix landed, and every Zephyr native_sim XRCE image failed to link in
-  `run-matrix` and the tier-2 nightly.
+  `platform-matrix` and the tier-2 nightly.
 
 `check-platform-port-arms` compares `nros_platform_*` functions across a
 port's arms, so a `nros_posix_*` name is outside what it can see.

@@ -132,7 +132,7 @@ run's.
 | P2 | `check-zenohd-router-skips.py` | `packages/rmw/zenoh/nros-rmw-zenoh/tests/zenoh_integration.rs` += fn rerun_r() { | 0 | 1 | fails now |
 | P2 | `check-zenoh-platform-macros.py` | `zephyr/cmake/nros_rmw_zenoh.cmake`: zephyr_compile_definitions(ZENOH_ZEPHYR ZENOH_LINUX) | 0 | 0 | **HOLE** (W5, #1614); control rc 1 |
 | P2 | `check-weak-symbols.sh` | `zephyr/nros_zenoh_zephyr_system.c` += void __attribute__((weak, used)) rerun_weak(void) {} | 0 | 1 | fails now |
-| P2 | `check-tier-has-ci-owner.py` | `.github/workflows/run-matrix.yml`: just ci matrix build | 0 | 1 | fails now |
+| P2 | `check-tier-has-ci-owner.py` | `.github/workflows/platform-matrix.yml`: just ci matrix build | 0 | 1 | fails now |
 | P2 | `check-workflow-repo-env.py` · action | `.github/actions/setup-nros-cli/action.yml` += # source ./activate.sh | 0 | 1 | fails now |
 | P2 | `check-workflow-indexed-apt.py` | `.github/actions/setup-nros-cli/action.yml` += sudo apt-get install -y ninja-build | 0 | 1 | fails now |
 | P2 | `check-workflow-runner-isolation.py` | `.github/workflows/gate.yml`: runs-on: ${{ inputs.runner }} | 0 | 1 | fails now |

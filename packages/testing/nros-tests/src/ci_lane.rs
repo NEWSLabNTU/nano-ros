@@ -465,7 +465,7 @@ impl CiLane {
     ///
     /// Every tier lane declines a stock ROS 2 install. Their runners carry the
     /// zenoh router and no ROS 2 CLI, and the ROS 2 interop tests belong to the
-    /// live-peer lane (`.config/interop-verdicts.toml`), so in these lanes those
+    /// ros2-interop lane (`.config/interop-verdicts.toml`), so in these lanes those
     /// tests are deselections. This is a property of the LANE: `just ci tier1`
     /// and `just test tier1` export the same value, through
     /// `nros_lane_unclaimed` in `scripts/build/fixture-lane.sh`, which

@@ -116,7 +116,7 @@ ros2_run() { LD_LIBRARY_PATH="$ROS_LD_LIBRARY_PATH" ros2 "$@"; }
 nros_run() { LD_LIBRARY_PATH="$NROS_LD_LIBRARY_PATH" "$@"; }
 
 # Asked BEFORE either deadline starts, through the path the CLI will actually
-# get. See the helper for the host-tests measurement that put it here.
+# get. See the helper for the host-suite measurement that put it here.
 nros_require_ros2_rmw_loadable "$RMW_IMPLEMENTATION" "$ROS_LD_LIBRARY_PATH" || exit 1
 nros_e2e_stage "ros2 peer rmw load check returned"
 

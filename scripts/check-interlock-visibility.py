@@ -11,7 +11,7 @@ pending forever.
 But a SKIPPED job does not colour its run. Measured 2026-08-31: post-submit's
 last several runs are `success` with `tier 2 (1-wise matrix)` skipped — so every
 fixture build and every E2E cell in that lane had not run, and the run said
-success. Meanwhile the one lane that does run E2E (`host-tests`) had been red
+success. Meanwhile the one lane that does run E2E (`host-suite`) had been red
 for 20 consecutive runs. Nothing anywhere said "the expensive lanes are not
 running".
 

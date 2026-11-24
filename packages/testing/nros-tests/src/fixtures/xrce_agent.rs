@@ -664,7 +664,7 @@ pub fn xrce_agent_binary_path() -> std::path::PathBuf {
 /// Through [`crate::probe_ran`], not `.status().is_ok()`: that is true for any
 /// binary that SPAWNS, so an Agent that exists and dies on launch passed this
 /// probe, went past the caller's precondition guard, and turned an environment gap into a
-/// real failure (live-peer run 34497290149). `--help` exits 1 on a healthy
+/// real failure (ros2-interop run 34497290149). `--help` exits 1 on a healthy
 /// Agent, which is why the helper is not `.success()`.
 pub fn is_xrce_agent_available() -> bool {
     crate::probe_ran(

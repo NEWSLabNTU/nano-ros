@@ -3,7 +3,7 @@
 # the SDK a Zephyr tree pins, or REFUSES an SDK board when that SDK is missing.
 #
 # The refusal is the point. The first version printed nothing when the pinned
-# SDK was absent, and an empty answer looked the same as success. The live-peer
+# SDK was absent, and an empty answer looked the same as success. The ros2-interop
 # board job skipped the SDK install, so its `mps2_an385` build took the CI
 # image's 0.17.4 from the CMake registry and died in Zephyr's `libc-hooks.c`.
 # That was the run meant to prove the fix (38291960490).

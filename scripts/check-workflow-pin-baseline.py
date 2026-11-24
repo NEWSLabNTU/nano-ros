@@ -11,7 +11,7 @@ and the workflow provides it with one step:
 
 Issue 1912 moved the baseline from `origin/main` to the tested commit's own
 (the first parent, on schedule and dispatch), and added that step to every job
-in `gate.yml` and `host-tests.yml`. The self-hosted fixture lanes reach the
+in `gate.yml` and `host-suite.yml`. The self-hosted fixture lanes reach the
 same gate through `just build <lane>` (`build-test-fixtures` depends on
 `check::fast`) and got no step. `origin/main` had resolved in their persistent
 fixture tree; a depth-1 tree's first parent does not. The next scheduled run

@@ -21,7 +21,7 @@ nothing carried it, this happened:
       ... asked CMake to find a package configuration file provided by
       "nano_ros", but CMake did not find one.
 
-That failure took down the host-tests workspace fixture build (#92) and, in a
+That failure took down the host-suite workspace fixture build (#92) and, in a
 different workflow, four Zephyr 3.7 cells (#105). Both were invisible locally in
 BOTH directions: a developer shell has always sourced `activate.sh`, and a warm
 build directory carries `nano_ros_DIR:PATH=<checkout>` in its `CMakeCache.txt`,

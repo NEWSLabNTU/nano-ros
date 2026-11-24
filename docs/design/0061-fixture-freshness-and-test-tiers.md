@@ -220,9 +220,9 @@ ThreadX and FreeRTOS workspace fixtures were stale.
 | tier | name | scope | gate covers | budget | run locally when | CI runs it |
 | --- | --- | --- | --- | --- | --- | --- |
 | 0 | `check-fast` | fmt, drift gates, source gates, no build | nothing (no fixtures) | ~30 s | every save | every pull request and merge-queue entry (`gate.yml`, inside the required `CI` check) |
-| 1 | `ci` | tier 0 + host build + **codegen golden diff** + a 16-cell native selection | native fixtures only | minutes | before a push that needs fixture-backed coverage | daily (`run-matrix.yml` `tier1`, self-hosted, cron `0 6`); hosted per-board shards by dispatch only (`merge-runtime.yml`) |
-| 2 | `ci-matrix` | tier 1 + an **11-cell 1-wise cover** (platform, lang, rmw, kind) | that subset's fixtures | **26 %** of a full sweep | diff touches `packages/core`, codegen, `cmake/` | daily (`run-matrix.yml` `matrix`) |
-| 2n | `ci-matrix-nightly` | the **37-cell pairwise cover** (platform×lang×rmw×kind) | that subset's fixtures | **70 %** of a full sweep | rarely; CI runs it | daily (`run-matrix.yml` `matrix-nightly`) |
+| 1 | `ci` | tier 0 + host build + **codegen golden diff** + a 16-cell native selection | native fixtures only | minutes | before a push that needs fixture-backed coverage | daily (`platform-matrix.yml` `tier1`, self-hosted, cron `0 6`); hosted per-board shards by dispatch only (`merge-runtime.yml`) |
+| 2 | `ci-matrix` | tier 1 + an **11-cell 1-wise cover** (platform, lang, rmw, kind) | that subset's fixtures | **26 %** of a full sweep | diff touches `packages/core`, codegen, `cmake/` | daily (`platform-matrix.yml` `matrix`) |
+| 2n | `ci-matrix-nightly` | the **37-cell pairwise cover** (platform×lang×rmw×kind) | that subset's fixtures | **70 %** of a full sweep | rarely; CI runs it | daily (`platform-matrix.yml` `matrix-nightly`) |
 | 3 | `ci-full` | the whole matrix + Miri + interop + QEMU lanes | everything | hours | pre-release, on demand | no job (pre-release, on demand) |
 
 **No runtime rung gates a merge** (phase-555 ruling B27, 2026-11-14). What a

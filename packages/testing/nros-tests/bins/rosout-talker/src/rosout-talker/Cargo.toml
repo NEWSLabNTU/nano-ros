@@ -8,7 +8,7 @@ version = "0.1.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 publish = false
-description = "phase-467 Q4 / ledger row `c:logging_rosout_enabled` — the `/rosout` bridge's live-peer fixture. Logs through `nros_log` and pumps `nros_node::rosout` onto `/rosout` as `rcl_interfaces/msg/Log`, so a stock `ros2 topic echo /rosout` can be asked whether it sees a nano-ros node's logs. Consumed by `tests/rosout_interop.rs`."
+description = "phase-467 Q4 / ledger row `c:logging_rosout_enabled` — the `/rosout` bridge's ros2-interop fixture. Logs through `nros_log` and pumps `nros_node::rosout` onto `/rosout` as `rcl_interfaces/msg/Log`, so a stock `ros2 topic echo /rosout` can be asked whether it sees a nano-ros node's logs. Consumed by `tests/rosout_interop.rs`."
 
 [[bin]]
 name = "rosout-talker"

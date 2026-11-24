@@ -21,7 +21,7 @@
 #
 # `cancel-in-progress: false` for the same reason — a newer schedule tick must
 # not cancel a run that is most of the way through.
-name: run-matrix
+name: platform-matrix
 
 on:
   schedule:
@@ -29,7 +29,7 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: run-matrix
+  group: platform-matrix
   cancel-in-progress: false
 
 permissions:
@@ -292,7 +292,7 @@ jobs:
 
   # TIER 1's cells — issues 1684/1685.
   #
-  # `host-tests.yml` ran this as its `integration` job and could not hold it:
+  # `host-suite.yml` ran this as its `integration` job and could not hold it:
   # it built a fixture SUBSET for disk and ran `test-all` over the whole tier
   # with `NROS_SKIP_FIXTURE_CHECK=1` (199 of 214 real failures were "fixture
   # binary MISSING for an in-lane coordinate"), and its runner has neither a
@@ -300,7 +300,7 @@ jobs:
   # undeclared capability skips). Building what the lane asserts measured +37
   # to +39 G against ~16 G free there. This runner has both the disk and the
   # SDKs. Tier 1's `just check` half runs in gate.yml's scheduled jobs
-  # (`check-fast`, `check-fast-compile`, `check-build`); host-tests' copy of
+  # (`check-fast`, `check-fast-compile`, `check-build`); host-suite' copy of
   # it was a duplicate and went in issue 2141.
   #
   # Same transcript as tier 2 above: `setup <scope>`, `build <scope>` (codegen,
@@ -606,7 +606,7 @@ jobs:
         run: |
           source ./activate.sh
           just setup tier2-nightly
-      # AFTER `setup` — phase-413 W2, same as run-matrix (#279), queue (#253)
+      # AFTER `setup` — phase-413 W2, same as platform-matrix (#279), queue (#253)
       # and build-wide (#249).
       #
       # `runner-doctor.sh` checks `$root/build/qemu/bin/qemu-system-arm` FIRST
@@ -619,7 +619,7 @@ jobs:
       #
       # Asserting before provisioning asks the host for something the next step
       # supplies. This job carries the same `nros-qemu` label on the same runner
-      # class as `run-matrix`, where it failed at step 2 against a system qemu
+      # class as `platform-matrix`, where it failed at step 2 against a system qemu
       # 6.2 in every run — provisioning nothing, testing nothing, and reporting
       # it as a host that needs `runner-provision.sh`.
       #
@@ -682,7 +682,7 @@ jobs:
 
       # Issue 1991 — the panic text goes into the job log as well as the junit
       # below, so `gh run view --log` names a red without an artifact download.
-      # `test-all` honours this knob and defaults it to `never`; the live-peer
+      # `test-all` honours this knob and defaults it to `never`; the ros2-interop
       # lane sets `final` for the same reason. A `lane_skip!` is a panic too, so
       # its one-line reason prints beside the real failures.
       - name: just ci matrix-nightly
@@ -693,7 +693,7 @@ jobs:
         run: |
           source ./activate.sh
           just ci matrix-nightly
-      # Issue 1991 — the same step run-matrix's tier-1 and tier-2 jobs carry.
+      # Issue 1991 — the same step platform-matrix's tier-1 and tier-2 jobs carry.
       # Without it this lane counted its real failures ("Real failures: 14")
       # and named none: `test-all` runs nextest with `--failure-output never`,
       # and the junit stayed in the persistent fixture tree, where the next

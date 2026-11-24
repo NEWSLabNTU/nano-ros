@@ -18,7 +18,7 @@
 #     workspace` before touching Zephyr — issue 1359.
 #   * A TOML parser was in ci-base (`python3-tomli`) and not here. The base
 #     image is Ubuntu jammy, system Python 3.10, which has no `tomllib`, and 39
-#     repo scripts open with `import tomllib` / `import tomli`. `live-peer
+#     repo scripts open with `import tomllib` / `import tomli`. `ros2-interop
 #     regression` had been red on that since 2026-09-11 — issue 1364.
 #
 # Both symptoms were one absence each; the DEFECT was that nothing made the two

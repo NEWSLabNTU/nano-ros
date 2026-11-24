@@ -13,7 +13,7 @@
 # self-hosted runner here is not. Its checkout lives in the `nros-runner-work`
 # volume, which outlives every ephemeral runner container, and is shared by
 # every workflow that lands on that machine (queue L3, the nightly matrix,
-# run-matrix, and now the gate siblings). `actions/checkout` cleans only half of
+# platform-matrix, and now the gate siblings). `actions/checkout` cleans only half of
 # it: `git clean -ffdx` + `git reset --hard` in the SUPERPROJECT. A submodule's
 # worktree is a gitlink as far as that clean is concerned, so an earlier job's
 # submodule checkout — at an earlier job's pin, with its build output inside it —

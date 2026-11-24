@@ -27,7 +27,7 @@
 # gates each job so only the image whose Dockerfile moved rebuilds (image builds
 # are expensive):
 #   - ci-base : ROS 2 Humble + host tools, the base `container:` for the check /
-#               host-tests / platform lanes. See ci/docker/ci-base/Dockerfile.
+#               host-suite / platform lanes. See ci/docker/ci-base/Dockerfile.
 #   - zephyr  : ci-base + the Zephyr SDK layer, the `container:` for the nightly
 #               Zephyr jobs. See ci/docker/zephyr-ros/Dockerfile.
 #
@@ -317,18 +317,18 @@ jobs:
       # hand-written mirror of ci-base's. It had drifted by `unzip` and
       # `python3-tomli`, and both absences were fatal to whole lanes — all 22
       # nightly `zephyr *` jobs died in `_setup-common`'s `setup-clang-format`
-      # (no unzip to unpack the prebuilt), and `live-peer regression` died on
+      # (no unzip to unpack the prebuilt), and `ros2-interop regression` died on
       # every repo script that reads TOML (jammy Python 3.10 has no `tomllib`
       # and the image had no `tomli`). Both now come from
       # `ci/docker/apt-packages.txt`, the ONE list both images COPY.
       # r6 (issue 1760): `just` is the pinned, checksummed release asset from
       # `scripts/ci/install-just.sh` instead of whatever `just.systems/install.sh`
-      # served at build time. Consumers (nightly.yml, live-peer.yml) are
+      # served at build time. Consumers (nightly.yml, ros2-interop.yml) are
       # schedule-only, so moving them in the same commit has the slack the r3
       # note above relies on.
       # r7 (issue 2475 defect 3): cargo-nextest at the index pin, baked the way
       # ci-base bakes it, so a lane preflight claiming `nextest` passes here.
-      # Consumers (nightly.yml, live-peer.yml, merge-runtime.yml, gate.yml's
+      # Consumers (nightly.yml, ros2-interop.yml, merge-runtime.yml, gate.yml's
       # daily zephyr copy-out) are schedule/dispatch-only, so moving them in the
       # same commit has the r3 note's slack.
       # r8 (issue 2511): the SDKs are the index's per-line pins, 0.16.9 for 3.7
@@ -489,7 +489,7 @@ jobs:
       # RESOLVE FIRST, and capture the status. A `$(…)` in argument position
       # throws its exit status away, and `apt-get install` with zero packages
       # exits 0 — so a failed resolve installs NOTHING and the step goes GREEN
-      # (issue 1466, measured live in live-peer).
+      # (issue 1466, measured live in ros2-interop).
       - name: Install Doxygen + Graphviz (from the index)
         run: |
           if ! pkgs="$(python3 scripts/sdk/prereq-packages.py --manager apt doxygen graphviz)"; then

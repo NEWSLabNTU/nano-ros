@@ -1,6 +1,6 @@
 //! phase-441 W3 — a SECOND KERNEL meets a live ROS 2 peer.
 //!
-//! The tree's only other on-target live-peer cell is
+//! The tree's only other on-target ros2-interop cell is
 //! `qos_zephyr_ros2_interop_e2e`, and phase-441's own analysis is why this file
 //! exists: that cell runs on `native_sim/native/64`, where the sockets are the
 //! HOST's (NSOS), the pointer width is the host's and the libc is the host's.

@@ -4,7 +4,7 @@
 #
 # Issue 1846. `just linux build-fixture-extras` wrote these twice by hand and
 # exported them as `NROS_CMAKE_EXTRA_DEFS` before calling `fixtures-build.sh`.
-# The live-peer host job called `fixtures-build.sh linux <lang> <rmw>`
+# The ros2-interop host job called `fixtures-build.sh linux <lang> <rmw>`
 # DIRECTLY and passed none. So its 42 C/C++ leaf configures ran with no
 # `NROS_SHARED_CARGO_ROOT`, and each leaf compiled the whole Rust stack into
 # its own cargo directory (about 1-3 GB each), which filled a 110 GB runner.

@@ -1560,7 +1560,7 @@ road-dispatch-platform-family:
 # REFUSED, never handed whatever the CMake registry holds. Hermetic (throwaway
 # HOME, fake SDK roots), and it checks that every caller of
 # `nros_zephyr_sdk_env` tests the status, since a swallowed refusal is the
-# silent fall-through that let live-peer build `mps2_an385` with the CI
+# silent fall-through that let ros2-interop build `mps2_an385` with the CI
 # image's 0.17.4.
 zephyr-sdk-env:
     @bash scripts/check-zephyr-sdk-env.sh

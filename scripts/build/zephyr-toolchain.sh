@@ -83,7 +83,7 @@ nros_zephyr_toolchain_variant() {
 # register it; `just setup` registers the pinned 0.16.8 beside it; a 3.7
 # `mps2_an385` build then took 0.17.4, whose picolibc declares the retarget
 # locks differently, and died in Zephyr's own `libc-hooks.c` with
-# `conflicting types for '__lock___libc_recursive_mutex'` (live-peer run
+# `conflicting types for '__lock___libc_recursive_mutex'` (ros2-interop run
 # 38230566873). native_sim never noticed: it builds with host gcc.
 #
 # So an SDK board names its SDK: the version the Zephyr tree itself demands
@@ -93,7 +93,7 @@ nros_zephyr_toolchain_variant() {
 #
 # A pinned SDK that is NOT installed is a REFUSAL for an SDK board, never a
 # fall-through. This helper first printed nothing in that case, and the registry
-# search took whatever SDK it held. The live-peer board job ran
+# search took whatever SDK it held. The ros2-interop board job ran
 # `just setup zephyr --skip-sdk`, so 0.16.8 was never installed. Its
 # `mps2_an385` build took the baked 0.17.4 and died in `libc-hooks.c` exactly
 # as before, on the run that was meant to prove this fix (38291960490). An

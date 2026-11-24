@@ -8,7 +8,7 @@
 # unignored, which put it in `nros_source_manifest`
 # (`git ls-files --cached --others --exclude-standard`). Each entry build
 # appends its own section, so every sibling workspace fixture built before it
-# read STALE. That was 23 of 35 tests in one local sweep, and 4 live-peer host
+# read STALE. That was 23 of 35 tests in one local sweep, and 4 ros2-interop host
 # cells in run 38321018350, minutes after the job built them.
 #
 # The rule is about every directory a build can write a lock into: a

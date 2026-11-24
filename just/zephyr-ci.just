@@ -30,7 +30,7 @@ build-fixtures:
     # dependency — but it is the SAME `_require-owned-provisioned-roots`
     # `build-test-fixtures` and `build-test-fixtures-leaves` depend on, running
     # the same script. It is here as well as there because `just build zephyr`
-    # (the platform arm of `_build-scope`, and what `live-peer.yml` runs)
+    # (the platform arm of `_build-scope`, and what `ros2-interop.yml` runs)
     # reaches this lane through NEITHER of those, as do the filtered
     # `just/zephyr-dev.just` convenience recipes.
     #
@@ -455,7 +455,7 @@ build-fixtures:
     # A probe that FAILED is not a probe that found nothing. This was
     # `2>/dev/null` with the status read only as a truth value, so a failing
     # leaves script and a filter selecting nothing printed the same line — "no
-    # Zephyr fixtures matched" — and live-peer run 34497290149's board job died
+    # Zephyr fixtures matched" — and ros2-interop run 34497290149's board job died
     # on it with no way to tell which. Locally the same filter emits its record;
     # whatever failed in CI now says so here, in its own words.
     probe_err="$log_dir/records-$$.err"

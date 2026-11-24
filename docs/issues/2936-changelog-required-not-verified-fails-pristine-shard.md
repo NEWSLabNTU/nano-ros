@@ -1,6 +1,6 @@
 ---
 id: 2936
-title: "`changelog-required` cannot read a dispatched branch inside `pristine-checkout`, and its NOT VERIFIED fails the host-tests shard"
+title: "`changelog-required` cannot read a dispatched branch inside `pristine-checkout`, and its NOT VERIFIED fails the host-suite shard"
 status: open
 type: bug
 area: [ci, testing]
@@ -11,7 +11,7 @@ related: [2612]
 
 ## What happens
 
-A `host-tests` run dispatched on a branch (`gh workflow run host-tests.yml
+A `host-suite` run dispatched on a branch (`gh workflow run host-suite.yml
 --ref <branch>`, the phase-591 practice for proving a lane fix before the cron)
 failed its last `check-build` shard in `just check pristine-checkout`. The only
 red gate in the clone was `changelog-required`:
@@ -50,7 +50,7 @@ fast tier pass with no submodules).
 
 phase-591 W2 makes a branch or `main` dispatch the way a lane fix is proven
 before the cron, and release evidence is a dispatch on `main` at the release
-commit. Every branch dispatch of `host-tests` after `main` moves fails its last
+commit. Every branch dispatch of `host-suite` after `main` moves fails its last
 build shard on this, a red with nothing to fix in the branch.
 
 ## Directions (not decided)
@@ -70,7 +70,7 @@ build shard on this, a red with nothing to fix in the branch.
 
 ## Closes when
 
-A `host-tests` dispatch on a branch whose base `main` has moved past passes
+A `host-suite` dispatch on a branch whose base `main` has moved past passes
 `pristine-checkout`. The clone either reports `changelog-required` as not
 applicable to the event, or reads the branch. A test replays the shallow-clone
 case.

@@ -10934,7 +10934,7 @@ mod census_funnel_tests {
     /// returned that refusal — so the setup stopped before creating a single
     /// node, the dump found nothing (`rc=-2`) and the run exited 156. Measured
     /// on `examples/workspaces/derived-sched-tasks-cpp`'s `linux_entry`, the
-    /// live-peer lane's census prepass. After: the census run arms no reporter
+    /// ros2-interop lane's census prepass. After: the census run arms no reporter
     /// (it never spins, so it could never publish one), records exactly the
     /// node's own publisher — no `/diagnostics` row, which the inventory counts
     /// on its own (`contract_reporters`) — and exits 0.

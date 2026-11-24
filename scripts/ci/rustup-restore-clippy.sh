@@ -2,7 +2,7 @@
 # Make `cargo clippy` usable on every installed toolchain, and FAIL if the
 # toolchain this checkout's builds resolve is left without it. Issue 1474.
 #
-# Called from the `Unblock … clippy-preview conflict` steps in `live-peer.yml`
+# Called from the `Unblock … clippy-preview conflict` steps in `ros2-interop.yml`
 # and `nightly.yml`, which used to carry two hand copies of a sequence that
 # could not work. Zephyr's Rust build runs `cargo clippy` as a ninja step
 # (zephyr-lang-rust's `run_rust_clippy`), so a toolchain without clippy fails

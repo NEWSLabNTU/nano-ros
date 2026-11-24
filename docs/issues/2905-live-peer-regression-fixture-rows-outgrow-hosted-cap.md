@@ -1,6 +1,6 @@
 ---
 id: 2905
-title: "live-peer's host job builds about 141 fixture rows for 41 cells, each from scratch, and now ends minutes under GitHub's hosted-job cap"
+title: "ros2-interop's host job builds about 141 fixture rows for 41 cells, each from scratch, and now ends minutes under GitHub's hosted-job cap"
 status: open
 type: bug
 area: [ci, testing]
@@ -11,7 +11,7 @@ related: [phase-590, 2889, 1846, 2130]
 
 ## What fails
 
-`live-peer.yml`'s `regression` job ("rows whose board IS this runner") runs on a GitHub-hosted
+`ros2-interop.yml`'s `regression` job ("rows whose board IS this runner") runs on a GitHub-hosted
 `ubuntu-22.04` runner. GitHub ends a hosted job at 360 min, and the job's `timeout-minutes` is
 350. Its step "Build the fixtures those rows resolve" now takes most of that:
 
@@ -63,5 +63,5 @@ In order, without raising the cap first (raising it only moves the cliff):
 
 ## Acceptance
 
-Two scheduled `live-peer` runs in a row where the `regression` job's fixture step finishes in
+Two scheduled `ros2-interop` runs in a row where the `regression` job's fixture step finishes in
 under half the cap, and the step's build count matches the self-test's pinned count.

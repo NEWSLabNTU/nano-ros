@@ -104,7 +104,7 @@ retired-cmake-keywords:
 # that runs in CI is the one it cannot see. phase-405 W1 dropped `LAUNCH_ARGS`
 # from `nano_ros_entry` on a survey that excluded generated CMakeLists, and
 # every workspace-fixture configure died on `Cannot find source file:
-# LAUNCH_ARGS` — for six days, because host-tests runs on no gating event.
+# LAUNCH_ARGS` — for six days, because host-suite runs on no gating event.
 #
 # Both sides are literals, so the comparison is static: what `cmake_root.rs`
 # emits, against the keyword lists of every cmake frame the call traverses.
@@ -1043,7 +1043,7 @@ toolchain-paths-persist:
 # is written once, here. It declared weight 1 while running 6, and on the
 # 4-slot hosted runner of the daily shard that ran 6 configures on top of three
 # other gates: its neighbours tripled (source-gates 427 -> 1708 s) and two hit
-# the 2400 s timeout (host-tests 44228702426). nextest clamps a weight above
+# the 2400 s timeout (host-suite 44228702426). nextest clamps a weight above
 # `--test-threads`, so on a 4-slot runner this gate now runs alone.
 [group('needs:cli')]
 [group('needs:cmake')]

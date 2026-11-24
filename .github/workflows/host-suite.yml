@@ -25,7 +25,7 @@
 # Tier 1's OTHER half — `just build-test-fixtures lane=tier1` + `just ci tier1
 # run` (preconditions + rust-rtos-link-check + `test-all`) — is NOT here. It
 # was the `integration` job until issues 1684/1685, and it lives in
-# `run-matrix.yml`'s `tier1` job on the self-hosted runner now, because this
+# `platform-matrix.yml`'s `tier1` job on the self-hosted runner now, because this
 # runner cannot hold it:
 #
 #   * DISK. The job built a hand-picked fixture SUBSET (rust core + workspace
@@ -59,7 +59,7 @@
 # for every generated workspace root, because a generated root deliberately sets
 # no prefix. activate.sh only ever PREPENDS to PATH, so the `$GITHUB_PATH`
 # entries earlier steps add (the in-tree CLI) survive it.
-name: host-tests
+name: host-suite
 
 on:
   # phase-395 — POST-merge, not pre-merge. This lane needs ROS on the runner and
@@ -75,7 +75,7 @@ on:
   # GitHub's concurrency model: a group keeps ONE pending run, so each merge
   # that arrived while a run was in flight replaced the one waiting. With the
   # merge queue landing faster than this lane's 45-150 min, almost no commit
-  # was ever measured. `run-matrix.yml` moved to a schedule for the same reason;
+  # was ever measured. `platform-matrix.yml` moved to a schedule for the same reason;
   # the header above has said "NOT every direct push" since #57, and the
   # trigger contradicted it. One run a night that FINISHES is a verdict;
   # twenty-six that do not are noise.
@@ -102,7 +102,7 @@ jobs:
     timeout-minutes: 45
     # Per-job concurrency, one group per job; neither cancels.
     concurrency:
-      group: host-tests-unit-${{ github.ref }}-${{ github.event_name }}
+      group: host-suite-unit-${{ github.ref }}-${{ github.event_name }}
       # Schedule + dispatch only, so nothing supersedes: a nightly run that
       # finishes is the whole point of the lane (see `on:`).
       cancel-in-progress: false
@@ -221,7 +221,7 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 120
     concurrency:
-      group: host-tests-feature-sweep-${{ github.ref }}-${{ github.event_name }}
+      group: host-suite-feature-sweep-${{ github.ref }}-${{ github.event_name }}
       cancel-in-progress: false
     permissions:
       contents: read
@@ -281,7 +281,7 @@ jobs:
   #     `--lane build`).
   #   * api-parity, probe-workspace-caps — gate.yml's `check-fast-compile`.
   #   * the tier-1 coordinates this job exported are read by no fast or build
-  #     gate (only by the `run` part, in run-matrix.yml).
+  #     gate (only by the `run` part, in platform-matrix.yml).
   #
   # And it could not fit its runner: ~45 min of setup and bindings per shard
   # before any gate, then about 205 min of build-tier wall on 4 CPUs, so both
@@ -302,7 +302,7 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 60
     concurrency:
-      group: host-tests-rt-sched-${{ github.ref }}-${{ github.event_name }}
+      group: host-suite-rt-sched-${{ github.ref }}-${{ github.event_name }}
       cancel-in-progress: false
     permissions:
       contents: read
@@ -384,7 +384,7 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 30
     concurrency:
-      group: host-tests-miri-${{ github.ref }}-${{ github.event_name }}
+      group: host-suite-miri-${{ github.ref }}-${{ github.event_name }}
       cancel-in-progress: false
     permissions:
       contents: read
@@ -421,7 +421,7 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 45
     concurrency:
-      group: host-tests-asan-${{ github.ref }}-${{ github.event_name }}
+      group: host-suite-asan-${{ github.ref }}-${{ github.event_name }}
       cancel-in-progress: false
     permissions:
       contents: read
@@ -493,7 +493,7 @@ jobs:
   # comes from `.config/build-gate-weights.txt`, which
   # `scripts/ci/build-gate-weights.py <run-id>...` measures from these jobs'
   # own logs, and `NROS_BUILD_GATE_PRELOAD_LAST` charges the last shard with
-  # the two extra steps (the file's `@host-tests-last-shard` row).
+  # the two extra steps (the file's `@host-suite-last-shard` row).
   check-build:
     name: check / build tier + no-std [${{ matrix.shard }}/6] (daily + manual)
     strategy:
@@ -502,7 +502,7 @@ jobs:
         shard: [1, 2, 3, 4, 5, 6]
     runs-on: ubuntu-22.04
     concurrency:
-      group: host-tests-check-build-${{ matrix.shard }}-${{ github.ref }}-${{ github.event_name }}
+      group: host-suite-check-build-${{ matrix.shard }}-${{ github.ref }}-${{ github.event_name }}
       cancel-in-progress: false
     # Issue 1353 — no DWARF, as gate.yml's workflow-wide `env:` (this job came
     # from there in phase-559 W7). It is most of what the compile tier writes,
@@ -527,7 +527,7 @@ jobs:
       # `reclaim-disk.sh` can remove them (candidate 3 there). Without them
       # this job reclaimed only the tool cache and reached the gate runner's
       # 30 GiB floor with 29 GiB free (scheduled run 42739859713, all three
-      # shards). The same list `host-tests.yml`'s gate shards mount, where the
+      # shards). The same list `host-suite.yml`'s gate shards mount, where the
       # reclaim measured 32,744 MB freed and 51 GiB free after, in 107-153 s
       # (scheduled run 42747790725).
       volumes:
@@ -831,7 +831,7 @@ jobs:
         run: scripts/ci/disk-report.sh "before just check build"
 
       # Issue 1353 step 3, phase-466 W4. Same script and same reasoning as
-      # host-tests.yml, and it runs on the same events as the step it protects:
+      # host-suite.yml, and it runs on the same events as the step it protects:
       # `check build` is the only thing in this job that has ever exhausted the
       # disk, and it is `schedule`/`workflow_dispatch` only.
       #
@@ -889,7 +889,7 @@ jobs:
         if: ${{ !cancelled() }}
         env:
           NROS_BUILD_GATE_SHARD: ${{ matrix.shard }}/6
-          NROS_BUILD_GATE_PRELOAD_LAST: '@host-tests-last-shard'
+          NROS_BUILD_GATE_PRELOAD_LAST: '@host-suite-last-shard'
           NROS_GATE_SCOPE: build
         run: |
           source ./activate.sh
@@ -970,7 +970,7 @@ jobs:
 
   census:
     concurrency:
-      group: host-tests-census-${{ github.ref }}
+      group: host-suite-census-${{ github.ref }}
       cancel-in-progress: false
     permissions:
       contents: read
@@ -1080,7 +1080,7 @@ jobs:
 
   checkout-track:
     concurrency:
-      group: host-tests-checkout-track-${{ github.ref }}
+      group: host-suite-checkout-track-${{ github.ref }}
       cancel-in-progress: false
     permissions:
       contents: read
@@ -1118,7 +1118,7 @@ jobs:
 
   installed-track:
     concurrency:
-      group: host-tests-installed-track-${{ github.ref }}
+      group: host-suite-installed-track-${{ github.ref }}
       cancel-in-progress: false
     permissions:
       contents: read
@@ -1151,7 +1151,7 @@ jobs:
   # release, and only once probed.
   image-track:
     concurrency:
-      group: host-tests-image-track-${{ github.ref }}
+      group: host-suite-image-track-${{ github.ref }}
       cancel-in-progress: false
     name: image probe — starter
     runs-on: ubuntu-22.04

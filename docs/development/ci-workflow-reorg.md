@@ -32,7 +32,7 @@ landed `52de496b2`. Applied since:
   re-pointed to the single archive). check gates green.
 
 **File-merge landed** (phase-253): the 13 workflows are now the 6 tier files in the
-target table below — pr-checks / host-tests / nightly / release / images / docs.
+target table below — pr-checks / host-suite / nightly / release / images / docs.
 Path-gating via a `changes` (dorny/paths-filter) job + job-level concurrency preserve
 every former lane's trigger/cancel semantics; no branch-protection check references
 the old job names (none configured). The original target/migration sections below
@@ -88,7 +88,7 @@ ways, so CI can be green while `just check` is red (and vice versa):
 | New workflow | Absorbs | Trigger | concurrency | Local |
 | --- | --- | --- | --- | --- |
 | **pr-checks.yml** | check + ci(no_std) + sdk-index + scaffold + colcon | push+PR (broad) | cancel ✓ | `just ci-fast` (+ `just check sdk-index` etc. when prereqs present) |
-| **host-tests.yml** | host-unit + feature-sweep + rt-sched + the build tier `check-build` (moved from gate.yml's retired `schedule`, phase-559 W7) + lane census + book probes (tier-1 `test-all` moved to run-matrix.yml `tier1`, issues 1684/1685; tier-1 gates removed as a duplicate of gate.yml's then-scheduled run, issue 2141) | nightly | — | `just test-unit` / `just check feature-sweep` |
+| **host-suite.yml** | host-unit + feature-sweep + rt-sched + the build tier `check-build` (moved from gate.yml's retired `schedule`, phase-559 W7) + lane census + book probes (tier-1 `test-all` moved to platform-matrix.yml `tier1`, issues 1684/1685; tier-1 gates removed as a duplicate of gate.yml's then-scheduled run, issue 2141) | nightly | — | `just test-unit` / `just check feature-sweep` |
 | **nightly.yml** | host-integration(full) + platform-ci(6) + zephyr-dual-line | `schedule` + `workflow_dispatch` + path-scoped PR | **cancel ✗** | `just test-all`, `just <plat> ci`, `just zephyr ci-both` |
 | ~~release.yml~~ | release-nros-cli → nros-acceptance | tags `nros-v*` | — | DELETED 2026-07-11 (phase-288 D1/D2 — no prebuilt channel); `just acceptance` survives as the local source-route gate |
 | **images.yml** | build-ci-base-image + build-zephyr-ci-image | push (ci/docker/**) | cancel ✗ | (optional `just docker build-*-image`) |
@@ -124,7 +124,7 @@ reconciliation so `just check` / `ci-fast` go green.
    `check.yml` call `just check` (thin).
 3. Fold check + ci + sdk-index + scaffold + colcon → `pr-checks.yml` (thin
    `just` wrappers).
-4. host-unit + host-integration → `host-tests.yml` (PR + nightly split).
+4. host-unit + host-integration → `host-suite.yml` (PR + nightly split).
 5. New `nightly.yml`: host-integration(full) + platform-ci + zephyr-dual-line,
    `schedule` + `dispatch` + path-scoped PR, `cancel-in-progress: false`. Remove
    their per-push triggers.

@@ -2164,7 +2164,7 @@ check = { cmd = "socat" }
 # Issue 1800 — `tests/cyclone_slirp_pair.rs` (issue 1251's libslirp probe) puts
 # its guest in a user + network namespace whose only way out is `slirp4netns`,
 # and brings the namespace's loopback up with `ip`. Linux only: there is no brew
-# provider, and the test is a `linux` coordinate. live-peer's host job gets both
+# provider, and the test is a `linux` coordinate. ros2-interop's host job gets both
 # from its `nros setup --system` closure.
 [prereq.slirp4netns]
 role = "infra"

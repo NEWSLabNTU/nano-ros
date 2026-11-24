@@ -10,7 +10,7 @@
 #
 # WHAT THIS IS FOR
 #
-# The fixture lanes (run-matrix tier 1 / tier 2, the tier-2 nightly) spend
+# The fixture lanes (platform-matrix tier 1 / tier 2, the tier-2 nightly) spend
 # 30-45 min in `just build <lane>`, and every run of them started cold:
 # `actions/checkout` runs `git clean -ffdx` in `_work/<repo>/<repo>`, which
 # deletes `build/`, every `generated/`, every leaf build dir and every target

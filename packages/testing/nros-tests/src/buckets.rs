@@ -160,7 +160,7 @@ pub const BUCKET_TIERS: &[BucketTier] = &[
         bucket: Bucket::Interop,
         tiers: &[CiTier::Tier1, CiTier::Tier2Nightly, CiTier::Tier3],
         reason: "interop/bridge cells are in the ci_lane pool (Kind axis), so the 1-wise \
-                 subset rides tier1; FULL live-peer interop is a nightly cost, all @ tier3",
+                 subset rides tier1; FULL ros2-interop is a nightly cost, all @ tier3",
     },
     BucketTier {
         bucket: Bucket::RealtimeDim,

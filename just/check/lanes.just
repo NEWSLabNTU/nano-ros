@@ -4563,9 +4563,9 @@ no-std:
 # 6 s warm on 32 cores.
 #
 # EXEMPT because it needs the pinned nightly's `miri` component, which the
-# merge-gating images do not carry; host-tests.yml's daily `miri` job installs
+# merge-gating images do not carry; host-suite.yml's daily `miri` job installs
 # it and runs this by name.
-[metadata("tier", "exempt", "needs the pinned nightly's `miri` component; host-tests.yml's daily `miri` job installs it and runs this by name (phase-573 W2)")]
+[metadata("tier", "exempt", "needs the pinned nightly's `miri` component; host-suite.yml's daily `miri` job installs it and runs this by name (phase-573 W2)")]
 miri-executor-reentry:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -4619,8 +4619,8 @@ miri-executor-reentry:
 # purpose, so LeakSanitizer would report the design, not a defect.
 #
 # EXEMPT because `-Zsanitizer` needs the pinned NIGHTLY, which no merge-gating
-# lane builds with; host-tests.yml's daily `asan` job runs this by name.
-[metadata("tier", "exempt", "needs the pinned nightly for `-Zsanitizer=address`; host-tests.yml's daily `asan` job runs this by name (phase-573 W5e)")]
+# lane builds with; host-suite.yml's daily `asan` job runs this by name.
+[metadata("tier", "exempt", "needs the pinned nightly for `-Zsanitizer=address`; host-suite.yml's daily `asan` job runs this by name (phase-573 W5e)")]
 address-sanitizer:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -5359,7 +5359,7 @@ test-targets:
 # feature neither names is linted nowhere, and the first sweeps found 20 such
 # combinations red across nros-node, nros, nros-log, nros-c and nros-cpp — two
 # of them did not compile. ~200 clippy runs, ~15 min warm, so it is SCHEDULED
-# (host-tests.yml `feature-sweep`), never merge-gating, and not in `build`.
+# (host-suite.yml `feature-sweep`), never merge-gating, and not in `build`.
 feature-sweep *args:
     #!/usr/bin/env bash
     set -euo pipefail

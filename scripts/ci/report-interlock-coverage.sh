@@ -38,7 +38,7 @@
 # The `failure` arm below used to say "RAN and FAILED", full stop. That is two
 # different runs wearing one sentence: a lane that executed its cells and found
 # a regression, and a lane that died in provisioning having tested nothing.
-# `run-matrix.yml`'s last eight runs were all the second kind and all read as
+# `platform-matrix.yml`'s last eight runs were all the second kind and all read as
 # the first. So an OPTIONAL fourth argument carries the stage the lane reached
 # (`scripts/ci/lane-stage.py --report` produces it); when it is present and says
 # NO VERDICT, this says so instead of claiming the lane ran.

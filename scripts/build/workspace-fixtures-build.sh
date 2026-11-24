@@ -272,7 +272,7 @@ build_workspace() {
     # cyclonedds arm was written alone (issue 0120) and the reason it gives —
     # "the build otherwise fails DEEP and cryptically" — is a property of
     # VENDORING, not of cyclonedds. XRCE vendors the same way and had no arm,
-    # so on 2026-09-10 the live-peer lane died in a `build.rs` panic four frames
+    # so on 2026-09-10 the ros2-interop lane died in a `build.rs` panic four frames
     # down:
     #
     #   thread 'main' panicked at nros-rmw-xrce-cffi/build.rs:129:13:
@@ -316,7 +316,7 @@ build_workspace() {
     # time, so it has no codegen_out — skip the codegen-system step for those.
 
     echo "  -> $id ($lang) $dir"
-    # issue 1500 — per-row wall clock. This build is ~53 of `host-tests`'s
+    # issue 1500 — per-row wall clock. This build is ~53 of `host-suite`'s
     # minutes and wrote 47 000 lines with no time in any of them, so which
     # rows cost what was unanswerable from the log it already uploads.
     local row_t0=$SECONDS
@@ -528,7 +528,7 @@ build_workspace() {
             #
             # So this gate had NEVER RUN, and this build had never got past
             # here, from the day the block landed (2026-09-07) -- which is why
-            # the live-peer lane could not reach a single cell.
+            # the ros2-interop lane could not reach a single cell.
             #
             # `|| true` because an ABSENT elf is a legitimate state that the
             # `[ -n ... ]` below already handles; it must not be a silent abort.
@@ -765,7 +765,7 @@ done
 # and an image that cannot configure on this host is left UNSTAMPED so the next
 # configure retries it (`cmd/configure.rs`, Ruling R22). On a host with no
 # Zephyr SDK the rust workspace's Zephyr images never stamp, so a caller running
-# this script once per row (live-peer's host job) re-ran the whole workspace's
+# this script once per row (ros2-interop's host job) re-ran the whole workspace's
 # configure for every row: 91-133 s a language-workspace row, 106-121 min of
 # run 44456527279's 226-min loop, for rows whose own build took 3-45 s.
 # Naming the image (`--image <bringup>:<id>`) scopes the currency check and

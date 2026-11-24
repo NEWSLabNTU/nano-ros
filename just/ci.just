@@ -162,7 +162,7 @@ l1: gate
 # run: preconditions, `just check`, then `rust-rtos-link-check` + `test-all`.
 #
 # Issue 1651 — the PARTS exist so CI can run them on two runners at once. The
-# `host-tests` integration job reached this recipe ~82 minutes in, and `just
+# `host-suite` integration job reached this recipe ~82 minutes in, and `just
 # check` alone (fast + build) then took ~62 of its remaining 68, so every run
 # from 2026-10-03 on hit the job's 150-minute ceiling inside `just check` —
 # a job timeout reads `cancelled`, and `test-all` (the suite the lane exists
@@ -173,8 +173,8 @@ l1: gate
 #
 # Where they run (issues 1684/1685, 2141): `gates`' work in gate.yml's
 # scheduled `check-fast` / `check-fast-compile` / `check-build` jobs, which run
-# the same gate set (host-tests' `gates` job duplicated them and was removed in
-# issue 2141), and `run` in run-matrix.yml's `tier1` job on the self-hosted runner, after
+# the same gate set (host-suite' `gates` job duplicated them and was removed in
+# issue 2141), and `run` in platform-matrix.yml's `tier1` job on the self-hosted runner, after
 # `just build tier1` — the hosted runner has neither the disk for the tier's
 # fixtures (+37..39 G) nor the Zephyr/ThreadX provisioning its cover selects.
 #
@@ -238,7 +238,7 @@ _tier1-step step:
     export NROS_FIXTURE_LANE=tier1 NROS_TEST_COORDS="$coords"
     # issue 1758 — the scope's OTHER half. Coordinates cannot say "no stock ROS 2
     # peer", and this lane's runner has the zenoh router and no ROS 2 CLI: the ROS
-    # 2 interop tests belong to live-peer (`.config/interop-verdicts.toml`). Said
+    # 2 interop tests belong to ros2-interop (`.config/interop-verdicts.toml`). Said
     # here, they deselect as `[SKIPPED:lane]` on every host alike; unsaid, every
     # one of them FAILS where ROS 2 is absent — never a skip that reads as a pass.
     unclaimed="$(nros_lane_unclaimed tier1)"
@@ -534,7 +534,7 @@ _matrix-run:
     export NROS_FIXTURE_LANE=tier2 NROS_TEST_COORDS="$coords"
     # issue 1758 — the scope's OTHER half. Coordinates cannot say "no stock ROS 2
     # peer", and this lane's runner has the zenoh router and no ROS 2 CLI: the ROS
-    # 2 interop tests belong to live-peer (`.config/interop-verdicts.toml`). Said
+    # 2 interop tests belong to ros2-interop (`.config/interop-verdicts.toml`). Said
     # here, they deselect as `[SKIPPED:lane]` on every host alike; unsaid, every
     # one of them FAILS where ROS 2 is absent — never a skip that reads as a pass.
     unclaimed="$(nros_lane_unclaimed tier2)"
@@ -612,7 +612,7 @@ matrix-nightly:
     export NROS_FIXTURE_LANE=tier2-nightly NROS_TEST_COORDS="$coords"
     # issue 1758 — the scope's OTHER half. Coordinates cannot say "no stock ROS 2
     # peer", and this lane's runner has the zenoh router and no ROS 2 CLI: the ROS
-    # 2 interop tests belong to live-peer (`.config/interop-verdicts.toml`). Said
+    # 2 interop tests belong to ros2-interop (`.config/interop-verdicts.toml`). Said
     # here, they deselect as `[SKIPPED:lane]` on every host alike; unsaid, every
     # one of them FAILS where ROS 2 is absent — never a skip that reads as a pass.
     unclaimed="$(nros_lane_unclaimed tier2-nightly)"
@@ -665,7 +665,7 @@ full:
 # The full heavy lane stays `just ci` / `just test-all`.
 # Provision the zenoh router ROS itself ships (RFC-0075 / phase-362).
 #
-# ONE spelling. `host-tests.yml` carried this twice — once as an if/else, once
+# ONE spelling. `host-suite.yml` carried this twice — once as an if/else, once
 # as a `||` chain — in two jobs that need the same thing, which is the second
 # spelling CLAUDE.md warns about wearing CI clothes. There is no `just zenohd
 # setup` any more because the vendored router was deleted; what remains is a

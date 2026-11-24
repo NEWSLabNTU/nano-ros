@@ -58,7 +58,7 @@ import yaml
 ROOT = Path(__file__).resolve().parent.parent
 GATE_YML = ROOT / ".github" / "workflows" / "gate.yml"
 # Workflows whose sharded jobs rule 5 checks.
-SHARD_WORKFLOWS = [GATE_YML, ROOT / ".github" / "workflows" / "host-tests.yml"]
+SHARD_WORKFLOWS = [GATE_YML, ROOT / ".github" / "workflows" / "host-suite.yml"]
 
 # gate name -> the decision that makes it merge-gating.
 MERGE_GATING = {

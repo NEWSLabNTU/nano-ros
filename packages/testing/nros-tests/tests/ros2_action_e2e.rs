@@ -23,7 +23,7 @@
 //!
 //! Interop cells: `native-action-rust-cyclone-{r2n,n2r}` and, since phase-455
 //! W3, `native-action-rust-zenoh-{r2n,n2r}` (`nros_tests::interop::CELLS`).
-//! This file is the ACTIONS family's only live-peer coverage — every action row
+//! This file is the ACTIONS family's only ros2-interop coverage — every action row
 //! in `matrix::CELLS` is nano-to-nano.
 //!
 //! **The zenoh half is a different subject, not a second copy.** Its cells were
@@ -358,7 +358,7 @@ fn the_nano_ros_action_client_drives_a_stock_ros2_server() {
 // ── phase-455 W3 — the same two directions over zenoh ───────────────────────
 //
 // Interop cells `native-action-rust-zenoh-r2n` / `-n2r`. The two Cyclone cases
-// above were the whole of the ACTIONS family's live-peer coverage, so
+// above were the whole of the ACTIONS family's ros2-interop coverage, so
 // zenoh-pico — the backend whose reply-slot table phase-455 is about — had
 // never met a stock ROS 2 peer on this path at all.
 //

@@ -9,7 +9,7 @@
 #   * issue 1483: the fast lane's provisioning was a step in two jobs, and the
 #     rosidl clone reached only one;
 #   * issue 2382: the `build` lane claims `submodules` and `git-history`, and the
-#     jobs that run it (gate.yml's build-tier shards, host-tests' tier-1 gates)
+#     jobs that run it (gate.yml's build-tier shards, host-suite' tier-1 gates)
 #     provided neither, so from phase-543 W5/W6 (2026-11-07) every one of them
 #     stopped in the lane preflight and no gate ran.
 #

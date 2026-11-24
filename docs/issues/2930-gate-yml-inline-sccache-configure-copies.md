@@ -20,8 +20,8 @@ carry the same contract, issue 0874's: prove the server starts, publish to
 or broken. The warm job also publishes `RUSTC_WRAPPER` as the shim (issue 1646).
 
 phase-591 W3 added `scripts/ci/sccache-configure.sh` as the one spelling of
-that step (`--dir`, `--size`, `--wrapper`, `--stats`). live-peer and
-host-tests use it. gate.yml was left alone so the change that added the
+that step (`--dir`, `--size`, `--wrapper`, `--stats`). ros2-interop and
+host-suite use it. gate.yml was left alone so the change that added the
 helper did not also rewrite the merge-gating workflow.
 
 ## Why it matters

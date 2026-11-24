@@ -5,6 +5,6 @@ level past its SCHED_DEADLINE budget is throttled by the kernel, and
 the flight-controller scenario (a 1 kHz loop beside 5 ms telemetry) keeps its deadlines for 60 s
 (zero misses on a PREEMPT_RT kernel, the host's floor on a generic one). The
 tests get the capability from a docker container granted `SYS_NICE`, so they
-need no `sudo`; host-tests' new `rt-sched` job is the lane that claims it, and
+need no `sudo`; host-suite' new `rt-sched` job is the lane that claims it, and
 everywhere else they skip by lane. The book has a new chapter, "The Real-Time
 Execution Model".

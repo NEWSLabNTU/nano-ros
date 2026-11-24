@@ -13,7 +13,7 @@
 # runs once per landed change and its job is to bound how far a regression can
 # travel before anyone notices.
 #
-# phase-410 — TIER 2 MOVED OUT, to `run-matrix.yml` on a clock.
+# phase-410 — TIER 2 MOVED OUT, to `platform-matrix.yml` on a clock.
 #
 # It ran here on `push(main)` with `cancel-in-progress: true`. That setting is
 # right for "is main good NOW", and fatal for a lane this long: measured
@@ -33,8 +33,8 @@
 #
 # WHAT THIS DOES NOT DO
 #
-# No fixture tier runs here. Tier 2 is `run-matrix.yml` (daily, self-hosted,
-# see above); tier 1 is `run-matrix.yml`'s `tier1` job. The host boards'
+# No fixture tier runs here. Tier 2 is `platform-matrix.yml` (daily, self-hosted,
+# see above); tier 1 is `platform-matrix.yml`'s `tier1` job. The host boards'
 # behaviour pairs per merge are measured on demand by the dispatch-only
 # `merge-runtime.yml` (phase-535 W8; those boards are `daily` since the
 # 2026-11-12 ruling). The plan's `ci-l4-tier1` recipe never existed and is not coming:

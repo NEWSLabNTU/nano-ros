@@ -3,7 +3,7 @@
 
 ## The defect
 
-`run-matrix.yml` is the only automated path to tier 2's runtime cells. Its last
+`platform-matrix.yml` is the only automated path to tier 2's runtime cells. Its last
 eight runs all say the same word — `failure` — and they hide FOUR different
 stories:
 
@@ -66,7 +66,7 @@ real run of this lane, recorded from `gh`, and asserted in the self-test.
 Usage::
 
     lane-stage.py --report --lane "tier 2 (1-wise matrix)"   # in-workflow
-    lane-stage.py --history [--runs 8] [--workflow run-matrix.yml]
+    lane-stage.py --history [--runs 8] [--workflow platform-matrix.yml]
     lane-stage.py --selftest
 """
 
@@ -103,7 +103,7 @@ STAGE_MARKERS = (
     # The build: real code failures, but not the runtime verdict.
     (BUILD, ("build",)),
     # Everything that has to be true before the lane can build anything.
-    # `ledger` is live-peer.yml's: that lane reads `.config/interop-verdicts.toml`
+    # `ledger` is ros2-interop.yml's: that lane reads `.config/interop-verdicts.toml`
     # before it runs anything, and a lane that cannot read its own membership
     # has not reached a stage.
     #
@@ -142,7 +142,7 @@ LABELS = {
     # not build, a peer that is not installed, a membership that only skipped.
     # Without this, a step outcome is the whole story and every such run reads
     # as "a recorded-passing cell regressed", which is the one thing the
-    # live-peer lane exists to say.
+    # ros2-interop lane exists to say.
     "no-verdict-cells": "NO VERDICT: the cells could not run",
     # issue 1754. The cells STEP is `just ci <lane>`, and its first inner step
     # is the `check::default` preflight: run 37685900447 failed there (one
@@ -200,7 +200,7 @@ def classify(steps, job_conclusion=None, cells_ran=None, inner=None):
 
     `cells_ran` is the FOURTH axis, and only the in-workflow half can supply it
     (phase-441 W4): a step outcome says the cells step failed, never whether the
-    cells produced results. `just linux test-live-peer-regression` already
+    cells produced results. `just linux test-ros2-interop-regression` already
     knows — it answers 2 for "this lane could not run" and 1 for a real
     regression — and the workflow forwards that as `NROS_LANE_CELLS_RAN`.
     `None` means nobody said, which is what `--history` has for every past run,
@@ -337,7 +337,7 @@ def report(lane, steps_json):
         out.append("")
         out.append("  This run answers NOTHING about the code under test. The lane")
         out.append("  stopped before its cells, so a regression landing today would")
-        out.append("  look exactly like this. On `run-matrix.yml` that is how issues")
+        out.append("  look exactly like this. On `platform-matrix.yml` that is how issues")
         out.append("  1075/1098/1104/1114 rode in (issue 1158); this reporter exists")
         out.append("  so no lane has to learn it a second time.")
     print("\n".join(out))
@@ -544,7 +544,7 @@ def _steps(*pairs):
     return [{"name": n, "conclusion": c} for n, c in pairs]
 
 
-# Every entry is a REAL run of `run-matrix.yml`, recorded from
+# Every entry is a REAL run of `platform-matrix.yml`, recorded from
 # `gh run view <id> --json jobs` on 2026-09-07. These are the eight runs issue
 # 1158 tabulates. Housekeeping steps are kept verbatim so the classifier is
 # exercised on the noise it will actually see.
@@ -592,7 +592,7 @@ HISTORICAL = (
 )
 
 
-# The one run `live-peer.yml` has had, recorded from
+# The one run `ros2-interop.yml` has had, recorded from
 # `gh run view 34186427723 --json jobs` on 2026-09-09. Verbatim, housekeeping
 # included, and under the step names that run actually used — which is why the
 # fixture step here still says `cells`: this is the evidence for the rename, not
@@ -648,7 +648,7 @@ LaneSpec = collections.namedtuple(
     "LaneSpec", "workflow job report_job expected_map")
 
 LANES = (
-    LaneSpec("run-matrix.yml", "matrix", "coverage", {
+    LaneSpec("platform-matrix.yml", "matrix", "coverage", {
         # phase-489 W6 — the persistent tree is synced before setup.
         "Check out the persistent fixture tree at this commit": PROVISIONING,
         "just setup tier2": PROVISIONING,
@@ -656,8 +656,8 @@ LANES = (
         "just build tier2": BUILD,
         "just ci matrix": CELLS,
     }),
-    # issues 1684/1685 — tier 1's cells, moved off host-tests to this runner.
-    LaneSpec("run-matrix.yml", "tier1", "coverage-tier1", {
+    # issues 1684/1685 — tier 1's cells, moved off host-suite to this runner.
+    LaneSpec("platform-matrix.yml", "tier1", "coverage-tier1", {
         # phase-489 W6 — the persistent tree is synced before setup.
         "Check out the persistent fixture tree at this commit": PROVISIONING,
         "just setup tier1": PROVISIONING,
@@ -669,7 +669,7 @@ LANES = (
     # regressed" — but only INSIDE the cell loop, by exit code. Everything above
     # the loop was a flat `failure`, which is the same ambiguity one step
     # upstream of the guard.
-    LaneSpec("live-peer.yml", "regression", "stage", {
+    LaneSpec("ros2-interop.yml", "regression", "stage", {
         "Build the nros CLI": BUILD,
         "Report what the ledger claims, before running anything": PROVISIONING,
         "Reclaim disk before the fixtures": PROVISIONING,
@@ -685,7 +685,7 @@ LANES = (
     # the split exists at all: "the board rows could not be built" and "the
     # board rows regressed" have to be different sentences, and a stage label
     # is per JOB.
-    LaneSpec("live-peer.yml", "board", "stage-board", {
+    LaneSpec("ros2-interop.yml", "board", "stage-board", {
         "Build the nros CLI": BUILD,
         "Register the baked Zephyr SDK for this HOME": PROVISIONING,
         "Reclaim disk before the SDK setup": PROVISIONING,
@@ -699,7 +699,7 @@ LANES = (
     }),
     # Issue 1758 — the board rows the Zephyr image cannot build, in their own
     # job in the `nano-ros-ci` image, so each image's rows have their own stage.
-    LaneSpec("live-peer.yml", "board-ci", "stage-board-ci", {
+    LaneSpec("ros2-interop.yml", "board-ci", "stage-board-ci", {
         "Build the nros CLI": BUILD,
         "Reclaim disk before the SDK setup": PROVISIONING,
         "Provision the declared system closure (phase-413 W3)": PROVISIONING,
@@ -711,7 +711,7 @@ LANES = (
 )
 
 # Kept for `--history`'s default and for anything importing the old name.
-WORKFLOW = _workflow_path("run-matrix.yml")
+WORKFLOW = _workflow_path("platform-matrix.yml")
 EXPECTED_MAP = LANES[0].expected_map
 
 
@@ -1046,7 +1046,7 @@ def selftest(verbose=False):
                         ("just ci matrix", "skipped")), "failure").reached_cells
         is False)
 
-    # 8b. live-peer.yml — phase-433 W5. The lane whose ledger says 20 of 20
+    # 8b. ros2-interop.yml — phase-433 W5. The lane whose ledger says 20 of 20
     #     cells pass live, and whose single run reached ZERO of them.
     lp = classify(_LIVE_PEER_FIXTURES_DIED, "failure")
     chk("34186427723 (2026-09-08) -> no-verdict/build, not a cell regression",
@@ -1080,7 +1080,7 @@ def selftest(verbose=False):
     chk("`Report what the ledger claims, before running anything` is provisioning",
         stage_of("Report what the ledger claims, before running anything")
         == PROVISIONING)
-    chk("live-peer cells that RAN and failed are a verdict",
+    chk("ros2-interop cells that RAN and failed are a verdict",
         classify(_steps(
             ("Build the nros CLI", "success"),
             ("Report what the ledger claims, before running anything", "success"),
@@ -1176,7 +1176,7 @@ def selftest(verbose=False):
         print(line, file=sys.stderr)
 
     # 11. issue 1365 — NO RUNNER CLAIMED IT. Job 103881434950 (`tier 2 (1-wise
-    #     matrix)`, run-matrix 34814226310), recorded from the jobs API on
+    #     matrix)`, platform-matrix 34814226310), recorded from the jobs API on
     #     2026-11-04: cancelled, `steps` empty, `runner_name` empty, queued
     #     2026-09-14T06:37:05Z and cancelled exactly 24 h later. Its coverage
     #     job printed `cancelled` and passed.
@@ -1224,7 +1224,7 @@ def main():
     ap.add_argument("--lane", default="this lane")
     ap.add_argument("--history", action="store_true",
                     help="classify recent runs of a workflow via `gh`")
-    ap.add_argument("--workflow", default="run-matrix.yml")
+    ap.add_argument("--workflow", default="platform-matrix.yml")
     ap.add_argument("--job", default=None,
                     help="restrict --history to one job name")
     ap.add_argument("--runs", type=int, default=8)

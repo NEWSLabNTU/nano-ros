@@ -74,7 +74,7 @@ skips is RED; a gate that needs something a lane does not claim declares it,
 
 Give a gate the build tier only when it CANNOT run without something built
 — **not** as a default, because since phase-396 W1 that tier runs on
-`schedule`/`workflow_dispatch` only (since phase-559 W7, in `host-tests.yml`'s
+`schedule`/`workflow_dispatch` only (since phase-559 W7, in `host-suite.yml`'s
 daily `check-build` job, no longer `gate.yml`) and therefore gates nothing a
 merge passes through.
 
@@ -288,9 +288,9 @@ After rebasing over a remote submodule-pointer change, run `git submodule status
 A release is dispatched with `gh workflow run release-nros.yml --ref release/<ver> -f version=<ver>`, and its first job, `lanes`, refuses two things on every run, dry runs included:
 
 - **A re-cut of a published version.** `release/<ver>` may be re-cut from `main` under the same version name for as long as the version is unpublished, which is while no `nros-<ver>` tag exists. Once the tag exists, the name is burned: the branch is frozen at the tagged commit, and a fix reaches it only as `git cherry-pick -x <main-sha>` of a commit already on `main`. Either way, every commit on top of the cut must be such a cherry-pick; the `(cherry picked from commit …)` line is what the check reads. The refusal names the tag and every commit that is not a cherry-pick. (`scripts/release/release-branch-frozen.py`)
-- **A commit the slow lanes did not pass.** Every slow lane must be green (the nightly, tier 1, tier 2, `host-tests` and `live-peer`), in scheduled runs on `main` (or in a `workflow_dispatch` on `main` at that exact commit with every job green, user ruling 2026-11-24; never a branch dispatch), on the cut and on each cherry-pick's source commit, or on an ancestor of it with only documentation changed since. "Documentation" is `scripts/ci/gate-tier.py`'s `tier()`. The lanes never run on a release branch, so a fix is measured where it landed. The refusal names the lane, the run it read and why that run did not count. Every scheduled workflow is a lane or sits in the script's `NOT_LANES` with a reason (runner-watchdog, automation, weekly); its self-test refuses one that is neither, so a new nightly cannot fall outside the rule. (`scripts/release/release-lanes-green.py`)
+- **A commit the slow lanes did not pass.** Every slow lane must be green (the nightly, tier 1, tier 2, `host-suite` and `ros2-interop`), in scheduled runs on `main` (or in a `workflow_dispatch` on `main` at that exact commit with every job green, user ruling 2026-11-24; never a branch dispatch), on the cut and on each cherry-pick's source commit, or on an ancestor of it with only documentation changed since. "Documentation" is `scripts/ci/gate-tier.py`'s `tier()`. The lanes never run on a release branch, so a fix is measured where it landed. The refusal names the lane, the run it read and why that run did not count. Every scheduled workflow is a lane or sits in the script's `NOT_LANES` with a reason (runner-watchdog, automation, weekly); its self-test refuses one that is neither, so a new nightly cannot fall outside the rule. (`scripts/release/release-lanes-green.py`)
 
-So pick the cut from a commit every lane (`nightly.yml`, `run-matrix.yml`, `host-tests.yml`, `live-peer.yml`) ran green, on a schedule or dispatched on `main` at that commit, and land each fix on `main` before cherry-picking it. Their gates are `just check release-branch-frozen` and `just check release-lanes-green`.
+So pick the cut from a commit every lane (`nightly.yml`, `platform-matrix.yml`, `host-suite.yml`, `ros2-interop.yml`) ran green, on a schedule or dispatched on `main` at that commit, and land each fix on `main` before cherry-picking it. Their gates are `just check release-branch-frozen` and `just check release-lanes-green`.
 
 ## Branch policy for `main` (GitHub ruleset `main-rules`)
 
@@ -486,7 +486,7 @@ lane=tier2`, after merge. Everything pre-merge is fixture-free by construction,
 which is why `ci-l1`'s "NO FIXTURES" claim has to hold and why
 `check-lane-contracts` enforces it — a CI job may resolve an artifact only if
 that job builds it.
-| schedule (03:00) | `host-tests` (L2) — schedule-only since 2026-10-03: on push, 26 of 29 runs were cancelled | ~15 min | no |
+| schedule (03:00) | `host-suite` (L2) — schedule-only since 2026-10-03: on push, 26 of 29 runs were cancelled | ~15 min | no |
 | schedule | `nightly` (L3/L4 matrix) | hours | no |
 
 Measured on the hosted runner: of an 878 s gate, `check-fast` is 131 s and

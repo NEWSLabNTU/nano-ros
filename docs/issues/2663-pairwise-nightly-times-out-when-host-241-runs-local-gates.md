@@ -18,7 +18,7 @@ to take is the user's decision.
 
 ## What was measured
 
-Run 43816955034 (`run-matrix`, `schedule`, main at 09618e86a5), job
+Run 43816955034 (`platform-matrix`, `schedule`, main at 09618e86a5), job
 `tier 2 nightly (pairwise cover)` on `newslab-server-241`, 2026-11-16:
 
 | step | start (UTC) | minutes |
@@ -29,7 +29,7 @@ Run 43816955034 (`run-matrix`, `schedule`, main at 09618e86a5), job
 | sweep orphans and disk | never started | |
 
 The job was **cancelled** at 23:17:00, its `timeout-minutes: 490`
-(`.github/workflows/run-matrix.yml`), with the build step itself green. No
+(`.github/workflows/platform-matrix.yml`), with the build step itself green. No
 cell ran, so the night gives no verdict at all.
 
 The same build step on the same runner, from the runners' job history:
@@ -57,7 +57,7 @@ step W14 found 13-22x slower on this host.
    like-for-like comparison.
 2. **Pause the host's gate queue during the nightly window.** The queue on
    host 241 holds local gates and fixture builds while a scheduled
-   `run-matrix` job runs there (from about 05:00 and 15:00 UTC). Cost: the
+   `platform-matrix` job runs there (from about 05:00 and 15:00 UTC). Cost: the
    agents' gates wait, and the rule lives outside the repo, in how the host
    queue is run.
 3. **A larger timeout.** Raise the job's `timeout-minutes` from 490, for
@@ -80,7 +80,7 @@ place tier 2 can run:
   one runner. No job is pinned to it. It is what phase-489 W14's
   like-for-like dispatch needs.
 - **`nros-heavy`, a role.** It means "this host shares no cores with local
-  gates, so the heavy scheduled jobs may run here". `run-matrix.yml`'s
+  gates, so the heavy scheduled jobs may run here". `platform-matrix.yml`'s
   `tier 2 (1-wise matrix)` and `tier 2 nightly (pairwise cover)` are to
   request it (see "Order" below).
   The operator grants it to `newslab-118-server` today, and to any later

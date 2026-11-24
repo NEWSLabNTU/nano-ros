@@ -293,7 +293,7 @@ environment that shares `$HOME` needs a hand-set `NROS_HOME`.
 
 ## What this already broke
 
-* **The tier-2 lane, nightly.** `run-matrix` has produced no runtime verdict in
+* **The tier-2 lane, nightly.** `platform-matrix` has produced no runtime verdict in
   nine consecutive runs; two died on D1 — a shared Zephyr workspace on the
   self-hosted runner sitting inside a *second* nano-ros checkout, so every
   `nros` invocation was refused, reported as an error about a binary, deep in a

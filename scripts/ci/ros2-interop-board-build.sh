@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Build the fixtures a live-peer board job's rows resolve — issue 1758.
+# Build the fixtures a ros2-interop board job's rows resolve — issue 1758.
 #
-#   live-peer-board-build.sh run      "<scopes>" "<KEY=value ...>"
-#   live-peer-board-build.sh dry-run  "<scopes>" "<KEY=value ...>"
-#   live-peer-board-build.sh selftest
+#   ros2-interop-board-build.sh run      "<scopes>" "<KEY=value ...>"
+#   ros2-interop-board-build.sh dry-run  "<scopes>" "<KEY=value ...>"
+#   ros2-interop-board-build.sh selftest
 #
 # The narrowing comes from `check-interop-verdicts.py --narrowing`, one
 # `KEY=value` per line (the workflow joins them with spaces). A key named ONCE
@@ -32,7 +32,7 @@ plan() {
     for kv in $narrowing; do
         case "$kv" in
             *=*) ;;
-            *) echo "live-peer-board-build: narrowing '$kv' is not KEY=value" >&2; return 2 ;;
+            *) echo "ros2-interop-board-build: narrowing '$kv' is not KEY=value" >&2; return 2 ;;
         esac
         key="${kv%%=*}"
         if [ -z "${count[$key]:-}" ]; then
@@ -47,7 +47,7 @@ plan() {
     for key in "${order[@]}"; do
         if [ "${count[$key]}" -gt 1 ]; then
             if [ -n "$repeated" ]; then
-                echo "live-peer-board-build: both $repeated and $key carry several values;" \
+                echo "ros2-interop-board-build: both $repeated and $key carry several values;" \
                     "which pairs to build together is not stated, so this refuses" >&2
                 return 2
             fi
@@ -91,7 +91,7 @@ selftest() {
     local fail=0 got
     check() {
         if [ "$2" != "$3" ]; then
-            printf 'live-peer-board-build selftest: %s\n  want: %q\n  got:  %q\n' "$1" "$3" "$2" >&2
+            printf 'ros2-interop-board-build selftest: %s\n  want: %q\n  got:  %q\n' "$1" "$3" "$2" >&2
             fail=1
         fi
     }
@@ -105,7 +105,7 @@ selftest() {
     got="$(plan "")"
     check "no narrowing is one unnarrowed pass" "$got" ""
     if plan "A=1 A=2 B=1 B=2" >/dev/null 2>&1; then
-        echo "live-peer-board-build selftest: two repeated keys were planned, not refused" >&2
+        echo "ros2-interop-board-build selftest: two repeated keys were planned, not refused" >&2
         fail=1
     fi
     got="$(build dry-run "freertos" "NROS_FIXTURE_ID=a NROS_FIXTURE_ID=b" | grep -c '^just build')"
@@ -115,9 +115,9 @@ selftest() {
     repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
     real="$(python3 "$repo_root/scripts/check-interop-verdicts.py" \
         --list-passing --runner board-ci --narrowing | tr '\n' ' ')"
-    plan "$real" >/dev/null || { echo "live-peer-board-build selftest: the ledger's board-ci narrowing does not plan: $real" >&2; fail=1; }
+    plan "$real" >/dev/null || { echo "ros2-interop-board-build selftest: the ledger's board-ci narrowing does not plan: $real" >&2; fail=1; }
     [ "$fail" -eq 0 ] || return 1
-    echo "live-peer-board-build: OK -- a repeated exact key builds once per value"
+    echo "ros2-interop-board-build: OK -- a repeated exact key builds once per value"
 }
 
 case "${1:-}" in

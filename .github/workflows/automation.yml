@@ -882,7 +882,7 @@ jobs:
 
       # The same question one level up: not "did THIS nightly report" but
       # "which lanes on main have stopped reporting at all". gate.yml's push
-      # lane was red for 100 consecutive runs and host-tests finished 3 of 29,
+      # lane was red for 100 consecutive runs and host-suite finished 3 of 29,
       # and nothing said so, because nothing that reads a pull request's
       # checks reads these. Daily, because this job already is.
       - name: Which lanes on main produce no signal?

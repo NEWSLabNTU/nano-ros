@@ -181,7 +181,7 @@ per-workflow minutes low and failures isolated to one platform:
 | Workflow | What it shows |
 |----------|---------------|
 | `gate.yml` | the fast gate: path-filtered jobs, container image + credentials, build-CLI-from-source, `nros setup --source` provisioning |
-| `host-tests.yml` | ROS on the runner, and installing a package rather than assuming it |
+| `host-suite.yml` | ROS on the runner, and installing a package rather than assuming it |
 | `nightly.yml` | the broad matrix, and lanes too expensive to gate a merge |
 | `queue.yml` | `merge_group`, `cancel-in-progress: false`, and a self-hosted job interlocked on a repo variable |
 | `post-submit.yml` | push-to-`main` scope, and why `cancel-in-progress` is right here and wrong in the queue |
@@ -199,5 +199,5 @@ lessons were learned from them; do not go looking for them.
 | `zephyr-dual-line.yml` | `nightly.yml` |
 | `codegen-convention.yml` | `gate.yml`; the lint is `scripts/ci/codegen-invocation-check.sh` |
 | `sdk-index-gate.yml` | `gate.yml`, job `sdk-index` |
-| `host-integration-tests.yml` | `host-tests.yml` |
+| `host-integration-tests.yml` | `host-suite.yml` |
 | `build-wide.yml` | `queue.yml`'s self-hosted L3 job (`just ci matrix build` per merge group) — deleted 2026-10-03, dispatch-only since phase-413 W1 |

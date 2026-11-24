@@ -5,14 +5,14 @@ have new causes, each now named.**
 
 | lane | run | stops at | cause |
 | --- | --- | --- | --- |
-| `run-matrix` tier 2 | 43565474305 | `just build tier2-nightly`, freertos stage | a fixed `<hash>.tmp` name in the shared `stack-floor/llc/ir/` cache raced between callers; fixed on main by `88fbecb4d0` (per-caller `mkstemp`) after the run's commit |
+| `platform-matrix` tier 2 | 43565474305 | `just build tier2-nightly`, freertos stage | a fixed `<hash>.tmp` name in the shared `stack-floor/llc/ir/` cache raced between callers; fixed on main by `88fbecb4d0` (per-caller `mkstemp`) after the run's commit |
 | `nightly` `QemuBaremetal` | 43559931051 | the six RTIC rows, `failed to download rtic v2.3.0` | [issue 2561](../issues/archived/2561-leaf-cache-warm-misses-env-prefixed-plan.md): the cache warm could not read a plan line with env in front of it; fixed |
 | `nightly` `NuttxArm` / `NuttxRiscv` | 43559931051 | every NuttX C++ row, `no matching package named addr2line` | [issue 2560](../issues/archived/2560-nuttx-cpp-ffi-glue-offline-std-resolve.md): the Corrosion FFI glue resolved std's dependencies offline over a cache that never held them; fixed |
 | `nightly` `FreertosMps2` / `FreertosPosix` / `NuttxArm` / `NuttxRiscv` | 43383470982, 43559931051 | `build-fixtures` exit 78, then `test` stops on it | [issue 2562](../issues/archived/2562-board-slice-narrowing-reads-as-incomplete-lane.md): skipping the sibling board made the lane INCOMPLETE, so these four jobs were red by construction; fixed |
-| `gate`, `host-tests` | 43543979291, 43550254996 | | green |
+| `gate`, `host-suite` | 43543979291, 43550254996 | | green |
 
 `FreertosMps2` also had the 2561 class (`failed to download panic-semihosting`).
-`live-peer` (43555266126, the build step of `rows whose board is NOT this
+`ros2-interop` (43555266126, the build step of `rows whose board is NOT this
 runner`) stops on the same class as 2560: the Zephyr C++ glue's offline build-std
 (`no matching package named rustc-literal-escaper`), so it shares that fix.
 
@@ -24,14 +24,14 @@ Latest scheduled run per lane, by failing step (`just matrix-triage`,
 
 | lane | run | stops at | cause |
 | --- | --- | --- | --- |
-| `run-matrix` tier 2 | 42572877658 (sched), 42605683876 (dispatch) | `just build tier2` | issue 2365 (nucleo RAM; fixed, #3345 merged), then two rows of one leaf racing on its census dir (#3367, which files it) |
+| `platform-matrix` tier 2 | 42572877658 (sched), 42605683876 (dispatch) | `just build tier2` | issue 2365 (nucleo RAM; fixed, #3345 merged), then two rows of one leaf racing on its census dir (#3367, which files it) |
 | `nightly` tier 2 | 42577453343 | `just build tier2-nightly` | issue 2344 on the 241 runner before its image was rebuilt (two `cortex-m-cpp-port-*` rows refuse the bundled interfaces) |
 | `nightly` zephyr jobs | 42565600377 | `Set up Zephyr 3.7/4.4 workspace` | a GitHub release 504 in `nros setup`: issue 2369 (#3362) |
 | `nightly` px4 sitl | 42577453343 | `stock_px4_listener_reads_a_nano_ros_publication` | issue 2243 (two PX4 daemons at once), a verdict about the test; resolved 2026-11-10, the harness takes a host-wide instance lock |
 | `gate` build shards | 42548650793 | lane preflight, no gate ran | issue 2382 (the `build` lane claims submodules and history its hosted jobs never provide; since phase-543 W5/W6, 11-07) |
-| `host-tests` tier-1 gates | 42555181729 | the same preflight | issue 2382 |
-| `host-tests` feature sweep | 42555181729 | `nros-board-zephyr` fmt diff | phase-536's rename left `entry_sched_tasks.rs` unformatted; #3363 |
-| `live-peer` | 42560467078 | one UNMET cell | issue 2383 (the derived host fixture set misses the C workspace's Cyclone rows after phase-535 W4) |
+| `host-suite` tier-1 gates | 42555181729 | the same preflight | issue 2382 |
+| `host-suite` feature sweep | 42555181729 | `nros-board-zephyr` fmt diff | phase-536's rename left `entry_sched_tasks.rs` unformatted; #3363 |
+| `ros2-interop` | 42560467078 | one UNMET cell | issue 2383 (the derived host fixture set misses the C workspace's Cyclone rows after phase-535 W4) |
 | `probe` | 42584277829 | `Install just` | a release 504: issue 2369 (#3362) |
 | `lane-census`, `pr-verdicts`, `next-stable` | | | green |
 
@@ -39,11 +39,11 @@ So every red is a verdict or a tracked stop. Left: issue 2344's confirmation
 (a `tier2-nightly` on each rebuilt runner), a clean tier 2 once #3367 lands,
 then issue 2193, W5's C++ cells, and the acceptance.
 
-**Status (2026-11-05). Tier 2 (run-matrix) reached its cells and PASSED; W6 is
+**Status (2026-11-05). Tier 2 (platform-matrix) reached its cells and PASSED; W6 is
 met and issue 2004 is resolved. The tier-2 NIGHTLY still stops in the zephyr
 build, on a false preflight refusal (fixed in PR #3153).**
 
-- run-matrix 41979554190 (06:18Z, `main` at 1d287ef1): `tier 2 — VERDICT:
+- platform-matrix 41979554190 (06:18Z, `main` at 1d287ef1): `tier 2 — VERDICT:
   cells ran and passed`, `Real failures: 0`. The first tier-2 verdict this
   phase has had.
   - **W6 met:** `zephyr_renode_twin zephyr_nucleo_renode_c_zenoh_serial_pubsub_e2e`
@@ -70,7 +70,7 @@ Left: the pairwise nightly reaching its cells (2113, the rest of W5), issue
 build on a stale runner workspace (issue 2249, fixed); tier 1's one red was a
 test defect (issue 2250, fixed); W6 handed over from phase-524.**
 
-- run-matrix 41784686434 (06:18Z, `main` at 8c49a148): tier 2 `NO VERDICT:
+- platform-matrix 41784686434 (06:18Z, `main` at 8c49a148): tier 2 `NO VERDICT:
   stopped in the build`, on one west row, `build-nucleo-f767zi-c-talker-serial`
   (`st/f7/stm32f767zitx-pinctrl.dtsi: No such file or directory`). The runner's
   store workspace never followed the manifest after phase-524 W2 added
@@ -106,14 +106,14 @@ nightly to reach its cells.**
   UNMET reds ran on the image before it; the next nightly reaching cells is
   the acceptance.
 
-Left: the first tier-2 run (run-matrix and nightly) that reaches its cells —
+Left: the first tier-2 run (platform-matrix and nightly) that reaches its cells —
 the lane's acceptance, the W5 read, and issues 2113 and 2004.
 
-**Status (2026-11-01). `host-tests` is met; tier 2 now BUILDS on `main` and
+**Status (2026-11-01). `host-suite` is met; tier 2 now BUILDS on `main` and
 runs out of disk before its first cell (issue 2191).**
 
-- `host-tests`: green on the 2026-10-31 schedule (41163227454). Acceptance met.
-- Issues 2179 and 2180 are fixed (#2910, #2911). run-matrix 41205983383 on
+- `host-suite`: green on the 2026-10-31 schedule (41163227454). Acceptance met.
+- Issues 2179 and 2180 are fixed (#2910, #2911). platform-matrix 41205983383 on
   `main` (37d6466751) built every tier-2 fixture, then `check::default` died on
   `No space left on device`: the coverage job reads `NO VERDICT: preflight
   failed before any cell`. The job's own sweep says why: fixtures 178 GiB
@@ -151,23 +151,23 @@ lane; what W5 still waits on is the runner image (issue 2113) and one nightly.**
   (`scripts/ci/runner-container.sh --build`, then `--run`). Operator-side,
   like 1365.
 
-Left: one green scheduled `host-tests`; the first tier-2 nightly after this
+Left: one green scheduled `host-suite`; the first tier-2 nightly after this
 lands, read for W5 (every realtime row and sched-dims cell executed); the
 runner image for 2113; issue 1365.
 
-**Status (2026-10-31). `live-peer` is met; `host-tests` waits on tonight's
+**Status (2026-10-31). `ros2-interop` is met; `host-suite` waits on tonight's
 run; W5 is READ, and it is not yet a verdict on every RTOS cell.**
 
-- `live-peer`: green on two scheduled nights, 2026-10-29 (40816464981) and
+- `ros2-interop`: green on two scheduled nights, 2026-10-29 (40816464981) and
   10-30 (41001586102). Acceptance met.
-- `host-tests` 10-30 (40996190687): per-feature clippy red on a
+- `host-suite` 10-30 (40996190687): per-feature clippy red on a
   `needless_range_loop` from #2817, fixed by `a6d4a3697a`; tier-1 gates
   cancelled at the two-hour limit, issue 2141, sharded by `0fc827d4a0`. Both
   fixes landed after that run started. The 10-31 run is the first that can
   pass.
 - Tier-2 reds are NOT untracked. Bare nextest counts a `lane_skip!` as FAIL
-  (run-matrix 41013529125 printed "342 failed"); the junit rewrite says
-  `Real failures: 1`. The real failures across run-matrix 10-28, 10-29,
+  (platform-matrix 41013529125 printed "342 failed"); the junit rewrite says
+  `Real failures: 1`. The real failures across platform-matrix 10-28, 10-29,
   10-30 are `lending_freertos_e2e` (its `loan-copy-sub` fixture missing,
   issue 2112) and, on 10-28 only, the `nm` sweep budget (issue 2127,
   resolved). `nuttx_level_budget_overrun_is_throttled_by_the_kernel` "failing
@@ -199,21 +199,21 @@ run; W5 is READ, and it is not yet a verdict on every RTOS cell.**
   download; (d) correct counts (issue 2171).
 - Issue 1365 unchanged (operator-side).
 
-Left: one green scheduled `host-tests`, W5 (a)-(b), and issue 1365.
+Left: one green scheduled `host-suite`, W5 (a)-(b), and issue 1365.
 
 **Status (2026-10-24). Every implementation item is landed; what remains is run
-evidence and runner configuration.** The live-peer host job's one red
+evidence and runner configuration.** The ros2-interop host job's one red
 (`test_ros2_service_xrce_client`, 4 nights) was a real regression, not a flake:
 [#2026](../issues/archived/2026-live-peer-xrce-service-client-no-reply.md),
 fixed. #2004's fix landed in c8ec37ffc7 and waits on the run that reads it
-(W5). `host-tests` stopped on ENOSPC plus a rustfmt diff fixed in 70790ce080.
+(W5). `host-suite` stopped on ENOSPC plus a rustfmt diff fixed in 70790ce080.
 Tier 2 stopped in its build again 10-22 to 10-24 (`just matrix-triage`): the
 10-24 stop is issue 2032, fixed under phase-513, so W5 waits for the first
-run-matrix after it. `test_ros2_action_xrce_client`'s stale `"Goal accepted"`
+platform-matrix after it. `test_ros2_action_xrce_client`'s stale `"Goal accepted"`
 grep, noted in #2026, now reads `action_goal_accepted`. Issue 1365's report
 (`just runner-wait-triage`) has still named no real wait: on 10-24 it read two
 runners online and nothing queued.
-Left: one green scheduled `live-peer` and `host-tests`, W5 read off a tier-2
+Left: one green scheduled `ros2-interop` and `host-suite`, W5 read off a tier-2
 run, and issue 1365 (operator-side).
 
 **Status (2026-10-22). The blackout is over: every scheduled lane reached its
@@ -224,13 +224,13 @@ Measured over the scheduled runs of 2026-10-17 to 10-21:
 | --- | --- | --- |
 | `probe`, `lane-census`, `pr-verdicts` | yes | nothing; green every run |
 | `gate` | yes | alternates green and red |
-| `run-matrix` (tier 1 + tier 2) | yes, 7 of the last 8 runs (`just matrix-triage`) | the same 3 cells in both tiers: trace-marker tests that #1949's log threshold silenced, fixed in their own PR |
+| `platform-matrix` (tier 1 + tier 2) | yes, 7 of the last 8 runs (`just matrix-triage`) | the same 3 cells in both tiers: trace-marker tests that #1949's log threshold silenced, fixed in their own PR |
 | `nightly` | yes, 12 of 16 jobs pass (`just nightly-triage`) | only tier-2 pairwise, whose build died on `No space left on device`, then `ld … signal 7 [Bus error]` and rustc SIGSEGV after the fixture stamp was written — the runner's disk, issue 1353's shape |
-| `live-peer` | 10-17/10-18 green; 10-19 to 10-21 red in its build | `zpico_ring_claim_head` declared `ptrdiff_t`, defined `intptr_t` (#1956's change) — fixed by `948bd88ec9` (issue 1979) AFTER the last run |
-| `host-tests` | 10-18 green | the feature sweep still built `nros-node[std]` (fixed by `161dc7f444`, after the last run), plus ENOSPC on the runner |
+| `ros2-interop` | 10-17/10-18 green; 10-19 to 10-21 red in its build | `zpico_ring_claim_head` declared `ptrdiff_t`, defined `intptr_t` (#1956's change) — fixed by `948bd88ec9` (issue 1979) AFTER the last run |
+| `host-suite` | 10-18 green | the feature sweep still built `nros-node[std]` (fixed by `161dc7f444`, after the last run), plus ENOSPC on the runner |
 
 So the acceptance below holds for every lane in the measurement table but
-`live-peer` and `host-tests`, and both of those have their code cause fixed on
+`ros2-interop` and `host-suite`, and both of those have their code cause fixed on
 `main` and await one scheduled run. The issue sweep of the same day resolved 12
 of the homed issues on commit + run evidence (each resolution names both):
 1136, 1158, 1355, 1364, 1474, 1493, 1497, 1579, 1628, 1665, 1666, 1755.
@@ -238,7 +238,7 @@ Still open here (2026-10-23): 1365 for its remaining items. 1758, 1651,
 1842, 1459, 1375 and 1457 have since been resolved on run evidence; 1353
 (runner disk) and 1899 (runner memory) were closed wontfix as runner
 configuration. W5 is still open.
-**Left before archiving:** one green scheduled `live-peer` and `host-tests`,
+**Left before archiving:** one green scheduled `ros2-interop` and `host-suite`,
 the trace-marker fix, W5, and issue 1365.
 
 **Status (2026-10-13). Provisioning passes; three build faults found, two
@@ -280,10 +280,10 @@ Scheduled runs, window 2026-09-11 to 2026-09-23, read from `gh run list
 | lane | runs | failed | last success in window |
 | --- | --- | --- | --- |
 | `nightly` | 25 | 25 | none |
-| `live-peer regression` | 13 | 13 | none |
-| `run-matrix` (tier 2) | 13 | 9 | none |
+| `ros2-interop regression` | 13 | 13 | none |
+| `platform-matrix` (tier 2) | 13 | 9 | none |
 | `gate` | 12 | 12 | none |
-| `host-tests` | 12 | 12 | none |
+| `host-suite` | 12 | 12 | none |
 | `probe` | 1 | 1 | n/a -- see below |
 | `pr-verdicts` | 24 | 0 | 2026-09-22 |
 
@@ -314,10 +314,10 @@ rather than the code**:
 | --- | --- | --- |
 | `nightly` zephyr jobs (22) | `Set up Zephyr 3.7/4.4 workspace` | `unzip` absent -> `setup-clang-format` fails -> `_setup-common` fails |
 | `probe`, both tracks | `just probe checkout` / `installed` | `just: command not found`, exit 127 -- narrow fix already landed in `9722fca32` before this phase opened |
-| `live-peer` | `Build the fixtures those rows resolve` | `ModuleNotFoundError: No module named 'tomllib'` / `'tomli'` |
-| `run-matrix` tier 2 | `just build tier2` | `west-fixtures.sh` never passed `-DZEPHYR_EXTRA_MODULES`, so 4 of 5 west fixtures died at Kconfig on undefined `CONFIG_NROS` |
+| `ros2-interop` | `Build the fixtures those rows resolve` | `ModuleNotFoundError: No module named 'tomllib'` / `'tomli'` |
+| `platform-matrix` tier 2 | `just build tier2` | `west-fixtures.sh` never passed `-DZEPHYR_EXTRA_MODULES`, so 4 of 5 west fixtures died at Kconfig on undefined `CONFIG_NROS` |
 | `nightly` tier 2 | `just build tier2-nightly` | `ModuleNotFoundError: No module named 'catkin_pkg'` -- the self-hosted runner's rosidl deps, a HOST PROVISIONING gap |
-| `gate`, `host-tests` | `just check build` (reached via `just ci tier1` for host-tests) | THE SAME STEP, on a full disk -- issue 1353 |
+| `gate`, `host-suite` | `just check build` (reached via `just ci tier1` for host-suite) | THE SAME STEP, on a full disk -- issue 1353 |
 
 **Corrected 2026-09-23, after all four waves measured their own lanes.** The
 table above is the second version; the first named a cause for every row and
@@ -339,7 +339,7 @@ cause was the environment the code ran in.**
   lane is red.
 * `zenohd` was a red herring. Unreachable -- the lane dies in `just check`,
   upstream of `test-all` entirely.
-* **The CI image is not implicated in `gate` or `host-tests` at all.** Both
+* **The CI image is not implicated in `gate` or `host-suite` at all.** Both
   pull `nano-ros-ci:humble`, every provisioning step in both succeeds, and
   their failures begin **2026-09-03**, before the 2026-09-12 image build.
 * **The image timing does not explain the Zephyr lanes either, and this
@@ -377,9 +377,9 @@ are diagnosis waves, and what a wave ends up editing depends on what it finds.
 | `phase-466-W1` | LANDED (#1211). One shared `ci/docker/apt-packages.txt` both Dockerfiles COPY, so drift is UNREPRESENTABLE rather than detected; `check-ci-image-apt-packages`; the `setup-clang-format` fatality moved out of `_setup-common` into `check-tier-preconditions` | done |
 | `phase-466-W2` | LANDED (#1209). Not `probe.yml` -- the narrow fix was already on main. The class gate `check-workflow-just-provisioning` plus the sweep of every workflow and composite action that invokes `just` | done |
 | `phase-466-W3` | LANDED (#1210). THREE independent bugs: the missing `-DZEPHYR_EXTRA_MODULES`, the runner's absent rosidl python deps (1457, kept open -- not fixable in this repository), and a missing `mkdir -p` at `fixture-lane.sh:343` that silently lost issue 0499's lower bound | done |
-| `phase-466-W4` | LANDED (#1212). Both lanes die in ONE step on a full disk (issue 1353). A survivable disk-report channel plus `scripts/ci/reclaim-disk.sh`, with `live-peer.yml`'s inline copy folded into it | done |
+| `phase-466-W4` | LANDED (#1212). Both lanes die in ONE step on a full disk (issue 1353). A survivable disk-report channel plus `scripts/ci/reclaim-disk.sh`, with `ros2-interop.yml`'s inline copy folded into it | done |
 | `phase-466-W5` | OPEN (2026-10-14, handed over by the archived phase-330). The RTOS half of phase-330's two last acceptance boxes: build the RTOS realtime workspace fixtures and get a verdict from `realtime_sched_tasks_e2e` and `sched_dims_applied_e2e` on them. See "W5 -- the RTOS realtime cells" below | READ 2026-10-31 from the tier-2 nightly junit: 13 realtime rows and 14 sched-dims cells executed on Zephyr, NuttX, FreeRTOS and threadx-linux; one cell red on a missing `qemu-system-aarch64` (issue 2113), seven C++ cells selected by no scheduled lane. See the 2026-10-31 status |
-| `phase-466-W6` | DONE (opened 2026-11-04, handed over by phase-524 W4c, maintainer ruling). The Nucleo-F767ZI Renode twin cell's first green run in its SCHEDULED lane: one Runtime cell `(ZephyrNucleoF767zi, C, Zenoh, Pubsub, Example)`, test `tests/zephyr_renode_twin.rs`, west row `build-nucleo-f767zi-c-talker-serial` (`examples/zephyr/c/talker`, image `nucleo_serial`), lanes tier 2 and tier-2 nightly (not merge-gating). Renode reaches the runner through `just zephyr setup` -> `nros setup --tool renode` (store, not image). Passed locally in 7.8 s (#3079). First scheduled attempt (41784686434) stopped in the build on issue 2249; Renode itself provisioned | MET 2026-11-05: PASS (6.3 s) in run-matrix 41979554190, tier 2 |
+| `phase-466-W6` | DONE (opened 2026-11-04, handed over by phase-524 W4c, maintainer ruling). The Nucleo-F767ZI Renode twin cell's first green run in its SCHEDULED lane: one Runtime cell `(ZephyrNucleoF767zi, C, Zenoh, Pubsub, Example)`, test `tests/zephyr_renode_twin.rs`, west row `build-nucleo-f767zi-c-talker-serial` (`examples/zephyr/c/talker`, image `nucleo_serial`), lanes tier 2 and tier-2 nightly (not merge-gating). Renode reaches the runner through `just zephyr setup` -> `nros setup --tool renode` (store, not image). Passed locally in 7.8 s (#3079). First scheduled attempt (41784686434) stopped in the build on issue 2249; Renode itself provisioned | MET 2026-11-05: PASS (6.3 s) in platform-matrix 41979554190, tier 2 |
 
 W1 and W3 may collide on the Zephyr image: if W3's `msg2idl.py` failure turns
 out to be another missing package in that image, the Dockerfile edit belongs
@@ -405,7 +405,7 @@ stops in the same place -- now with a refusal naming the remedy instead of a
 traceback eleven minutes into ninja.
 
 **Nothing is verified yet, and will not be for hours.** No scheduled lane has
-run since the merge. The first that will pull the new images are `live-peer`
+run since the merge. The first that will pull the new images are `ros2-interop`
 (~04:15 UTC) and `nightly` (~05:10 UTC) on 2026-09-24. Both 1359 and 1364
 stay `status: open` for exactly that reason: their acceptance is a scheduled
 job reaching its cells, and that evidence does not exist.
@@ -417,7 +417,7 @@ exit 78 before reaching anything else. Nobody has claimed it.
 
 | issue | why it belongs here |
 | --- | --- |
-| [#1651](../issues/archived/1651-host-tests-red-or-cancelled-on-most-pushes.md) | RESOLVED 2026-10-23: `host-tests` and tier 1 both went green on `main`; its later reds are other defects, each named in its resolution. |
+| [#1651](../issues/archived/1651-host-tests-red-or-cancelled-on-most-pushes.md) | RESOLVED 2026-10-23: `host-suite` and tier 1 both went green on `main`; its later reds are other defects, each named in its resolution. |
 | [#1878](../issues/archived/1878-metadata-probe-cmake-mirror-race.md) | RESOLVED as a duplicate of issue 1858 (`0fc6da85d6`). The cmake metadata probe's stale sizes-header mirror stopped tier 1 and tier 2 at `check fast` (`sizes-header-mirrors`) before any cell. The cause was a shared probe cargo dir whose key left out the late-applied `panic-platform` feature. |
 | [#1915](../issues/archived/1915-cli-test-mutates-home-races-locate.md) | RESOLVED. Once tier 2 got past its build (run 38663782341), `check-cli-tests` was red on `board_facts`' agreeing-duplicates test. A `doctor` test set the process-wide `$HOME`, and the store root derives from it. So the two ladder walks on the runner, which holds the FreeRTOS kernel in the store and not as a submodule, resolved one kernel two ways. The store root is now a parameter, and the test no longer moves `$HOME`. The other red in that run, `template-copy-out`, is issue 1914. |
 | [#1911](../issues/archived/1911-sizes-mirror-gate-judges-unbuilt-dirs.md) | RESOLVED. `sizes-header-mirrors` runs in `check fast` at the head of `just build`, before anything is rebuilt. In the persistent fixture tree it called a probe mirror stale when only a sibling build dir had rewritten their shared source after a core-size change. So both sched tasks of run 38637410239 stopped before the build. The mirror command now records each run, and the gate fails only a mirror whose last run postdates its source; the rest are reported as pending. |
@@ -487,8 +487,8 @@ not the surprise.
 
 Per lane: one scheduled run that reaches its own work and reports a verdict --
 green, or red for a reason that is about the code under test rather than about
-the lane. Not "the step passes": `run-matrix` and `nightly` tier 2 must reach
-a cell, `probe` must run a book block, `host-tests` must run tests.
+the lane. Not "the step passes": `platform-matrix` and `nightly` tier 2 must reach
+a cell, `probe` must run a book block, `host-suite` must run tests.
 
 The phase closes when every row of the measurement table above has a success
 in its window, or carries a written reason why it cannot.
@@ -499,7 +499,7 @@ Homed when every open issue was given a phase. Each issue has a `**Home:**` line
 
 | issue | why it belongs here |
 | --- | --- |
-| [#1136](../issues/archived/1136-launch-args-keyword-removed-but-still-generated.md) | `host-tests`' integration job died at **Build workspace fixtures** for 30 runs because the CLI still emits the removed `LAUNCH_ARGS`. That is a scheduled lane with no verdict. |
+| [#1136](../issues/archived/1136-launch-args-keyword-removed-but-still-generated.md) | `host-suite`' integration job died at **Build workspace fixtures** for 30 runs because the CLI still emits the removed `LAUNCH_ARGS`. That is a scheduled lane with no verdict. |
 | [#1325](../issues/archived/1325-zephyr-fixture-filter-matches-the-checkout-path.md) | RESOLVED 2026-10-22 — the filter now matches per field, repo-relative, in both Zephyr builders (gate `check fixture-filter-fields`). |
 | [#1355](../issues/archived/1355-threadx-riscv64-builds-the-linux-threadx-port.md) | RESOLVED 2026-10-22: the port defect was long gone; the lane then went green without running its cells, because `just threadx_riscv64 test` never selected `rtos_e2e`. It does now, gated by `check platform-lane-cells`. |
 | [#2191](../issues/archived/2191-tier2-runner-volume-below-working-set.md) | WONTFIX 2026-11-04 (runner configuration, not a project defect — as 1353). Tier 2 filled the runner volume in `check::default`; the sweep levers stay in the tree as operator tooling (#2973, #3006), and newslab-118 moved its volume. |
@@ -508,45 +508,45 @@ Homed when every open issue was given a phase. Each issue has a `**Home:**` line
 | [#1353](../issues/archived/1353-nightly-gate-runner-out-of-disk.md) | WONTFIX 2026-10-23 (runner configuration, not a project defect). Before it closed, the self-hosted runners ran out of disk (133 on 10-17, 118 on 10-21) because the sweep budgeted a list that missed `sizes-probe` and the west build root. Both are eviction units now (2026-10-23), and what no area holds is reported in every job log. |
 | [#1375](../issues/archived/1375-zephyr-native-sim-runner-link-misses-zpico-reply-slot.md) | RESOLVED 2026-10-23: Zephyr Rust zenoh images link, boot and pass in the nightly (39739466151). A merge-gating Zephyr link was declined; the nightly is that lane. |
 | [#1459](../issues/archived/1459-threadx-c-entry-undefined-network-wait.md) | RESOLVED 2026-10-23: the weak-reference fix holds, and the nightly `threadx_linux` job builds and passes the C images. A C-only image in L3 was declined; the nightly is that lane. |
-| [#1474](../issues/archived/1474-zephyr-rust-fixture-build-has-no-clippy-component.md) | The Zephyr Rust fixture build runs clippy as a ninja step, and the CI image has no clippy component, so `live-peer` dies in its build. |
+| [#1474](../issues/archived/1474-zephyr-rust-fixture-build-has-no-clippy-component.md) | The Zephyr Rust fixture build runs clippy as a ninja step, and the CI image has no clippy component, so `ros2-interop` dies in its build. |
 | [#1483](../issues/archived/1483-python-layer-carries-upstream-transitive-deps.md) | RESOLVED 2026-10-23 — `empy`/`lark` moved to `[source.rosidl.python]`, a gated mirror of rosidl's `package.xml`, with apt names from the rosdep snapshot. |
 | [#1493](../issues/archived/1493-heap-free-poc-bin-has-no-row-and-no-lane-declaration.md) | `fixture_source_coverage` was red on main for 27 days because no lane runs that test. |
 | [#1497](../issues/archived/1497-tier2-zephyr-self-pkg-leaves-have-no-systemmodel.md) | Tier 2's Zephyr module dies in `codegen-system`, with no cell verdict. The root cause, issue 1501, is fixed; what is left is a scheduled run that reaches the cells. |
 | [#1579](../issues/archived/1579-timer-elapsed-upper-bound-fails-under-ci-load.md) | A real sleep bounded by a 10 ms allowance fails `timer_readiness_and_elapsed_agree_with_the_dispatcher` on a loaded runner, in tier 1. |
 | [#1590](../issues/archived/1590-threadx-rv64-rust-leaf-misses-cyclone-backend-archive.md) | A `threadx_riscv64` Rust leaf built with Cyclone linked no Cyclone backend archive. Fixed by `be2d7efd39`; 12/12 leaves link (2026-10-21). |
 | [#1592](../issues/archived/1592-features-custom-msgs-declares-rosidl-default-deps.md) | In-tree `package.xml` names resolved only through ament, so the ROS-less tier-2 runner refused them. The sites were fixed in October; a no-ROS ladder test now catches the class. |
-| [#1628](../issues/archived/1628-tier1-rust-rtos-link-check-needs-unprovisioned-freertos.md) | `just ci tier1` runs `rust-rtos-link-check`, which needs a FreeRTOS kernel that `host-tests.yml` never checks out. |
+| [#1628](../issues/archived/1628-tier1-rust-rtos-link-check-needs-unprovisioned-freertos.md) | `just ci tier1` runs `rust-rtos-link-check`, which needs a FreeRTOS kernel that `host-suite.yml` never checks out. |
 | [#1665](../issues/archived/1665-zephyr-ws-rust-leaf-cannot-find-core.md) | Zephyr workspace Rust entries fail with `can't find crate for core` in the tier-2 nightly, in 10 of 32 images. |
-| [#1666](../issues/archived/1666-zephyr-ci-image-has-no-cargo-nextest.md) | live-peer's board job reaches its run step, and the Zephyr CI image has no `cargo nextest`. |
+| [#1666](../issues/archived/1666-zephyr-ci-image-has-no-cargo-nextest.md) | ros2-interop's board job reaches its run step, and the Zephyr CI image has no `cargo nextest`. |
 | [#1755](../issues/archived/1755-runner-home-cache-not-writable.md) | After a runner-container restart, two tier-1 steps cannot create directories under `~/.cache`. |
 | [#1758](../issues/archived/1758-skip-and-pass-is-a-failure.md) | RESOLVED 2026-10-23: scope, not host probes, decides what runs. Every scheduled lane that gates on it now reaches a verdict or stops on a different, tracked defect. |
 | [#1842](../issues/archived/1842-tier-priority-plan-image-red-verdict-unprinted.md) | RESOLVED 2026-10-23: `9a814ee199` fixed the band-stale verdict and repeats it where the recipe fails; the 2026-10-20 and 2026-10-22 tier-2 nightlies built the Zephyr family OK. |
 | [#1898](../issues/archived/1898-metadata-harness-excerpt-drops-cargo-cause.md) | The tier-2 nightly stopped in `generate-bindings` on a git dependency it could not fetch, and the excerpt dropped the reason. |
 | [#1899](../issues/archived/1899-tier2-nightly-fixture-compilers-sigkilled.md) | WONTFIX 2026-10-23: runner memory is configuration. A killed compile now names itself in the log (`log-first-errors.sh`); no recurrence in 35 jobs since 2026-10-15. |
-| [#1981](../issues/archived/1981-live-peer-narrowing-alternation-is-one-workspace-id.md) | Homed 2026-10-23 from phase-441, which was archived that day. The `live-peer` board job joins two `NROS_FIXTURE_ID` narrowings with `\|`, and the workspace builder reads the result as one id. So the lane could not run the fragmented-sample cell phase-441 W6 recorded. **Resolved 2026-11-11**: fixed by `8add9c2378` (one build pass per value of an exact key), confirmed on live-peer 42754129258. |
+| [#1981](../issues/archived/1981-live-peer-narrowing-alternation-is-one-workspace-id.md) | Homed 2026-10-23 from phase-441, which was archived that day. The `ros2-interop` board job joins two `NROS_FIXTURE_ID` narrowings with `\|`, and the workspace builder reads the result as one id. So the lane could not run the fragmented-sample cell phase-441 W6 recorded. **Resolved 2026-11-11**: fixed by `8add9c2378` (one build pass per value of an exact key), confirmed on ros2-interop 42754129258. |
 | [#2004](../issues/archived/2004-matrix-test-summary-hidden-on-pass.md) | A matrix test that passes over cells it did not run prints which ones, and nextest discards that output on PASS, so W5 could not be read off the 2026-10-22 tier-2 run. |
-| [#2100](../issues/archived/2100-hosted-runner-gates-outgrow-disk.md) | **Resolved** 2026-10-29 (PR #2754). `host-tests`' tier-1 gates ran out of disk on the GitHub-hosted runner (4 of 7 nights). The three largest gates now release their output on CI, and the 2026-10-28 run passed with 48 G free. |
-| [#2095](../issues/archived/2095-zephyr-native-sim-two-rust-archives-duplicate-popcountdi2.md) | RESOLVED 2026-10-29 as a duplicate of issue 2092 (`44eab11c22`); tier-2 nightly 40648207713 passed the Zephyr C++ xrce cells. Filed 2026-10-27. Every Zephyr native_sim C++ image fails to link on `__popcountdi2`, defined by two Rust staticlibs. Issue 2032's second route hid it. It stops the Zephyr family of `run-matrix` and the tier-2 nightly. |
+| [#2100](../issues/archived/2100-hosted-runner-gates-outgrow-disk.md) | **Resolved** 2026-10-29 (PR #2754). `host-suite`' tier-1 gates ran out of disk on the GitHub-hosted runner (4 of 7 nights). The three largest gates now release their output on CI, and the 2026-10-28 run passed with 48 G free. |
+| [#2095](../issues/archived/2095-zephyr-native-sim-two-rust-archives-duplicate-popcountdi2.md) | RESOLVED 2026-10-29 as a duplicate of issue 2092 (`44eab11c22`); tier-2 nightly 40648207713 passed the Zephyr C++ xrce cells. Filed 2026-10-27. Every Zephyr native_sim C++ image fails to link on `__popcountdi2`, defined by two Rust staticlibs. Issue 2032's second route hid it. It stops the Zephyr family of `platform-matrix` and the tier-2 nightly. |
 | [#2112](../issues/archived/2112-freertos-loan-copy-sub-fixture-missing-in-lane.md) | **Resolved** 2026-10-31. Tier 2 reported the FreeRTOS lending cell's `loan-copy-sub` MISSING every night from 10-27. The build had correctly omitted the out-of-lane row; the run could not attribute a shared group-dir path and failed closed. `require_in_lane` now attributes a group-dir binary to its producing row. |
 | [#2125](../issues/archived/2125-freertos-quiet-link-readiness-missing.md) | **Resolved** 2026-10-29 (PR #2802). Two `rtos_e2e` cells running one baked image started routers on one port, and the second killed the first one's router. A named-port router start now waits for the port's `flock`; tier-2 nightly 40833557587 passed the quiet-link cells on FreeRTOS, threadx-linux and NuttX. |
 | [#2126](../issues/archived/2126-threadx-linux-pubsub-router-log-one-transport.md) | **Resolved** 2026-10-29 with 2125 (PR #2802). The threadx-linux Rust pubsub cell read one router transport for two nodes; tier-2 nightly 40833557587 passed it. |
-| [#2127](../issues/archived/2127-rmw-coordinate-truth-nm-sweep-starved.md) | **Resolved** 2026-10-29 (PR #2802). The `nm` sweep's 8-thread pool was counted as one nextest thread and starved on runner 118. It declares `threads-required = 8`, and passed in 0.6 s in run-matrix 40828659447. |
-| [#2128](../issues/archived/2128-params-nightly-clippy-nonminimal-bool.md) | **Resolved** 2026-10-29 (PR #2802). A lint only the pinned nightly reports (`nonminimal_bool` in nros-params) failed the scheduled feature sweep; host-tests 40810937288's per-feature clippy passed. The gap is not fixed. |
-| [#2129](../issues/archived/2129-sdk-source-fetch-no-retry.md) | **Resolved** 2026-10-30 (PR #2805). One DNS failure during the Corrosion source fetch stopped `host-tests`' rt-sched job. Store fetches now retry a network failure up to 3 times. Closed by maintainer decision on two green rt-sched nights (40810937288, 40996190687); no CI run has yet exercised the retry. |
-| [#2130](../issues/archived/2130-live-peer-host-job-disk-exhausted.md) | **Resolved** 2026-10-29 (PR #2805). `live-peer`'s host job ran out of disk; it now releases compile intermediates after each fixture build, and live-peer 40816464981 passed. |
+| [#2127](../issues/archived/2127-rmw-coordinate-truth-nm-sweep-starved.md) | **Resolved** 2026-10-29 (PR #2802). The `nm` sweep's 8-thread pool was counted as one nextest thread and starved on runner 118. It declares `threads-required = 8`, and passed in 0.6 s in platform-matrix 40828659447. |
+| [#2128](../issues/archived/2128-params-nightly-clippy-nonminimal-bool.md) | **Resolved** 2026-10-29 (PR #2802). A lint only the pinned nightly reports (`nonminimal_bool` in nros-params) failed the scheduled feature sweep; host-suite 40810937288's per-feature clippy passed. The gap is not fixed. |
+| [#2129](../issues/archived/2129-sdk-source-fetch-no-retry.md) | **Resolved** 2026-10-30 (PR #2805). One DNS failure during the Corrosion source fetch stopped `host-suite`' rt-sched job. Store fetches now retry a network failure up to 3 times. Closed by maintainer decision on two green rt-sched nights (40810937288, 40996190687); no CI run has yet exercised the retry. |
+| [#2130](../issues/archived/2130-live-peer-host-job-disk-exhausted.md) | **Resolved** 2026-10-29 (PR #2805). `ros2-interop`'s host job ran out of disk; it now releases compile intermediates after each fixture build, and ros2-interop 40816464981 passed. |
 | [#2171](../issues/archived/2171-matrix-summary-counts-skipped-rows-as-ran.md) | **Resolved** 2026-10-31. `realtime_sched_tasks` and `sched_dims` counted a lane-skipped row as one that ran and filed it under `skipped`, so tier 2 printed "22 row(s) ran" for 4. All five consolidated matrix tests now share `nros_tests::matrix_tally::Tally`, which counts executed cells only and files every lane skip as out of lane. |
 | [#2113](../issues/archived/2113-zephyr-a53-smp-cell-no-qemu-system-aarch64.md) | Homed 2026-11-02 (already tracked in W5). The Zephyr a53 SMP core-pin cell is the one realtime cell the tier-2 nightly reaches and cannot boot: the runner image has no `qemu-system-aarch64`. |
 | [#2190](../issues/archived/2190-tier1-time-budget-reds-on-runner-241.md) | **Resolved** 2026-11-17. Homed 2026-11-02. Tier 1 reaches its cells again, and its five real failures on runner 241 are all time budgets, so the verdict is red for a reason about the runner, not the code. |
 | [#2193](../issues/archived/2193-tier2-nightly-zephyr-fixture-leg-error-unsurfaced.md) | **Resolved** 2026-11-17. Homed 2026-11-02. The tier-2 nightly's Zephyr fixture leg fails, and the job log names neither the image nor the error, so the lane's red cannot be attributed. |
 | [#2090](../issues/archived/2090-identity-budget-selftest-case-c-flake.md) | RESOLVED 2026-11-12: issue 1077's pipefail/SIGPIPE race in the gate's own `printf | grep -q`, a site the sigpipe gate had allowlisted; every allowlisted site converted and the allowlist deleted. Homed 2026-11-04. `check-artifact-identity-budget`'s self-test case (c) failed once on main and passed on the next push with no change, so the gate gave two verdicts for one script. |
-| [#2141](../issues/archived/2141-host-tests-tier1-gates-outgrow-two-hours.md) | Homed 2026-11-04 (was cited only in the 10-30 status). `host-tests`' tier-1 gates job outgrew its 120-minute cap and was cancelled: a run with no verdict. Sharded by `0fc827d4a0`; closes on a scheduled run that finishes inside the cap. Resolved 2026-11-11: the job was a duplicate of gate.yml's scheduled run and was removed. |
-| [#2241](../issues/archived/2241-live-peer-fifo-jobserver-without-pinned-make.md) | Homed 2026-11-04. The scheduled `live-peer` run stopped in its fixture build: `nros`'s FIFO jobserver reached a system make 4.3, which cannot join it. Resolved 2026-11-10: the form is chosen from every make the build runs, cached ones included. |
+| [#2141](../issues/archived/2141-host-tests-tier1-gates-outgrow-two-hours.md) | Homed 2026-11-04 (was cited only in the 10-30 status). `host-suite`' tier-1 gates job outgrew its 120-minute cap and was cancelled: a run with no verdict. Sharded by `0fc827d4a0`; closes on a scheduled run that finishes inside the cap. Resolved 2026-11-11: the job was a duplicate of gate.yml's scheduled run and was removed. |
+| [#2241](../issues/archived/2241-live-peer-fifo-jobserver-without-pinned-make.md) | Homed 2026-11-04. The scheduled `ros2-interop` run stopped in its fixture build: `nros`'s FIFO jobserver reached a system make 4.3, which cannot join it. Resolved 2026-11-10: the form is chosen from every make the build runs, cached ones included. |
 | [#2243](../issues/archived/2243-px4-sitl-tests-boot-two-daemons-at-once.md) | **Resolved** 2026-11-10. The nightly PX4 SITL job's two booting tests started two PX4 daemons at once. PX4 keys its server lock and client socket on the instance under `/tmp`, so instance 0 is one per host; `Px4Sitl::boot_in` now holds a host-wide `flock` on it until its daemon is dead, and refuses a daemon it did not start. Reproduced unfixed (1 of 3 failed), then 6 of 6 runs green, 3 of them with the lock alone. Scheduled confirmation is phase-542 W5's seven-run count. |
 | [#2244](../issues/archived/2244-cpp-workspace-entry-exits-before-spin.md) | Closed 2026-11-05 as a duplicate of [#2250](../issues/archived/2250-cpp-entry-test-passed-on-retry-loop.md): a test defect (no router), fixed by #3091. The one real failure in scheduled tier 1 (run 41784686434). |
 | [#2252](../issues/archived/2252-zephyr-cortex-m-xrce-arrival-latency-regression.md) | **Resolved** 2026-11-05. Not a regression: the cell measured on the guest clock under `-icount shift=auto`, and QEMU 11.0.0-nros8's halting `wfi` (issue 2209) lets the adaptive shift climb to 10. The four Zephyr Cortex-M witness cells now run a fixed `shift=5` that models the 25 MHz core: 648 µs, the pre-nros8 number. |
 | [#2285](../issues/archived/2285-zephyr-native-sim-rust-preflight-misses-provisioned-target.md) | Homed 2026-11-05. Two tier-2 nightlies running, `nros build --dry-run` refuses the three Zephyr native_sim workspace Rust images for `x86_64-unknown-none` and `clippy`, which the same job's provisioning reports present. |
 | [#2286](../issues/archived/2286-wait-pattern-returns-mid-line.md) | **Resolved** 2026-11-05: the pattern waits match only on a complete line (or after a 2 s grace). Homed 2026-11-05. Scheduled tier 1's one real failure (run 41979554190): `wait_for_output_pattern` returned on `Result received:` before the line was complete, the test then killed the client, and it asserted on seven of eleven elements. A harness race, not a lost message. |
-| [#2296](../issues/archived/2296-fixture-model-stale-after-resolver-pin.md) | **Resolved** 2026-11-06: `nros configure`'s stamp records the resolver pin, so a play_launch bump reconfigures and re-resolves the model. Homed 2026-11-06. run-matrix 42155998964 stopped in its fixture build: two fixtures reused a SystemModel resolved under an earlier play_launch pin, and `codegen-system` refused it as stale (`resolver pin changed`), so neither tier reached a cell. |
+| [#2296](../issues/archived/2296-fixture-model-stale-after-resolver-pin.md) | **Resolved** 2026-11-06: `nros configure`'s stamp records the resolver pin, so a play_launch bump reconfigures and re-resolves the model. Homed 2026-11-06. platform-matrix 42155998964 stopped in its fixture build: two fixtures reused a SystemModel resolved under an earlier play_launch pin, and `codegen-system` refused it as stale (`resolver pin changed`), so neither tier reached a cell. |
 | [#2384](../issues/archived/2384-zephyr-a53-smp-slirp-boot-flake.md) | **Resolved** 2026-11-10 (#3395, #3400). Homed 2026-11-10. Tier 2's `CorePinPlacement/zephyr/c` cell. Root-caused 2026-11-10: not a hang but two failures. A boot-time `ConnectionFailed` on the default single connect attempt made `main` return (the image now states a 10 s budget), and two console paths split the core-pin marker across cores (`CONFIG_NROS_CONSOLE_WHOLE_LINES`). 49 of 50 under load with both; the remaining shape is #2389. |
 | [#2389](../issues/archived/2389-zephyr-a53-open-silent-past-connect-budget.md) | RESOLVED 2026-11-12, homed 2026-11-10. The same cell, once in 50 under load with #2384's fixes: no output after boot and the 90 s cell timeout used. 2026-11-11: the connect budget now bounds the handshake too (a peer that accepts and never answers held a 3 s budget for 10.1 s on native_sim, now 3.03 s) and a spent budget prints a line naming it; cell `(ZephyrNativeSim, Rust, Zenoh, ConnectBudget)`. That bounds the a53's open at about budget + one connect, so the 80 s is not explained: the leading unmeasured suspect is a blocking send after a successful open (no `SO_SNDTIMEO` on Zephyr). The unbounded TCP connect was #2437 (fixed on the BSD-socket ports, Zephyr included) and #2438 (ThreadX and smoltcp, through the platform ABI). 2026-11-11: the post-open send suspect is reproduced (a router that stops reading wedged the session for good, silently, on native_sim and Linux) and fixed: a write that takes no byte for 5 s closes the session with a console line (`tests/zenoh_send_stall.rs`). 2026-11-12, on the a53: a router that never answers fails within the budget, with the line (14 boots), but the silent boot still recurs, 3 in 359 under load. Root cause from a gdb thread dump: an IPv6-RS-vs-ARP lock-order deadlock (`iface->lock` / `iface->tx_lock`) in Zephyr v3.7.0's net stack, upstream zephyr#86499, fixed in v3.7.2. Resolved by moving the 3.7 line to v3.7.2 (user ruling 2026-11-12): the same loaded loop ran 400/400 with no silent boot. |
 | [#2446](../issues/archived/2446-nuttx-c-service-client-session-tx-dead.md) | **Resolved** 2026-11-17. Homed 2026-11-11. The one real failure of tier-2 run 42971493635, the first scheduled run to reach its cells since 2026-11-06: the NuttX C service client's zenoh session died at its first declare (zenoh-pico -100, then -103), so the cell got 0 responses. Same signature as archived #0870. The service verdict now prints the server's side. |

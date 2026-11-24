@@ -268,7 +268,7 @@ One crate; the book's entry shape is direct execution (the `board-entry` feature
 | Book | Run: [mps2 an385 zephyr](../starters/mps2-an385-zephyr.md#run-it-in-qemu) |
 | Book probe tracks | `zephyr-mps2` (weekly), `zephyr-mps2-c` (weekly), `zephyr-mps2-cpp` (weekly), `platform-zephyr-mps2` |
 
-C, C++ and Rust pubsub are Runtime; service and action are BuildOnly until the runner's peer half lands. It carries a live-peer interop cell against a host peer over zenoh. Daily rather than per merge, because the merge lane is host-only and this board needs QEMU.
+C, C++ and Rust pubsub are Runtime; service and action are BuildOnly until the runner's peer half lands. It carries a ros2-interop cell against a host peer over zenoh. Daily rather than per merge, because the merge lane is host-only and this board needs QEMU.
 
 [Back to the board list](#boards)
 

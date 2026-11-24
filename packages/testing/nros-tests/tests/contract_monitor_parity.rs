@@ -272,7 +272,7 @@ fn contract_monitor_cpp_twin_reports_rate_violation(zenohd_unique: ZenohRouter) 
     // `log_violation` prints `contract violation: <rule> <fqn> measured=…
     // declared=…` — the fqn bare, after the rule. This asserted `fqn=<fqn>`,
     // a spelling the violation line has never had (only the twin's own ROW
-    // line uses `fqn=`), so it could not pass; no lane ran it until host-tests
+    // line uses `fqn=`), so it could not pass; no lane ran it until host-suite
     // reached `test-all` again (issue 1651).
     let named = format!("{RULE_RATE_HIERARCHY_RUNTIME} /cm/pub/cm_header measured=");
     assert!(

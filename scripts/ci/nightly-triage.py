@@ -336,7 +336,7 @@ def selftest(verbose=False):
     # The case that motivated word boundaries — phase-413 W2. `run` matched
     # inside `runner`, so a host failing its own label check scored as a real
     # failure. Measured: this step is the ONLY failing step in every
-    # `run-matrix` run to date and in the tier-2 nightly job.
+    # `platform-matrix` run to date and in the tier-2 nightly job.
     chk("`Verify this runner's labels are true` is NO VERDICT (not `run` in `runner`)",
         classify(job("failure", ("Verify this runner's labels are true", "failure")))[0]
         == "no-verdict")

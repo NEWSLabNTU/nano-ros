@@ -77,7 +77,7 @@
 #   - runs = "none"                         => ZERO Runtime cells for the platform
 #   - cadence merge  => a host executable, and in `ci_lane`'s tier-1 pool
 #   - cadence daily  => a `nightly_token` the nightly sweep runs (the Linux host
-#                       needs none: its daily lane is run-matrix.yml's tier 1)
+#                       needs none: its daily lane is platform-matrix.yml's tier 1)
 #   - `ci_lane`'s tier-1 pool = the rows with runs = "host", breadth =
 #     "witness" and an automated cadence (Linux, Zephyr native_sim, ThreadX
 #     Linux). Their cadence is "daily" by the 2026-11-12 ruling (phase-535 W8):
@@ -350,14 +350,14 @@ maintainers = []
 # book's board page — phase-532 W3, RFC-0123 D3):
 #   Was: C, C++ and Rust pubsub are Runtime; service/action are BuildOnly
 #   pending the runner's peer half. It also carries the tree's first non-
-#   native_sim live-peer interop cell (phase-441 W1, `zephyr-cortex-m-pubsub-c-
+#   native_sim ros2-interop cell (phase-441 W1, `zephyr-cortex-m-pubsub-c-
 #   zenoh`). This note used to say NO RUST ROW, because `zephyr-lang-rust` could
 #   not compile for any board whose devicetree has gpio nodes — issue 0432,
 #   RESOLVED 2026-08-12 by phase-346 W2/W3, after which the Rust leaf built and
 #   `zephyr_cortex_m_rust_zenoh_pubsub_e2e` ran it while four documents still
 #   said it could not. Daily rather than per merge because `just ci` is host-
 #   only and this needs QEMU.
-notes = "C, C++ and Rust pubsub are Runtime; service and action are BuildOnly until the runner's peer half lands. It carries a live-peer interop cell against a host peer over zenoh. Daily rather than per merge, because the merge lane is host-only and this board needs QEMU."
+notes = "C, C++ and Rust pubsub are Runtime; service and action are BuildOnly until the runner's peer half lands. It carries a ros2-interop cell against a host peer over zenoh. Daily rather than per merge, because the merge lane is host-only and this board needs QEMU."
 
 [[board]]
 crate = "nros-board-nuttx-qemu"
@@ -744,7 +744,7 @@ weekly = false
 row = "nros-board-mps2-an385-freertos@FreertosMps2"
 qemu_board = "mps2-an385-freertos"
 budget_minutes = 30
-notes = "phase-525 W4 (RFC-0116 D1, D5): the book's first chapter and the installed track's default, replayed by `host-tests.yml`'s book probes (the `checkout-track` / `installed-track` / `image-track` jobs). The mps2-an385-freertos talker over QEMU's user network under `nros run`, then `ros2 topic echo`, timed from the first `nros setup` against the field budget. The Tutorial runs Rust, C and C++ on this one board (RFC-0124 D3); this is its Rust tab, and tutorial-c / tutorial-cpp replay the others."
+notes = "phase-525 W4 (RFC-0116 D1, D5): the book's first chapter and the installed track's default, replayed by `host-suite.yml`'s book probes (the `checkout-track` / `installed-track` / `image-track` jobs). The mps2-an385-freertos talker over QEMU's user network under `nros run`, then `ros2 topic echo`, timed from the first `nros setup` against the field budget. The Tutorial runs Rust, C and C++ on this one board (RFC-0124 D3); this is its Rust tab, and tutorial-c / tutorial-cpp replay the others."
 
 [[probe]]
 track = "tutorial-2"

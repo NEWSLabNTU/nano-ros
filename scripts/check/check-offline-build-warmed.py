@@ -9,7 +9,7 @@ every road, `nros_warm_leaf_cache` (`scripts/build/leaf-cache.sh`). A driver
 that skips it builds on whatever an earlier warm happened to share, and fails
 on the first crate only its graph needs.
 
-That happened on live-peer 43675564346 (2026-11-15): `failed to download
+That happened on ros2-interop 43675564346 (2026-11-15): `failed to download
 annotate-snippets v0.11.5 … --offline was specified`. Two west-road drivers
 warmed only the repo root's graph, and a third built a workspace's default
 images with no image warm at all.
