@@ -240,8 +240,12 @@ function(nros_threadx_build_netstack_nsos)
     # phase-521 W6 — `nsos_rx_notify.c` is a ThreadX thread, so it compiles
     # with the kernel's headers (`NROS_THREADX_INCLUDES`, set by the kernel
     # build before this runs).
+    # With the kernel's DEFINES too: `nsos_rx_notify.c` declares a TX_THREAD
+    # and sizes its stack from TX_MINIMUM_STACK, and both come from the board's
+    # `tx_user.h` only under TX_INCLUDE_USER_DEFINE_FILE.
     nros_build_rtos_static_lib(nsos_netx
-        SOURCES "${_NTNN_SHIM_DIR}/src/nsos_netx.c" "${_NTNN_SHIM_DIR}/src/nsos_rx_notify.c")
+        SOURCES "${_NTNN_SHIM_DIR}/src/nsos_netx.c" "${_NTNN_SHIM_DIR}/src/nsos_rx_notify.c"
+        DEFINES ${NROS_THREADX_DEFINES})
     target_include_directories(nsos_netx PUBLIC "${_NTNN_SHIM_DIR}/include")
     target_include_directories(nsos_netx PRIVATE ${NROS_THREADX_INCLUDES})
 endfunction()
