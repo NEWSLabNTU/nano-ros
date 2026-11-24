@@ -107,10 +107,36 @@ Its copy of `FreeRTOSConfig.h` had already fallen behind: it lacked issue
 2812's `NROS_FREERTOS_SERVICE_HEAP_EXTRA_KB` term. That is the staleness the
 issue predicted.
 
-**Checked:** check-out-of-tree-board-images: OK — the board package's own knob reached its build script; C, C++ and Rust images from the out-of-tree board package (copied, reached by NROS_EXTRA_BOARD_PATH and FIXTURE_R5F_SDK_ROOT) all carry Tag_ABI_VFP_args: VFP registers and Tag_FP_arch: VFPv3-D16, and every member of every target archive is R-profile with that FPU, and every member stating a calling convention uses VFP registers; a user CFLAGS is merged and reported; selftest: a softfp object, an archive with an M-profile member and one with a softfp member are refused, an archive with a hard-float assembly member passes builds the copied-out
-fixture's C, C++ and Rust images, both roads, with the three copies gone, and
-now refuses a config dir that holds the family's body again. The POSIX board's
-kernel compile () builds. Board-less integrations
-(, ) supply their own
- and are unchanged; they may include the family's headers by
-path.
+**Readers of the config, not only compilers.** The first full gate found two
+sites the include-path sweep missed, and both are this class:
+- a COMPILE probe that builds a FreeRTOS config TU by hand
+  (`scripts/check-sched-dim-arms-compile.sh`) needs the family dir after the
+  board's `-I`;
+- a TEXT reader of a board's `FreeRTOSConfig.h` must follow the include by
+  name, or every family setting reads as absent. The board-capabilities test
+  (`freertos_capabilities_agree_with_freertosconfig`) read
+  `configSUPPORT_DYNAMIC_ALLOCATION` as `0` that way;
+  `check-freertos-fpu-context` had the same blind spot, latent because both
+  FPU boards state their FPU setting themselves.
+
+Both now go through the resolver: `scripts/lib/freertos_config.py` reads the
+directory from `FREERTOS_FAMILY_CONFIG_DIR` in `nros-build-paths` (one
+spelling), prints it for a shell `-I`, and inlines quoted includes the way a
+board build finds them (beside the file, then the family dir). The Rust test
+does the same with the constant. Swept with
+`git grep -nE 'FreeRTOSConfig\.h|lwipopts\.h|arch/cc\.h|nros-board-[a-z0-9-]*freertos[a-z0-9-]*/config'`
+over `scripts`, `just`, `packages/cli`, `packages/testing` and
+`packages/tooling`; the other hits are comments, synthetic configs, or set
+`FREERTOS_CONFIG_DIR` for a build that adds the family dir itself.
+
+**Checked:**
+- `check-out-of-tree-board-images`: the copied-out fixture's C, C++ and Rust
+  images build on both roads with the three copies gone, and the gate refuses a
+  config dir that holds the family's body again.
+- The POSIX board's kernel compile (`can_socketcan_probe`) builds.
+- `check-sched-dim-arms-compile.sh` (FreeRTOS arm),
+  `check-freertos-fpu-context.py` and its self-test, and the
+  board-capabilities test pass.
+- Board-less integrations (`integrations/s32ds`, `integrations/freertos`)
+  supply their own `freertos_config` and are unchanged; they may include the
+  family's headers by path.

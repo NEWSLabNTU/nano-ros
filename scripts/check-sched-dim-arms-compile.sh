@@ -109,6 +109,9 @@ else
     # for `-mcpu=cortex-m3` against the mps2 board's FreeRTOSConfig.h. It read
     # `${FREERTOS_PORT:-GCC/ARM_CM3}` while FREERTOS_PORT was a path; it is
     # upstream's enum since phase-349 W3, which is not a directory.
+    # Issue 2687 — the board header includes the family's by name, found on
+    # the family config dir after the board's own, as on every board build.
+    family_config_dir="$(python3 "$repo_root/scripts/lib/freertos_config.py" family-dir)"
     out="$(arm-none-eabi-gcc -fsyntax-only -mcpu=cortex-m3 -mthumb \
         -DconfigUSE_CORE_AFFINITY=1 \
         -DconfigNUMBER_OF_CORES=2 \
@@ -124,6 +127,7 @@ else
         '-DportENTER_CRITICAL_FROM_ISR()=0' \
         '-DportEXIT_CRITICAL_FROM_ISR(x)=(void)(x)' \
         -I "$repo_root/packages/boards/nros-board-mps2-an385-freertos/config" \
+        -I "$family_config_dir" \
         -I "$FREERTOS_DIR/include" \
         -I "$FREERTOS_DIR/portable/GCC/ARM_CM3" \
         -I "$repo_root/packages/api/nros-c/include" \
