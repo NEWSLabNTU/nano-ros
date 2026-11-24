@@ -237,3 +237,70 @@ choose between the Corrosion prune, the split lane, and cutting the
 nros-tests duplication at its source. That last one is not "share target
 dirs": a cargo `--target-dir` serves exactly one workspace root (issue
 0616), so the 127 leaves would have to collapse into fewer cargo roots.
+
+## Cutting the nros-tests duplication at its source, costed (2026-11-25)
+
+Costed on paper by nros 118, from the manifests and a read-only pass over the
+118 runner's fixture tree; nothing was built.
+
+**What duplicates.** `packages/testing/nros-tests` holds 110 cargo manifests,
+79 of them their own `[workspace]` roots. Of its 98 manifest rows, 59 are
+`workspace_fixture` rows that `nros build` builds (38 of them linux), 17 are
+plain cargo rows and the rest cmake or west. A workspace row already shares
+by build class within its leaf (RFC-0100 D13): the class dir
+`<target-dir>/nros-class/<key>/build` is cargo's `build.build-dir` and holds
+intermediates only, while binaries are uplifted into the leaf's own
+`<target-dir>/<profile>/`. The class key hashes content and no path, and it
+repeats across leaves: 97 class dirs on the runner tree, 53 distinct keys,
+one key in 9 leaves (`int32-sink`, `graph-probe`, the `action-*` bins, ...).
+The copies beyond the first take **25.0 of 56.7 GB, 44 %**. At that ratio,
+the 142 run's 18.6 GiB tree would lose about 8 GiB, and about 44 core-chain
+compiles.
+
+**(c1) Collapse the leaves into fewer cargo roots.** A cargo `--target-dir`
+serves exactly one workspace root (issue 0616), so sharing across roots is
+what this option avoids. Cost:
+
+- package names collide across leaves (`talker_pkg` x6, `demo_entry` x5,
+  `listener_pkg`, `ctrl_pkg`, `telem_pkg`, `alpha_pkg` x2), so they must be
+  renamed;
+- 44 leaves have path dependencies into their own `generated/`, and one root
+  cannot hold two `std_msgs` path packages (a lockfile collision), so they
+  need one shared generated tree;
+- `nros build` and `nros configure` take a leaf to be a workspace, so they need a
+  mode for several workspaces under one root;
+- every row's `artifact_root` moves, and a row the resolvers cannot
+  attribute fails closed in every lane (issue 0828), so the manifest columns
+  and the resolvers move with it.
+
+Several days and an RFC change, with lane-wide risk.
+
+**(c2) Keep the roots; share only the class build-dir across leaves.** The
+fixture lane names a lane-wide class root, so every leaf's image of one class
+uses `build/nros-class/<key>/build`, while each leaf keeps its own
+`--target-dir`. Artifacts do not move, so no resolver changes, and leaves
+whose binaries share a name do not overwrite each other. Cost: about a day
+for the `nros build` option and the lane wiring, plus three things that
+must come first:
+
+- **The premise, proven.** Issue 0616 still applies: one build dir is safe
+  only if every root reaches each shared crate by the same path spelling,
+  or two units of one crate land beside each other (with nros-platform's
+  `#[global_allocator]` in both). The nros crates are external path
+  dependencies from every leaf, so the spelling should agree; that is to be
+  shown, not assumed. A two-leaf build of one class must show each nros unit
+  once in the shared `deps/`, and the pair must include two leaves whose
+  local packages share a name (`talker_pkg`), since rustc picks a transitive
+  dependency by its SVH there and 0616 is where "should be unambiguous" last
+  failed.
+- **A real premise gate.** `check-path-env-fingerprints`'
+  `SHARED_TARGET_PREMISE` checks that the sharing code exists, not that the
+  spelling holds. The gate must check the spelling.
+- **Wall time beside disk.** Cargo locks a build dir, so the leaves of one
+  class queue behind each other: a key shared by 9 leaves turns 9 parallel
+  builds into a line. The proof measures wall time as well as disk, and if
+  the queue shows, each class is pre-built once before the leaves fan out.
+
+**Ruling (2026-11-25):** (c2), behind the two-leaf proof and a premise gate,
+after the re-measure of the tier-1 peak with the probe-key fix in. (c1) only
+if the proof fails.
