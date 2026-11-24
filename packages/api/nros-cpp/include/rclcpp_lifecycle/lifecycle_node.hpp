@@ -1358,6 +1358,9 @@ class LifecycleNodeInterface {
 /// Differences, each bounded and stated:
 ///  * Construction cannot throw. A failed construction leaves
 ///    `ok()` false, as `rclcpp::Node`'s does.
+///  * That includes the five lifecycle services failing to register, where
+///    upstream throws: `ok()` is false and `error_what()` names the lifecycle
+///    services.
 ///  * One managed node per executor: the REP-2002 state machine lives on the
 ///    executor (`rclc_executor_lifecycle_*`).
 ///  * Not movable: the engine's managed-entity list points into this object.
@@ -1521,7 +1524,15 @@ class LifecycleNode : public ::rclcpp::Node, public node_interfaces::LifecycleNo
         engine_.register_on_cleanup(&LifecycleNode::cb_cleanup, this);
         engine_.register_on_shutdown(&LifecycleNode::cb_shutdown, this);
         engine_.register_on_error(&LifecycleNode::cb_error, this);
-        (void)engine_.register_services();
+        // Upstream's constructor throws when the services cannot be created.
+        // This one cannot throw, so it latches the failure on the node, the
+        // way a failed `rclcpp::Node` construction does: `ok()` goes false and
+        // `error_what()` names it. Discarding it left a node that kept running
+        // with no lifecycle services and said nothing.
+        const ::rclcpp::Result services = engine_.register_services();
+        if (!services.ok()) {
+            this->set_error("lifecycle services", services.raw());
+        }
         state_ = State(engine_.get_current_state());
     }
 
