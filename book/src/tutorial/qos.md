@@ -119,8 +119,8 @@ nodes:
 ```
 
 A contract row states what a node creates and with which QoS. The build
-sizes the image from it ([chapter 8](tell-the-build.md) shows how much that
-saves), and, which is this lab's subject, checks it. Both rows say `volatile`, which is what the scaffolded code
+sizes the image from it ([chapter 8](tell-the-build.md) shows what that
+changes), and, which is this lab's subject, checks it. Both rows say `volatile`, which is what the scaffolded code
 asks for, so the two checks have nothing to say yet. Every node has a
 `params:` line, even an empty one: the build sizes the parameter store from
 every node's declaration or from none, and a contract that states some nodes

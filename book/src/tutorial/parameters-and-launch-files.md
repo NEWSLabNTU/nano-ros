@@ -547,7 +547,7 @@ exactly that system, if you tell it what the nodes create.
 ## Next
 
 - [Tell the build what your system creates](tell-the-build.md): the
-  contract beside this launch file, and the static memory it saves.
+  contract beside this launch file, and what it sizes in the image.
 - [Use simulated time](../guide/deploy/use-simulated-time.md): the
   `use_sim_time` parameter and a clock from ROS 2.
 - [Organize a larger workspace](../guide/build/organize-a-larger-workspace.md):
