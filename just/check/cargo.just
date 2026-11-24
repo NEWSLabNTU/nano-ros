@@ -374,6 +374,24 @@ rust-toolchains-list:
 probe-source-dirs:
     @python3 scripts/gen-probe-source-dirs.py --check
 
+# Issue 2840 -- the sizes probe's ORCHESTRATION exclusions are harvested, never
+# typed: every `NROS_*` name a workflow, script or justfile assigns that no
+# source reaching a probed compile reads
+# (`packages/tooling/nros-sizes-build/src/orchestration_knobs.rs`).
+#
+# The probe keys on every `NROS_*` it is not told to ignore (issue 0528), so an
+# orchestration name nobody listed splits it: on 2026-11-24, 22 of 271 probe
+# keys on the 118 runner were split per lane, per base commit or per runner.
+# Only one direction fails: a table entry a probed compile now READS (issue
+# 0528 -- that knob would stop keying the probe). A new script name the table
+# lacks only costs a probe directory, so it is a NOTE; failing on it would make
+# every change that adds a script variable regenerate this file, and two in one
+# merge group would eject each other. Buildless: the git index, the knob
+# registry and some regexes, with a self-test first.
+[group("ci")]
+probe-orchestration-knobs:
+    @python3 scripts/gen-probe-orchestration-knobs.py --check
+
 # Issue 1018 — every input the CLI source stamp folds must be one the stale-CLI
 # refusal can NAME.
 #
