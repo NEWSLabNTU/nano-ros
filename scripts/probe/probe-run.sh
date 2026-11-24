@@ -26,7 +26,10 @@
 nros_probe_run_expect() {
     local step="$1" secs="$2" keep="$3" body="$4"
     shift 4
-    local log="/tmp/probe-run-$step.log"
+    # Issue 2954 -- under NROS_PROBE_LOG_DIR when set: two concurrent callers
+    # of one step number (the self-test, run by two gate lanes at once) must
+    # not share a log. The probe container leaves it unset.
+    local log="${NROS_PROBE_LOG_DIR:-/tmp}/probe-run-$step.log"
     local pending=("$@")
     : >"$log"
     setsid bash "$body" >"$log" 2>&1 </dev/null &
@@ -81,7 +84,10 @@ nros_probe_run_expect() {
 nros_probe_run_exit() {
     local step="$1" secs="$2" want="$3" body="$4"
     shift 4
-    local log="/tmp/probe-run-$step.log"
+    # Issue 2954 -- under NROS_PROBE_LOG_DIR when set: two concurrent callers
+    # of one step number (the self-test, run by two gate lanes at once) must
+    # not share a log. The probe container leaves it unset.
+    local log="${NROS_PROBE_LOG_DIR:-/tmp}/probe-run-$step.log"
     : >"$log"
     setsid bash "$body" >"$log" 2>&1 </dev/null &
     local pid=$!
