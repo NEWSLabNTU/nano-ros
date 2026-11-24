@@ -24,6 +24,14 @@ QUIET  the lanes' own crons own the self-hosted runners. The quiet window runs
        today). A merge inside it is not dispatched on push; `automation.yml`'s
        deferred cron, at the window's end, dispatches every lane named by a
        commit that landed in today's window.
+BUSY   a lane workflow with an UNFINISHED run on main (queued, in progress,
+       pending, waiting or requested, any event) is NOT dispatched. Its
+       concurrency groups keep one pending run each and a newer one CANCELS
+       the older pending one, and two lanes key their groups per JOB, so a
+       run "in progress" can still hold pending jobs. A dispatch then could
+       cancel someone else's run, a release-evidence dispatch among them, with
+       nobody watching. The report names the run it deferred to (id, status,
+       commit, link); the lane's next scheduled run covers the fix.
 
   lane-fix-dispatch.py --check-pr N --repo OWNER/NAME   refuse an unknown name in PR N's commits
   lane-fix-dispatch.py --push BEFORE AFTER --repo R     dispatch the lanes the pushed commits name
@@ -190,6 +198,25 @@ def window_messages(repo: str, now: dt.datetime, window: tuple[int, int]) -> lis
     return [c["commit"]["message"] for page in pages for c in page]
 
 
+# Every status a run has before it is `completed` (the API's `status` filter).
+UNFINISHED = ("queued", "in_progress", "pending", "waiting", "requested")
+
+
+def active_runs(repo: str, wf: str) -> list[dict]:
+    """`wf`'s unfinished runs on main, newest first, as {id, status, sha, url, event}."""
+    runs: dict[int, dict] = {}
+    for status in UNFINISHED:
+        data = gh_json([
+            "api", f"repos/{repo}/actions/workflows/{wf}/runs?branch=main&status={status}&per_page=20",
+        ])
+        for r in data.get("workflow_runs", []):
+            runs[r["id"]] = {
+                "id": r["id"], "status": r["status"], "sha": r["head_sha"],
+                "url": r["html_url"], "event": r["event"],
+            }
+    return sorted(runs.values(), key=lambda r: -r["id"])
+
+
 def gh_dispatch(repo: str, wf: str) -> None:
     subprocess.run(["gh", "workflow", "run", wf, "--ref", "main", "--repo", repo], check=True)
 
@@ -216,8 +243,9 @@ def run_check(messages: list[str], lanes=None) -> tuple[int, list[str]]:
     return 0, [f"After merge this dispatches on main: {', '.join(wfs)}."]
 
 
-def run_dispatch(messages, now, window, dispatch, deferred: bool, lanes=None):
-    """Returns (exit code, report lines). `dispatch(wf)` starts one run."""
+def run_dispatch(messages, now, window, dispatch, deferred: bool, lanes=None, busy=None):
+    """Returns (exit code, report lines). `dispatch(wf)` starts one run;
+    `busy(wf)` lists its unfinished runs on main (none when omitted)."""
     values = trailer_values(messages)
     wfs, bad = resolve(values, lanes)
     lines: list[str] = []
@@ -236,6 +264,17 @@ def run_dispatch(messages, now, window, dispatch, deferred: bool, lanes=None):
         )
         return rc, lines
     for wf in wfs:
+        active = busy(wf) if busy is not None else []
+        if active:
+            r = active[0]
+            more = f" (and {len(active) - 1} more)" if len(active) > 1 else ""
+            lines.append(
+                f"Not dispatched: {wf} has an unfinished run on main, {r['id']} "
+                f"({r['status']}, {r['event']}, {r['sha'][:10]}){more}: {r['url']}. "
+                f"A dispatch now could cancel a pending run or job in its concurrency "
+                f"group. Deferred to that run and the lane's next scheduled run."
+            )
+            continue
         dispatch(wf)
         lines.append(f"Dispatched {wf} on main.")
     return rc, lines
@@ -308,6 +347,33 @@ def self_test(quiet: bool = False) -> int:
     rc, _ = run_dispatch(["x\n"], at(12), window, sent.append, deferred=False, lanes=lanes)
     chk("a push naming no lane dispatches nothing", rc == 0 and sent == [])
 
+    # BUSY: a lane with an unfinished run on main is not dispatched, the
+    # report names the run, and a free lane in the same push still goes.
+    run = {"id": 42, "status": "pending", "sha": "abcdef0123456789", "url": "https://x/42",
+           "event": "workflow_dispatch"}
+    busy = lambda wf: [run] if wf == "host-tests.yml" else []  # noqa: E731
+    sent.clear()
+    rc, lines = run_dispatch(["x\n\nFixes-Lane: host-tests, live-peer\n"], at(12), window,
+                             sent.append, deferred=False, lanes=lanes, busy=busy)
+    chk("a busy lane is not dispatched; a free one is",
+        rc == 0 and sent == ["live-peer.yml"])
+    chk("the report names the run it deferred to",
+        any("Not dispatched: host-tests.yml" in l and "42" in l and "pending" in l
+            and "abcdef0123" in l and "https://x/42" in l for l in lines))
+    sent.clear()
+    in_prog = dict(run, status="in_progress")
+    rc, _ = run_dispatch(["x\n\nFixes-Lane: host-tests\n"], at(window[1]), window,
+                         sent.append, deferred=True, lanes=lanes, busy=lambda wf: [in_prog])
+    chk("an in-progress run blocks too (job-level groups), also in the deferred run",
+        sent == [])
+    # Negative control: with nothing unfinished the same push dispatches.
+    sent.clear()
+    run_dispatch(["x\n\nFixes-Lane: host-tests\n"], at(12), window, sent.append,
+                 deferred=False, lanes=lanes, busy=lambda wf: [])
+    chk("with no unfinished run it dispatches", sent == ["host-tests.yml"])
+    chk("UNFINISHED names every pre-completion status",
+        set(UNFINISHED) == {"queued", "in_progress", "pending", "waiting", "requested"})
+
     if fails:
         for f in fails:
             print(f"lane-fix-dispatch self-test FAIL: {f}", file=sys.stderr)
@@ -360,10 +426,12 @@ def main(argv: list[str]) -> int:
     window = quiet_window()
     if a.push:
         msgs = push_messages(a.repo, a.push[0], a.push[1])
-        rc, lines = run_dispatch(msgs, now, window, lambda wf: gh_dispatch(a.repo, wf), deferred=False)
+        rc, lines = run_dispatch(msgs, now, window, lambda wf: gh_dispatch(a.repo, wf),
+                                 deferred=False, busy=lambda wf: active_runs(a.repo, wf))
     else:
         msgs = window_messages(a.repo, now, window)
-        rc, lines = run_dispatch(msgs, now, window, lambda wf: gh_dispatch(a.repo, wf), deferred=True)
+        rc, lines = run_dispatch(msgs, now, window, lambda wf: gh_dispatch(a.repo, wf),
+                                 deferred=True, busy=lambda wf: active_runs(a.repo, wf))
     report(lines)
     return rc
 

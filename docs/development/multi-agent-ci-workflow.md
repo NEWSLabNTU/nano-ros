@@ -504,6 +504,13 @@ night's cron. Several names go on one line, separated by commas.
 - **Quiet window:** a merge between the earliest lane cron and an hour after
   the latest (03:00-07:00 UTC) is dispatched at 07:15, so the crons keep the
   self-hosted runners.
+- **Busy lanes:** a lane with any unfinished run on `main` (queued, in
+  progress, pending, waiting or requested) is not dispatched. A lane's
+  concurrency group keeps one pending run and a newer one cancels it, so a
+  dispatch could cancel someone else's run, such as a release-evidence
+  dispatch. The job's report names the run it deferred to. The lane's next
+  scheduled run then covers the fix. The same holds for a manual
+  `gh workflow run`: look for an unfinished run on `main` first.
 
 ## Landing: batch, do not serialize
 

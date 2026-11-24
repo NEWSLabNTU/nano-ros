@@ -90,6 +90,10 @@ At `01388e07a3` (run 45684820840) all four pass in tier 2 and tier-2 nightly.
 3 h 7 min after the merge, inside the 6 hours, with every job green, all three VERDICT jobs
 included.
 
+**Busy-lane guard.** A `Fixes-Lane:` dispatch is skipped for a lane that already has an
+unfinished run on `main`, so it cannot cancel that run's pending jobs; the report names the
+run it deferred to, and the lane's next scheduled run covers the fix.
+
 User ruling 2026-11-24: a green `workflow_dispatch` of a scheduled workflow, on `main` at the
 release commit, with every job green, counts as release evidence like a scheduled run.
 Applied in `release-lanes-green.py` and phase-590 by the phase-590 owner.
@@ -97,9 +101,25 @@ Applied in `release-lanes-green.py` and phase-590 by the phase-590 owner.
 Then: when a pull request that states which red scheduled lane it fixes merges, dispatch that
 lane on `main` automatically, so nobody has to remember to.
 
-Acceptance: the release check accepts a qualifying dispatch and refuses one with a skipped
-job or at another commit (self-tests with a negative control); the next lane fix after this
-lands is proven within 6 hours of its merge.
+**A dispatch must never cancel someone else's run** (manager, 2026-11-24). A lane's concurrency
+group keeps one pending run, and a newer one cancels the older pending one. nightly and
+host-tests key their groups per job, so a run "in progress" can still hold pending jobs. An
+automatic dispatch could therefore cancel a pending release-evidence dispatch with nobody
+watching. So `lane-fix-dispatch.py` does not dispatch a lane that has ANY unfinished run on
+`main` (queued, in progress, pending, waiting or requested, any event). The report names the run
+it deferred to (id, status, commit, link), and the lane's next scheduled run covers the fix.
+
+Acceptance:
+
+- the release check accepts a qualifying dispatch and refuses one with a skipped job or at
+  another commit (self-tests with a negative control);
+- an unknown `Fixes-Lane:` name turns `lane-fix-name` red on the pull request (live: a
+  never-merged probe PR, #4773);
+- a lane with an unfinished run on `main` is not dispatched, and the report names that run
+  (self-tests; with the guard removed they fail);
+- the next lane fix after this lands is proven within 6 hours of its merge (live: a
+  `Fixes-Lane: host-tests` merge outside 03:00-07:00Z dispatches exactly one host-tests run on
+  `main`, once 243's host-tests release-evidence run has finished).
 
 ### W3 -- `live-peer` host job time (owner: nros 118)
 
