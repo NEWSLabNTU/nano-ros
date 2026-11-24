@@ -58,6 +58,11 @@ bash ./scripts/zephyr/tcm-section-align-patch-4.4.sh "$WORKSPACE"
 # priority-change event needs no patch here; 4.4 carries upstream's mapping.
 echo "[zephyr setup] 4.4 line: applying CTF app_marker patch (idempotent)..."
 bash ./scripts/zephyr/ctf-app-marker-patch.sh "$WORKSPACE" 0xF000
+# Issue 2878 -- the same two symbols as the 3.7 line, so one prj.conf selects
+# an image's own tracing backend on both. 4.4 reads CONFIG_TRACING_BACKEND_NAME,
+# but that string has no prompt and the choice no out-of-tree member.
+echo "[zephyr setup] 4.4 line: applying out-of-tree tracing backend patch (idempotent)..."
+bash ./scripts/zephyr/tracing-custom-backend-patch.sh "$WORKSPACE"
 # Issue 2187 — the zephyr-lang-rust gpio pair (issue 0432) is NOT a 3.7-only
 # patch: 4.4's pin (a763400) still emits a one-cell `GpioPin::new` call for
 # mps2/an385's `#gpio-cells = <1>` controller, so every Rust mps2 image failed

@@ -75,6 +75,10 @@ bash ./scripts/zephyr/llext-edk-conditional-patch.sh "$WORKSPACE"
 echo "[zephyr setup] applying CTF app_marker + priority-set patches (idempotent)..."
 bash ./scripts/zephyr/ctf-app-marker-patch.sh "$WORKSPACE" 0x70
 bash ./scripts/zephyr/ctf-priority-set-patch.sh "$WORKSPACE"
+# Issue 2878 -- an image selects a tracing backend it registers itself
+# (CONFIG_TRACING_BACKEND_CUSTOM + _CUSTOM_NAME). Inert unless selected.
+echo "[zephyr setup] applying out-of-tree tracing backend patch (idempotent)..."
+bash ./scripts/zephyr/tracing-custom-backend-patch.sh "$WORKSPACE"
 echo "[zephyr setup] applying Phase 11W.6 cyclonedds threads patch (idempotent)..."
 cyclone_patch ./scripts/zephyr/cyclonedds-zephyr-threads-patch.sh
 echo "[zephyr setup] applying Phase 11W.7 cyclonedds log eager-flush patch (idempotent)..."

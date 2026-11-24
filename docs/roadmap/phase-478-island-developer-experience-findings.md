@@ -862,11 +862,16 @@ AN536) stay green.
 
 ### I38 -- a ruling on the out-of-tree tracing backend patch
 
-- **Issue:** [2878](../issues/2878-zephyr-tracing-custom-backend-patch.md).
+- **Issue:** [2878](../issues/archived/2878-zephyr-tracing-custom-backend-patch.md).
 - **What:** nano-ros carries the 3.7 patch beside 2766's, or the book
   documents a consumer's own Zephyr patch over a provisioned tree.
 - **Acceptance:** 2878's; under the first answer the island deletes
   `patches/zephyr/` and `scripts/apply-zephyr-patches.sh`.
+- **Status:** done on the nano-ros side: ruled the first answer. Both patch
+  sets (3.7 and 4.4) add `CONFIG_TRACING_BACKEND_CUSTOM(_NAME)`, and
+  `just zephyr test-tracing-custom-backend` shows an image's own backend
+  receive the CTF stream on both lines (issue 2878, resolved). The island's
+  deletion waits on its pin.
 
 ### I39 -- the S32Z network from a board network file
 
@@ -1188,7 +1193,7 @@ island switch.
 - [ ] I37: the Zephyr workspace ladder takes the project's own west
       workspace above the store's and says so; the island's FVP lane names
       no `--zephyr-workspace` (issue 2877).
-- [ ] I38: the out-of-tree tracing backend patch ruled and built or
+- [x] I38: the out-of-tree tracing backend patch ruled and built or
       documented; under the first answer the island carries no Zephyr patch
       (issue 2878).
 - [ ] I39: an S32Z image names a board network file, with its VLAN tag; the
@@ -1255,7 +1260,7 @@ unowned.
 
 - [issue 2876](../issues/archived/2876-owned-west-entry-no-interface-search-path.md): an owned Zephyr west entry gets no workspace `NROS_INTERFACE_SEARCH_PATH` (I36).
 - [issue 2877](../issues/archived/2877-zephyr-workspace-ladder-skips-project-west-workspace.md): the Zephyr workspace ladder never looks at the project's own west workspace (I37).
-- [issue 2878](../issues/2878-zephyr-tracing-custom-backend-patch.md): Zephyr 3.7 cannot select an out-of-tree tracing backend; the island carries the patch (I38).
+- [issue 2878](../issues/archived/2878-zephyr-tracing-custom-backend-patch.md): Zephyr 3.7 cannot select an out-of-tree tracing backend; the island carries the patch (I38; resolved).
 - [issue 2879](../issues/2879-s32z270-rtu0-zephyr-no-board-network.md): `s32z270-rtu0-zephyr` declares no `[board.net]`, and no VLAN or second interface renders (I39).
 - [issue 2880](../issues/2880-s32z270-rtu0-zephyr-no-west-downstream.md): `s32z270-rtu0-zephyr` has no `west-downstream.yml` (I40).
 - [issue 2881](../issues/archived/2881-rclcpp-log-min-severity-missing.md): no compile-time log floor, `RCLCPP_LOG_MIN_SEVERITY` (I41).
