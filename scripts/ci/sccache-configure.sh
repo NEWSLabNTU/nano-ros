@@ -62,6 +62,14 @@ if ! command -v sccache >/dev/null 2>&1; then
     exit 0
 fi
 sccache --version
+# A server may already be running: any earlier `just` step in the job reached
+# the justfile's RUSTC_WRAPPER and started one with the DEFAULT dir and size.
+# A server's dir and size are fixed when it starts, and a second
+# `--start-server` fails with `Address in use`, which this step read as
+# "unavailable" and published nothing (live-peer run 45313891417: 0 Rust
+# requests in 2 h 20 min of fixture rows). Stop it first, so the server the
+# later steps reach is the one configured here.
+sccache --stop-server >/dev/null 2>&1 || true
 log="${RUNNER_TEMP:-/tmp}/sccache-server.log"
 start_log="${RUNNER_TEMP:-/tmp}/sccache-start.log"
 if SCCACHE_DIR="$dir" SCCACHE_CACHE_SIZE="$size" SCCACHE_ERROR_LOG="$log" SCCACHE_LOG=warn \
