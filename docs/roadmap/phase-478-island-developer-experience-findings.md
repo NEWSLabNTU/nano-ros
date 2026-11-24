@@ -814,7 +814,7 @@ AN536) stay green.
 | owned west entry: deploy, workspace modules, nested bringup census, `os_config` base | fixed; used on `nano-ros-next` | issues 2861, 2862, 2864 |
 | owned west entry: `NROS_INTERFACE_SEARCH_PATH` (`asi_tests/asi_*_zephyr/CMakeLists.txt:39-40`) | fixed in nano-ros (2876 resolved); the island drops its lines next | issue 2876, I36 |
 | owned entry that never starts nano-ros on the host gets a census (`can_output_test_bringup` `[census] on_missing = "warn"`) | fixed, PR #4671; the island states `runs_nano_ros = false` on `nano-ros-next` `56b9971` | 2871 (archived), I45 (done) |
-| owned entry census adds the entry's workspace `<depend>`s (FreeRTOS `asi_unit_test` / `asi_dds_loopback_test` `add_subdirectory(asi_common)` fallback) | open; issue 2680 fixed the probe only | issue 2899, I50 |
+| owned entry census adds the entry's workspace `<depend>`s (FreeRTOS `asi_unit_test` / `asi_dds_loopback_test` `add_subdirectory(asi_common)` fallback) | fixed 2026-11-25: the census adds the probe's closure; island fallback removal pending (T4) | issue 2899, I50 |
 | owned census goes stale when the entry's CMakeLists changes (a stale census masked issue 2899 locally) | open | issue 2900, I51 |
 | the probe seeds the parameters instances agree on when they disagree on others (controller's 148 `declare_parameter` defaults, P3) | open | issue 2901, I52 |
 | `nros run` `--forbid`, `--settle`, `--zephyr-workspace` | fixed; used on `nano-ros-next` | issue 2863 |
@@ -981,7 +981,8 @@ AN536) stay green.
 
 ### I50 -- an owned entry's census adds its workspace `<depend>`s
 
-- **Issue:** [2899](../issues/2899-owned-census-omits-entry-workspace-depends.md).
+- **Issue:** [2899](../issues/archived/2899-owned-census-omits-entry-workspace-depends.md).
+- **Status:** fixed 2026-11-25; the island's fallback removal is T4.
 - **What:** the owned census host build adds the entry's workspace
   `<depend>` closure, through the helper issue 2680 gave the probe.
 - **Acceptance:** 2899's; the island's FreeRTOS test entries
@@ -1294,7 +1295,7 @@ unowned.
 - [issue 2883](../issues/archived/2883-zephyr-clock-halt-unreachable-after-platform.md): `halt` after `platform` on a "none" port was unreachable and accepted (I43; homed in phase-582; resolved, superseded by RFC-0141 D1's amendment).
 - [issue 2884](../issues/2884-sntp-resync-paced-on-guest-time.md): the SNTP re-sync interval runs on guest time (I44; homed in phase-582).
 - [issue 2871](../issues/archived/2871-census-for-entry-without-nano-ros.md): an owned entry that never starts nano-ros gets no census (I45; resolved by PR #4671).
-- [issue 2899](../issues/2899-owned-census-omits-entry-workspace-depends.md): an owned entry's census builds its package without the workspace packages it `<depend>`s on (I50).
+- [issue 2899](../issues/archived/2899-owned-census-omits-entry-workspace-depends.md): an owned entry's census builds its package without the workspace packages it `<depend>`s on (I50).
 - [issue 2900](../issues/2900-owned-census-freshness-ignores-entry-cmakelists.md): an owned census reads fresh after the entry's CMakeLists changes (I51).
 - [issue 2901](../issues/2901-probe-seeds-all-or-nothing-on-disagreement.md): the probe drops every launch seed when instances disagree on one key (I52).
 - [issue 2632](../issues/2632-s32z270-freertos-rtd-variant.md): the s32z270-freertos RTD variant's NETC netif, port patch and full link (I46; phase-524 W3 stays its descriptor home).

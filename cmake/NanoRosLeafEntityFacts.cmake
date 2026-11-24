@@ -74,6 +74,13 @@ function(_nros_census_program_walk dir skip)
         return()
     endif()
     get_property(_tgts DIRECTORY "${dir}" PROPERTY BUILDSYSTEM_TARGETS)
+    # Issue 2899 -- a workspace package the owned-entry census build added
+    # for the entry (`_NROS_CENSUS_DEP_DIRS`) is part of the program's sources
+    # and never one of its programs: the census runs the entry's executables.
+    get_property(_dep_dirs GLOBAL PROPERTY _NROS_CENSUS_DEP_DIRS)
+    if(_src IN_LIST _dep_dirs)
+        set(_tgts "")
+    endif()
     foreach(_t IN LISTS _tgts)
         get_target_property(_type ${_t} TYPE)
         if(_type STREQUAL "EXECUTABLE")

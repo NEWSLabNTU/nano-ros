@@ -8,6 +8,11 @@
 //! 4 publishers) from one package. Its built sizing descriptor must state the
 //! larger program's counts, not the first program's (which is what a census
 //! of one program stated).
+//!
+//! Issue 2899 -- `prog_large` also includes a header of `two_prog_timing`, a
+//! sibling workspace package `two_prog` `<depend>`s on and does not add
+//! itself. The census is a host build of the entry's package, so the fixture
+//! builds only if that build adds the entry's workspace dependencies.
 
 use nros_tests::{
     fixtures::{RequireFixture, Rmw, migrated_leaf::LeafVariant},

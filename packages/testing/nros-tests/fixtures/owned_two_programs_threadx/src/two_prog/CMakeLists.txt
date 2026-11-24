@@ -15,6 +15,9 @@ nano_ros_add_executable(prog_small src/small.c)
 ament_target_dependencies(prog_small std_msgs)
 nano_ros_add_executable(prog_large src/large.c)
 ament_target_dependencies(prog_large std_msgs)
+# Issue 2899 -- a sibling workspace package, NOT added here: whoever
+# configures this package (the workspace, the probe, the census) adds it first.
+target_link_libraries(prog_large PRIVATE two_prog_timing)
 
 install(TARGETS prog_small prog_large DESTINATION lib/${PROJECT_NAME})
 ament_package()
