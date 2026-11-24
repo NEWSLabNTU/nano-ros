@@ -272,6 +272,26 @@ def _store_tool(path: str) -> tuple[str, str] | None:
     return None
 
 
+def _sdk_version_of(path: str) -> str | None:
+    """The version a Zephyr SDK states for itself (`<sdk>/sdk_version`), for a
+    path at or below an SDK's root, else None.
+
+    Issue 2937: an SDK installed OUTSIDE the store (a CI image's
+    `/opt/zephyr-sdks/zephyr-sdk-0.16.9`) has no store path to read a version
+    from, and was reported NOT VERIFIED for that alone, even when it is the
+    pinned version. The SDK says which it is, so ask it."""
+    p = Path(path)
+    for d in [p, *p.parents]:
+        f = d / "sdk_version"
+        try:
+            if f.is_file():
+                v = f.read_text().strip()
+                return v or None
+        except OSError:
+            return None
+    return None
+
+
 def index_versions(index: dict, tool: str) -> set[str]:
     """The versions `nros-sdk-index.toml` pins for a store directory: its own
     `[tool.<tool>]` and its per-line siblings (`[tool.<tool>-1-0-1]`)."""
@@ -309,9 +329,15 @@ def toolchain_problems(cache: dict[str, str], index: dict, manifests: dict[str, 
             continue
         st = _store_tool(path)
         if st is None:
-            identity.append(f"{var}={path} (outside the SDK store)")
-            problems.append(f"{var} is {path}, outside the SDK store, so no pin speaks for it")
-            continue
+            sdk_ver = _sdk_version_of(path)
+            if sdk_ver is None:
+                identity.append(f"{var}={path} (outside the SDK store)")
+                problems.append(f"{var} is {path}, outside the SDK store and in no Zephyr SDK "
+                                "that states its version, so no pin speaks for it")
+                continue
+            # Outside the store, but a Zephyr SDK that names its version: the
+            # same fact a store path gives (issue 2937).
+            st = ("zephyr-sdk", sdk_ver)
         # The compiler inside a Zephyr SDK and the SDK dir name one fact.
         if st in seen:
             continue
@@ -372,6 +398,43 @@ def zephyr_of(cache: dict[str, str]) -> tuple[str, str | None] | None:
     r = subprocess.run(["git", "-C", base, "describe", "--tags", "--exact-match", "HEAD"],
                        capture_output=True, text=True, env=env)
     return line, (r.stdout.strip() or None) if r.returncode == 0 else None
+
+
+# ------------------------------------------------------------------ families
+#
+# Issue 2937: NOT VERIFIED is a reported skip, and a lane whose every row of a
+# family was skipped stayed green while it verified nothing for that family
+# (every Zephyr row, for three nights). So the lane reports, per family, how
+# many rows it verified, and a family with rows and none verified FAILS.
+
+def family_of(image: str) -> str:
+    """A row's family: the last word of its board (`talker/rust/zenoh@
+    nucleo-f767zi-zephyr` -> `zephyr`, `...@mps2-an385-baremetal` ->
+    `baremetal`)."""
+    board = image.rsplit("@", 1)[-1]
+    return board.rsplit("-", 1)[-1]
+
+
+def family_summary(results: list[tuple[str, str]]) -> tuple[list[str], list[str]]:
+    """`(lines, failing families)` from `(family, status)` per row, status
+    one of `verified` (a PASS, NOTE or FAIL under the pinned toolchain),
+    `unverified` (NOT VERIFIED) and `unwalked` (the build or walk failed, which
+    already fails the row). A family with rows and none verified fails."""
+    fams: dict[str, dict[str, int]] = {}
+    for fam, status in results:
+        fams.setdefault(fam, {"verified": 0, "unverified": 0, "unwalked": 0})[status] += 1
+    lines: list[str] = []
+    failing: list[str] = []
+    for fam in sorted(fams):
+        c = fams[fam]
+        total = sum(c.values())
+        line = (f"  {fam}: {c['verified']} of {total} verified, {c['unverified']} not "
+                f"verified, {c['unwalked']} not walked")
+        if c["verified"] == 0:
+            line += " -- FAIL: no row of this family was verified, so the lane says nothing about it"
+            failing.append(fam)
+        lines.append(line)
+    return lines, failing
 
 
 def table_rows(doc: dict, only: list[str] | None) -> list[tuple[str, dict]]:
@@ -504,7 +567,7 @@ def self_test() -> int:
     _, p = toolchain_problems({"ZEPHYR_SDK_INSTALL_DIR": sdk.format("1.0.1")}, idx, man, None)
     check("toolchain: a per-line SDK entry counts as a pin", p == [])
     _, p = toolchain_problems({"CMAKE_C_COMPILER": "/usr/bin/arm-none-eabi-gcc"}, idx, man, None)
-    check("toolchain: a compiler outside the store is NOT VERIFIED", len(p) == 1)
+    check("toolchain: a compiler outside the store and any SDK is NOT VERIFIED", len(p) == 1)
     _, p = toolchain_problems({}, idx, man, ("3.7", "v3.7.0"))
     check("toolchain: a Zephyr tree behind its manifest is NOT VERIFIED",
           len(p) == 1 and "v3.7.0" in p[0] and "v3.7.2" in p[0])
@@ -539,6 +602,41 @@ def self_test() -> int:
     check("toolchain: an SDK's compiler and the SDK dir are one fact, reported once",
           len(p) == 1)
 
+    # Issue 2937: an SDK outside the store states its own version.
+    with tempfile.TemporaryDirectory() as d:
+        root = Path(d, "opt", "zephyr-sdks", "zephyr-sdk-0.16.9")
+        (root / "arm-zephyr-eabi" / "bin").mkdir(parents=True)
+        (root / "sdk_version").write_text("0.16.9\n")
+        cc = str(root / "arm-zephyr-eabi" / "bin" / "arm-zephyr-eabi-gcc")
+        ident, p = toolchain_problems({"CMAKE_C_COMPILER": cc, "ZEPHYR_SDK_INSTALL_DIR": str(root)},
+                                      idx, man, None)
+        check("toolchain: the pinned SDK outside the store is verified (sdk_version)",
+              p == [] and ident == ["zephyr-sdk 0.16.9"])
+        (root / "sdk_version").write_text("0.16.8\n")
+        _, p = toolchain_problems({"ZEPHYR_SDK_INSTALL_DIR": str(root)}, idx, man, None)
+        check("toolchain: an unpinned SDK outside the store is NOT VERIFIED, naming its version",
+              len(p) == 1 and "0.16.8" in p[0])
+        check("toolchain: a path in no SDK states no version",
+              _sdk_version_of(str(Path(d, "usr", "bin", "gcc"))) is None)
+
+    # Issue 2937: a family with nothing verified fails, and says so.
+    check("family: the board's last word",
+          family_of("talker/rust/zenoh@nucleo-f767zi-zephyr") == "zephyr"
+          and family_of("qemu_bsp_talker_bringup@mps2-an385-baremetal") == "baremetal")
+    lines, failing = family_summary([("zephyr", "unverified"), ("zephyr", "unverified"),
+                                     ("freertos", "verified"), ("baremetal", "verified"),
+                                     ("baremetal", "unverified")])
+    check("family: every row of a family NOT VERIFIED fails that family, and only it",
+          failing == ["zephyr"]
+          and any("zephyr: 0 of 2 verified" in l and "FAIL" in l for l in lines))
+    check("family: one verified row keeps a family passing, its skips counted",
+          any("baremetal: 1 of 2 verified, 1 not verified" in l and "FAIL" not in l
+              for l in lines))
+    _, failing = family_summary([("zephyr", "unwalked")])
+    check("family: a family whose only row could not be walked has nothing verified",
+          failing == ["zephyr"])
+    check("family: no rows, no families", family_summary([]) == ([], []))
+
     for b in bad:
         print(f"stack-floor-drift self-test: FAIL {b}", file=sys.stderr)
     print(f"stack-floor-drift self-test: {'FAIL' if bad else 'OK'}")
@@ -572,6 +670,7 @@ def main() -> int:
     index = w.load_toml(INDEX)
     manifests = {line: manifest_revision(m) for line, m in WEST_MANIFESTS.items()}
     failed = notes = unverified = 0
+    results: list[tuple[str, str]] = []
     for table, row in rows:
         print(f"== {row['image']} {row['role']} (recorded static {row['static']} B, "
               f"[[{table}]])", flush=True)
@@ -581,6 +680,7 @@ def main() -> int:
         else:
             report, why, log = build_bringup(nros, row, Path(args.out), fixtures)
         if report is None:
+            results.append((family_of(row["image"]), "unwalked"))
             failed += 1
             print(f"  FAIL: {row['image']}: the image could not be walked: {why}", flush=True)
             if log is not None:
@@ -610,12 +710,18 @@ def main() -> int:
                                             "; ".join(problems))
             unverified += 1
             kind = "unverified"
+        results.append((family_of(row["image"]),
+                        "unverified" if kind == "unverified" else "verified"))
         failed += kind == "fail"
         notes += kind == "note"
         print("\n".join(lines + [f"  ({report}, {time.time() - start:.0f} s)"]), flush=True)
+    fam_lines, failing = family_summary(results)
+    print("stack-floor-drift: per family")
+    print("\n".join(fam_lines))
     print(f"stack-floor-drift: {len(rows)} row(s), {failed} failed, {notes} note(s), "
-          f"{unverified} not verified (another toolchain than the pins)")
-    return 1 if failed else 0
+          f"{unverified} not verified (another toolchain than the pins), "
+          f"{len(failing)} family(ies) with nothing verified")
+    return 1 if failed or failing else 0
 
 
 if __name__ == "__main__":
