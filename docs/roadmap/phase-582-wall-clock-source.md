@@ -354,11 +354,11 @@ SNTP never re-acquires. A consumer's board hook papers over that with
   three W1 gaps from the ASI validation; Zephyr's `platform` no longer
   answers with no clock behind it, so `epoch_failure = halt` can halt.
 
-- [Issue 2883](../issues/2883-zephyr-clock-halt-unreachable-after-platform.md):
-  `epoch_failure = "halt"` after a list ending in `platform` never applies on
-  a port whose `platform` is "none", and configure accepts the list. Sits on
-  RFC-0141 D1's 2026-11-22 amendment (in flight on #4619). Found by the island
-  (phase-478 I43).
+- [Issue 2883](../issues/archived/2883-zephyr-clock-halt-unreachable-after-platform.md)
+  (resolved, superseded): `halt` after a list ending in `platform` was
+  unreachable on a port with no wall clock. RFC-0141 D1's 2026-11-22
+  amendment (issue 2839) made `platform` stop answering there, so `halt`
+  halts, and the ClockHalt cell checks it. Found by the island (phase-478 I43).
 - [Issue 2884](../issues/2884-sntp-resync-paced-on-guest-time.md): the SNTP
   re-sync interval runs on guest time, so on an FVP racing an idle guest a
   10 s interval re-queries several times a real second. A ruling on D5's
