@@ -59,3 +59,46 @@ One of:
   queries no closer than 10 s of host time apart over a 2-minute run; the
   island sets a non-zero interval on its FVP images (with PR #4632's stack
   knob) and its FVP lane stays green.
+
+## Ruling (2026-11-24, user)
+
+Option 1: pace each re-sync on the synced wall clock. The next query is due
+once that clock has moved forward by the interval, checked on a short
+monotonic tick. Recorded in RFC-0141 D5.
+
+Applying it showed that this port's wall clock is monotonic time plus an
+offset between answers, so it runs at guest rate too. Read literally, the rule
+would change nothing. To meet the ruling's intent, a real-time rate, the
+re-sync follows the server's clock by its RATE, measured over the last two
+answers. The next query is due once the monotonic time since the last attempt,
+scaled by that rate, reaches the interval.
+
+Two edges, agreed with the manager:
+
+- The first re-sync after boot has one answer and no rate, so it is paced on
+  monotonic time and can come early on a racing simulator. Every later gap is
+  real-time paced. The FVP acceptance below is measured from the second query.
+  A calibration query instead is the user's call, and is not done.
+- A rate outside 0.001 to 100 (a server step either way, no monotonic time
+  between answers) falls back to monotonic pacing for that gap, and the image
+  prints that.
+
+## Implementation
+
+- **The rule.** `nros_sntp_pace_answer`, `nros_sntp_pace_rate` and
+  `nros_sntp_pace_due` in `nros/clock_resolve.h`. They are pure: the caller
+  supplies every time.
+- **Host tests.** Cases 10 and 11 of `tests/clock-resolve-tests.sh`: monotonic
+  pacing before two answers, a 10x racing guest waiting 100 s of guest time for
+  a 10 s interval, hardware at rate 1, and the out-of-range cases (a step
+  forward, a step back, a zero monotonic delta, below the bound), plus the
+  upper bound itself.
+- **Zephyr.** `nros_zephyr_sntp_resync_loop` takes the boot answer when sntp is
+  latched, checks the rule on its tick, and notes each answer. It prints when
+  the pacing changes: on the server's clock, with the rate, or out of range.
+
+Still open: the FVP measurement (a local SNTP responder, a 10 s interval, a
+2-minute run, queries from the second on no closer than 10 s of host time),
+and the island setting a non-zero interval on its FVP images. This issue
+closes when both are done.
+

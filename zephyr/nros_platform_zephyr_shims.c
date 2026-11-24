@@ -273,17 +273,50 @@ static bool nros_zephyr_clock_try(uint8_t source, uint32_t settle_ms, void *ctx)
  * the knob against it (cmake/NanoRosStackFloor.cmake), so the entry's name
  * is part of that contract.
  *
- * The interval is the image's MONOTONIC time: on a simulator, guest time. */
+ * The interval is the SERVER's time (issue 2884, ruled 2026-11-24): on an
+ * FVP that races an idle guest 10x to 100x, a guest-time interval re-queried
+ * several times a real second. `nros_sntp_pace_due` (clock_resolve.h) scales
+ * the monotonic time since the last attempt by the rate the last two answers
+ * measured, checked on a short monotonic tick. Before two answers, and for a
+ * gap whose rate is out of range (a server step, say), it paces on monotonic
+ * time, and says so when that changes. */
 #if defined(CONFIG_SNTP) && CONFIG_NROS_CLOCK_SNTP_RESYNC_INTERVAL_MS > 0
+/* The tick a due check runs on: a sixteenth of the interval, 10 ms to 1 s. */
+#define NROS_SNTP_RESYNC_TICK_MS                                                                   \
+    (CONFIG_NROS_CLOCK_SNTP_RESYNC_INTERVAL_MS / 16 > 1000                                         \
+         ? 1000                                                                                    \
+         : (CONFIG_NROS_CLOCK_SNTP_RESYNC_INTERVAL_MS / 16 < 10                                    \
+                ? 10                                                                               \
+                : CONFIG_NROS_CLOCK_SNTP_RESYNC_INTERVAL_MS / 16))
+
 static void nros_zephyr_sntp_resync_loop(void *a, void *b, void *c) {
     (void)a;
     (void)b;
     (void)c;
     bool failing = false;
+    nros_sntp_pace_t pace = {0};
+    nros_sntp_pace_rate_t said = NROS_SNTP_PACE_RATE_UNKNOWN;
+    /* The boot exchange's answer, when sntp is the latched source: one
+     * answer, so the first gap is still monotonic-paced. */
+    nros_wall_clock_state_t st = nros_platform_wall_clock_state();
+    uint64_t attempt_ms = nros_platform_clock_ns() / 1000000ULL;
+    if (st.synced && st.source == NROS_WALL_CLOCK_SOURCE_SNTP) {
+        nros_sntp_pace_answer(&pace, attempt_ms, nros_platform_time_now_ns() / 1000000ULL);
+    }
     for (;;) {
-        k_msleep(CONFIG_NROS_CLOCK_SNTP_RESYNC_INTERVAL_MS);
+        k_msleep(NROS_SNTP_RESYNC_TICK_MS);
+        uint64_t now_ms = nros_platform_clock_ns() / 1000000ULL;
+        if (!nros_sntp_pace_due(&pace, now_ms - attempt_ms,
+                                CONFIG_NROS_CLOCK_SNTP_RESYNC_INTERVAL_MS)) {
+            continue;
+        }
+        attempt_ms = now_ms;
         int rc =
             nros_platform_epoch_acquire_sntp(CONFIG_NROS_SNTP_SERVER, CONFIG_NROS_SNTP_TIMEOUT_MS);
+        if (rc == 0) {
+            nros_sntp_pace_answer(&pace, nros_platform_clock_ns() / 1000000ULL,
+                                  nros_platform_time_now_ns() / 1000000ULL);
+        }
         /* Report a change of state, not every interval: an unreachable
          * server must not fill the console. */
         if (rc != 0 && !failing) {
@@ -293,6 +326,19 @@ static void nros_zephyr_sntp_resync_loop(void *a, void *b, void *c) {
             printk("nros: SNTP re-sync to %s answering again\n", CONFIG_NROS_SNTP_SERVER);
         }
         failing = rc != 0;
+        uint64_t rate_ppm = 0;
+        nros_sntp_pace_rate_t now = nros_sntp_pace_rate(&pace, &rate_ppm);
+        if (now != said) {
+            if (now == NROS_SNTP_PACE_RATE_OK) {
+                printk("nros: SNTP re-sync paced on the server's clock (%u.%06u server s per "
+                       "image s)\n",
+                       (unsigned)(rate_ppm / 1000000ULL), (unsigned)(rate_ppm % 1000000ULL));
+            } else if (now == NROS_SNTP_PACE_RATE_OUT_OF_RANGE) {
+                printk("nros: SNTP re-sync: the server's rate between its last two answers is "
+                       "out of range (a step?); pacing this gap on the image's own time\n");
+            }
+            said = now;
+        }
     }
 }
 K_THREAD_DEFINE(nros_sntp_resync_tid, CONFIG_NROS_CLOCK_SNTP_RESYNC_STACK_BYTES,

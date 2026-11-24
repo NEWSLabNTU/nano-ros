@@ -376,14 +376,26 @@ exchange repeats on that interval and re-sets the offset through D3's setter,
 as the zenoh HLC already does. This is the consumer requirement in issue 0758:
 after the server's time steps, stamps follow it.
 
-*(Amended 2026-11-23.)* The interval is measured on the image's own
-monotonic clock (`k_msleep` on Zephyr), not on a wall clock. On hardware the
-two agree. On a simulator it is GUEST time: a simulator whose guest clock runs
-faster than real time (an FVP that fast-forwards through idle time) re-queries
-correspondingly more often in real time, and one that runs slower, less
-often. This is documented, not corrected: the image has no other clock to
-pace by before it is synced, and the zenoh HLC window
-(`clock.hlc_interval_ms`) is paced the same way.
+*(Amended 2026-11-24, issue 2884, user ruling.)* The interval is the
+SERVER's time, not the image's monotonic time. On hardware the two agree. On a
+simulator whose guest clock races (an FVP fast-forwards an idle guest 10x to
+100x), monotonic pacing re-queried several times a real second.
+
+The image's wall clock cannot pace it alone: between answers it is monotonic
+time plus an offset, so it runs at guest rate too. So the re-sync follows the
+server's clock by its RATE: the server time between the last two answers over
+the monotonic time between them. The next query is due once the monotonic
+time since the last attempt, scaled by that rate, reaches the interval. It is
+checked on a short monotonic tick (a sixteenth of the interval, 10 ms to 1 s).
+A failed query counts as an attempt, so an unreachable server is asked at the
+same spacing.
+
+Before two answers there is no rate, so the first re-sync after boot is paced
+on monotonic time. A rate outside 0.001 to 100 is not trusted: a server step,
+no monotonic time between answers, or a step back all produce one. That gap
+is paced on monotonic time, and the image says so. The rule is pure
+(`nros_sntp_pace_*` in `nros/clock_resolve.h`) and host-tested. The zenoh HLC
+window (`clock.hlc_interval_ms`) is still paced on monotonic time.
 
 The re-query runs on a thread of its own whose stack is the knob
 `clock.sntp_resync_stack_bytes` (default 8,192 B). The depth is Zephyr's
@@ -509,6 +521,10 @@ a stub board clock (`docs/reference/source-timestamps.md`, gate
   point that the board entries call after network bring-up and log-writer
   registration, not lazily on the first read. Reads before it read 0 and
   resolve nothing.
+- 2026-11-24: D5 amended (issue 2884, user ruling): the re-sync is paced on
+  the server's clock, by the rate the last two answers measured, so the
+  interval is real time on a racing simulator. Before two answers, and for a
+  gap whose rate is out of range, it is paced on monotonic time.
 - 2026-11-23: D5 amended: the re-sync interval is the image's monotonic
   (on a simulator, guest) time, documented rather than changed; the re-sync
   thread's stack is a knob, `clock.sntp_resync_stack_bytes`, defaulting from
