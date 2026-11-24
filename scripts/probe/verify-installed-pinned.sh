@@ -27,7 +27,11 @@ case "$rc" in
         exit 1
         ;;
 esac
-answered="$(nros dev sdk manifest 2>&1 | head -1)"
+# Read it all, then keep the first line: `| head -1` closes the pipe while
+# `nros` may still be writing, and under `pipefail` its SIGPIPE (exit 101)
+# ends the probe with no message (issue 2933, found on the way).
+answered="$(nros dev sdk manifest 2>&1)"
+answered="${answered%%$'\n'*}"
 case "$answered" in
     *sdk/nros/${PROBE_PINNED_VERSION}/share/nros/manifest.toml) ;;
     *)
