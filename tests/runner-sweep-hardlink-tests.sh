@@ -96,6 +96,46 @@ else
 $out"
 fi
 
+# The cost half of the same loop: the remainder is re-MEASURED only when the
+# running estimate says it may be under budget, not after every eviction (one
+# `du` over the whole area per eviction was the step's 55 minutes on 118).
+# Twenty independent units, all evicted against a 0 budget: the estimate never
+# reaches 0 (the dot child stays), so the area is measured twice, once before
+# and once after, where the per-eviction rule measured it 21 times. A `du` shim
+# on PATH counts the whole-area (`-c`) measurements.
+fx2="$work/build/cargo-fixtures"
+rm -rf "$fx2"
+mkdir -p "$fx2/.lock" "$work/shim"
+for i in $(seq 1 20); do
+    mkdir -p "$fx2/v$i"
+    dd if=/dev/zero of="$fx2/v$i/blob" bs=64K count=1 status=none
+done
+dd if=/dev/zero of="$fx2/.lock/held" bs=64K count=1 status=none
+real_du="$(command -v du)"
+printf '#!/bin/sh
+case " $* " in *" -scx "*) echo x >> "%s";; esac
+exec %s "$@"
+' \
+    "$work/du-calls" "$real_du" > "$work/shim/du"
+chmod +x "$work/shim/du"
+: > "$work/du-calls"
+out="$(PATH="$work/shim:/usr/bin:/bin" NROS_SWEEP_BUDGET_FIXTURES_GIB=0 \
+       "$sweep" --disk 2>&1)" || true
+left2=0
+for i in $(seq 1 20); do [ -e "$fx2/v$i" ] && left2=$((left2 + 1)); done
+area_du="$(grep -c . "$work/du-calls")"
+if [ "$left2" -eq 0 ]; then
+    ok "all twenty over-budget units are evicted, as before"
+else
+    fail "$left2 unit(s) left with the area over budget:
+$out"
+fi
+if [ "$area_du" -le 4 ]; then
+    ok "the area is re-measured $area_du time(s) for 20 evictions, not once per eviction"
+else
+    fail "the area was re-measured $area_du times for 20 evictions: the loop re-reads after every one"
+fi
+
 echo ""
 if [ "$failures" -eq 0 ]; then
     echo "runner-sweep-hardlink: $checks check(s) passed"
