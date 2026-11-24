@@ -605,7 +605,16 @@ while IFS=$'\x1f' read -r board lang lang_tag rmw role src build_name id \
     fi
 
     [ -z "$xrce_agent_port" ] || extra_cmake_defs="$extra_cmake_defs -DCONFIG_NROS_XRCE_AGENT_PORT=$xrce_agent_port"
-    [ -z "$zenoh_locator" ] || extra_cmake_defs="$extra_cmake_defs -DCONFIG_NROS_LOCATOR=\"$zenoh_locator\""
+    # The define that carries the locator, spelled ONCE: the build gets it and
+    # the signature below records it. A rename of the Kconfig symbol (phase-581
+    # W6 moved CONFIG_NROS_ZENOH_LOCATOR here) must send every leaf that carries
+    # it back through west. Recording only the VALUE left the signature
+    # unchanged, the ninja path re-configured from a cache holding only the old
+    # spelling, that retired entry was dropped, and the image baked Kconfig's
+    # default 7447 instead of the cell's router.
+    zenoh_locator_def=""
+    [ -z "$zenoh_locator" ] || zenoh_locator_def="-DCONFIG_NROS_LOCATOR=\"$zenoh_locator\""
+    [ -z "$zenoh_locator_def" ] || extra_cmake_defs="$extra_cmake_defs $zenoh_locator_def"
     [ -z "$dds_domain" ] || extra_cmake_defs="$extra_cmake_defs -DCONFIG_NROS_DOMAIN_ID=$dds_domain"
     [ -z "$conf_files" ] || extra_cmake_defs="$extra_cmake_defs -DCONF_FILE=$conf_files"
     # phase-481 W3 — a single-package leaf builds ONE of its `system.toml`
@@ -646,7 +655,7 @@ while IFS=$'\x1f' read -r board lang lang_tag rmw role src build_name id \
         "src=$src_rel" \
         "xrce_port=$xrce_agent_port" \
         "conf_files=$conf_files" \
-        "zenoh_locator=$zenoh_locator" \
+        "zenoh_locator=${zenoh_locator_def:-}" \
         "codegen_tool=$codegen_tool" \
         "toolchain_cache_dir=$toolchain_cache_dir" \
         "make=$make_bin" \
