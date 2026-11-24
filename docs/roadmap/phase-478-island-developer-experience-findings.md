@@ -820,7 +820,7 @@ AN536) stay green.
 | `nros run` `--forbid`, `--settle`, `--zephyr-workspace` | fixed; used on `nano-ros-next` | issue 2863 |
 | the Zephyr workspace ladder skips the project's west workspace (`run-zephyr-fvp-ci.sh:202-213`, `--zephyr-workspace` on every call) | fixed in nano-ros (2877 resolved); the island drops its flag next | issue 2877, I37 |
 | the island's last Zephyr patch, an out-of-tree tracing backend (`patches/zephyr/0003-*`, `scripts/apply-zephyr-patches.sh`) | declined in 2766, NOT FILED as its own question | issue 2878, I38 |
-| S32Z network: board network file, VLAN, second interface (`network_config.cpp`, the last `PLATFORM_*` reader; the DHCP sleep in `board_network_hook.cpp`) | NOT FILED (2679 D5 cut it) | issue 2879, I39 |
+| S32Z network: board network file, VLAN, second interface (`network_config.cpp`, the last `PLATFORM_*` reader; the DHCP sleep in `board_network_hook.cpp`) | fixed in nano-ros for one interface with its VLAN (2879 resolved; a second interface is an open decision); the island names the file next | issue 2879, I39 |
 | S32Z Zephyr module pins (`actuation_module/west.yml`: `cmsis`, `hal_nxp`, `zephyr-lang-rust` by hand) | fixed in nano-ros (2880 resolved); the island imports the fragment next | issue 2880, I40 |
 | compile-time log floor (`common/logger/logger.hpp`, `CONFIG_LOG_LEVEL`, P4) | NOT FILED | issue 2881, I41 |
 | a release past nros11 (branch `nano-ros` on `0.6.0-nros11`; everything else on `nano-ros-next` with a source CLI) | NOT FILED | issue 2882, I42; planned by [phase-590](phase-590-nros12-release-plan.md) |
@@ -875,13 +875,21 @@ AN536) stay green.
 
 ### I39 -- the S32Z network from a board network file
 
-- **Issue:** [2879](../issues/2879-s32z270-rtu0-zephyr-no-board-network.md).
+- **Issue:** [2879](../issues/archived/2879-s32z270-rtu0-zephyr-no-board-network.md).
 - **What:** `[board.net]` on `s32z270-rtu0-zephyr`; a VLAN tag (and, if
   agreed, a second interface) in a board network file, or a board-owned hook.
 - **Acceptance:** 2879's configure check here; the tagged bring-up measured
   under [phase-512](phase-512-on-hardware-measurements.md) or on the
   [phase-524](phase-524-emulator-twins.md) twin (linked, not done here); the
   island deletes `network_config.cpp` and its `PLATFORM_*` defines.
+- **Status:** the nano-ros half is done, unmeasured on hardware:
+  `s32z270-rtu0-zephyr` declares `eth0` (`dhcp`, `vlan`), and a board network
+  file's `vlan = <tag>` renders `NET_VLAN` and `NROS_NET_VLAN_TAG` beside the
+  usual address rows; the module's `net_vlan.c` configures Zephyr's VLAN
+  interface through `net_config_init_by_iface`, because Zephyr's own
+  `NET_CONFIG_MY_VLAN_ID` addresses the untagged interface (issue 2879,
+  resolved). A second interface is an open decision there. The island's
+  deletion waits on its pin.
 
 ### I40 -- a downstream west fragment for the S32Z270 Zephyr board
 
@@ -1292,7 +1300,7 @@ unowned.
 - [issue 2876](../issues/archived/2876-owned-west-entry-no-interface-search-path.md): an owned Zephyr west entry gets no workspace `NROS_INTERFACE_SEARCH_PATH` (I36).
 - [issue 2877](../issues/archived/2877-zephyr-workspace-ladder-skips-project-west-workspace.md): the Zephyr workspace ladder never looks at the project's own west workspace (I37).
 - [issue 2878](../issues/archived/2878-zephyr-tracing-custom-backend-patch.md): Zephyr 3.7 cannot select an out-of-tree tracing backend; the island carries the patch (I38; resolved).
-- [issue 2879](../issues/2879-s32z270-rtu0-zephyr-no-board-network.md): `s32z270-rtu0-zephyr` declares no `[board.net]`, and no VLAN or second interface renders (I39).
+- [issue 2879](../issues/archived/2879-s32z270-rtu0-zephyr-no-board-network.md): `s32z270-rtu0-zephyr` declares no `[board.net]`, and no VLAN or second interface renders (I39, resolved).
 - [issue 2880](../issues/archived/2880-s32z270-rtu0-zephyr-no-west-downstream.md): `s32z270-rtu0-zephyr` has no `west-downstream.yml` (I40, resolved).
 - [issue 2881](../issues/archived/2881-rclcpp-log-min-severity-missing.md): no compile-time log floor, `RCLCPP_LOG_MIN_SEVERITY` (I41).
 - [issue 2882](../issues/2882-nros12-release-for-consumers.md): no release past nros11 (I42; planned by phase-590).

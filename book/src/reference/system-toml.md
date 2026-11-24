@@ -155,6 +155,7 @@ network other than the built-in `qemu`:
 | `host` | `[<if>]` | Last octet within the network's subnet |
 | `address` | `[<if>]` | Full IPv4, or `"dhcp"` on a network with `dhcp = true` |
 | `mac` | `[<if>]` | Optional. Derived from the board's `mac_prefix` and the image's names when absent |
+| `vlan` | `[<if>]` | Optional. An 802.1Q VLAN id, 1-4094, the interface's traffic is tagged with. Taken only where the board's interface states `vlan = true` (`s32z270-rtu0-zephyr`) |
 | `subnet`, `gateway` | `[network.<name>]` | The network's addressing. An interface never states them |
 | `dhcp` | `[network.<name>]` | The network leases addresses |
 
@@ -176,7 +177,8 @@ Cyclone DDS image has no router to name and is not refused.
 ### On a Zephyr board
 
 A Zephyr board takes a board network file once its `[board.net]` declares its
-interface (`fvp-aemv8r-smp` and `mps2-an385-zephyr` do). `nros build` renders
+interface (`fvp-aemv8r-smp`, `mps2-an385-zephyr` and `s32z270-rtu0-zephyr`
+do). `nros build` renders
 the resolved interface into Zephyr's own Kconfig,
 `build/nros/net/<image>.conf`, appended last to `EXTRA_CONF_FILE`:
 
@@ -195,6 +197,22 @@ starts. Refused: a board or file with a second interface (Zephyr's
 `os_config` fragment that sets a rendered symbol, naming the fragment, the
 symbol, both values and the board network file. A symbol the file does not
 render, such as `CONFIG_NET_DHCPV4_INITIAL_DELAY_MAX`, stays the fragment's.
+
+An interface with a `vlan` tag keeps the address rows above, with these in
+place of `NET_CONFIG_AUTO_INIT=y` and `NET_CONFIG_NEED_IPV4=y`:
+
+| Resolved | Rendered |
+| --- | --- |
+| `vlan = <tag>` | `CONFIG_NET_CONFIG_AUTO_INIT=n`, `CONFIG_NET_VLAN=y`, `CONFIG_NET_IF_MAX_IPV4_COUNT=2`, `CONFIG_NROS_NET_VLAN_TAG=<tag>` |
+
+Zephyr's VLAN is a virtual interface attached to the Ethernet one, and its own
+boot-time configuration (`CONFIG_NET_CONFIG_MY_VLAN_ID`) tags the Ethernet
+interface but still adds the address, or starts DHCPv4, on the untagged one.
+So the nros module does it instead, at the same init level: it tags the first
+Ethernet interface, makes the VLAN interface the default, and hands it to
+Zephyr's `net_config_init_by_iface` with the rendered address or lease, which
+waits for the address up to `CONFIG_NET_CONFIG_INIT_TIMEOUT`. The untagged
+interface stays up with no address.
 
 ## `[image.<id>.run]`, `.flash` and `.console`
 

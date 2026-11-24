@@ -1,0 +1,14 @@
+# The S32Z270 RTU0 image's (`[image.s32z270_rtu0]`) board network file: its
+# one NETC port on a tagged network. `nros build` renders the address and the
+# tag into build/nros/net/s32z270_rtu0.conf; the nros module brings the VLAN
+# interface up at boot. The link-only compile-check row holds that the
+# rendered fragment configures and the VLAN bring-up links.
+
+[eth0]
+network = "netc"
+address = "192.168.20.2"
+vlan    = 20
+
+[network.netc]
+subnet  = "192.168.20.0/24"
+gateway = "192.168.20.1"

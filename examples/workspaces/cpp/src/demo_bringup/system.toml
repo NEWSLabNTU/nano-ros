@@ -110,11 +110,12 @@ rmw = "cyclonedds"
 # `west_s32z270_rtu0_zephyr` compile-check row, whose job fetches `hal_nxp`.
 # `prj.conf` is listed although Zephyr reads it as CONF_FILE, for the reason
 # realtime-cpp's `[image.fvp]` states: it must land AFTER the board package's
-# `CONFIG_RUST=y`.
+# `CONFIG_RUST=y`. `net-s32z270-rtu0.toml` is its board network file, with a
+# VLAN tag.
 [image.s32z270_rtu0]
 board = "s32z270-rtu0-zephyr"
 rmw = "cyclonedds"
-os_config = ["prj.conf", "prj-cyclonedds.conf"]
+os_config = ["net-s32z270-rtu0.toml", "prj.conf", "prj-cyclonedds.conf"]
 
 [image.linux]
 board = "linux"

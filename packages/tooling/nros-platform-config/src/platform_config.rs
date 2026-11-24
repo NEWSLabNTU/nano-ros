@@ -3631,6 +3631,12 @@ pub struct InterfaceTable {
     /// image may take `address = "dhcp"` on it. No in-tree board does yet.
     #[serde(default)]
     pub dhcp: bool,
+    /// The board's network stack can carry this interface's traffic on an
+    /// 802.1Q VLAN, so an image's board network file may state `vlan = <tag>`
+    /// on it. Declared only where a renderer applies the tag: today a Zephyr
+    /// board whose Ethernet driver reports `ETHERNET_HW_VLAN`.
+    #[serde(default)]
+    pub vlan: bool,
 }
 
 /// The MAC prefix an interface that states none derives from: `02:00:00`,
@@ -3652,6 +3658,12 @@ impl InterfaceDecl {
     #[must_use]
     pub fn dhcp(&self) -> bool {
         matches!(self, Self::Full(t) if t.dhcp)
+    }
+
+    /// Whether the board can tag this interface's traffic with a VLAN.
+    #[must_use]
+    pub fn vlan(&self) -> bool {
+        matches!(self, Self::Full(t) if t.vlan)
     }
 
     /// The MAC prefix, parsed; [`DEFAULT_MAC_PREFIX`] when unstated. `name`
