@@ -38,3 +38,41 @@ requests, and read the kernel config (`CONFIG_HIGH_RES_TIMERS`,
 ## Acceptance
 Cause measured. If it is the executor's wait computation, fixed; if it is the
 kernel, documented with the kernel options a 1 kHz node needs.
+
+## Findings (2026-11-24, nros 175, on an x86_64 glibc host)
+
+**A real defect on musl, fixed:** `nros_platform_wake_park_handles_us`
+(`nros-platform-posix/src/platform.c`) used `ppoll` only under glibc or NuttX.
+Under musl it fell back to `poll`, whose timeout is whole milliseconds, while
+`nros_platform_wake_park_granularity_us` (from `clock_getres`) still told the
+executor 1 us. So every sub-millisecond park on a musl board was rounded up to
+1 ms. Every Linux libc has `ppoll`, so it is now used on `__linux__`, with the
+prototype stated because musl and glibc declare it only under `_GNU_SOURCE`.
+
+**That defect does not explain 845 Hz on its own here.** A 1 kHz timer
+(Linux talker leaf, zenoh client to a local `rmw_zenohd`, debug build, 26 s):
+
+| Park path | Rate |
+| --- | --- |
+| `ppoll` (the fix) | 982.2 Hz |
+| `poll` forced (what musl got) | 984.2 Hz |
+
+The forced build imported `poll` alone (`nm -D`). A park at most 1 ms late
+loses no period: the default timer policy is `Skip` (`arena.rs`), which drops
+a period only when a spin comes a whole period or more late. Both runs lose
+about 1.7 % to occasional late spins on this host.
+
+**What is left, and needs the board:** with `Skip`, 845 Hz means about 15 %
+of spins came at least a period late. On a kernel without high-resolution
+timers (`CONFIG_HIGH_RES_TIMERS=n`), `poll` and `ppoll` round a sleep to a
+jiffy (10 ms at `CONFIG_HZ=100`), which drops up to nine periods at a time.
+So, on the board:
+
+1. Read `CONFIG_HIGH_RES_TIMERS`, `CONFIG_HZ` and `CONFIG_PREEMPT*`, and
+   `clock_getres(CLOCK_MONOTONIC)`. It reports 1 ns only with hrtimers on;
+   with them off it reports the jiffy, and the executor then rounds parks to it.
+2. Re-measure at the fixed commit, and read the timer's overrun count
+   (`Executor::timer_overruns`; `Skip` counts dropped periods) to see whether the
+   loss is in dropped periods.
+3. Compare with `TimerOverrunPolicy::CatchUp` (`Executor::set_timer_overrun_policy`), which keeps the rate and
+   moves the loss into jitter.

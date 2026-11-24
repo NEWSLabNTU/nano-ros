@@ -1156,9 +1156,16 @@ int8_t nros_platform_wake_signal_from_isr(void *w) {
  * clock, and an EINTR resumes against the same absolute deadline. `ppoll`
  * takes a timespec, so a sub-millisecond park stays sub-millisecond; where it
  * is not declared, `poll`'s millisecond is rounded UP, never down. */
-#if defined(__NuttX__) || defined(__GLIBC__)
+/* Issue 2854: every Linux libc has `ppoll` (the kernel has had the syscall
+ * since 2.6.16), not glibc alone. Keyed on glibc, a musl image fell back to
+ * `poll` and rounded every sub-millisecond park UP to a whole millisecond,
+ * while `nros_platform_wake_park_granularity_us` (clock_getres) still claimed
+ * 1 us: a 1 kHz timer overslept each period and fired at ~845 Hz on a musl
+ * board. musl and glibc both declare it only under _GNU_SOURCE, which this TU
+ * does not define, so the prototype is stated; it matches both. */
+#if defined(__NuttX__) || defined(__linux__)
 #define NROS_POSIX_HAVE_PPOLL 1
-#if defined(__GLIBC__) && !defined(__USE_GNU)
+#if defined(__linux__) && !defined(__USE_GNU) && !defined(_GNU_SOURCE)
 #include <signal.h>
 extern int ppoll(struct pollfd *fds, nfds_t nfds, const struct timespec *tmo_p,
                  const sigset_t *sigmask);
