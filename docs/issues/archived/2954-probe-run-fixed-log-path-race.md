@@ -37,3 +37,24 @@ directory.
 ## Acceptance
 `check-starter-image-context` passes; two concurrent self-tests share no
 log path.
+
+## Follow-up: the log path is structural (2026-11-25)
+The first fix (PR #4809) put the log under a `NROS_PROBE_LOG_DIR` the CALLER
+had to set, defaulting to the shared `/tmp`. A future concurrent caller that
+did not set it (a second self-test case, `nros_probe_run_expect` driven from a
+test) would bring the race back. Following nros 118's review, both helpers now
+write the log beside the body file, `${body%.sh}.log`. Every caller already
+makes that file unique: `/tmp/probe-run-<step>.sh` in the probe container
+(so the same log path as before) and a per-case tempdir in the self-test. The
+knob is removed, so there is one mechanism.
+
+Measured: `extract-book-steps.py --self-test`, 8 parallel runs x 3 rounds:
+
+| Tree | Red |
+| --- | --- |
+| before the fix (main at 2159f9fbd0) | 4 of 24 |
+| PR #4809 (the knob) | 0 of 24 |
+| this follow-up (log beside the body) | 0 of 24 |
+
+nros 118's independent run (`check-starter-image-context.py`, 8 parallel):
+main 5 of 8 red, #4809 8 of 8 green.

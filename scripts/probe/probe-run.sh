@@ -26,10 +26,11 @@
 nros_probe_run_expect() {
     local step="$1" secs="$2" keep="$3" body="$4"
     shift 4
-    # Issue 2954 -- under NROS_PROBE_LOG_DIR when set: two concurrent callers
-    # of one step number (the self-test, run by two gate lanes at once) must
-    # not share a log. The probe container leaves it unset.
-    local log="${NROS_PROBE_LOG_DIR:-/tmp}/probe-run-$step.log"
+    # Issue 2954 -- beside the body file, which every caller already makes
+    # unique (the probe container's /tmp/probe-run-<step>.sh, a per-case
+    # tempdir in the self-test), so two concurrent callers of one step number
+    # cannot share a log and no caller has a knob to forget.
+    local log="${body%.sh}.log"
     local pending=("$@")
     : >"$log"
     setsid bash "$body" >"$log" 2>&1 </dev/null &
@@ -84,10 +85,11 @@ nros_probe_run_expect() {
 nros_probe_run_exit() {
     local step="$1" secs="$2" want="$3" body="$4"
     shift 4
-    # Issue 2954 -- under NROS_PROBE_LOG_DIR when set: two concurrent callers
-    # of one step number (the self-test, run by two gate lanes at once) must
-    # not share a log. The probe container leaves it unset.
-    local log="${NROS_PROBE_LOG_DIR:-/tmp}/probe-run-$step.log"
+    # Issue 2954 -- beside the body file, which every caller already makes
+    # unique (the probe container's /tmp/probe-run-<step>.sh, a per-case
+    # tempdir in the self-test), so two concurrent callers of one step number
+    # cannot share a log and no caller has a knob to forget.
+    local log="${body%.sh}.log"
     : >"$log"
     setsid bash "$body" >"$log" 2>&1 </dev/null &
     local pid=$!
