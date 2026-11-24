@@ -1,11 +1,12 @@
 ---
 id: 2928
 title: "Retiring an nros11 per-bringup cmake root leaves its resolved/ directory behind"
-status: open
+status: resolved
 type: bug
 area: [cli, build]
 severity: low
 found: 2026-11-24
+resolved: 2026-11-24
 ---
 
 ## What happens
@@ -55,3 +56,22 @@ Not an nros12 blocker: the leftover is a few KB and nothing reads it.
   `retire_cmake_root`, `coordinate_resolve_dir`
 - `book/src/migrating/releases/0.6.0-nros12.md`, "A build directory from the
   previous release"
+
+## Resolution
+
+Fixed 2026-11-24 as directed. `retire_cmake_root` now also removes the
+retired root's `resolved/` when `holds_only_own_union_resolve` says it holds
+nothing but the root's own shared-configure resolve: a real directory whose
+every entry is a real directory named `<SYSTEM>__union` (spelled by
+`resolve::dir_name_for`, as `coordinate_resolve_dir` writes it) containing
+regular files only. Then the directory goes as before, if empty. A
+`resolved/` with anything else in it (another bringup's resolve, a symlink, a
+nested dir) is kept whole, and so is the directory. A file of the user's
+beside the root still keeps the directory.
+
+Test: `an_nros11_root_goes_with_its_own_union_resolve` plants the measured
+nros11 shape (generated header, `SYSTEM`, `cmake/`,
+`resolved/<bringup>__union/{resolved,coordinate}.toml`) and asserts the whole
+directory goes. A second root with another bringup's resolve beside its own
+keeps `resolved/` whole. A third with a stray file keeps the directory but
+loses its own resolve.
