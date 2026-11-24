@@ -1,7 +1,7 @@
 ---
 id: 2935
 title: "clock-board-freertos's board-late case holds a tick-measured duration to a lower bound, which fails under host load"
-status: open
+status: resolved
 type: bug
 severity: low
 area: [testing, freertos, clock]
@@ -48,3 +48,18 @@ has the same shape and needs the same decision.
 
 `just check clock-board-freertos` passes at high host load, and the
 host-clock wait checks still fail the inert-point negative control.
+
+## Fix (2026-11-24)
+
+Option 1, for both cases.
+- `took board-late` and `took board-never` keep the once-only check and drop
+  their tick-measured minimums (180 and 280 ms).
+- `took()` takes no bound any more, so nothing can re-add one.
+- The wait is still proved on the host clock by `main.c`'s own checks:
+  `>= 200 ms` for board-late, `>= 300 ms` for board-never.
+- The inert-point negative control still fails on the first of them.
+
+The rule is now a line in AGENTS.md "Test Pitfalls": a lower bound on a
+duration goes on the host clock; a guest-tick figure gets an upper bound or a
+presence check only.
+

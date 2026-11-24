@@ -107,16 +107,13 @@ once() {
     echo "  ok   the verdict \"$2\" went through the log writer once"
 }
 
-# took <name> [<min-ms>]: the resolution-time line appears once, as on
-# Zephyr, and when a minimum is given the time it reports is at least that
-# (a lower bound, so a point that returned without waiting fails it).
+# took <name>: the resolution-time line appears once, as on Zephyr. No bound
+# on the time it reports: that figure is counted in the port's ticks, which
+# a loaded host delivers late, so a lower bound fails on code that waited
+# correctly (measured 132 ms for a 200 ms wait, issue 2935). That the point
+# WAITED is checked on the host clock, in main.c's own CHECKs.
 took() {
     once "$1" "nros: clock resolution took "
-    [ -n "${2:-}" ] || return 0
-    local ms
-    ms="$(sed -n 's/.*nros: clock resolution took \([0-9][0-9]*\) ms.*/\1/p' "$tmp/$1.out" | head -1)"
-    [ -n "$ms" ] && [ "$ms" -ge "$2" ] || fail "case $1: resolution took '${ms}' ms, want >= $2"
-    echo "  ok   the resolution took ${ms} ms (>= $2)"
 }
 
 echo "clock-board-freertos: against the FreeRTOS port (POSIX kernel port)"
@@ -126,7 +123,7 @@ nros_grep_q -F 'resolves the wall clock from `board`' "$tmp/board-late.log"; m=$
 [ "$m" -eq 0 ] || fail "board-late: the configure did not apply the selection"
 run board-late
 once board-late "nros: wall clock from board"
-took board-late 180
+took board-late
 
 echo "== board-net"
 build board-net CASE_BOARD_NET 3 OFF NROS_CLOCK_SOURCE=board NROS_CLOCK_FALLBACK_SETTLE_MS=300
@@ -142,7 +139,7 @@ echo "== board-never"
 build board-never CASE_BOARD_NEVER 0 OFF NROS_CLOCK_SOURCE=board NROS_CLOCK_FALLBACK_SETTLE_MS=300
 run board-never
 once board-never "nros: no wall-clock source answered (board); stamps are unset"
-took board-never 280
+took board-never
 
 echo "== board-halt"
 build board-halt CASE_BOARD_NEVER 0 OFF NROS_CLOCK_SOURCE=board NROS_CLOCK_FALLBACK_SETTLE_MS=300 \
