@@ -1,12 +1,13 @@
 ---
 id: 2951
 title: "The Zephyr image hook refuses a level name for `log.max_level`, which knobs.toml and the cargo road both accept"
-status: open
+status: resolved
 type: bug
 severity: low
 area: [zephyr, config, logging]
 related: [phase-478, 2952]
 found: 2026-11-24
+resolved: 2026-11-25
 ---
 
 ## What is wrong
@@ -53,19 +54,19 @@ spelling the registry documents fails on one road only, and a board or
 project file shared between a Zephyr and a non-Zephyr image cannot use the
 name.
 
-## Fix direction
+## Fix
 
-Map a name to its index once, where the row is validated: `knob_env_row`
-already matched the name against `row.names`, so it can emit the index
-(`"2"`) instead of the name. Every road then carries a number: the Kconfig
-default parses, `nros-log` still accepts it, and the CMake-side reader asked
-for by issue 2952 gets an integer it can compare. The alternative,
-documenting ints only, would drop `names` from the row and break images that
-already write a name on the cargo road.
+`KnobRow::name_index` (nros-zephyr-build) maps a name to its index in the
+row's `names`, case-insensitively. `knob_env_row` renders a name as that
+index, so the image rung, `[image_defaults]` and the board rung carry the
+number on every road: the Kconfig default parses, and `nros-log` takes a
+number as it took a name. The `-DNROS_OVERRIDE_LOG_MAX_LEVEL=<name>` path,
+which feeds Kconfig without `knob_env_row`, maps a name the same way.
+
+`log.max_level` is the only registry row with `names`.
 
 ## Test
 
-A `leaf_kconfig` render test with `log.max_level = "info"` in
-`[image.<id>.knobs]` renders `CONFIG_NROS_LOG_MAX_LEVEL=2`; the same for an
-upper-case name. A name not in `names` is still refused with the
-"an integer or one of trace/..." text.
+`leaf_kconfig::a_log_level_name_renders_as_its_index`: `"info"` renders
+`CONFIG_NROS_LOG_MAX_LEVEL=2`, `"WARN"` 3, `2` 2; `"loud"` is refused with
+"an integer or one of trace/..."; the override `error` renders 4.

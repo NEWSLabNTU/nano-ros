@@ -1296,7 +1296,8 @@ mod tests {
         let text = std::fs::read_to_string(&out).unwrap();
         let doc: toml::Table = text.parse().unwrap();
         let env = doc["env"].as_table().unwrap();
-        assert_eq!(env["NROS_LOG_MAX_LEVEL"].as_str(), Some("warn"));
+        // Issue 2951 -- the level name `warn` is carried as its index.
+        assert_eq!(env["NROS_LOG_MAX_LEVEL"].as_str(), Some("3"));
         assert_eq!(env["Q"].as_str(), Some("a\"b"));
         assert!(
             env.values().all(toml::Value::is_str),
