@@ -837,7 +837,7 @@ fn declares_a_dependency(package_xml: &std::path::Path) -> bool {
 /// `nros_find_interfaces()` finds too (issue 2404).
 pub fn write_west_seed(
     resolved_dir: &std::path::Path,
-    probe_codegen_dir: &std::path::Path,
+    probe_codegen_dir: &[std::path::PathBuf],
     node_dirs: &[std::path::PathBuf],
     interface_search: Option<&std::ffi::OsStr>,
     seed_basis: SeedBasis,
@@ -861,7 +861,7 @@ pub fn write_west_seed(
 /// leaf's census or `[[component]] entities`. `None` reads `resolved.cmake`.
 pub fn write_west_seed_over(
     resolved_dir: &std::path::Path,
-    probe_codegen_dir: &std::path::Path,
+    probe_codegen_dir: &[std::path::PathBuf],
     node_dirs: &[std::path::PathBuf],
     entity: Option<&str>,
     interface_search: Option<&std::ffi::OsStr>,
@@ -897,16 +897,28 @@ pub fn write_west_seed_over(
         let mut tables = Vec::with_capacity(closure.len());
         let mut digests: Vec<(String, String)> = Vec::with_capacity(closure.len());
         for pkg in &closure {
-            let json = probe_codegen_dir
-                .join(pkg)
-                .join(rosidl_codegen::INVENTORY_JSON_NAME);
-            let doc = std::fs::read_to_string(&json).map_err(|_| {
-                format!(
-                    "the metadata probe generated no bound table for `{pkg}` ({}) -- run \
-                     `nros configure`",
-                    json.display()
-                )
-            })?;
+            // Issue 2924 -- a bound prices a TYPE, so any table root's table
+            // is the same bound. The probe emits each package in the language
+            // of the code that asked for it (a C node's `std_msgs` under
+            // `nano_ros_c`, the workspace's own interfaces under
+            // `nano_ros_cpp`), so a closure can span roots: take the first
+            // root that holds the package, never one root for all of them.
+            let candidates: Vec<std::path::PathBuf> = probe_codegen_dir
+                .iter()
+                .map(|d| d.join(pkg).join(rosidl_codegen::INVENTORY_JSON_NAME))
+                .collect();
+            let (json, doc) = candidates
+                .iter()
+                .find_map(|j| std::fs::read_to_string(j).ok().map(|d| (j.clone(), d)))
+                .ok_or_else(|| {
+                    let tried: Vec<String> =
+                        candidates.iter().map(|j| j.display().to_string()).collect();
+                    format!(
+                        "the metadata probe generated no bound table for `{pkg}` ({}) -- run \
+                         `nros configure`",
+                        tried.join(", ")
+                    )
+                })?;
             let rows = rosidl_codegen::bounds::bounds_from_json(&doc)
                 .map_err(|e| format!("{}: {e}", json.display()))?;
             digests.push((pkg.clone(), sha256_hex(doc.as_bytes())));
@@ -1090,7 +1102,7 @@ fn seed_over_package_tables(
     // `package.xml`'s, the one the configure prices).
     write_west_seed_over(
         resolved_dir,
-        &codegen,
+        std::slice::from_ref(&codegen),
         dirs,
         Some(entity),
         interface_search,
@@ -1355,6 +1367,95 @@ mod tests {
             compose_for(&tables, None, 2048, SeedBasis::ClosureAllowed),
             compose(&tables, None, 2048)
         );
+    }
+
+    /// Issue 2924 -- the metadata probe emits each interface package in the
+    /// language of the code that asked for it, so one closure's tables can
+    /// sit under two roots (a C node's `std_msgs` under `nano_ros_c`, the
+    /// workspace's own interfaces under `nano_ros_cpp`). The seed looks each
+    /// package up across the roots; it used to pick one root for the whole
+    /// closure and refuse ("no bound table for `builtin_interfaces`") on a
+    /// fresh tree.
+    #[test]
+    fn a_closure_split_across_table_roots_is_seeded() {
+        let ws = tempfile::tempdir().unwrap();
+        let src = ws.path().join("src");
+        for pkg in ["a_msgs", "b_msgs"] {
+            let d = src.join(pkg);
+            std::fs::create_dir_all(d.join("msg")).unwrap();
+            std::fs::write(d.join("msg/M.msg"), "int32 v\n").unwrap();
+            std::fs::write(
+                d.join("package.xml"),
+                format!(
+                    "<?xml version=\"1.0\"?>\n<package format=\"3\">\n  <name>{pkg}</name>\n  \
+                     <version>0.1.0</version>\n  <description>d</description>\n  \
+                     <maintainer email=\"a@b.c\">m</maintainer>\n  <license>MIT</license>\n  \
+                     <member_of_group>rosidl_interface_packages</member_of_group>\n</package>\n"
+                ),
+            )
+            .unwrap();
+        }
+        let node = src.join("node_pkg");
+        std::fs::create_dir_all(&node).unwrap();
+        std::fs::write(
+            node.join("package.xml"),
+            "<?xml version=\"1.0\"?>\n<package format=\"3\">\n  <name>node_pkg</name>\n  \
+             <version>0.1.0</version>\n  <description>d</description>\n  \
+             <maintainer email=\"a@b.c\">m</maintainer>\n  <license>MIT</license>\n  \
+             <depend>a_msgs</depend>\n  <depend>b_msgs</depend>\n</package>\n",
+        )
+        .unwrap();
+        let table = |pkg: &str| {
+            format!(
+                "{{\"derivation\": \"nros_serdes::size::max_serialized_size\", \
+                 \"package\": \"{pkg}\", \"producer\": \"nros-codegen\", \
+                 \"schema_version\": 1, \"types\": [{{\"rx_max_serialized_size\": 12, \
+                 \"state\": \"bounded\", \"tx_max_serialized_size\": 8, \
+                 \"type_name\": \"{pkg}/msg/M\"}}]}}"
+            )
+        };
+        let cpp = ws.path().join("nano_ros_cpp");
+        let c = ws.path().join("nano_ros_c");
+        for (root, pkg) in [(&cpp, "a_msgs"), (&c, "b_msgs")] {
+            std::fs::create_dir_all(root.join(pkg)).unwrap();
+            std::fs::write(
+                root.join(pkg).join(rosidl_codegen::INVENTORY_JSON_NAME),
+                table(pkg),
+            )
+            .unwrap();
+        }
+        let resolved = tempfile::tempdir().unwrap();
+        let entity = "set(NROS_ENTITY_INVENTORY_SCHEMA_VERSION 6)\n\
+                      set(NROS_ENTITY_INVENTORY_STATUS \"derived\")\n\
+                      set(NROS_ENTITY_SUBSCRIBED_TYPES_STATUS \"resolved\")\n\
+                      set(NROS_ENTITY_SUBSCRIBED_TYPE_COUNTS \"b_msgs/msg/M=1\")\n";
+        let search = src.clone().into_os_string();
+        // One root alone misses a package: the old refusal.
+        let err = write_west_seed_over(
+            resolved.path(),
+            std::slice::from_ref(&cpp),
+            std::slice::from_ref(&node),
+            Some(entity),
+            Some(&search),
+            SeedBasis::ClosureAllowed,
+        )
+        .unwrap_err();
+        assert!(
+            err.reason().contains("no bound table for `b_msgs`"),
+            "{err:?}"
+        );
+        // Both roots: every package found, the seed written.
+        let seed = write_west_seed_over(
+            resolved.path(),
+            &[cpp, c],
+            std::slice::from_ref(&node),
+            Some(entity),
+            Some(&search),
+            SeedBasis::ClosureAllowed,
+        )
+        .unwrap_or_else(|e| panic!("not seeded: {e:?}"));
+        let text = std::fs::read_to_string(seed).unwrap();
+        assert!(text.contains("b_msgs/msg/M=12"), "{text}");
     }
 
     #[test]

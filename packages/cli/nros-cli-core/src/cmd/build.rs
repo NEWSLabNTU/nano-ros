@@ -7185,7 +7185,7 @@ fn package_closure<'a>(
 /// probe's can differ: an image of C and Rust components gets the C++ entry
 /// (issue 2644) while its only probe is the C component's. So take `lang`'s
 /// tables when the probe wrote them, else the other language's.
-fn probe_bound_tables(root: &Path, lang: nros_lang::Language) -> PathBuf {
+fn probe_bound_tables(root: &Path, lang: nros_lang::Language) -> Vec<PathBuf> {
     use nros_lang::Language;
     let codegen = metadata_probe_build_dir(root).join("nros-codegen");
     let dir = |l: Language| codegen.join(format!("nano_ros_{}", l.as_str()));
@@ -7193,11 +7193,12 @@ fn probe_bound_tables(root: &Path, lang: nros_lang::Language) -> PathBuf {
         Language::C => Language::Cpp,
         Language::Cpp | Language::Rust => Language::C,
     };
-    [lang, other]
-        .into_iter()
-        .map(dir)
-        .find(|d| d.is_dir())
-        .unwrap_or_else(|| dir(lang))
+    // Issue 2924 -- BOTH roots, the preferred language's first, searched per
+    // package (`write_west_seed_over`). Picking one root for the whole
+    // closure lost every package the probe emitted under the other: a C
+    // node's `std_msgs` / `builtin_interfaces` under `nano_ros_c` beside the
+    // workspace's own interfaces under `nano_ros_cpp`.
+    vec![dir(lang), dir(other)]
 }
 
 /// The build dir of `nros sync`'s metadata probe for this workspace, which
@@ -8502,8 +8503,8 @@ fn seed_hand_written_west_bounds(
         // The probe generates per language, and a table prices a TYPE, so
         // either language's table is the same bound. A hand-written entry's
         // language is its own (`nano_ros_add_executable(... TYPED)` is C++
-        // whatever its nodes are written in), so take the language the probe
-        // generated: C++ when it did, else C.
+        // whatever its nodes are written in), so C++ first, then C, per
+        // package (issue 2924: one closure can span both).
         let probe_codegen = probe_bound_tables(root, nros_lang::Language::Cpp);
         crate::message_bound_knobs::write_west_seed(
             resolved_dir,
@@ -8587,7 +8588,7 @@ fn resolve_rust_west_image(
         .and_then(|dirs| {
             crate::message_bound_knobs::write_west_seed(
                 resolved_dir,
-                &root.join("generated"),
+                &[root.join("generated")],
                 &dirs,
                 crate::cmd::configure::interface_search_path_for(root).as_deref(),
                 crate::message_bound_knobs::SeedBasis::SubscribedOnly,
@@ -11834,24 +11835,22 @@ mod probe_bound_tables_tests {
     fn the_other_languages_tables_are_taken_when_the_entrys_are_absent() {
         let td = tempfile::tempdir().unwrap();
         let codegen = metadata_probe_build_dir(td.path()).join("nros-codegen");
+        // Issue 2924 -- both roots, the asked language's first, whatever
+        // exists: the seed looks each package up in order, so a closure
+        // that spans both (a C node's `std_msgs` beside the workspace's own
+        // C++ interfaces) finds every table.
+        let (c, cpp) = (codegen.join("nano_ros_c"), codegen.join("nano_ros_cpp"));
         assert_eq!(
             probe_bound_tables(td.path(), Language::Cpp),
-            codegen.join("nano_ros_cpp")
-        );
-        std::fs::create_dir_all(codegen.join("nano_ros_c")).unwrap();
-        assert_eq!(
-            probe_bound_tables(td.path(), Language::Cpp),
-            codegen.join("nano_ros_c")
+            vec![cpp.clone(), c.clone()]
         );
         assert_eq!(
             probe_bound_tables(td.path(), Language::C),
-            codegen.join("nano_ros_c")
+            vec![c.clone(), cpp.clone()]
         );
-        std::fs::create_dir_all(codegen.join("nano_ros_cpp")).unwrap();
-        assert_eq!(
-            probe_bound_tables(td.path(), Language::Cpp),
-            codegen.join("nano_ros_cpp")
-        );
+        std::fs::create_dir_all(&c).unwrap();
+        std::fs::create_dir_all(&cpp).unwrap();
+        assert_eq!(probe_bound_tables(td.path(), Language::Cpp), vec![cpp, c]);
     }
 }
 

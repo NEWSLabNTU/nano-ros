@@ -1,0 +1,1 @@
+A Zephyr C/C++ west image whose interface packages the metadata probe generated in both C and C++ (a C node beside the workspace's own message packages) now gets its message-bound seed on a fresh tree. `nros build` used to stop with "the metadata probe generated no bound table" under `NROS_PROBE_FAILURE=refuse`, or warn and build on default sizes otherwise.
