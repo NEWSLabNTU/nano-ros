@@ -144,7 +144,7 @@ to — `net/` `serial/` `ipc/` `sys/` — documented in `packages/drivers/README
     217.5 s, the lane's slowest gate, not its critical path. Your local tier is STRONGER than the gate, so you catch
     compile-tier breakage before the queue does and the queue stays cheap and
     always-satisfiable. `check-build` is now `schedule`/`workflow_dispatch` only,
-    in `host-tests.yml` since phase-559 W7 —
+    in `host-suite.yml` (was `host-tests.yml`) since phase-559 W7 —
     it was on the merge group and could never pass there (it needs generated
     bindings and prebuilt `.compile-ok` that no CI job builds), so the required
     check was red for EVERY pull request for a day. **A gate in an affordability
@@ -748,7 +748,7 @@ One-liners; detail in the linked doc. (Many also captured in agent memory.)
   position, so `scan_text` over the real offender returns `[]`). `apt-get install -y
   $(prereq-packages.py …)` discarded the script's status and `apt-get` with zero packages
   exits 0, so a `ModuleNotFoundError` traceback printed three lines above `0 newly
-  installed` and the step went GREEN — a whole `live-peer` lane ran without clang. The
+  installed` and the step went GREEN — a whole `live-peer` (now `ros2-interop`) lane ran without clang. The
   idiom was PRESCRIBED by `check-workflow-indexed-apt`, remedy text and passing fixture
   both, which is why fixing the four sites alone would have re-created it; that gate now
   refuses it at every call site of the helper it names (workflows AND `just` AND
@@ -852,7 +852,7 @@ One-liners; detail in the linked doc. (Many also captured in agent memory.)
   (INFRA vs MINE). **A lane with an ordered pipeline needs one axis more — HOW
   FAR did it get** (issue 1158): tier 2's eight runs to 2026-09-06 all said
   `failure`, 0 reached the cells, and they split 5 provisioning / 3 build. `just
-  matrix-triage` prints that per run; `run-matrix.yml` names the stage in the
+  matrix-triage` prints that per run; `platform-matrix.yml` (was `run-matrix.yml`) names the stage in the
   `coverage` job's own check-run NAME, so `gh run view` answers it without a log.
   Gated by `check-lane-stage-reporting` — the step→stage map is AUTHORED, so a
   renamed step drifts it in the safe-looking direction.
