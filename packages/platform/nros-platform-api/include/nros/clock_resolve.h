@@ -282,6 +282,11 @@ static inline uint8_t nros_clock_first_source_from_build(void) {
  * negative or absurd. Outside [RATE_MIN, RATE_MAX] the gap falls back to
  * monotonic pacing, as before two answers exist, and the caller says so.
  *
+ * Two margins keep the paced gap from coming in under the interval (both
+ * measured, see their defines): a guard band of 1 % on every paced
+ * deadline, and twice the deadline while the rate's window is shorter than
+ * one interval of server time.
+ *
  * Pure: the caller supplies every time; nothing here sleeps or reads a clock.
  * The first re-sync after boot has one answer and so no rate: it is paced on
  * monotonic time. */
@@ -290,6 +295,19 @@ static inline uint8_t nros_clock_first_source_from_build(void) {
  * racing 100x reads 0.01, a guest slowed 10x reads 10. */
 #define NROS_SNTP_PACE_RATE_MIN_PPM 1000ULL
 #define NROS_SNTP_PACE_RATE_MAX_PPM 100000000ULL
+
+/* The paced deadline's guard band, in parts per thousand of the interval. The
+ * rate is the last gap's, so it lags a change of guest speed: measured on an
+ * Arm FVP at a 3.6x guest/host ratio, 4 of 19 paced gaps fell 12 to 57 ms
+ * short of a 10 s interval. 1 % is 100 ms there. */
+#define NROS_SNTP_PACE_GUARD_PERMILLE 10ULL
+/* A rate measured over less than one interval of server time (the boot
+ * exchange to the first re-sync, on a racing guest) is a short sample of a
+ * guest whose speed is still settling: measured, the boot window read 0.45
+ * where the steady state was 0.27, and the next gap came 6.1 s after a 10 s
+ * interval. Until the window spans an interval, the paced deadline is this
+ * many times the interval. */
+#define NROS_SNTP_PACE_SHORT_WINDOW_FACTOR 2ULL
 
 typedef struct {
     uint64_t prev_mono_ms; /* the answer before the last: monotonic ... */
@@ -345,18 +363,31 @@ static inline nros_sntp_pace_rate_t nros_sntp_pace_rate(const nros_sntp_pace_t* 
  * the last attempt. With a usable rate: once that time, scaled to the
  * server's, reaches `interval_ms`; otherwise once it reaches `interval_ms`
  * itself. */
+/* Whether the rate's window (server time between the last two answers) spans
+ * at least `interval_ms`. Meaningful only with a usable rate. */
+static inline bool nros_sntp_pace_window_full(const nros_sntp_pace_t* p, uint32_t interval_ms) {
+    return p->answers >= 2u && p->last_wall_ms > p->prev_wall_ms &&
+           p->last_wall_ms - p->prev_wall_ms >= (uint64_t)interval_ms;
+}
+
 static inline bool nros_sntp_pace_due(const nros_sntp_pace_t* p, uint64_t since_attempt_ms,
                                       uint32_t interval_ms) {
     uint64_t rate = 0u;
     if (nros_sntp_pace_rate(p, &rate) != NROS_SNTP_PACE_RATE_OK) {
         return since_attempt_ms >= (uint64_t)interval_ms;
     }
-    /* since x rate / 1e6 >= interval, without the division. `since` above
-     * ~584 years of ms cannot occur; saturate rather than wrap. */
+    /* The deadline in server ms x 1e6: the interval plus the guard band,
+     * times the short-window factor while the rate's window is short. */
+    uint64_t need = (uint64_t)interval_ms * (1000ULL + NROS_SNTP_PACE_GUARD_PERMILLE) * 1000ULL;
+    if (!nros_sntp_pace_window_full(p, interval_ms)) {
+        need *= NROS_SNTP_PACE_SHORT_WINDOW_FACTOR;
+    }
+    /* since x rate >= need, without the division. `since` above ~584 years
+     * of ms cannot occur; saturate rather than wrap. */
     if (since_attempt_ms > UINT64_MAX / rate) {
         return true;
     }
-    return since_attempt_ms * rate >= (uint64_t)interval_ms * 1000000ULL;
+    return since_attempt_ms * rate >= need;
 }
 
 #ifdef NROS_CLOCK_HAS_BOARD

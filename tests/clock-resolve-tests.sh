@@ -27,7 +27,9 @@
 #   9. the knobs' comma-joined spelling parses, in order, whole words only;
 #  10. SNTP re-sync pacing (issue 2884): on the server's clock by the rate two
 #      answers measured, so a racing guest's 10 s interval is 10 s of the
-#      server's; monotonic pacing before two answers;
+#      server's, plus a 1 % guard band, doubled while the rate's window is
+#      shorter than one interval (the FVP's measured boot window); monotonic
+#      pacing before two answers;
 #  11. a rate that cannot be trusted (a server step either way, no monotonic
 #      time between answers, outside the bounds) paces that gap on monotonic
 #      time.
@@ -280,19 +282,34 @@ int main(void) {
         CHECK("10 one answer (the boot sync): still monotonic pacing",
               nros_sntp_pace_rate(&sp, &r) == NROS_SNTP_PACE_RATE_UNKNOWN &&
                   nros_sntp_pace_due(&sp, 10000, 10000));
-        /* A guest racing 10x: 10 s of guest time was 1 s of the server's. */
-        nros_sntp_pace_answer(&sp, 11000, 1700000001000ULL);
+        /* A guest racing 10x: 100 s of guest time was 10 s of the server's,
+         * a window of one full interval. */
+        nros_sntp_pace_answer(&sp, 101000, 1700000010000ULL);
         CHECK("10 racing guest: rate 0.1", nros_sntp_pace_rate(&sp, &r) == NROS_SNTP_PACE_RATE_OK &&
                                                r == 100000ULL);
-        CHECK("10 racing guest: a 10 s interval waits 100 s of guest time (10 s real)",
-              !nros_sntp_pace_due(&sp, 99999, 10000) && nros_sntp_pace_due(&sp, 100000, 10000));
+        CHECK("10 racing guest: a 10 s interval waits 101 s of guest time (10 s real + 1 %)",
+              nros_sntp_pace_window_full(&sp, 10000) && !nros_sntp_pace_due(&sp, 100999, 10000) &&
+                  nros_sntp_pace_due(&sp, 101000, 10000));
         /* Hardware: the two clocks agree. */
         nros_sntp_pace_t hw = {0};
         nros_sntp_pace_answer(&hw, 0, 1700000000000ULL);
         nros_sntp_pace_answer(&hw, 60000, 1700000060000ULL);
-        CHECK("10 hardware: rate 1, due at the interval",
+        CHECK("10 hardware: rate 1, due at the interval + 1 %",
               nros_sntp_pace_rate(&hw, &r) == NROS_SNTP_PACE_RATE_OK && r == 1000000ULL &&
-                  !nros_sntp_pace_due(&hw, 59999, 60000) && nros_sntp_pace_due(&hw, 60000, 60000));
+                  !nros_sntp_pace_due(&hw, 60599, 60000) && nros_sntp_pace_due(&hw, 60600, 60000));
+        /* The FVP's boot window (measured): 4.5 s of the server's over 10 s of
+         * guest time, shorter than the 10 s interval, so the next deadline is
+         * doubled; at the guest's steady 3.64x it is ~12 s of host time where
+         * the undoubled one was the measured 6.1 s. */
+        nros_sntp_pace_t boot = {0};
+        nros_sntp_pace_answer(&boot, 5000, 1700000000000ULL);
+        nros_sntp_pace_answer(&boot, 15000, 1700000004524ULL);
+        CHECK("10 a short window: rate known, window not full",
+              nros_sntp_pace_rate(&boot, &r) == NROS_SNTP_PACE_RATE_OK && r == 452400ULL &&
+                  !nros_sntp_pace_window_full(&boot, 10000));
+        CHECK("10 a short window doubles the deadline (+1 %): 44.65 s of guest time",
+              !nros_sntp_pace_due(&boot, 44650, 10000) && nros_sntp_pace_due(&boot, 44651, 10000));
+        CHECK("10 ...which at 3.64x is at least 12 s of host time", 44651ULL * 100 / 364 >= 12000ULL);
 
         /* 11. a rate that cannot be trusted falls back to monotonic pacing. */
         nros_sntp_pace_t st = {0};

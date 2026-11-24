@@ -102,3 +102,38 @@ Still open: the FVP measurement (a local SNTP responder, a 10 s interval, a
 and the island setting a non-zero interval on its FVP images. This issue
 closes when both are done.
 
+## FVP measurement (2026-11-24, nros 175) and the follow-up
+
+nros 175 ran the measurement on the island's FVP image
+(FVP_BaseR_AEMv8R 11.31.28):
+- `sntp,platform`, a 10 s re-sync interval;
+- a host responder logging each query's host monotonic time;
+- 200 s per run.
+
+**Before** (main 2e94c2f841), at a guest/host ratio of 2.90: 58 queries, with
+gaps of 2.6 to 4.7 s.
+
+**After** (#4763, d03ec73295), at 3.64: 21 queries. Host-time gaps, the first
+being the boot exchange to the first re-sync:
+
+    4.531 6.086 10.321 9.943 10.094 10.030 10.304 10.059 9.988 10.222
+    9.967 10.117 10.131 10.170 10.045 9.957 10.139 10.134 10.050 10.058
+
+The fix works, but the literal acceptance misses twice:
+
+- **The second gap is 6.086 s.** Its rate (0.452) came from the 4.5 s boot
+  window, and the guest then raced harder (steady state 0.27).
+- **Four gaps fall 12 to 57 ms short of 10 s.** The last gap's rate lags the
+  guest's speed changes.
+
+Manager's decision: keep the acceptance as written. #4763 merges on its gate,
+and a follow-up adds two margins (RFC-0141 D5):
+
+- a +1 % guard band on every paced deadline;
+- a doubled deadline while the rate's window is shorter than one interval of
+  server time.
+
+Host-tested in `tests/clock-resolve-tests.sh` case 10, including the
+measured boot window, whose doubled deadline is 12 s or more of host time at
+3.64x. The issue closes on 175's re-run at the follow-up's head.
+

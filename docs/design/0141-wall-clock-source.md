@@ -390,6 +390,20 @@ checked on a short monotonic tick (a sixteenth of the interval, 10 ms to 1 s).
 A failed query counts as an attempt, so an unreachable server is asked at the
 same spacing.
 
+Two margins keep a paced gap from coming in under the interval. Both were
+measured on an Arm FVP (a 10 s interval, a guest at 3.6 times host speed,
+200 s per run):
+
+- **Guard band.** Every paced deadline carries +1 % of the interval. The
+  rate is the last gap's, so it lags a change of guest speed. 4 of 19 gaps
+  fell 12 to 57 ms short; 1 % is 100 ms.
+- **Short window.** While the two answers the rate came from are less than
+  one interval apart in server time, the deadline is doubled. That window is
+  the boot exchange to the first re-sync on a racing guest, and the guest
+  is still changing speed in it: it read 0.45 where the steady state was
+  0.27, and the next gap came 6.1 s after a 10 s interval. Doubled, it is
+  about 12 s.
+
 Before two answers there is no rate, so the first re-sync after boot is paced
 on monotonic time. A rate outside 0.001 to 100 is not trusted: a server step,
 no monotonic time between answers, or a step back all produce one. That gap
@@ -521,6 +535,9 @@ a stub board clock (`docs/reference/source-timestamps.md`, gate
   point that the board entries call after network bring-up and log-writer
   registration, not lazily on the first read. Reads before it read 0 and
   resolve nothing.
+- 2026-11-24: D5 amended (issue 2884, FVP measurement): a 1 % guard band on
+  every paced deadline, and a doubled deadline while the rate's window is
+  shorter than one interval.
 - 2026-11-24: D5 amended (issue 2884, user ruling): the re-sync is paced on
   the server's clock, by the rate the last two answers measured, so the
   interval is real time on a racing simulator. Before two answers, and for a
