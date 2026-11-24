@@ -693,12 +693,12 @@ fn sdk_toolchain_for_arch(sdk: &Path, arch: &str) -> Option<String> {
         .find_map(|f| std::fs::read_to_string(sdk.join(f)).ok())?;
     let key = format!("CROSS_COMPILE_TARGET_{arch}");
     text.lines()
-        .filter_map(|l| {
+        .rev()
+        .find_map(|l| {
             let rest = l.trim().strip_prefix("set(")?.strip_suffix(')')?;
             let mut it = rest.split_whitespace();
             (it.next()? == key).then(|| it.next().map(str::to_string))?
         })
-        .last()
         .filter(|t| !t.contains("${"))
 }
 
