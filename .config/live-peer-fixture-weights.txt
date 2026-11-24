@@ -1,0 +1,118 @@
+# Measured wall time (ms) of each live-peer host fixture unit, from the
+# `unit-time: <unit> <N>s` lines of the four build shards of proof dispatch
+# 45370439146 (2026-11-24, hosted ubuntu-22.04), phase-591 W3. The first
+# weights came from the single job's `=== ... ===` markers (run 45324656188);
+# measured inside shards they differ, most of all `cc:shadowing` (17.7 min in
+# the single job, where it paid for crates later rows reused).
+#
+# Read by scripts/ci/fixture-shards.sh select (scripts/build/gate-shard.py) to
+# BALANCE live-peer's host fixture shards. It never decides coverage: every
+# unit lands in exactly one shard whatever this file says, a unit missing here
+# gets the median weight, and a stale row is ignored. Refresh it from a run's
+# `unit-time: <unit> <N>s` lines (scripts/ci/live-peer-host-fixtures.sh) when
+# the shards drift apart.
+fb:linux,cpp,zenoh                                                       382000
+fb:linux,rust,zenoh                                                      215000
+fb:linux,c,zenoh                                                         172000
+ws:workspace-graph-query-parity                                          101000
+cc:cpp_robot_entry                                                       98000
+ws:workspace-cpp-native-action-client-callback                           95000
+ws:workspace-cpp-native-service-server                                   95000
+ws:workspace-cpp-native-action-server                                    94000
+ws:workspace-c-native-service-client-callback-cyclonedds                 93000
+ws:workspace-cpp-native-action-server-cyclonedds                         93000
+ws:workspace-cpp-native-listener                                         93000
+ws:workspace-c-native-listener                                           92000
+ws:workspace-c-native-action-server-cyclonedds                           91000
+ws:workspace-c-native-talker-clock-board                                 91000
+ws:workspace-c-native-talker-cyclonedds                                  90000
+ws:c-parameters-cyclonedds                                               75000
+ws:linux-c-xrce-talker                                                   75000
+ws:workspace-c-native-service-client-cyclonedds                          70000
+ws:workspace-cpp-native-service-client                                   69000
+ws:workspace-cpp-native-service-server-cyclonedds                        69000
+ws:workspace-cpp-native-talker                                           69000
+ws:workspace-c-native-action-client-cyclonedds                           68000
+ws:workspace-c-native-action-server                                      67000
+ws:workspace-cpp-native-action-client-cyclonedds                         67000
+ws:workspace-cpp-native-listener-cyclonedds                              67000
+ws:workspace-c-native-talker                                             66000
+ws:linux-rust-cyclonedds-talker                                          61000
+ws:linux-c-zenoh-custom-transport-loopback                               61000
+ws:int32-sink-cyclonedds                                                 60000
+ws:workspace-rust-native-action-server-cyclonedds                        58000
+ws:workspace-rust-native-listener-cyclonedds                             58000
+ws:workspace-cpp-native-service-client-cyclonedds                        56000
+ws:action-server-concurrent-zenoh                                        55000
+ws:linux-c-zenoh-talker                                                  55000
+ws:workspace-c-native-service-server-cyclonedds                          54000
+ws:workspace-cpp-native-talker-clock-board                               54000
+ws:native-rust-talker                                                    53000
+ws:workspace-rust-native-action-client                                   53000
+ws:workspace-rust-native-listener                                        53000
+ws:workspace-cpp-native-service-client-callback                          53000
+ws:workspace-c-native-action-client                                      53000
+ws:workspace-cpp-native-action-client                                    53000
+cc:shadowing                                                             52000
+ws:workspace-c-native-service-client                                     52000
+ws:workspace-c-native-service-server                                     52000
+ws:workspace-cpp-native-service-client-callback-cyclonedds               52000
+ws:linux-rust-zenoh-entry-poc                                            51000
+ws:workspace-cpp-native-talker-cyclonedds                                51000
+ws:param-two-node-talker                                                 50000
+ws:workspace-c-native-listener-cyclonedds                                50000
+ws:workspace-rust-native-bridge                                          49000
+ws:linux-c-cyclonedds-talker                                             48000
+ws:c-parameters                                                          48000
+ws:linux-c-zenoh-custom-platform                                         44000
+ws:workspace-rust-native-talker-cyclonedds                               43000
+ws:workspace-rust-native-listener-xrce                                   42000
+ws:workspace-features-rust-params                                        42000
+ws:workspace-rust-native-action-client-cyclonedds                        42000
+ws:workspace-rust-native-talker-cyclonedds-clock-board                   42000
+fb:linux,rust,cyclonedds                                                 41000
+ws:workspace-rust-native-talker-xrce                                     41000
+ws:constrained-link-probe-no-graph-zenoh                                 41000
+ws:linux-rust-zenoh-talker-tls                                           40000
+ws:linux-rust-zenoh-graph-probe                                          39000
+ws:linux-rust-zenoh-listener-tls                                         39000
+ws:workspace-c-native-service-client-callback                            39000
+ws:workspace-features-rust-qos                                           38000
+ws:workspace-rust-native-bridge-xrce                                     38000
+ws:workspace-rust-native-service-client                                  38000
+ws:workspace-rust-native-cyclonedds                                      37000
+ws:rosout-talker                                                         37000
+ws:linux-rust-cyclonedds-graph-probe                                     35000
+ws:param-two-node-talker-cyclone                                         34000
+ws:workspace-rust-native-talker-clock-board                              34000
+ws:workspace-rust-native-service-server                                  33000
+ws:workspace-rust-native-talker                                          33000
+ws:graph-probe-xrce                                                      33000
+ws:workspace-rust-native-service-server-cyclonedds                       33000
+ws:workspace-rust-native-service-client-cyclonedds                       32000
+ws:workspace-rust-native-xrce                                            31000
+fb:linux,rust,xrce                                                       31000
+ws:cpp-parameters                                                        31000
+ws:linux-cpp-zenoh-service-client                                        31000
+ws:param-two-node-talker-short-liveliness                                30000
+ws:workspace-features-rust-params-xrce                                   30000
+ws:workspace-rust-native-action-client-xrce                              30000
+ws:workspace-rust-native-talker-xrce-clock-board                         30000
+ws:constrained-link-probe-zenoh                                          30000
+ws:linux-rust-zenoh-listener                                             30000
+ws:workspace-rust-native                                                 30000
+ws:workspace-rust-native-action-server                                   30000
+ws:workspace-rust-native-listener-peer-mode                              30000
+ws:linux-rust-zenoh-talker-peer                                          29000
+ws:service-info-client-zenoh                                             29000
+ws:int32-sink-zenoh                                                      28000
+ws:int32-sink-xrce                                                       27000
+ws:action-server-concurrent-xrce                                         27000
+ws:workspace-rust-native-action-server-xrce                              26000
+ws:linux-rust-zenoh-lifecycle-node                                       26000
+ws:linux-rust-xrce-talker                                                25000
+ws:service-info-server-xrce                                              25000
+ws:workspace-rust-native-service-client-xrce                             24000
+cc:cyclone_slirp_guest                                                   23000
+ws:workspace-rust-native-service-server-xrce                             23000
+ws:linux-rust-zenoh-logging                                              7000
