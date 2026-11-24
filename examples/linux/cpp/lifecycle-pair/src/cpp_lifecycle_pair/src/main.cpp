@@ -132,6 +132,13 @@ int main(int argc, char** argv) {
     g_nodes[0] = &alpha;
     g_nodes[1] = &beta;
     for (PairTalker* n : g_nodes) {
+        // A node whose lifecycle services could not be created is not a
+        // managed node: say so and stop, as the C program does.
+        if (!n->ok()) {
+            fprintf(stderr, "node /%s failed to start: %s\n", n->get_name(),
+                    n->error_what() != nullptr ? n->error_what() : "?");
+            return 2;
+        }
         printf("Lifecycle services registered on /%s (state %d)\n", n->get_name(),
                static_cast<int>(n->get_current_state().id()));
     }
