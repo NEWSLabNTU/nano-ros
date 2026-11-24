@@ -101,9 +101,13 @@ a self-hosted runner is the fallback, weighed against W7 since it takes gate cap
 
 Acceptance: each nightly platform job builds in under 60 min.
 
-### W6 -- `host-tests` shard balance (owner: nros 118)
+### W6 -- `host-tests` shard balance (owner: nros 142, taken over from nros 118 on 2026-11-24)
 
-- **Status:** OPEN
+- **Status:** OPEN -- in review as #4754: five shards split by measured weights
+  (`scripts/ci/build-gate-weights.py`), the last shard charged for its
+  `no-std` + `pristine-checkout`. Three balanced shards measure ~85 min; four
+  were dispatched and measured 73 / 76 / 91 / 63 min (run 45319129706).
+  Acceptance waits on the five-shard dispatch (run 45331627283).
 
 The three build-tier shards take 102 / 68 / 68 min (run 45104661214). Rebalance the rows so no
 shard exceeds 80 min.
@@ -123,9 +127,12 @@ Skipping parts of the gate is out of scope, per the standing rule.
 Acceptance: three hosts can run a full gate; no release-blocker gate waits more than 4 h for
 a slot.
 
-### W8 -- lane health watch (owner: nros 118)
+### W8 -- lane health watch (owner: nros 142, taken over from nros 118 on 2026-11-24)
 
-- **Status:** OPEN
+- **Status:** OPEN -- in review as #4754: `scripts/ci/lane-health.py` (run daily
+  by `automation.yml`'s triage job) names a scheduled lane `NO VERDICT 2d`
+  when neither of its last two UTC days had a run whose cells ran. Replayed
+  over 2026-11-18..23 it names `run-matrix` on every day from 2026-11-19.
 
 A daily report that flags any scheduled lane with no verdict for two consecutive days, read in
 the morning triage, so a lane cannot sit red-without-a-verdict for a week again.
