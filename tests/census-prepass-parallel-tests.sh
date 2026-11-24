@@ -16,6 +16,11 @@
 #   4. all leaves pass -> exit 0.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# Hermetic: every case states its own ledger. `just build <lane>` runs this
+# gate INSIDE `fixture-rows-keep-going.sh`, which exports the ledger for the
+# whole build, so an inherited NROS_FIXTURE_FAILED_ROWS turned the "unset"
+# cases into ledger cases and the gate red on run-matrix 45339477050.
+unset NROS_FIXTURE_FAILED_ROWS NROS_FIXTURE_BUILD_LEDGER
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 fail=0

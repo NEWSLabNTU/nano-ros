@@ -29,6 +29,11 @@
 #      runs under the owner with its cells step reading the same ledger.
 set -euo pipefail
 cd "$(dirname "$0")/.."
+# Hermetic: every case states its own ledger. `just build <lane>` runs this
+# gate INSIDE `fixture-rows-keep-going.sh`, which exports the ledger for the
+# whole build, so an inherited NROS_FIXTURE_FAILED_ROWS turned the "unset"
+# cases into ledger cases and the gate red on run-matrix 45339477050.
+unset NROS_FIXTURE_FAILED_ROWS NROS_FIXTURE_BUILD_LEDGER
 
 GATE=check-fixture-row-keep-going
 fail=0
