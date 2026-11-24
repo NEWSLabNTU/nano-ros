@@ -1,6 +1,7 @@
 # Phase 591 -- CI feedback latency: a merged fix is proven in hours, not days
 
-**Status (2026-11-24). OPEN: plan approved by the user; W1-W8 assigned, none landed yet.
+**Status (2026-11-24). OPEN: W1 and W8 done; W4's targets met on the release dispatch,
+to confirm on the re-cut; W3 in review (#4781); W2, W5, W6 and W7 as their sections say.
 W2's evidence rule is decided (a green dispatch on `main` at the release commit counts) and
 is being applied by the phase-590 owner.**
 
@@ -42,7 +43,14 @@ The fast path is healthy and is not in scope: `pr-checks` median 8 min, the requ
 
 ### W1 -- keep-going fixture builds (owner: nros 118)
 
-- **Status:** OPEN
+- **Status:** DONE (2026-11-24) -- acceptance met by a REAL failing row, not a planted
+  one. Landed in #4742 (keep-going ledger), with #4771 keeping the ledger out of the gates
+  the lane build runs. Release dispatch `run-matrix` 45351389552 (main `0d9fa3e470`),
+  tier 1: the zephyr stage's west fixtures failed 2 of 10 (the fifo-jobserver make, fixed
+  by #4787). `fixture-rows-keep-going` printed "1 fixture row(s) FAILED to build; every
+  other row was built", the cells step ran (32 min, `just ci tier1 run`) with a verdict
+  per cell, `check-fixtures-stale` named the failed row, and the lane ended red. Before W1
+  the same failure would have stopped the lane at its build with no cell run.
 
 Today a lane's build stage stops at the first failing fixture row, so no cell runs. Change the
 lane build steps (`build-test-fixtures` and the per-lane build recipes) to build every other
@@ -70,7 +78,15 @@ lands is proven within 6 hours of its merge.
 
 ### W3 -- `live-peer` host job time (owner: nros 118)
 
-- **Status:** OPEN
+- **Status:** OPEN -- in review as #4781 (draft): the host fixture rows build on four
+  shards and one cells job runs after (`scripts/ci/fixture-shards.sh`,
+  `scripts/ci/live-peer-host-fixtures.sh`). The pack set is derived from the fixtures
+  manifest, with a coverage check on the normal path. Proof dispatch 45370439146: shards
+  26/60/45/37 min, host side 86 min end to end against about 138 min single. Shards were
+  re-weighted from that run's measured unit times (about 24 min each predicted). A compiler
+  cache gained nothing, neither in the shards (#4750's and the 45371554201 measurements)
+  nor in nightly (W5), so the shards run without one. Acceptance (two consecutive
+  scheduled runs under 120 min) waits for merge.
 
 The host job took 342 of its 350 min on 2026-11-23 (fixture step 5 h 12 min): about 140
 fixture rows, each rebuilding the core chain from scratch, and a configure prepass that
@@ -82,7 +98,12 @@ Acceptance: the host job under 120 min on two consecutive scheduled runs.
 
 ### W4 -- tier 2 in parallel (owner: nros 118)
 
-- **Status:** OPEN
+- **Status:** OPEN -- acceptance met on the release dispatch; confirm on the re-cut's run.
+  `run-matrix` 45351389552 (2026-11-24): tier 1 ran on newslab-241 in parallel with tier 2
+  on newslab-118, both starting 07:52. Tier 2 job 1 h 17 min (07:52-09:10), the pairwise
+  cover after it 1 h 35 min, so tier 2 plus the cover took 2 h 53 min (target under 5 h).
+  "Sweep orphans and disk" took 1.3 min (tier 2), 1.5 min (cover) and 8.2 min (tier 1),
+  all under the 10-min target. The re-cut's `run-matrix` re-measures it.
 
 `run-matrix` runs tier 2 (269 min) and the tier-2 pairwise cover (418 min) back to back on one
 self-hosted runner, so a run takes 11-17 h. Run them on separate runners in parallel. The
@@ -158,10 +179,11 @@ a slot.
 
 ### W8 -- lane health watch (owner: nros 142, taken over from nros 118 on 2026-11-24)
 
-- **Status:** OPEN -- in review as #4754: `scripts/ci/lane-health.py` (run daily
-  by `automation.yml`'s triage job) names a scheduled lane `NO VERDICT 2d`
-  when neither of its last two UTC days had a run whose cells ran. Replayed
-  over 2026-11-18..23 it names `run-matrix` on every day from 2026-11-19.
+- **Status:** DONE (2026-11-24) -- merged in #4766 (`29baf7ea0b`). `automation.yml`'s
+  `triage` job runs `scripts/ci/lane-health.py` on every completed `nightly`, i.e. daily.
+  Its first runs after the merge (10:21 and 11:03, automation runs 45374084357 and
+  45380650150) printed "lane-health: 1 of 10 lane(s) on main produce no signal:
+  run-matrix.yml." as a job warning, naming the lane the 2026-11-18..23 replay names.
 
 A daily report that flags any scheduled lane with no verdict for two consecutive days, read in
 the morning triage, so a lane cannot sit red-without-a-verdict for a week again.
