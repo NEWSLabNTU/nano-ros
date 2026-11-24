@@ -40,6 +40,21 @@ STATES
                   measured 3-of-29; what it says is about whichever commit
                   happened to finish, not about `main`
   no runs         nothing on main in the window (dispatch-only, or new)
+  NO VERDICT 2d   (scheduled lanes, phase-591 W8) the newest run's UTC day
+                  and the day before produced no run whose cells all ran
+
+NO VERDICT is about CELLS, not colour (phase-591 W8). A green run is a verdict.
+A red run is a verdict only if every failed job reached what it tests: a job
+that failed in preparation (`nightly-triage`'s classifier, shared), or whose
+failing step was followed by a SKIPPED test step in the same job (a fixture
+build before its cells: `Build (X)` then `Test / e2e (X)`, `just build tier1`
+then `just ci tier1`, `Build the fixtures ...` then `Run the cells ...`), ran
+no cell and is a NO VERDICT job. A day with no run at all has no verdict
+either. Over 30 runs to 2026-11-23 most reds were the second kind, so each
+blocker hid the next for a night (phase-591's "Why"); this names a lane in
+that state on the second morning instead of the fifth. `--as-of <date>`
+replays the rule against an earlier day, which is how it was checked against
+the week before it landed.
 
 For each red lane it names the first failing JOB and STEP of the newest red run,
 because a lane stopping at a setup step and a lane failing its tests want
@@ -54,12 +69,14 @@ Usage::
     lane-health.py                    # every harvested lane, last 10 runs each
     lane-health.py --runs 20 --threshold 5
     lane-health.py --markdown         # the table automation.yml's triage job writes
+    lane-health.py --as-of 2026-11-22 # replay the NO VERDICT rule on an earlier day
     lane-health.py --selftest
 """
 
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import os
 import pathlib
@@ -72,6 +89,87 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 WORKFLOWS = ROOT / ".github" / "workflows"
 EVENTS = {"schedule", "push", "workflow_dispatch"}
 VERDICTS = {"success", "failure"}
+
+# phase-591 W8 -- the preparation classifier is `nightly-triage`'s, imported
+# rather than copied, so the two reports cannot disagree about a setup step.
+_spec = importlib.util.spec_from_file_location(
+    "nightly_triage", pathlib.Path(__file__).with_name("nightly-triage.py"))
+nightly_triage = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(nightly_triage)
+
+# A step whose running IS a lane's cells. A failed step followed by a SKIPPED
+# step like this in the same job stopped before its cells. Word boundaries, as
+# `nightly-triage` learned (`run` inside `runner`).
+CELL_STEP = re.compile(r"\b(test|tests|e2e|cells?|ci tier\w*|ci matrix\S*)\b", re.I)
+
+
+def job_reached_cells(job: dict) -> tuple[bool, str]:
+    """(reached, why) for one job of a run. A green, skipped or cancelled job
+    is not evidence of a missing verdict; only a failed one can be."""
+    if job.get("conclusion") != "failure":
+        return True, ""
+    kind, why = nightly_triage.classify(job)
+    if kind == "no-verdict":
+        return False, why
+    steps = job.get("steps", [])
+    idx = next((i for i, s in enumerate(steps) if s.get("conclusion") == "failure"), None)
+    if idx is None:
+        return False, "job failed with no failing step (runner/container)"
+    later = [s.get("name", "") for s in steps[idx + 1:]
+             if s.get("conclusion") == "skipped" and CELL_STEP.search(s.get("name", ""))]
+    if later:
+        return False, f"{steps[idx].get('name', '?')} (so `{later[0]}` never ran)"
+    return True, ""
+
+
+def run_has_verdict(run: dict, jobs: list[dict]) -> tuple[bool, list[str]]:
+    """A run is a verdict when it is green, or every failed job reached its cells."""
+    if run.get("conclusion") == "success":
+        return True, []
+    if run.get("conclusion") != "failure":
+        return False, [f"run {run.get('conclusion') or run.get('status') or 'unfinished'}"]
+    missing = []
+    for j in jobs:
+        ok, why = job_reached_cells(j)
+        if not ok:
+            missing.append(f"{j.get('name', '?')} -> {why}")
+    return (not missing), missing
+
+
+def no_verdict_days(runs: list[dict], jobs_of, as_of: str | None = None,
+                    days: int = 2) -> dict:
+    """Did the lane produce a verdict on any of its last `days` UTC days?
+
+    `runs` newest first; `jobs_of(run)` returns that run's jobs. The window
+    ends at `as_of` (a `YYYY-MM-DD`) or at the newest run's day, and a day in
+    it with no run counts as a day with no verdict. Returns
+    {"flag": bool, "days": [(day, verdict, detail)], ...}."""
+    from datetime import date, timedelta
+    finished = [r for r in runs if r.get("status", "completed") == "completed"]
+    if as_of:
+        finished = [r for r in finished if r["createdAt"][:10] <= as_of]
+    if not finished:
+        return {"flag": False, "days": []}
+    end = date.fromisoformat(as_of or finished[0]["createdAt"][:10])
+    window = [(end - timedelta(days=i)).isoformat() for i in range(days)]
+    out = []
+    for d in window:
+        todays = [r for r in finished if r["createdAt"][:10] == d]
+        if not todays:
+            out.append((d, False, "no run"))
+            continue
+        detail = ""
+        verdict = False
+        for r in todays:
+            ok, missing = run_has_verdict(r, jobs_of(r))
+            if ok:
+                verdict, detail = True, f"run {r.get('databaseId')}"
+                break
+            if not detail:
+                detail = f"run {r.get('databaseId')}: " + "; ".join(missing[:3]) + (
+                    f" (+{len(missing) - 3} more)" if len(missing) > 3 else "")
+        out.append((d, verdict, detail))
+    return {"flag": not any(v for _, v, _ in out), "days": out}
 
 
 def triggers(text: str) -> set[str]:
@@ -234,6 +332,50 @@ def selftest(verbose: bool = False) -> int:
     chk("a workflow_run-only workflow is not a lane",
         not triggers("on:\n  workflow_run:\n    workflows: [gate]\n"
                      "    types: [completed]\n\njobs:\n  a:\n") & {"schedule", "push"})
+    # phase-591 W8 -- cells, not colour.
+    def job(name, concl, steps):
+        return {"name": name, "conclusion": concl,
+                "steps": [{"name": n, "conclusion": c} for n, c in steps]}
+    fixture_red = job("ThreadxLinux", "failure",
+                      [("Checkout", "success"), ("Build (ThreadxLinux)", "failure"),
+                       ("Test / e2e (ThreadxLinux)", "skipped"), ("Upload logs", "success")])
+    cell_red = job("ThreadxLinux", "failure",
+                   [("Build (ThreadxLinux)", "success"), ("Test / e2e (ThreadxLinux)", "failure")])
+    build_lane_red = job("check build", "failure",
+                         [("just check build", "failure"), ("Disk report", "success")])
+    setup_red = job("zephyr", "failure", [("Set up Zephyr 3.7 workspace", "failure"),
+                                          ("just test zephyr", "skipped")])
+    chk("a fixture build before a skipped test step reached no cell",
+        job_reached_cells(fixture_red)[0] is False
+        and "Test / e2e" in job_reached_cells(fixture_red)[1])
+    chk("a red test step is a verdict", job_reached_cells(cell_red)[0] is True)
+    chk("a build step with no test after it IS the verdict (a build lane)",
+        job_reached_cells(build_lane_red)[0] is True)
+    chk("a setup failure reached no cell (nightly-triage's classifier)",
+        job_reached_cells(setup_red)[0] is False)
+    chk("`run` inside `runner` is not a cell step",
+        not CELL_STEP.search("Report runner hardware"))
+    rn = lambda i, c, d: {"databaseId": i, "conclusion": c, "status": "completed",
+                          "createdAt": d + "T03:00:00Z"}
+    jobs = {1: [fixture_red], 2: [fixture_red], 3: [cell_red], 4: [fixture_red]}
+    nv = no_verdict_days([rn(2, "failure", "2026-11-23"), rn(1, "failure", "2026-11-22")],
+                         lambda r: jobs[r["databaseId"]])
+    chk("two days of fixture reds is NO VERDICT 2d", nv["flag"] and len(nv["days"]) == 2)
+    nv = no_verdict_days([rn(2, "failure", "2026-11-23"), rn(3, "failure", "2026-11-22")],
+                         lambda r: jobs[r["databaseId"]])
+    chk("a red that ran its cells the day before is a verdict", not nv["flag"])
+    nv = no_verdict_days([rn(2, "failure", "2026-11-23"), rn(1, "failure", "2026-11-21")],
+                         lambda r: jobs[r["databaseId"]])
+    chk("a day with no run is a day with no verdict", nv["flag"]
+        and nv["days"][1] == ("2026-11-22", False, "no run"))
+    nv = no_verdict_days([rn(4, "failure", "2026-11-23"), rn(5, "success", "2026-11-23"),
+                          rn(1, "failure", "2026-11-22")],
+                         lambda r: jobs.get(r["databaseId"], []))
+    chk("a green dispatch on the same day is that day's verdict", not nv["flag"])
+    nv = no_verdict_days([rn(2, "failure", "2026-11-23"), rn(3, "failure", "2026-11-22")],
+                         lambda r: jobs[r["databaseId"]], as_of="2026-11-22")
+    chk("--as-of judges the window ending that day",
+        [d for d, _, _ in nv["days"]] == ["2026-11-22", "2026-11-21"])
     return fails
 
 
@@ -243,6 +385,10 @@ def main() -> int:
     ap.add_argument("--threshold", type=int, default=3,
                     help="consecutive red verdicts that make a lane NO SIGNAL")
     ap.add_argument("--markdown", action="store_true")
+    ap.add_argument("--as-of", metavar="YYYY-MM-DD",
+                    help="judge the lanes as of the end of this UTC day (replay)")
+    ap.add_argument("--lane", action="append", default=[],
+                    help="only this workflow file (repeatable)")
     ap.add_argument("--selftest", action="store_true")
     args = ap.parse_args()
 
@@ -256,12 +402,33 @@ def main() -> int:
         return 1
 
     rows = []
+    job_cache: dict = {}
+
+    def jobs_of(run):
+        rid = run["databaseId"]
+        if rid not in job_cache:
+            job_cache[rid] = (gh_json(["run", "view", str(rid), "--repo", REPO,
+                                       "--json", "jobs"]) or {}).get("jobs", [])
+        return job_cache[rid]
+
+    scheduled = {p.name for p in WORKFLOWS.glob("*.yml")
+                 if "schedule" in triggers(p.read_text(encoding="utf-8"))}
+    nv_lanes = []
     for wf in harvest():
-        runs = lane_runs(wf, args.runs)
+        if args.lane and wf not in args.lane:
+            continue
+        # Over-fetch when replaying, so the window before --as-of is still there.
+        runs = lane_runs(wf, args.runs * (3 if args.as_of else 1))
         if runs is None:
             rows.append((wf, "unreadable", "", "", "", "`gh` could not list runs"))
             continue
+        if args.as_of:
+            runs = [r for r in runs if r["createdAt"][:10] <= args.as_of][:args.runs]
         a = assess(runs, args.threshold)
+        nv = no_verdict_days(runs, jobs_of, args.as_of) if wf in scheduled else {"flag": False}
+        if nv["flag"]:
+            a["state"] = "NO VERDICT 2d"
+            nv_lanes.append((wf, nv["days"]))
         where = ""
         if a["newest_red"]:
             data = gh_json(["run", "view", str(a["newest_red"]["databaseId"]),
@@ -273,7 +440,7 @@ def main() -> int:
                      a["last_green"] or ("never in window" if runs else ""),
                      where))
 
-    order = {"NO SIGNAL": 0, "NEVER FINISHES": 1, "RARELY FINISHES": 2, "unreadable": 3,
+    order = {"NO VERDICT 2d": -1, "NO SIGNAL": 0, "NEVER FINISHES": 1, "RARELY FINISHES": 2, "unreadable": 3,
              "red": 4, "no runs": 5, "OK": 6}
     rows.sort(key=lambda row: (order.get(row[1], 9), row[0]))
     head = ("lane", "state", "red streak", "verdicts/runs", "last green", "newest red stopped at")
@@ -292,8 +459,18 @@ def main() -> int:
         print("lane-health: could not read ANY lane — `gh` missing or unauthenticated",
               file=sys.stderr)
         return 1
+    if nv_lanes:
+        print()
+        print(f"lane-health: {len(nv_lanes)} scheduled lane(s) with NO VERDICT for 2 days"
+              + (f" (as of {args.as_of})" if args.as_of else "") + ": "
+              + ", ".join(wf for wf, _ in nv_lanes) + ".")
+        for wf, days in nv_lanes:
+            for d, _, detail in days:
+                print(f"  {wf} {d}: {detail}")
+        print("No cell ran on either day, so a new regression in that lane is invisible\n"
+              "behind the old one (phase-591 W8). Fix what stops it before its cells.")
     silent = [row[0] for row in rows
-              if row[1] in ("NO SIGNAL", "NEVER FINISHES", "RARELY FINISHES")]
+              if row[1] in ("NO VERDICT 2d", "NO SIGNAL", "NEVER FINISHES", "RARELY FINISHES")]
     print()
     print(f"lane-health: {len(silent)} of {len(rows)} lane(s) on main produce no signal"
           + (f": {', '.join(silent)}" if silent else "") + ".")
