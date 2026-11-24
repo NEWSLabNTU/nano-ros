@@ -66,6 +66,37 @@ Each named a remedy nano-ros does not ship.
 rlm's own text (its "phase 104 S3" reference and its "may be newer than this
 binary" line) is unchanged: that is rlm's to change.
 
+## The project lock, on the installed track
+
+The installed-path upgrade trial (an nros11 project built by the nros11 release,
+then `nros pin` to this one, `nros setup`, `nros configure --migrate`,
+`nros build`) got past configure and then stopped the Rust build:
+
+```text
+Error: the build finished, but it resolved off the pin set.
+  source `zenoh-pico`: this project's nros-sdk.lock pins 19a47ae7..., the SDK now has e9675d97...
+```
+
+The project's `nros-sdk.lock` records the sources and tools the release that
+last built it had, and a build never moves a pin the project recorded without
+`nros update`. That verb exists for an installed SDK (`update_project`), but
+`nros update --help` described only the checkout path, where it edits the pin
+set.
+
+- `nros configure --migrate`, with an installed SDK, also accepts this SDK's
+  pin for each `[source.*]` and `[tool.*]` the project's lock pins differently,
+  by calling `update_project`, so it is the same write `nros update --source
+  <name>` makes. A `[cargo_override.*]` is the project's own decision and is not
+  touched. In a checkout nothing is accepted: the pin set is the tree's.
+- The drift message names `nros configure --migrate` beside `nros update`.
+- `nros update --help` says what `--source`, `--tool` and `--crate` do with an
+  installed SDK.
+
+The C and C++ builds in the same trial stopped in the metadata probe, on a
+header from the earlier release left in a build directory. That is a separate
+defect with its own fix: the probe's cache is not keyed on the SDK it was
+configured with.
+
 ## Verified
 
 - `nros-cli/tests/nros11_scaffold_migrate.rs` scaffolds a talker in Rust, C and
@@ -77,6 +108,10 @@ binary" line) is unchanged: that is rlm's to change.
 - By hand on this host: a talker scaffolded in Rust, C and C++, with the
   nros11 contract written over it, runs `nros configure --migrate` (one line per
   rewritten key) and then `nros build` to a linux image, all three.
+- `update::tests::accepting_the_sdk_pins_moves_only_what_disagrees`: a lock
+  pinning an older zenoh-pico and a current kernel, plus a crate override;
+  accepting moves only zenoh-pico, keeps its origin and the override, and a
+  second run writes nothing.
 - `rlm_migrate` unit tests: rlm refuses the nros11 text, the migration output
   parses and differs only in the rate key, a current contract is untouched, a
   `system.toml` takes the `system.toml` rewrites, and the walk rewrites the

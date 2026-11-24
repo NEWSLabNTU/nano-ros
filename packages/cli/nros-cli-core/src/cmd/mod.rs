@@ -339,10 +339,17 @@ pub enum Cmd {
     // phase-443 W2; the codegen-delta warning is RFC-0097 D7.
     Pin(pin::Args),
 
-    /// Move one pin, editing the pin set and leaving one diff.
+    /// Move one pin, leaving one diff to review.
     ///
     /// A pin is a registry crate (`--crate`), a vendored source (`--source`), a
     /// host tool (`--tool`) or a west project (`--west`).
+    ///
+    /// With an installed SDK, the SDK's pins are the release and do not move:
+    /// the project's own `nros-sdk.lock` does. `--source <name>` and
+    /// `--tool <name>` accept this SDK's pin after an upgrade (no `--ref` or
+    /// `--to-version`); `nros configure --migrate` accepts every one at once.
+    /// `--crate <name>` records a project override. In a nano-ros checkout,
+    /// each flag edits the checkout's pin set instead.
     // phase-485 W7 (RFC-0104 D7).
     Update(update::Args),
 

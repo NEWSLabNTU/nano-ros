@@ -31,7 +31,7 @@ use crate::orchestration::{
     sdk_index::SdkIndex,
 };
 
-#[derive(Debug, ClapArgs)]
+#[derive(Debug, Default, ClapArgs)]
 #[command(group(ArgGroup::new("kind").required(true).args(["pins", "krate", "source", "tool", "west"])))]
 pub struct Args {
     /// Regenerate the registry pin set from the locked roots as they stand —
@@ -46,9 +46,10 @@ pub struct Args {
     #[arg(long, requires = "pins")]
     pub prune: bool,
 
-    /// Move a Rust registry crate's pin: every locked root that uses it is
+    /// A Rust registry crate. In a checkout: every locked root that uses it is
     /// re-resolved with `cargo update`, the roots are brought into agreement,
-    /// and the pin set is regenerated from them.
+    /// and the pin set is regenerated from them. With an installed SDK: it is
+    /// re-resolved in this project and recorded as a project override.
     #[arg(long = "crate", value_name = "NAME")]
     pub krate: Option<String>,
     /// The exact version to move to. Without it, cargo picks the newest
@@ -56,11 +57,13 @@ pub struct Args {
     #[arg(long, value_name = "VERSION", requires = "krate")]
     pub precise: Option<String>,
 
-    /// Move a vendored source (`[source.<name>]`) to a commit: its submodule is
-    /// checked out there and the index `ref` rewritten, forward only.
+    /// A vendored source (`[source.<name>]`). With an installed SDK: the
+    /// project's lock accepts this SDK's commit. In a checkout: with `--ref`,
+    /// its submodule is checked out there and the index `ref` rewritten,
+    /// forward only.
     #[arg(long, value_name = "NAME")]
     pub source: Option<String>,
-    /// The commit for `--source`.
+    /// The commit for `--source` (a checkout only).
     #[arg(long = "ref", value_name = "SHA", requires = "source")]
     pub git_ref: Option<String>,
     /// Let `--source` move a pin BACKWARDS (the submodule-pin rule forbids it
@@ -68,12 +71,13 @@ pub struct Args {
     #[arg(long, requires = "source")]
     pub allow_rewind: bool,
 
-    /// Move a host tool (`[tool.<name>]`) to a version: the row's version
-    /// strings are rewritten and every dist artifact is downloaded to recompute
-    /// its sha256.
+    /// A host tool (`[tool.<name>]`). With an installed SDK: the project's lock
+    /// accepts this SDK's version. In a checkout: with `--to-version`, the row's
+    /// version strings are rewritten and every dist artifact is downloaded to
+    /// recompute its sha256.
     #[arg(long, value_name = "NAME")]
     pub tool: Option<String>,
-    /// The version for `--tool`.
+    /// The version for `--tool` (a checkout only).
     #[arg(long = "to-version", value_name = "VERSION", requires = "tool")]
     pub to_version: Option<String>,
 
@@ -221,6 +225,51 @@ fn update_project(index: &SdkIndex, args: &Args, project: &Path) -> Result<()> {
     lock.save(&lock_path)?;
     println!("nros update: wrote {} — commit it", lock_path.display());
     Ok(())
+}
+
+/// `nros configure --migrate` on an installed SDK (phase-590 B21): accept
+/// this SDK's pin for every vendored source and host tool the project's
+/// `nros-sdk.lock` pins differently, so a project last built by an older
+/// release builds against this one. Each move goes through
+/// [`update_project`], the one writer of a project's accepted pins, exactly
+/// as `nros update --source <name>` / `--tool <name>` would. A crate override
+/// is the project's own decision and is never touched.
+///
+/// Returns the names it moved; empty when the lock already agrees.
+///
+/// # Errors
+///
+/// An unreadable lock or a failed write.
+pub(crate) fn accept_sdk_pins(index: &SdkIndex, project: &Path) -> Result<Vec<String>> {
+    let lock_path = crate::orchestration::store::lock_path_for(project);
+    let lock = crate::orchestration::sdk_store::SdkLock::load(&lock_path)?;
+    let mut moved = Vec::new();
+    for (name, rec) in &lock.source {
+        let Some(want) = index.source.get(name).and_then(|r| r.git_ref.as_deref()) else {
+            continue;
+        };
+        if rec.commit != want {
+            let args = Args {
+                source: Some(name.clone()),
+                ..Args::default()
+            };
+            update_project(index, &args, project)?;
+            moved.push(format!("source {name}"));
+        }
+    }
+    let host = crate::orchestration::sdk_index::host_key();
+    for d in drift::tool_drift(&lock, index, &host) {
+        let drift::Drift::Tool { name, .. } = d else {
+            continue;
+        };
+        let args = Args {
+            tool: Some(name.clone()),
+            ..Args::default()
+        };
+        update_project(index, &args, project)?;
+        moved.push(format!("tool {name}"));
+    }
+    Ok(moved)
 }
 
 // ---- --pins / --crate -------------------------------------------------------
@@ -907,6 +956,61 @@ mod tests {
             rewrite_west_revision(m, "cmsis", "x").is_none(),
             "an imported module has no revision here"
         );
+    }
+
+    /// `nros configure --migrate` on an installed SDK: a project last built by
+    /// an older release pins its sources at that release's commits, and a
+    /// build against this SDK refuses them as drift. Accepting moves only the
+    /// source that disagrees, and leaves the project's own crate override.
+    #[test]
+    fn accepting_the_sdk_pins_moves_only_what_disagrees() {
+        use crate::orchestration::{
+            project_lock::SourceRecord,
+            sdk_store::{CargoOverride, SdkLock},
+        };
+        let index = SdkIndex::parse(
+            "[source.zenoh-pico]\nversion = \"1.10.1\"\nref = \"e9675d97\"\n\n\
+             [source.freertos-kernel]\nversion = \"10.6.2\"\nref = \"aaaa\"\n",
+        )
+        .expect("the index parses");
+        let dir = tempfile::tempdir().unwrap();
+        let project = dir.path();
+        let lock_path = crate::orchestration::store::lock_path_for(project);
+        let mut lock = SdkLock::default();
+        let rec = |commit: &str| SourceRecord {
+            commit: commit.to_string(),
+            origin: "store".to_string(),
+            dirty: false,
+        };
+        // The older release's zenoh-pico, and a kernel already at this SDK's.
+        lock.source.insert("zenoh-pico".into(), rec("19a47ae7"));
+        lock.source.insert("freertos-kernel".into(), rec("aaaa"));
+        let ov = CargoOverride {
+            version: "1.0.200".into(),
+            source: "registry+https://github.com/rust-lang/crates.io-index".into(),
+            checksum: None,
+        };
+        lock.cargo_override.insert("serde".into(), ov.clone());
+        lock.save(&lock_path).unwrap();
+
+        let moved = accept_sdk_pins(&index, project).unwrap();
+        assert_eq!(moved, ["source zenoh-pico"]);
+        let after = SdkLock::load(&lock_path).unwrap();
+        assert_eq!(after.source["zenoh-pico"].commit, "e9675d97");
+        assert_eq!(
+            after.source["zenoh-pico"].origin, "store",
+            "the origin is kept"
+        );
+        assert_eq!(after.source["freertos-kernel"].commit, "aaaa");
+        assert_eq!(
+            after.cargo_override["serde"], ov,
+            "an override is the project's own"
+        );
+
+        // A second run has nothing to accept, and writes nothing.
+        let before = std::fs::read_to_string(&lock_path).unwrap();
+        assert!(accept_sdk_pins(&index, project).unwrap().is_empty());
+        assert_eq!(std::fs::read_to_string(&lock_path).unwrap(), before);
     }
 
     #[test]
