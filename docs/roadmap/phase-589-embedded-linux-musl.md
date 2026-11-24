@@ -1,8 +1,8 @@
 # Phase 589 — Embedded Linux (musl) as a deployment target
 
-**Status (2026-11-23). OPEN.** W1 is done; the rest are open. W10 to W12
-(the original Jetson Nano) are owned by nros 241; the others have no owner
-yet. Makes a hosted Linux image for an embedded SoC running musl a
+**Status (2026-11-24). OPEN.** W1 and W4 are done; the rest are open. W10
+to W12 (the original Jetson Nano) are owned by nros 241; W2 to W9 by nros 175
+(manager assignment 2026-11-24). Makes a hosted Linux image for an embedded SoC running musl a
 supported target: provisioned, built from an in-tree board, and run on the
 device, with no hand wiring.
 
@@ -68,7 +68,11 @@ Each piece of hand wiring is a work item below.
 
 ### W4 — Setup builds the launch resolver
 
-- **Status:** OPEN (issue 2851).
+- **Owner:** nros 175.
+- **Status:** DONE (2026-11-24, issue 2851). `just setup-cli` builds
+  `nros-launch-resolve` whenever the play_launch submodule is initialised and
+  the resolver is missing or stale, on the no-op path too; with the submodule
+  absent it says what to run instead of skipping silently.
 - **Acceptance:** in the issue.
 
 ### W5 — An in-tree musl board
