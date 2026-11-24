@@ -359,6 +359,12 @@ pub struct LeafSystem {
     /// `[system] features` exactly as written, before the image's own list
     /// and the node-interface switch.
     pub declared_features: Vec<String>,
+    // Issue 2904.
+    /// `[lifecycle] managed_nodes`: how many nodes the program
+    /// makes managed in its own code, which no declaration and no model shows
+    /// the inventory (an owned entry's `main`). Each is its own REP-2002
+    /// state machine. `None` when not stated.
+    pub lifecycle_managed_nodes: Option<usize>,
     /// `node_interfaces`: `[image.<id>]` over
     /// `[image_defaults]` over `[system]`. `None` = stated nowhere.
     pub node_interfaces: Option<crate::node_interfaces::NodeInterfaces>,
@@ -873,6 +879,39 @@ fn system_entities_key(system: Option<&toml::Table>, file: &Path) -> Result<bool
     }
 }
 
+/// `[lifecycle] managed_nodes`: a whole number of at least one, and only with
+/// the lifecycle family on (`features` names `lifecycle`). Issue 2904.
+fn lifecycle_managed_nodes_key(
+    doc: &toml::Table,
+    features: &[String],
+    file: &Path,
+) -> Result<Option<usize>, String> {
+    let Some(v) = doc
+        .get("lifecycle")
+        .and_then(|t| t.as_table())
+        .and_then(|t| t.get("managed_nodes"))
+    else {
+        return Ok(None);
+    };
+    let n = v
+        .as_integer()
+        .filter(|&n| n >= 1)
+        .and_then(|n| usize::try_from(n).ok())
+        .ok_or_else(|| {
+            format!(
+                "{}: `[lifecycle] managed_nodes = {v}` must be a whole number of at least 1:                  how many nodes the program makes managed in its own code",
+                file.display()
+            )
+        })?;
+    if !features.iter().any(|f| f == "lifecycle") {
+        return Err(format!(
+            "{}: `[lifecycle] managed_nodes = {n}` counts managed nodes, but no `features`              list declares `lifecycle`; add it, or the image registers no state machine",
+            file.display()
+        ));
+    }
+    Ok(Some(n))
+}
+
 fn parse_file(path: &Path) -> Result<toml::Table, String> {
     let raw = nros_system_include::read_to_string(path)
         .map_err(|e| format!("read {}: {e}", path.display()))?;
@@ -1191,6 +1230,7 @@ fn image_system(
         &image_features,
         node_interfaces,
     );
+    let lifecycle_managed_nodes = lifecycle_managed_nodes_key(doc, &features, path)?;
 
     Ok(LeafSystem {
         origin,
@@ -1208,6 +1248,7 @@ fn image_system(
         knobs,
         features,
         declared_features,
+        lifecycle_managed_nodes,
         node_interfaces,
         conf,
         os_config,
@@ -1712,6 +1753,50 @@ locator = "tcp/10.0.2.2:9800"
         ]);
         let e = read(d.path()).unwrap_err();
         assert!(e.contains("ARRAY") && e.contains("system.toml"), "{e}");
+    }
+
+    /// Issue 2904 -- `[lifecycle] managed_nodes`: read when the lifecycle
+    /// family is on; refused without it, and refused below one.
+    #[test]
+    fn lifecycle_managed_nodes_is_read_and_checked() {
+        let at = |system: &str, rest: &str| {
+            let d = leaf(&[
+                ("Cargo.toml", CARGO),
+                (
+                    "system.toml",
+                    &format!(
+                        "[system]\nname = \"t\"\n{system}\n{rest}\n[image.i]\nboard = \"linux\"\n"
+                    ),
+                ),
+            ]);
+            read_image(d.path(), "i")
+        };
+        let l = at(
+            "features = [\"lifecycle\"]",
+            "[lifecycle]\nmanaged_nodes = 2\n",
+        )
+        .unwrap()
+        .expect("declared");
+        assert_eq!(l.lifecycle_managed_nodes, Some(2));
+        let l = at("features = [\"lifecycle\"]", "")
+            .unwrap()
+            .expect("declared");
+        assert_eq!(l.lifecycle_managed_nodes, None);
+        let e = at(
+            "features = [\"params\"]",
+            "[lifecycle]\nmanaged_nodes = 2\n",
+        )
+        .unwrap_err();
+        assert!(
+            e.contains("managed_nodes") && e.contains("lifecycle"),
+            "{e}"
+        );
+        let e = at(
+            "features = [\"lifecycle\"]",
+            "[lifecycle]\nmanaged_nodes = 0\n",
+        )
+        .unwrap_err();
+        assert!(e.contains("at least 1"), "{e}");
     }
 
     /// phase-556 W13 -- the leaf road's switch: (a) absent is the stock set,

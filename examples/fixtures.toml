@@ -4579,7 +4579,7 @@ rmw = "xrce"
 dir = "examples/linux/c/lifecycle-pair"
 bringup = "src/c_lifecycle_pair_bringup"
 image = "linux_xrce"
-build_subdir = "build/posix-xrce-linux-cfg2a7ae0a7f8-c_lifecycle_pair_bringup-linux_xrce/cmake"
+build_subdir = "build/posix-xrce-linux-c_lifecycle_pair_bringup-linux_xrce/cmake"
 
 [[workspace_fixture]]
 id = "c-lifecycle-pair-cyclonedds"
@@ -4609,7 +4609,7 @@ rmw = "xrce"
 dir = "examples/linux/cpp/lifecycle-pair"
 bringup = "src/cpp_lifecycle_pair_bringup"
 image = "linux_xrce"
-build_subdir = "build/posix-xrce-linux-cfg2a7ae0a7f8-cpp_lifecycle_pair_bringup-linux_xrce/cmake"
+build_subdir = "build/posix-xrce-linux-cpp_lifecycle_pair_bringup-linux_xrce/cmake"
 
 [[workspace_fixture]]
 id = "cpp-lifecycle-pair-cyclonedds"

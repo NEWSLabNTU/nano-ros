@@ -12,6 +12,13 @@ domain_id = 0
 features = ["lifecycle"]
 default_images = ["linux"]
 
+# The program makes BOTH of its nodes managed in its own `main`, which no
+# declaration or model shows the build: state how many, so every image's
+# sizing counts two REP-2002 state machines (five lifecycle services each) and
+# the XRCE service-server pool derives from it.
+[lifecycle]
+managed_nodes = 2
+
 [image_defaults]
 board = "linux"
 
@@ -24,13 +31,6 @@ entry = "cpp_lifecycle_pair"
 [image.linux_xrce]
 entry = "cpp_lifecycle_pair"
 rmw = "xrce"
-
-# The program makes BOTH nodes managed in its own `main`, which no declaration
-# shows the entity inventory, so no derivation counts their services.
-# Two machines claim five lifecycle services each (RFC-0128 D7), and the
-# program serves none of its own.
-[image.linux_xrce.knobs.xrce]
-max_service_servers = 10
 
 [image.linux_cyclonedds]
 entry = "cpp_lifecycle_pair"

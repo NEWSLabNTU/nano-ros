@@ -133,6 +133,31 @@ one image is refused at build time, naming both nodes. Give the image one
 value, and drive any node that should differ with `ros2 lifecycle set` after
 boot.
 
+## A program that makes its own nodes managed
+
+A hand-written program (its own `main`) can make nodes managed in its code
+instead of in a launch file. The build cannot see those nodes, so it reserves
+service slots for one managed node only. With some backends, XRCE among them,
+the extra nodes' lifecycle services then fail to register at boot.
+
+Say how many nodes the program makes managed:
+
+```toml
+[system]
+features = ["lifecycle"]
+
+[lifecycle]
+managed_nodes = 2
+```
+
+Each managed node gets its own five lifecycle services, and the build reserves
+room for all of them. `managed_nodes` needs `lifecycle` in a `features` list,
+and must be at least 1.
+
+If the services still fail to register, a C++ `rclcpp_lifecycle::LifecycleNode`
+reports it: its `ok()` is false and `error_what()` names the lifecycle
+services. Check `ok()` after constructing the node, as for any `rclcpp::Node`.
+
 ## Write the node's own callbacks
 
 <!-- tabs -->

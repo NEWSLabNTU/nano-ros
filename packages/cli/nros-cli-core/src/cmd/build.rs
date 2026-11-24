@@ -2426,7 +2426,32 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
                     let b = img.board.clone().unwrap_or_default();
                     // Issue 2433 -- on a cross board, the census of the owned
                     // entry sizes the image (the host image is the producer).
+                    // Issue 2904 -- on the host, the bringup's declared
+                    // managed-node count (no census: the host image is the
+                    // census's producer).
+                    let declares_managed = nros_orchestration_ir::leaf_system::read_image(&bd, &id)
+                        .ok()
+                        .flatten()
+                        .and_then(|s| s.lifecycle_managed_nodes)
+                        .is_some();
                     let census = match owned_entry_dir(&root, &id, &img) {
+                        Ok(Some(pkg)) if platform == "posix" && declares_managed => {
+                            Some(crate::builder::cmake_root::OwnedCensus {
+                                bringup: bd
+                                    .strip_prefix(&root)
+                                    .unwrap_or(&bd)
+                                    .to_string_lossy()
+                                    .into_owned(),
+                                name: bringup.clone(),
+                                image: id.clone(),
+                                package: pkg
+                                    .strip_prefix(&root)
+                                    .unwrap_or(&pkg)
+                                    .to_string_lossy()
+                                    .into_owned(),
+                                declared_only: true,
+                            })
+                        }
                         Ok(Some(pkg))
                             if platform != "posix"
                                 && crate::cmd::entity_census::owned_entry_census_applies(
@@ -2448,6 +2473,7 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
                                     .unwrap_or(&pkg)
                                     .to_string_lossy()
                                     .into_owned(),
+                                declared_only: false,
                             })
                         }
                         _ => None,

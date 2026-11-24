@@ -256,6 +256,11 @@ pub struct OwnedCensus {
     pub image: String,
     /// The owned package's directory, relative to the workspace root.
     pub package: String,
+    /// Issue 2904 -- a HOST image (posix) is the census's producer and is not
+    /// sized by one, so it gets only what its bringup declares
+    /// (`[lifecycle] managed_nodes`): the descriptor from the bringup's
+    /// declaration, with no census taken.
+    pub declared_only: bool,
 }
 
 /// phase-481 W4 — the image-env cargo config `nros build` writes beside a
@@ -704,7 +709,24 @@ pub fn render(
         }
         out.push('\n');
     }
-    if let Some(c) = &spec.owned_census {
+    if let Some(c) = spec.owned_census.as_ref().filter(|c| c.declared_only) {
+        let ws_rel = super::paths::relative_or_err(manifest_dir, &spec.workspace)?;
+        out.push_str(&format!(
+            // History: Issue 2904.
+            "# A host image's owned entry is sized by what its bringup DECLARES\n\
+             # (`[lifecycle] managed_nodes`): no census, the host build is the\n\
+             # census's own producer. Before the packages, so every reader sees it.\n\
+             include(\"${{NROS_REPO_DIR}}/cmake/NanoRosLeafEntityFacts.cmake\")\n\
+             get_filename_component(_nros_owned_ws \"{ws_rel}\" ABSOLUTE)\n\
+             nros_record_owned_declared_facts(\n\
+             \x20   BRINGUP   \"${{_nros_owned_ws}}/{bringup}\"\n\
+             \x20   IMAGE     {image}\n\
+             \x20   PACKAGE   \"${{_nros_owned_ws}}/{package}\")\n\n",
+            bringup = c.bringup,
+            image = c.image,
+            package = c.package,
+        ));
+    } else if let Some(c) = &spec.owned_census {
         let ws_rel = super::paths::relative_or_err(manifest_dir, &spec.workspace)?;
         out.push_str(&format!(
             // History: Issue 2433.
@@ -1050,6 +1072,7 @@ mod tests {
             name: "tx_bringup".to_string(),
             image: "threadx-linux".to_string(),
             package: "src/c_talker".to_string(),
+            declared_only: false,
         });
         let out = render(&d, &root.join("build/tx"), &sp).unwrap();
         let census = out.find("nros_record_owned_entity_facts(").expect(&out);

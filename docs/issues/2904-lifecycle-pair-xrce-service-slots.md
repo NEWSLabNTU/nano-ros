@@ -50,3 +50,50 @@ An owned entry can declare how many managed nodes it creates, or the inventory
 counts them, so the XRCE pool derives 10 without a stated knob. And the C++
 lifecycle node refuses (or reports through its constructor's result) when its
 services cannot be created.
+
+## Ruling and fix (2026-11-24)
+
+User ruling: option A, a DECLARED count, feeding the one rule both consumers
+already read. No second sizing rule.
+
+**The declaration.** `[lifecycle] managed_nodes = N` in `system.toml`.
+- Accepted by the typed `[lifecycle]` table (`SystemLifecycle`).
+- Read by `nros_orchestration_ir::leaf_system` (`LeafSystem::
+  lifecycle_managed_nodes`). It needs `lifecycle` in a `features` list and
+  must be at least 1; either mistake is refused, naming why.
+
+**One rule.**
+- `InfraServices::with_declared_managed_nodes` sets `managed_nodes` to the
+  larger of the model's and the declared count, and turns the family on.
+- `lifecycle_machines()`, and from it the XRCE service-server pool and the
+  per-node heap floor (`NROS_ENTITY_LIFECYCLE_MACHINES`), see N machines.
+- The declaration is applied on every road that builds the image's infra from
+  its bringup: the leaf declaration, the owned entry's census, and the
+  undeclared (Unwired) descriptor. On that last road the declared nodes also
+  count as nodes.
+
+**Gap 1, the host owned entry.** A host (posix) image is the census's own
+producer, so nothing sized it. When its bringup declares the count, the
+generated cmake root calls `nros_record_owned_declared_facts`, which writes
+the descriptor from the declaration alone, before every reader. A bringup
+that declares nothing is unchanged.
+
+**The examples.** Both `lifecycle-pair` examples now declare
+`managed_nodes = 2` and drop the `max_service_servers = 10` workaround.
+Measured, the C example's `linux_xrce` image derives
+`NROS_XRCE_MAX_SERVICE_SERVERS=26`, where the header's default was 4 and two
+machines need 10.
+
+**The C++ half.** `rclcpp_lifecycle::LifecycleNode` latches a failed
+service registration on the node, so `ok()` goes false and `error_what()`
+names it, as a failed `rclcpp::Node` construction does. The C++ example
+checks `ok()` and stops, as the C one does.
+
+**Tests.**
+- The parser: read, refused without `lifecycle`, refused below 1.
+- The helper: N machines, never lowering a marked count, 0 is no statement.
+- The cmake-root render.
+- The `lifecycle_pair_interop` cells run the examples without the knob.
+
+The user guide's managed-nodes page states the key.
+
