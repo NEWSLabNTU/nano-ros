@@ -18,7 +18,8 @@ use crate::{
     },
     keyexpr::ServiceKeyExpr,
     zpico::{
-        self, Queryable, ZPICO_MAX_QUERYABLES, ZPICO_MAX_SESSIONS, ZPICO_QUERYABLE_TABLE_DECLARED,
+        self, Queryable, ZPICO_LIFECYCLE_ATTACHED_SERVERS, ZPICO_MAX_QUERYABLES,
+        ZPICO_MAX_SESSIONS, ZPICO_QUERYABLE_TABLE_DECLARED,
     },
 };
 
@@ -513,7 +514,7 @@ fn store(buffer: &ServiceBuffer, tail: usize, payload: &[u8], seq: SeqScalar) {
 /// Static headers for service servers, one per queryable.
 ///
 /// phase-328 / issue 0376 -- sized `ZPICO_MAX_SESSIONS * ZPICO_MAX_QUERYABLES`
-/// and indexed by `session_index * ZPICO_MAX_QUERYABLES + local`, so two zenoh
+/// and indexed by `session_index * SERVICE_HEADERS_PER_SESSION + local`, so two zenoh
 /// sessions in one process get disjoint buffer ranges (the C shim's queryable
 /// tables are already per-session). At the default `ZPICO_MAX_SESSIONS == 1`
 /// this is `[ServiceBuffer; ZPICO_MAX_QUERYABLES]` with `session_index == 0`.
@@ -559,12 +560,16 @@ fn store(buffer: &ServiceBuffer, tail: usize, payload: &[u8], seq: SeqScalar) {
 /// enumerated in the inventory with their defaults, which is what issue 0739
 /// asked for -- the table says "no byte figure", which is true, rather than
 /// implying they are free.
-const SERVICE_BUFFER_COUNT: usize = ZPICO_MAX_SESSIONS * ZPICO_MAX_QUERYABLES;
+/// phase-554 W4 -- request headers per session: one per queryable, plus one per
+/// lifecycle service that shares its node's queryable (`LifecycleGroup`) and so
+/// has a header and a ring but no queryable of its own.
+const SERVICE_HEADERS_PER_SESSION: usize = ZPICO_MAX_QUERYABLES + ZPICO_LIFECYCLE_ATTACHED_SERVERS;
+const SERVICE_BUFFER_COUNT: usize = ZPICO_MAX_SESSIONS * SERVICE_HEADERS_PER_SESSION;
 static mut SERVICE_BUFFERS: [ServiceBuffer; SERVICE_BUFFER_COUNT] =
     [const { ServiceBuffer::new() }; SERVICE_BUFFER_COUNT];
 
 /// Next available LOCAL service-buffer index, per session pool slot. The global
-/// index handed to the callback is `session_index * ZPICO_MAX_QUERYABLES + local`.
+/// index handed to the callback is `session_index * SERVICE_HEADERS_PER_SESSION + local`.
 static NEXT_SERVICE_BUFFER_INDEX: [AtomicUsize; ZPICO_MAX_SESSIONS] =
     [const { AtomicUsize::new(0) }; ZPICO_MAX_SESSIONS];
 
@@ -600,15 +605,19 @@ const ACTION_INBOX_PER_SESSION: usize = const_min(ACTION_INBOX_QUERYABLES, ZPICO
 /// table's SIZE. Over-reserving a table costs RAM; under-sizing a ring drops a
 /// well-formed request, so the ring partition abstains where the table
 /// assumes.
-const BUILTIN_INBOX_PER_SESSION: usize = match DECLARED_APP_QUERYABLES {
+/// The builtin share of the QUERYABLES; the builtin rings are this plus the
+/// lifecycle services that share a queryable (phase-554 W4).
+const BUILTIN_QUERYABLES_PER_SESSION: usize = match DECLARED_APP_QUERYABLES {
     Some(app) => const_min(
         ZPICO_MAX_QUERYABLES - const_min(app, ZPICO_MAX_QUERYABLES),
         ZPICO_MAX_QUERYABLES - ACTION_INBOX_PER_SESSION,
     ),
     None => 0,
 };
+const BUILTIN_INBOX_PER_SESSION: usize =
+    BUILTIN_QUERYABLES_PER_SESSION + ZPICO_LIFECYCLE_ATTACHED_SERVERS;
 const USER_SERVICE_INBOX_PER_SESSION: usize =
-    ZPICO_MAX_QUERYABLES - ACTION_INBOX_PER_SESSION - BUILTIN_INBOX_PER_SESSION;
+    ZPICO_MAX_QUERYABLES - ACTION_INBOX_PER_SESSION - BUILTIN_QUERYABLES_PER_SESSION;
 const USER_SERVICE_INBOX_COUNT: usize = ZPICO_MAX_SESSIONS * USER_SERVICE_INBOX_PER_SESSION;
 const ACTION_INBOX_COUNT: usize = ZPICO_MAX_SESSIONS * ACTION_INBOX_PER_SESSION;
 const BUILTIN_INBOX_COUNT: usize = ZPICO_MAX_SESSIONS * BUILTIN_INBOX_PER_SESSION;
@@ -616,7 +625,7 @@ const BUILTIN_INBOX_COUNT: usize = ZPICO_MAX_SESSIONS * BUILTIN_INBOX_PER_SESSIO
 /// The user-service family's rings, `NROS_SERVICE_INBOX_BYTES` x
 /// `NROS_SERVICE_INBOX_DEPTH` each. Together with `ACTION_INBOX` this is the
 /// storage the inline `[ServiceRequestSlot; 4]` arrays used to be: the two
-/// tables hold `ZPICO_MAX_SESSIONS * ZPICO_MAX_QUERYABLES` rings between them.
+/// tables hold `ZPICO_MAX_SESSIONS * SERVICE_HEADERS_PER_SESSION` rings between them.
 static USER_SERVICE_INBOX: [InboxStorage<SERVICE_INBOX_BYTES, SERVICE_INBOX_DEPTH>;
     USER_SERVICE_INBOX_COUNT] = [const { InboxStorage::new() }; USER_SERVICE_INBOX_COUNT];
 
@@ -1264,7 +1273,7 @@ impl ZenohServiceServer {
         // a live header out twice when another server was declared meanwhile.
         let Some(local) = super::bump::claim(
             &NEXT_SERVICE_BUFFER_INDEX[session_index],
-            ZPICO_MAX_QUERYABLES,
+            SERVICE_HEADERS_PER_SESSION,
         ) else {
             // issue 0406 — this table is the reason, and the bare
             // `ServiceServerCreationFailed` never said so. A service server IS a
@@ -1350,7 +1359,7 @@ impl ZenohServiceServer {
                  entry's own callbacks."
             }));
         };
-        let buffer_index = session_index * ZPICO_MAX_QUERYABLES + local;
+        let buffer_index = session_index * SERVICE_HEADERS_PER_SESSION + local;
 
         // phase-461 W1 - bind the ring BEFORE declaring, for the reason the
         // session is recorded first below: a query that arrives during

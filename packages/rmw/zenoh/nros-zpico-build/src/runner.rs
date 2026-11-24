@@ -32,12 +32,12 @@ type ZenohBufferConfig = crate::ZenohBufferConfig;
 // XRCE's service-server slots had none. Still a mirror of `nros-node`'s
 // constants, held to the creation sites by `check-infra-queryable-counts`. See
 // phase-392 W5.
-#[cfg(test)]
-use nros_sizing_descriptor::infra::LIFECYCLE_SERVICE_QUERYABLES;
 use nros_sizing_descriptor::infra::{
     CLOCK_SUBSCRIPTIONS, Families, PARAM_SERVICE_QUERYABLES, ROSOUT_PUBLISHERS, declared_families,
     declared_nodes, per_node_term_is_unknown, stated,
 };
+#[cfg(test)]
+use nros_sizing_descriptor::infra::{LIFECYCLE_SERVICE_QUERYABLES, ZENOH_LIFECYCLE_QUERYABLES};
 
 /// Publishers the REP-2002 lifecycle family claims (`~/transition_event`),
 /// mirroring `nros_node::lifecycle_services::LIFECYCLE_SERVICE_PUBLISHERS`.
@@ -251,6 +251,16 @@ fn resolve_queryable_default() -> QueryableSizing {
         ),
         floor: queryable_floor_from(declared.as_deref(), infra.as_deref(), nodes.as_deref(), tl),
         declared: declared.is_some() || infra.is_some(),
+        // phase-554 W4 -- only a DECLARED table prices lifecycle at one
+        // queryable per machine; a budget counts every server as one.
+        lifecycle_attached_servers: if declared.is_some() || infra.is_some() {
+            nros_sizing_descriptor::infra::lifecycle_attached_servers(
+                infra.as_deref(),
+                described_lifecycle_nodes().as_deref(),
+            )
+        } else {
+            0
+        },
         param_nodes: declared_nodes(nodes.as_deref()),
         transient_local_publishers: tl,
     }
@@ -380,6 +390,8 @@ struct QueryableSizing {
     floor: usize,
     /// Whether any part of this came from a declaration.
     declared: bool,
+    /// phase-554 W4 -- lifecycle servers sharing their node's queryable.
+    lifecycle_attached_servers: usize,
     /// phase-426 W3 — how many nodes the parameter services were sized for.
     /// Carried so the refusal message can SHOW the multiplication rather than
     /// hand the reader a total and let them work backwards.
@@ -428,7 +440,7 @@ fn queryable_floor_from(
     let app = declared
         .and_then(|v| v.trim().parse::<usize>().ok())
         .unwrap_or(0);
-    app + infra_queryables(infra, nodes) + transient_local_publishers
+    app + infra_zenoh_queryables(infra, nodes) + transient_local_publishers
 }
 
 // phase-426 W3 — `declared_nodes`: how many nodes claim a set of parameter
@@ -519,6 +531,19 @@ fn infra_queryables(infra: Option<&str>, nodes: Option<&str>) -> usize {
     // node the descriptor counts (`[image] lifecycle_nodes`), one when it
     // counts none.
     nros_sizing_descriptor::infra::infra_service_servers_with(
+        infra,
+        nodes,
+        described_lifecycle_nodes().as_deref(),
+    )
+}
+
+/// phase-554 W4 -- what the runtime's families cost in QUERYABLES, which is
+/// [`infra_queryables`] (their service servers) less the four lifecycle
+/// services per machine that attach to their node's one queryable
+/// (`nros-rmw-zenoh`'s `LifecycleGroup`, RFC-0128 D7). The liveliness pool
+/// keeps the server count: every service still declares its own token.
+fn infra_zenoh_queryables(infra: Option<&str>, nodes: Option<&str>) -> usize {
+    nros_sizing_descriptor::infra::infra_zenoh_queryables_with(
         infra,
         nodes,
         described_lifecycle_nodes().as_deref(),
@@ -740,7 +765,7 @@ fn queryable_default_from(
     };
 
     let per_node_unknown = per_node_term_is_unknown(infra, nodes);
-    let infra = infra_queryables(infra, nodes);
+    let infra = infra_zenoh_queryables(infra, nodes);
 
     // A table of zero would make every service-server registration fail, so an
     // entry declaring none still gets one slot rather than a pool nothing can
@@ -779,17 +804,18 @@ mod queryable_default_tests {
         // needs nothing, even though its BUDGET is 8.
         assert_eq!(queryable_floor_from(None, Some("none"), None, 0), 0);
         assert_eq!(queryable_default_from(None, Some("none"), None, 0, true), 8);
-        // Both service families: eleven slots claimed at boot. This is the
-        // number issue 0460 discovered at runtime against a table of 8.
+        // Both service families: seven slots claimed at boot (six parameter
+        // services and one shared lifecycle queryable, phase-554 W4). Issue 0460
+        // discovered eleven at runtime against a table of 8, before the share.
         assert_eq!(
             queryable_floor_from(None, Some("param+lifecycle"), None, 0),
-            PARAM_SERVICE_QUERYABLES + LIFECYCLE_SERVICE_QUERYABLES
+            PARAM_SERVICE_QUERYABLES + ZENOH_LIFECYCLE_QUERYABLES
         );
         // A declared application count is provable too — it is what the model
         // says the image will create.
         assert_eq!(
             queryable_floor_from(Some("2"), Some("lifecycle"), None, 0),
-            7
+            3
         );
     }
 
@@ -842,6 +868,7 @@ mod queryable_default_tests {
             default: queryable_default_from(declared, infra, nodes, tl, true),
             floor: queryable_floor_from(declared, infra, nodes, tl),
             declared: declared.is_some() || infra.is_some(),
+            lifecycle_attached_servers: 0,
             param_nodes: declared_nodes(nodes),
             transient_local_publishers: tl,
         }
@@ -933,7 +960,7 @@ mod queryable_default_tests {
         // One node: the number issue 0460 discovered at runtime, unchanged.
         assert_eq!(
             queryable_floor_from(None, Some("param+lifecycle"), Some("1"), 0),
-            PARAM_SERVICE_QUERYABLES + LIFECYCLE_SERVICE_QUERYABLES
+            PARAM_SERVICE_QUERYABLES + ZENOH_LIFECYCLE_QUERYABLES
         );
         // Undeclared node count IS one — an image nobody described keeps the
         // pool it had.
@@ -946,11 +973,11 @@ mod queryable_default_tests {
         // still one set on the executor.
         assert_eq!(
             queryable_floor_from(None, Some("param+lifecycle"), Some("3"), 0),
-            3 * PARAM_SERVICE_QUERYABLES + LIFECYCLE_SERVICE_QUERYABLES
+            3 * PARAM_SERVICE_QUERYABLES + ZENOH_LIFECYCLE_QUERYABLES
         );
         assert_eq!(
             queryable_floor_from(None, Some("lifecycle"), Some("3"), 0),
-            LIFECYCLE_SERVICE_QUERYABLES,
+            ZENOH_LIFECYCLE_QUERYABLES,
             "an image with no parameter services pays nothing for its nodes"
         );
         assert_eq!(
@@ -992,25 +1019,24 @@ mod queryable_default_tests {
     #[test]
     #[should_panic(expected = "below this image's DERIVED floor")]
     fn an_override_under_the_derived_floor_is_refused() {
-        // zephyr/Kconfig's `default 8` for CONFIG_NROS_MAX_QUERYABLES against
-        // an entry carrying both service families: issue 0460's build, caught
-        // at build time instead of at boot.
-        check_queryable_override(8, &sizing(None, Some("param+lifecycle")));
+        // An entry carrying both service families claims seven at boot (six
+        // parameter services, one shared lifecycle queryable); six is issue
+        // 0460's build, caught at build time instead of at boot.
+        check_queryable_override(6, &sizing(None, Some("param+lifecycle")));
     }
 
     #[test]
     fn an_override_at_the_floor_is_accepted() {
         // Exactly enough to boot. It is tight, not wrong.
-        check_queryable_override(11, &sizing(None, Some("param+lifecycle")));
+        check_queryable_override(7, &sizing(None, Some("param+lifecycle")));
     }
 
     #[test]
     fn an_override_under_the_budget_is_only_reported() {
-        // The three `workspaces/features` zephyr entries: 16 against a budgeted
-        // 19, of which 11 is provable and 8 is headroom for an application
-        // count no model here supplies. Refusing this would be refusing a build
-        // for being under a guess.
-        check_queryable_override(16, &sizing(None, Some("param+lifecycle")));
+        // 12 against a budgeted 15, of which 7 is provable and 8 is headroom
+        // for an application count no model here supplies. Refusing this would
+        // be refusing a build for being under a guess.
+        check_queryable_override(12, &sizing(None, Some("param+lifecycle")));
     }
 
     #[test]
@@ -1037,7 +1063,7 @@ mod queryable_default_tests {
         // An image that carries both: the headroom PLUS what they cost.
         assert_eq!(
             queryable_default_from(None, Some("param+lifecycle"), Some("1"), 0, true),
-            UNDECLARED_HEADROOM + PARAM_SERVICE_QUERYABLES + LIFECYCLE_SERVICE_QUERYABLES
+            UNDECLARED_HEADROOM + PARAM_SERVICE_QUERYABLES + ZENOH_LIFECYCLE_QUERYABLES
         );
         // And it is the same number on an embedded target: the hosted/embedded
         // sniff decides nothing once the declaration arrives.
@@ -1073,7 +1099,7 @@ mod queryable_default_tests {
         // Lifecycle alone has no per-node term, so nothing is guessed.
         assert_eq!(
             queryable_default_from(None, Some("lifecycle"), None, 0, true),
-            UNDECLARED_HEADROOM + LIFECYCLE_SERVICE_QUERYABLES
+            UNDECLARED_HEADROOM + ZENOH_LIFECYCLE_QUERYABLES
         );
     }
 
@@ -1101,11 +1127,11 @@ mod queryable_default_tests {
         // Issue 0460: codegen sees the user's entities and never the runtime's.
         assert_eq!(
             queryable_default_from(Some("0"), Some("param+lifecycle"), Some("1"), 0, true),
-            11
+            7
         );
         assert_eq!(
             queryable_default_from(Some("2"), Some("param+lifecycle"), Some("1"), 0, true),
-            13
+            9
         );
         assert_eq!(
             queryable_default_from(Some("2"), Some("param"), Some("1"), 0, true),
@@ -1113,14 +1139,14 @@ mod queryable_default_tests {
         );
         assert_eq!(
             queryable_default_from(Some("2"), Some("lifecycle"), None, 0, true),
-            7
+            3
         );
     }
 
     #[test]
     fn unknown_infrastructure_is_assumed_present() {
         // Over-reserving wastes RAM; under-reserving fails at boot.
-        assert_eq!(queryable_default_from(Some("0"), None, None, 0, true), 11);
+        assert_eq!(queryable_default_from(Some("0"), None, None, 0, true), 7);
     }
 
     #[test]
@@ -1362,6 +1388,7 @@ fn shim_config_from_env() -> ShimConfig {
         ),
         max_queryables,
         queryable_table_declared: sizing.declared,
+        lifecycle_attached_servers: sizing.lifecycle_attached_servers,
         // Issue 1713 -- DERIVED from the declared facts, like the queryable
         // table above; it was a flat 16 that two nodes' parameter services
         // alone (12) all but filled. A named knob still wins, as everywhere.

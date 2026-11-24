@@ -4520,6 +4520,27 @@ int32_t zpico_reply_slot_stats(zpico_session_t* session, int32_t queryable_handl
  * state that declined queries ARRIVED, or its `refusals == 0` is a green that
  * cannot fail.
  */
+/* phase-554 W4 — how many queryables this session has DECLARED right now.
+ *
+ * The run-time half of the queryable-table sizing: the build derives the
+ * table from the image's declaration (a node's five lifecycle services share
+ * ONE queryable), and a test compares that derivation with what the shim
+ * actually declared, so the two cannot drift apart silently. Reads the
+ * `active` flags the claim/release pair maintains; a value, not a lock. */
+int32_t zpico_queryables_declared(zpico_session_t* session) {
+    struct zpico_session* s = (struct zpico_session*)session;
+    if (s == NULL) {
+        return ZPICO_ERR_INVALID;
+    }
+    int32_t n = 0;
+    for (int i = 0; i < ZPICO_MAX_QUERYABLES; i++) {
+        if (s->queryables[i].active) {
+            n++;
+        }
+    }
+    return n;
+}
+
 int32_t zpico_reply_slot_declines(zpico_session_t* session, int32_t queryable_handle) {
     struct zpico_session* s = (struct zpico_session*)session;
     if (s == NULL || queryable_handle < 0 || queryable_handle >= ZPICO_MAX_QUERYABLES) {

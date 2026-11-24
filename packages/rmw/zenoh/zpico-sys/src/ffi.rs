@@ -920,6 +920,14 @@ mod cbindgen_stubs {
         -1 // stub: not available
     }
 
+    /// How many queryables this session has declared right now, or
+    /// `ZPICO_ERR_INVALID` for a NULL session. The run-time half of the
+    /// queryable-table sizing, compared against the build's derivation.
+    #[unsafe(no_mangle)]
+    pub extern "C" fn zpico_queryables_declared(_session: *mut zpico_session_t) -> i32 {
+        -1 // stub: not available
+    }
+
     /// Take the pending "this reply-slot table
     /// just saturated" announcement, clearing it. 1 = announce, 0 = nothing.
     #[unsafe(no_mangle)]

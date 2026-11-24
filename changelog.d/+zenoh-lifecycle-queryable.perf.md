@@ -1,0 +1,1 @@
+On zenoh, a managed node's five lifecycle services now share one queryable instead of declaring five, so each managed node takes four fewer slots of the zenoh queryable table (`NROS_ZENOH_MAX_QUERYABLES`). `ros2 lifecycle` and `ros2 service list` see the same five services as before.

@@ -427,6 +427,12 @@ unsafe extern "C" {
     /// moved first, and only then that refusals did not.
     pub fn zpico_reply_slot_declines(session: *mut zpico_session_t, queryable_handle: i32) -> i32;
 
+    // phase-554 W4.
+    /// How many queryables this session has declared right now, or
+    /// `ZPICO_ERR_INVALID` for a NULL session: the run-time half of the
+    /// queryable-table sizing, compared against the build's derivation.
+    pub fn zpico_queryables_declared(session: *mut zpico_session_t) -> i32;
+
     /// Take the pending "this table just
     /// saturated" announcement, clearing it. 1 = announce now, 0 = nothing
     /// pending, `ZPICO_ERR_INVALID` for a bad handle.
