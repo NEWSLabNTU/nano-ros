@@ -55,5 +55,18 @@ Zephyr 3.7 image, plus the table's 10 % margin (#4632).
    `SNTP_RESYNC` role, from the boot-time stack peak line, so the role is checked against a
    measurement rather than the over-bound walk.
 
+### Progress
+
+- **Step 1 is done.** `scripts/lib/stack_builtins.py` reads A64: pre-indexed
+  stores and `sub sp, sp, #N` (with `lsl #12`) count; post-indexed loads,
+  `add sp` and `mov sp` restore; `bl`/CALL26 is a call, `b`/JUMP26 a tail
+  jump; `blr`/`br` through a register are unmeasured. The row for the SDK
+  0.16.9 `aarch64-zephyr-elf/12.2.0/libgcc.a` (code key `9c13b2fe60cc`) is
+  measured: 223 of 260 functions have a frame, and the six outline atomics the
+  walk reached are each 0 (leaves). The other 37 say why: they call `abort`
+  or `malloc`, or branch through a register.
+- **Steps 2 and 3 are next.** They are measured on a rebuilt a53 image, with
+  this row in place, so the remaining refusals are the arch entry points alone.
+
 Acceptance: the same a53 build's `report.json` has an `SNTP_RESYNC` role with a floor, and
 the main root's floor is either checked or refused for a reason other than a missing frame.
