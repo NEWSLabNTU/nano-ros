@@ -284,11 +284,6 @@ pub(super) struct ServiceBuffer {
     pub(super) head: AtomicUsize,
     /// Producer cursor (written only by the callback).
     pub(super) tail: AtomicUsize,
-    /// Reply keyexpr -- constant per server (same rr/ topic for every request),
-    /// so a single copy suffices.
-    pub(super) keyexpr: [u8; 256],
-    /// Length of keyexpr.
-    pub(super) keyexpr_len: AtomicUsize,
     /// Phase 122.3.c.6.e -- waker registered by event-driven service
     /// servers. Woken by `queryable_callback` after a request lands.
     pub(super) waker: AtomicWaker,
@@ -309,8 +304,6 @@ impl ServiceBuffer {
             ring: InboxRing::unbound(),
             head: AtomicUsize::new(0),
             tail: AtomicUsize::new(0),
-            keyexpr: [0u8; 256],
-            keyexpr_len: AtomicUsize::new(0),
             waker: AtomicWaker::new(),
             session: core::sync::atomic::AtomicPtr::new(core::ptr::null_mut()),
             drops: InboxDrops::new(),
@@ -909,20 +902,12 @@ extern "C" fn queryable_callback(
     };
     let buffer = buf_ref.get_mut();
 
-    // Copy keyexpr
-    let keyexpr_copy_len = keyexpr_len.min(buffer.keyexpr.len() - 1);
-    // Safety: keyexpr pointer is valid for keyexpr_copy_len bytes (from C shim)
-    unsafe {
-        core::ptr::copy_nonoverlapping(
-            keyexpr.cast::<u8>(),
-            buffer.keyexpr.as_mut_ptr(),
-            keyexpr_copy_len,
-        );
-    }
-    buffer.keyexpr[keyexpr_copy_len] = 0; // Null terminate
-    buffer
-        .keyexpr_len
-        .store(keyexpr_copy_len, Ordering::Release);
+    // The request's key expression is not kept: the reply goes out on the
+    // query's own key, which the C shim reads from the clone in its reply slot
+    // (`query_reply(.., None, ..)`). A queryable that covers several service
+    // keys -- a node's lifecycle services -- would otherwise answer every
+    // pending request on whichever key arrived last.
+    let _ = (keyexpr, keyexpr_len);
 
     // Drop empty-payload queries — they come from background discovery /
     // liveliness probes that zenoh-pico delivers through the same
@@ -992,10 +977,6 @@ pub struct ZenohServiceServer {
     buf: ServiceBufferRef,
     /// Liveliness token for ROS 2 graph discovery (kept alive for server lifetime)
     _liveliness: Option<super::LivelinessToken>,
-    /// Keyexpr buffer for replying (copied from last request)
-    reply_keyexpr: [u8; 256],
-    /// Keyexpr length
-    reply_keyexpr_len: usize,
     /// Reference to context for replying
     context: *const Context,
     /// issue 1437 — the profile `qos::admit` GRANTED for this entity.
@@ -1254,8 +1235,6 @@ impl ZenohServiceServer {
             _queryable: queryable,
             buf: ServiceBufferRef::new(buffer_index),
             _liveliness: liveliness,
-            reply_keyexpr: [0u8; 256],
-            reply_keyexpr_len: 0,
             context: context as *const Context,
             _phantom: PhantomData,
             granted_qos: nros_rmw::QoSProfile::QOS_PROFILE_UNKNOWN,
@@ -1406,27 +1385,17 @@ impl ServiceTrait for ZenohServiceServer {
             return Err(TransportError::BufferTooSmall);
         }
 
-        // Copy data + keyexpr under FFI guard so the callback can't write a slot
-        // mid-read (the ring keeps producer/consumer on different slots, but the
-        // shared keyexpr is copied here too).
+        // Copy the request under the FFI guard so the callback can't write the
+        // slot mid-read (the ring keeps producer and consumer on different
+        // slots).
         zpico::ffi_guard(|| {
-            // Safety: slot data + keyexpr are valid up to their respective lengths.
+            // Safety: the slot's data is valid for `len` bytes.
             unsafe {
                 core::ptr::copy_nonoverlapping(
                     ring.slot_ptr(index).cast_const(),
                     buf.as_mut_ptr(),
                     len,
                 );
-
-                // Save keyexpr for potential reply (constant per server).
-                let keyexpr_len = buffer.keyexpr_len.load(Ordering::Acquire);
-                core::ptr::copy_nonoverlapping(
-                    buffer.keyexpr.as_ptr(),
-                    self.reply_keyexpr.as_mut_ptr(),
-                    keyexpr_len,
-                );
-                self.reply_keyexpr[keyexpr_len] = 0;
-                self.reply_keyexpr_len = keyexpr_len;
             }
         });
 
@@ -1460,10 +1429,6 @@ impl ServiceTrait for ZenohServiceServer {
     }
 
     fn send_response(&mut self, sequence_number: i64, data: &[u8]) -> Result<(), Self::Error> {
-        if self.reply_keyexpr_len == 0 {
-            return Err(TransportError::ServiceReplyFailed);
-        }
-
         // Get context reference
         let context = unsafe { &*self.context };
 
@@ -1514,17 +1479,11 @@ impl ServiceTrait for ZenohServiceServer {
         // Phase 237 — `sequence_number` selects the cloned query the C shim is
         // holding for this request (the reply-slot index from `take_request`),
         // so a deferred get_result reply reaches the original requester even
-        // after later requests arrived. The reply keyexpr is constant per server
-        // (same rr/ topic), so it is NOT cleared — subsequent deferred replies
-        // reuse it; it is re-set on every `take_request` regardless.
+        // after later requests arrived. It goes out on THAT query's own key
+        // (`None`), read from the same clone, so it is right per request even
+        // when one queryable covers several service keys.
         context
-            .query_reply(
-                self._queryable.handle(),
-                sequence_number,
-                &self.reply_keyexpr[..=self.reply_keyexpr_len],
-                data,
-                None,
-            )
+            .query_reply(self._queryable.handle(), sequence_number, None, data, None)
             .map_err(|_| TransportError::ServiceReplyFailed)?;
 
         Ok(())
@@ -2329,10 +2288,9 @@ pub(super) mod tests {
         let mut buf_ref = ServiceBufferRef::new(slot);
         let buffer = buf_ref.get_mut();
 
-        let klen = keyexpr.len().min(buffer.keyexpr.len() - 1);
-        buffer.keyexpr[..klen].copy_from_slice(&keyexpr[..klen]);
-        buffer.keyexpr[klen] = 0;
-        buffer.keyexpr_len.store(klen, Ordering::Release);
+        // The key is not kept (the reply uses the query's own); accepted so
+        // callers keep stating which service a simulated request is for.
+        let _ = keyexpr;
 
         // phase-461 W4 -- the SAME two steps `queryable_callback` takes, so a
         // test of the drop counters tests the producer that ships.
@@ -2364,7 +2322,6 @@ pub(super) mod tests {
         let buffer = buf_ref.get_mut();
         buffer.head.store(0, Ordering::Release);
         buffer.tail.store(0, Ordering::Release);
-        buffer.keyexpr_len.store(0, Ordering::Release);
         buffer.drops.reset();
     }
 
@@ -2408,18 +2365,6 @@ pub(super) mod tests {
 
         buffer.head.store(head.wrapping_add(1), Ordering::Release);
         Ok(Some(len))
-    }
-
-    /// Read the keyexpr from a service buffer slot (for keyexpr preservation tests).
-    fn read_service_keyexpr(slot: usize) -> heapless::Vec<u8, 256> {
-        let buf_ref = ServiceBufferRef::new(slot);
-        let buffer = buf_ref.get();
-        let klen = buffer.keyexpr_len.load(Ordering::Acquire);
-        let mut v = heapless::Vec::new();
-        for i in 0..klen {
-            let _ = v.push(buffer.keyexpr[i]);
-        }
-        v
     }
 
     /// Read the sequence number of the next-to-consume request in a slot's ring.
@@ -2625,23 +2570,6 @@ pub(super) mod tests {
 
         assert!(seq2 > seq1, "seq2 ({seq2}) should be > seq1 ({seq1})");
         assert!(seq3 > seq2, "seq3 ({seq3}) should be > seq2 ({seq2})");
-    }
-
-    #[test]
-    fn svc_buf_keyexpr_preserved() {
-        let slot = 1;
-        let _slot = reset_service_buffer(slot);
-
-        let keyexpr = b"0/my_service/example_interfaces::srv::dds_::AddTwoInts/Reply";
-        simulate_service_request(slot, b"payload", keyexpr);
-
-        let stored = read_service_keyexpr(slot);
-        assert_eq!(stored.as_slice(), keyexpr);
-
-        // Consume and verify keyexpr was available during request
-        let mut recv_buf = [0u8; 1024];
-        let result = take_service(slot, &mut recv_buf);
-        assert!(matches!(result, Ok(Some(7))));
     }
 
     #[test]

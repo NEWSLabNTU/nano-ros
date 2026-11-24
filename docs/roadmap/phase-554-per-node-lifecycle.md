@@ -303,10 +303,40 @@ this item's own negative test, and `just check c` is green.
 
 ### W4 — zenoh: one shared lifecycle queryable and a dispatcher (D7)
 
-Status: OPEN.
+Owner: nros 139 (2026-11-24).
 
-- One queryable per image, on a wildcard key covering the five service keys of
-  all its managed nodes.
+Status: OPEN. Ruled 2026-11-24 (user): one queryable per managed NODE, not per
+image; RFC-0128 D7 is amended with the reason. Groundwork in progress:
+
+Inside the zenoh backend, with no vtable or ABI change (manager, 2026-11-24):
+nros-node keeps five ordinary servers per managed node, and Cyclone and XRCE
+are untouched by construction.
+
+- [x] A reply goes out on its own query's key (the shim reads it from the
+  clone in the reply slot), so one queryable can serve several service keys.
+- [ ] A service's request header and its zenoh queryable stop sharing one
+  index and one table: each header records the queryable it is served by,
+  and the header table is sized by request rings, the queryable table by
+  queryables.
+- [ ] The node's lifecycle group: the first of its five lifecycle servers
+  declares the node's queryable, the other four attach to it (each keeping its
+  own token and ring), and the queryable routes a request by the service in its
+  key. Attaching is deterministic, and refuses loudly on a node mismatch or a
+  sixth service; there is no fallback to five queryables.
+- [ ] `transition_event` as a put: the publisher keeps its token and gid,
+  declares no zenoh publisher, and each publish is a `zpico_put`.
+- [ ] The counts state 1 queryable per managed node and still 5 request rings
+  (`InfraServices`, the descriptor's infra, `executor_sizing`, the zenoh
+  build's tables), with a gate that the derived count matches what the shim
+  declares at run time.
+
+Each step's acceptance includes stock `ros2 lifecycle` and `ros2 service list`
+against a two-managed-node image.
+
+- One queryable per managed node, on
+  `<dom>/<ns>/<node>/*/lifecycle_msgs::srv::dds_::$*/*` (amended from "per
+  image", which no zenoh key can express without matching other images'
+  nodes).
 - A dispatcher routes each request to a machine by the node and the service in
   the request key.
 - Its inbox is sized for lifecycle requests.
@@ -322,7 +352,8 @@ Acceptance:
 - With three managed nodes, `ros2 service list -t` and `ros2 topic list -t`
   show per node exactly what an rclcpp `LifecycleNode` shows.
 - `ros2 lifecycle nodes/get/set/list` behave as in W9.
-- The image declares one lifecycle queryable, read from the shim's count.
+- The image declares one lifecycle queryable per managed node, read from the
+  shim's count.
 
 ### W5 — DDS backends and the derived pools (D7)
 
