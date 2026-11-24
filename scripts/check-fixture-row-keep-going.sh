@@ -18,6 +18,15 @@
 #   E. reach: both builders call their row functions through the wrapper and
 #      nowhere directly — a second, unwrapped call site is a row that still
 #      ends the lane.
+#   F. `fixture-row-failed.sh` (a make recipe's way in): unset, it exits the
+#      leaf's status; set, it records and exits 0 — run inside a real make,
+#      where a failed leaf must not stop the next one.
+#   G. the run side: `nros_fixture_build_ledger_lets_cells_run` lets the cells
+#      run ONLY when the build's ledger names rows, so a missing fixture with
+#      no recorded build failure still stops the run as a precondition.
+#   H. reach of the lanes: the Zephyr make driver, the census prepass and the
+#      stage reporter each take the ledger road, and every run-matrix build
+#      runs under the owner with its cells step reading the same ledger.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -72,6 +81,32 @@ rc=0; bash "$owner" "$tmp/d3.tsv" -- bash -c 'exit 7' >/dev/null 2>&1 || rc=$?
 printf 'stale\trc=1\n' > "$tmp/d4.tsv"
 bash "$owner" "$tmp/d4.tsv" -- true >/dev/null 2>&1 || bad "D: a stale ledger from a previous run failed a green step"
 
+# F — a make recipe's failed leaf, both ways, in a real make.
+local helper="$PWD/scripts/build/fixture-row-failed.sh"
+printf '%s\n' 'SHELL := /bin/bash' '.SHELLFLAGS := -eu -o pipefail -c' 'all: a b' \
+    'a:' "	@status=0; ( false ) || status=\$\$?; if [ \"\$\$status\" -ne 0 ]; then bash $helper 'leaf a' \"\$\$status\"; exit \$\$?; fi" \
+    'b:' '	@echo LEAF_B_BUILT' > "$tmp/Makefile"
+rc=0; out="$(env -u NROS_FIXTURE_FAILED_ROWS make -s -f "$tmp/Makefile" all 2>&1)" || rc=$?
+[ "$rc" -ne 0 ] || bad "F: with no ledger a failed leaf did not fail make"
+ledger="$tmp/f.tsv"
+rc=0; out="$(NROS_FIXTURE_FAILED_ROWS="$ledger" make -s -f "$tmp/Makefile" all 2>&1)" || rc=$?
+[ "$rc" = 0 ] || bad "F: with a ledger make still failed (rc=$rc): $out"
+case "$out" in *LEAF_B_BUILT*) ;; *) bad "F: the leaf after a failed one did not build: $out" ;; esac
+nros_grep_q -x $'leaf a\trc=1' "$ledger" || bad "F: the failed leaf was not recorded: $(cat "$ledger" 2>/dev/null)"
+
+# G — the run side.
+rc=0; env -u NROS_FIXTURE_BUILD_LEDGER bash -c "source '$lib'; nros_fixture_build_ledger_lets_cells_run g" \
+    2>/dev/null || rc=$?
+[ "$rc" = 1 ] || bad "G: with no build ledger a missing fixture would not stop the run"
+: > "$tmp/g-empty.tsv"
+rc=0; NROS_FIXTURE_BUILD_LEDGER="$tmp/g-empty.tsv" bash -c "source '$lib'; nros_fixture_build_ledger_lets_cells_run g" \
+    2>/dev/null || rc=$?
+[ "$rc" = 1 ] || bad "G: an EMPTY build ledger let the cells run past a missing fixture"
+printf 'row g\trc=2\n' > "$tmp/g.tsv"
+rc=0; NROS_FIXTURE_BUILD_LEDGER="$tmp/g.tsv" bash -c "source '$lib'; nros_fixture_build_ledger_lets_cells_run g" \
+    2>/dev/null || rc=$?
+[ "$rc" = 0 ] || bad "G: a build ledger naming rows did not let the cells run"
+
 }
 self_test
 
@@ -87,7 +122,27 @@ direct="$(grep -nE '^[[:space:]]*build_workspace "\$record"' "$ws" || true)"
 [ "$(grep -c 'nros_ws_row "$record"' "$ws")" -ge 2 ] \
     || bad "E: $ws's row loops do not go through nros_ws_row"
 
+# H — reach of the lanes.
+nros_grep_q -F 'row_failed_script="$repo_root/scripts/build/fixture-row-failed.sh"' \
+    scripts/build/zephyr-fixture-make-driver.sh \
+    || bad "H: the Zephyr make driver's leaves do not end through fixture-row-failed.sh"
+nros_grep_q -F 'nros_fixture_row "census-prepass image: $dir $image" census_image' \
+    scripts/build/census-prepass.sh || bad "H: the census prepass's image takes are not rows"
+nros_grep_q -F 'nros_fixture_row_failed "census-prepass leaf: $name"' \
+    scripts/build/census-prepass.sh || bad "H: the census prepass's leaf censuses are not rows"
+nros_grep_q -F 'nros_fixture_row_failed "build-test-fixtures stage: $stage' justfile \
+    || bad "H: build-test-fixtures does not record a failed stage in the ledger"
+nros_grep_q -F 'nros_fixture_build_ledger_lets_cells_run check-fixtures-stale' \
+    scripts/check-fixtures-stale.sh || bad "H: the stale-fixture preflight ignores the build ledger"
+wf=.github/workflows/run-matrix.yml
+[ "$(grep -c 'fixture-rows-keep-going.sh "${{ runner.temp }}/failed-rows-' "$wf")" = 3 ] \
+    || bad "H: not every run-matrix build (tier1, tier2, tier2-nightly) runs under the keep-going owner"
+[ "$(grep -c 'NROS_FIXTURE_BUILD_LEDGER: ${{ runner.temp }}/failed-rows-' "$wf")" = 3 ] \
+    || bad "H: not every run-matrix cells step reads its build's ledger"
+[ "$(grep -c "steps.build.outcome == 'success' || steps.build.outcome == 'failure'" "$wf")" = 3 ] \
+    || bad "H: not every run-matrix cells step runs after a failed build"
+
 if [ "$fail" -ne 0 ]; then
     exit 1
 fi
-echo "$GATE: OK — kept-going rows are recorded, -e holds inside them, the owner fails on any, and both builders route every row through the wrapper."
+echo "$GATE: OK — kept-going rows are recorded, -e holds inside them, the owner fails on any, both builders, the Zephyr leaves, the census prepass and failed stages take the ledger, and run-matrix's cells run past a failed build."

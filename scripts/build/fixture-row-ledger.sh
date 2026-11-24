@@ -49,3 +49,43 @@ nros_fixture_row() {
     printf 'FIXTURE ROW FAILED (rc=%s), kept going (issue 1671): %s\n' "$rc" "$label" >&2
     return 0
 }
+
+# The same contract for a unit that is not a shell function call: a make
+# recipe line or a stage the caller already ran. Records <label> with <rc> and
+# returns 0 when the lane keeps going; otherwise returns <rc>, so the caller's
+# `exit` behaves as before. (`nros_fixture_row` above runs the command for
+# you; this is for callers that already hold the status.)
+nros_fixture_row_failed() {
+    local label="$1" rc="$2"
+    if [ -z "${NROS_FIXTURE_FAILED_ROWS:-}" ]; then
+        return "$rc"
+    fi
+    printf '%s\trc=%s\n' "$label" "$rc" >> "$NROS_FIXTURE_FAILED_ROWS"
+    printf 'FIXTURE ROW FAILED (rc=%s), kept going (issue 1671): %s\n' "$rc" "$label" >&2
+    return 0
+}
+
+# The RUN side of the contract. A lane that kept going built every row it
+# could, and recorded the rest in its ledger; the step that then runs the
+# cells names that ledger as `NROS_FIXTURE_BUILD_LEDGER`. A preflight that
+# finds fixtures missing or stale asks this before it stops the run:
+#
+#   ledger unset or empty -> 1: nothing failed to build, so a missing fixture
+#                            is a real precondition failure, exactly as before;
+#   ledger names rows     -> 0, after printing them: the build already went red
+#                            on them, and every OTHER cell still deserves its
+#                            verdict. Each missing fixture fails its own cell
+#                            (`unmet!`/`require_*`, never a skip), so nothing
+#                            turns green that was not.
+nros_fixture_build_ledger_lets_cells_run() {
+    local what="$1" ledger="${NROS_FIXTURE_BUILD_LEDGER:-}"
+    if [ -z "$ledger" ] || [ ! -s "$ledger" ]; then
+        return 1
+    fi
+    echo "" >&2
+    echo "$what: the lane's build kept going past $(grep -c . "$ledger") failed row(s) (issue 1671):" >&2
+    sed 's/^/  - /' "$ledger" >&2
+    echo "  The cells run anyway: every fixture reported above fails its own cell," >&2
+    echo "  and the build step is already red on these rows." >&2
+    return 0
+}

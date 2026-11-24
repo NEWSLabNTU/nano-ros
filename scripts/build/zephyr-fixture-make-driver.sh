@@ -62,6 +62,10 @@ repo_root="$(cd "$script_dir/../.." && pwd)"
 leaves_script="$repo_root/scripts/build/zephyr-fixture-leaves.sh"
 runner_script="$repo_root/scripts/build/zephyr-fixture-run-one.sh"
 first_errors_script="$repo_root/scripts/build/log-first-errors.sh"
+# Issue 1671 -- a failed leaf ends the recipe through this: with
+# NROS_FIXTURE_FAILED_ROWS set it records the leaf and exits 0, so make builds
+# every other leaf; unset, it exits with the leaf's status as before.
+row_failed_script="$repo_root/scripts/build/fixture-row-failed.sh"
 
 if [ ! -x "$leaves_script" ]; then
     echo "zephyr-fixture-make-driver: missing executable $leaves_script" >&2
@@ -234,11 +238,12 @@ fi
         # other in-flight unit keeps printing, so a tail alone can show no
         # error at all (tier-2 run 34319241943). One helper, shared with the
         # fixture fan-out's printer in `justfile`.
-        printf 'if [ "$$status" -ne 0 ]; then echo "zephyr-fixture-make-driver: %s failed" >&2; bash %s %s >&2; if [ -f %s ]; then bash %s %s >&2; fi; echo "zephyr-fixture-make-driver: scheduler log tail:" >&2; tail -n "$${NROS_FIXTURE_FAIL_TAIL:-80}" %s >&2 || true; if [ -f %s ]; then echo "zephyr-fixture-make-driver: Zephyr log tail:" >&2; tail -n "$${NROS_FIXTURE_FAIL_TAIL:-80}" %s >&2 || true; fi; exit "$$status"; fi\n' \
+        printf 'if [ "$$status" -ne 0 ]; then echo "zephyr-fixture-make-driver: %s failed" >&2; bash %s %s >&2; if [ -f %s ]; then bash %s %s >&2; fi; echo "zephyr-fixture-make-driver: scheduler log tail:" >&2; tail -n "$${NROS_FIXTURE_FAIL_TAIL:-80}" %s >&2 || true; if [ -f %s ]; then echo "zephyr-fixture-make-driver: Zephyr log tail:" >&2; tail -n "$${NROS_FIXTURE_FAIL_TAIL:-80}" %s >&2 || true; fi; bash %s %s "$$status"; exit $$?; fi\n' \
             "$target" \
             "$(shell_quote "$first_errors_script")" "$(shell_quote "$scheduler_log")" \
             "$(shell_quote "$zephyr_log")" "$(shell_quote "$first_errors_script")" "$(shell_quote "$zephyr_log")" \
-            "$(shell_quote "$scheduler_log")" "$(shell_quote "$zephyr_log")" "$(shell_quote "$zephyr_log")"
+            "$(shell_quote "$scheduler_log")" "$(shell_quote "$zephyr_log")" "$(shell_quote "$zephyr_log")" \
+            "$(shell_quote "$row_failed_script")" "$(shell_quote "zephyr fixture: $id (${build_name:-$id})")"
     done <"$records_file"
 } >"$makefile"
 

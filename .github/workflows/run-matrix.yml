@@ -187,11 +187,21 @@ jobs:
       # (issue 0992) and then the lane's fixtures. Naming the SAME scope as
       # setup and test keeps one vocabulary across the three steps, which is the
       # property phase-411 exists to give.
+      # Issue 1671 -- the build KEEPS GOING. `fixture-rows-keep-going.sh` sets
+      # NROS_FIXTURE_FAILED_ROWS, so a fixture row (a Zephyr leaf, a census
+      # take, a cargo/cmake row) or a whole module stage that fails is recorded
+      # and every other row is still built; the step then fails naming each
+      # one. Before this the first red row ended the build and the cells step
+      # never ran, so each blocker hid the next for a night (B11, B12, B13,
+      # B14, B19, B22 in one week). The cells step below runs after a failed
+      # build too, with the same ledger: a cell whose fixture did not build
+      # fails as a cell, never skips.
       - name: just build tier2
         id: build
         run: |
           source ./activate.sh
-          just build tier2
+          bash scripts/ci/fixture-rows-keep-going.sh "${{ runner.temp }}/failed-rows-tier2.tsv" -- \
+            just build tier2
       # `just ci matrix`, NOT `just test tier2`. phase-411 W4 briefly used the
       # latter and that was a COVERAGE REGRESSION caught by
       # check-tier-has-ci-owner: the tier recipe is `_lane-gate` + `check` +
@@ -205,8 +215,10 @@ jobs:
       # markers to this record; the stage reporter below reads the same file.
       - name: just ci matrix
         id: cells
+        if: ${{ !cancelled() && (steps.build.outcome == 'success' || steps.build.outcome == 'failure') }}
         env:
           NROS_LANE_STEP_RECORD: ${{ runner.temp }}/lane-steps-tier2
+          NROS_FIXTURE_BUILD_LEDGER: ${{ runner.temp }}/failed-rows-tier2.tsv
         run: |
           rm -f "$NROS_LANE_STEP_RECORD"
           source ./activate.sh
@@ -361,11 +373,21 @@ jobs:
         run: bash scripts/ci/pin-baseline.sh init-moved
       - name: Fetch submodule history for check-submodule-pins
         run: bash scripts/ci/pin-baseline.sh deepen
+      # Issue 1671 -- the build KEEPS GOING. `fixture-rows-keep-going.sh` sets
+      # NROS_FIXTURE_FAILED_ROWS, so a fixture row (a Zephyr leaf, a census
+      # take, a cargo/cmake row) or a whole module stage that fails is recorded
+      # and every other row is still built; the step then fails naming each
+      # one. Before this the first red row ended the build and the cells step
+      # never ran, so each blocker hid the next for a night (B11, B12, B13,
+      # B14, B19, B22 in one week). The cells step below runs after a failed
+      # build too, with the same ledger: a cell whose fixture did not build
+      # fails as a cell, never skips.
       - name: just build tier1
         id: build
         run: |
           source ./activate.sh
-          just build tier1
+          bash scripts/ci/fixture-rows-keep-going.sh "${{ runner.temp }}/failed-rows-tier1.tsv" -- \
+            just build tier1
       # Issue 1832 — three gates read a BUILD tree, so `check fast` (buildless
       # by contract) can only record them NOT VERIFIED, and until this step no
       # lane with a build tree ran them either. Here the tree exists: tier 1
@@ -414,8 +436,10 @@ jobs:
           fi
       - name: just ci tier1 run
         id: cells
+        if: ${{ !cancelled() && (steps.build.outcome == 'success' || steps.build.outcome == 'failure') }}
         env:
           NROS_LANE_STEP_RECORD: ${{ runner.temp }}/lane-steps-tier1
+          NROS_FIXTURE_BUILD_LEDGER: ${{ runner.temp }}/failed-rows-tier1.tsv
         run: |
           rm -f "$NROS_LANE_STEP_RECORD"
           source ./activate.sh
@@ -629,10 +653,21 @@ jobs:
       # (issue 0992) and then the lane's fixtures. Naming the SAME scope as
       # setup and test keeps one vocabulary across the three steps, which is the
       # property phase-411 exists to give.
+      # Issue 1671 -- the build KEEPS GOING. `fixture-rows-keep-going.sh` sets
+      # NROS_FIXTURE_FAILED_ROWS, so a fixture row (a Zephyr leaf, a census
+      # take, a cargo/cmake row) or a whole module stage that fails is recorded
+      # and every other row is still built; the step then fails naming each
+      # one. Before this the first red row ended the build and the cells step
+      # never ran, so each blocker hid the next for a night (B11, B12, B13,
+      # B14, B19, B22 in one week). The cells step below runs after a failed
+      # build too, with the same ledger: a cell whose fixture did not build
+      # fails as a cell, never skips.
       - name: just build tier2-nightly
+        id: build
         run: |
           source ./activate.sh
-          just build tier2-nightly
+          bash scripts/ci/fixture-rows-keep-going.sh "${{ runner.temp }}/failed-rows-tier2-nightly.tsv" -- \
+            just build tier2-nightly
 
       # Issue 1991 — the panic text goes into the job log as well as the junit
       # below, so `gh run view --log` names a red without an artifact download.
@@ -640,8 +675,10 @@ jobs:
       # lane sets `final` for the same reason. A `lane_skip!` is a panic too, so
       # its one-line reason prints beside the real failures.
       - name: just ci matrix-nightly
+        if: ${{ !cancelled() && (steps.build.outcome == 'success' || steps.build.outcome == 'failure') }}
         env:
           NROS_TEST_FAILURE_OUTPUT: final
+          NROS_FIXTURE_BUILD_LEDGER: ${{ runner.temp }}/failed-rows-tier2-nightly.tsv
         run: |
           source ./activate.sh
           just ci matrix-nightly
