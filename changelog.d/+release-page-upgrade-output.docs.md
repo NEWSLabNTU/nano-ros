@@ -1,0 +1,1 @@
+The nros12 release page's Upgrade steps now show what `nros configure --migrate` and `nros build` print as a project moves to the new release, and those steps are run against each release candidate before it ships.

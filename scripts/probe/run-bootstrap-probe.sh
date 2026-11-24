@@ -39,9 +39,11 @@
 #                    (`gh run download <id> -n nros-linux-x86_64 -D <dir>`),
 #                    which is the asset a runner actually produced
 #   PROBE_CANDIDATE_ASSET=<dir> + PROBE_CANDIDATE_VERSION=<ver>  pinned-newer
-#                    only: the release rehearsal (phase-567 W3) — the asset a
-#                    release dry run built stands in for the published
-#                    release, and the front must be <ver>
+#                    and upgrade-*: the release rehearsal (phase-567 W3) — the
+#                    asset a release dry run built is the one installed. On
+#                    pinned-newer it stands in for the published release and
+#                    the front must be <ver>; on upgrade-* it is the release
+#                    the page upgrades TO, and the project must pin <ver>
 #   PROBE_RELEASE_CACHE  installed track: 1 (default) keeps the asset builder's
 #                    rustup, cargo registry and two target dirs in named docker
 #                    volumes `nros-probe-release-*`; 0 builds cold, as a
@@ -305,6 +307,37 @@ if [[ "$PROBE_TRACK" = "installed" ]]; then
         VERIFIER="verify-installed-platform.sh"
         [[ "$PROBE_PLATFORM" = workspace ]] && VERIFIER="verify-installed-workspace.sh"
         [[ "$PROBE_PLATFORM" = pinned* ]] && VERIFIER="verify-installed-pinned.sh"
+        # Issue 2912 — the release page's Upgrade block, on a project the
+        # PREVIOUS release made. The page's install line becomes a call to
+        # upgrade-before.sh's `probe_upgrade_before <previous>` (which makes
+        # and builds that project through the pin hand-off) followed by the
+        # install of this asset; its `nros pin <release>` pins this asset's
+        # version; its `nros setup <board>` provisions linux.
+        if [[ "$PROBE_PLATFORM" = upgrade-* ]]; then
+            SETUP_SUBST=": the upgrade project provisions linux in its own steps"
+            VERIFIER="verify-installed-upgrade.sh"
+            upgrade_page_release="$(basename "$PLATFORM_CHAPTER" .md)"
+            upgrade_from="$(nros_published_release_version)"
+            if [[ -n "${PROBE_CANDIDATE_ASSET:-}" ]]; then
+                upgrade_to="${PROBE_CANDIDATE_VERSION:?PROBE_CANDIDATE_ASSET needs PROBE_CANDIDATE_VERSION}"
+            else
+                upgrade_to="${PROBE_RELEASE_VERSION:-0.0.0-probe}"
+            fi
+            if [[ -z "$upgrade_from" || "$upgrade_from" = "$upgrade_page_release" ]]; then
+                echo "probe: [UNMET PRECONDITION] track $PROBE_PLATFORM upgrades FROM the published release (the index's [tool.nros] pin, '$upgrade_from') TO $upgrade_page_release, the release page its row names; they must differ. After a cut, move the row in packages/boards/board-support.toml to the next release's page." >&2
+                exit 1
+            fi
+            UPGRADE_SUBST=(
+                --prelude "$SCRIPT_DIR/upgrade-before.sh"
+                --subst "curl -fsSL https://raw.githubusercontent.com/NEWSLabNTU/nano-ros/main/scripts/install.sh \\
+    | sh -s -- --version $upgrade_page_release:::probe_upgrade_before $upgrade_from
+curl -fsSL file://$RELEASE_MOUNT/install.sh | NROS_INSTALL_URL=file://$RELEASE_MOUNT/$ASSET_NAME sh"
+                --subst "nros pin $upgrade_page_release:::nros pin $upgrade_to"
+                --subst "nros setup <board>
+:::nros setup linux --rmw zenoh
+"
+            )
+        fi
         # A twin track that replays a SHARED chapter (with `twin_build`, its
         # setup and the image's build) (the Zephyr chapter's
         # setup blocks) leaves the twin smoke run to the probe
@@ -392,6 +425,7 @@ python3 "$SCRIPT_DIR/extract-book-steps.py" \
     ${PROBE_VARIANT:+--variant "$PROBE_VARIANT"} \
     ${PROBE_LANG:+--lang "$PROBE_LANG"} \
     ${TWIN_SUBST[@]+"${TWIN_SUBST[@]}"} \
+    ${UPGRADE_SUBST[@]+"${UPGRADE_SUBST[@]}"} \
     ${C_CD_SUBST[@]+"${C_CD_SUBST[@]}"} \
     ${CLOCK_ARGS[@]+"${CLOCK_ARGS[@]}"} \
     ${CHAPTER_ARGS[@]+"${CHAPTER_ARGS[@]}"} \
@@ -448,6 +482,9 @@ if [[ "$VERIFIER" = verify-installed-pinned.sh ]]; then
     fi
     printf 'PROBE_PINNED_VERSION=%s\n' "$probe_pinned" >>"$workdir/probe.sh"
     printf 'PROBE_EXPECT_FRONT=%s\n' "$probe_front" >>"$workdir/probe.sh"
+fi
+if [[ "$VERIFIER" = verify-installed-upgrade.sh ]]; then
+    printf 'PROBE_EXPECT_PIN=%s\n' "$upgrade_to" >>"$workdir/probe.sh"
 fi
 if [[ "$VERIFIER" = verify-installed-twin.sh ]]; then
     # The twin facts, as the assignments probe-track.py printed them.
@@ -550,7 +587,8 @@ git_dir="$(git -C "$REPO_ROOT" rev-parse --path-format=absolute --git-common-dir
 
 if [[ "$PROBE_TRACK" = "installed" ]]; then
     mkdir -p "$workdir/release"
-    if [[ "$PROBE_PLATFORM" = pinned-newer && -n "${PROBE_CANDIDATE_ASSET:-}" ]]; then
+    if [[ ("$PROBE_PLATFORM" = pinned-newer || "$PROBE_PLATFORM" = upgrade-*) \
+        && -n "${PROBE_CANDIDATE_ASSET:-}" ]]; then
         # phase-567 W3 — the release rehearsal: the asset release-nros.yml's
         # build job just produced, BEFORE it is published, standing in for
         # "the published release". Its own knob, never `PROBE_ASSET`, which
