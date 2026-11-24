@@ -873,8 +873,9 @@ One-liners; detail in the linked doc. (Many also captured in agent memory.)
   before every push sat red on `main` for two days with each contributor
   triaging somebody else's red first. `check-default-gates-run-somewhere` (issue
   1040) is the rule; its SCOPE was `just check` names, which is narrower than
-  the rule (the 2026-07-28 audit shape). It now covers the `ci gate` `steps=(…)`
-  array too, READ from `just/ci.just` so it cannot go stale toward OK. Corollary
+  the rule (the 2026-07-28 audit shape). It now covers every step of `ci gate`
+  too, READ from the `ci` lane's own listing (`check-gate-lists.py --lane-steps
+  ci`, phase-584) so it cannot go stale toward OK. Corollary
   for the failure TEXT: index tuples are not a diagnosis — the orphan message
   used to be `[(1, 2, 1, true)]` and cost a hand-decode against three tables;
   name the cell to write and the row that wants it.
