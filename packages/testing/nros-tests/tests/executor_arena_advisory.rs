@@ -26,7 +26,10 @@ use std::{sync::Mutex, time::Duration};
 
 use nros::{Executor, ExecutorConfig, TimerDuration};
 use nros_log::{LogSink, Record, init};
-use nros_tests::fixtures::{ZenohRouter, require_zenohd, zenohd_unique};
+use nros_tests::{
+    fixtures::{ZenohRouter, require_zenohd, zenohd_unique},
+    output,
+};
 use rstest::rstest;
 
 static CAPTURED: Mutex<Vec<String>> = Mutex::new(Vec::new());
@@ -89,7 +92,22 @@ fn first_spin_reports_an_over_provisioned_arena(zenohd_unique: ZenohRouter) {
     );
 
     executor.spin_once(Duration::from_millis(10));
-    let after_first = CAPTURED.lock().unwrap().len();
+    // Count the ADVISORY's records, not every record: the sink
+    // sees all logging, and any other line on the second spin (a session or
+    // lease line, likelier on a loaded host) read as "the advisory repeated".
+    let advisories = || {
+        CAPTURED
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|m| m.contains(output::EXECUTOR_ARENA_ADVISORY))
+            .count()
+    };
+    let after_first = advisories();
+    assert_eq!(
+        after_first, 1,
+        "the first spin must emit the arena advisory exactly once"
+    );
     // Spin again: the advisory names a BUILD-TIME constant, so saying it once
     // per process is the whole contract, and a per-spin log line on an RTOS
     // target is a flood (issue 0371's shape). Asserted here rather than in a
@@ -98,7 +116,7 @@ fn first_spin_reports_an_over_provisioned_arena(zenohd_unique: ZenohRouter) {
     // shape `check-no-vacuous-tests` exists to catch.
     executor.spin_once(Duration::from_millis(10));
     assert_eq!(
-        CAPTURED.lock().unwrap().len(),
+        advisories(),
         after_first,
         "the arena advisory repeated on a second spin; it is one-shot"
     );
@@ -106,7 +124,7 @@ fn first_spin_reports_an_over_provisioned_arena(zenohd_unique: ZenohRouter) {
     let records = CAPTURED.lock().unwrap().clone();
     let advisory = records
         .iter()
-        .find(|m| m.contains("arena larger than needed"))
+        .find(|m| m.contains(output::EXECUTOR_ARENA_ADVISORY))
         .unwrap_or_else(|| {
             panic!(
                 "the first-spin arena advisory reached no sink. {} record(s) \

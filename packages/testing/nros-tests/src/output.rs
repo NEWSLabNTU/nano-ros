@@ -2519,3 +2519,8 @@ pub const LOG_DEAD_HOLDER_STRANDED_RECORD: &str = "record after the unreported d
 /// echoes each record it gets with. A dead holder strands records owed to a
 /// serialised sink only: the Zephyr console sink is re-entrant.
 pub const LOG_DEAD_HOLDER_SERIAL_PREFIX: &str = "log-dead-holder: serialised sink got [main]: ";
+
+/// The executor's first-spin arena advisory
+/// (`nros-node/src/executor/arena.rs`), one-shot per process. A test that checks
+/// the one-shot counts records carrying this, never every record a sink saw.
+pub const EXECUTOR_ARENA_ADVISORY: &str = "arena larger than needed";
