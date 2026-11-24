@@ -223,3 +223,39 @@ recipe now runs through `scripts/build/ctest-keep-failed-log.sh`. It
 always passes `--output-on-failure`, and on a red it copies `LastTest.log`
 to `<build>/Testing/failed-runs/LastTest-<UTC>-<pid>.log`, which no rerun
 writes.
+
+## No recurrence, and the lead is bounded (2026-11-24)
+
+**Scanned, no recurrence.** The failed runs among the last 15 of
+`run-matrix`, `host-tests`, `live-peer` and `nightly` (12 failed runs,
+2026-11-14 to 2026-11-23, read with `gh run view --log-failed`). None
+contains a failure, a TIMEOUT or a watchdog line (`stuck while …`) from any
+`entity_wake` test. The watchdog merged on 2026-11-17 has not fired.
+
+**The suspect above is bounded on the pinned zenoh-pico.** A RELIABLE
+publisher (`Z_CONGESTION_CONTROL_BLOCK`) does wait on the transport's TX mutex
+with no deadline of its own (`_z_transport_tx_mutex_lock(ztc, true)` in
+`src/transport/common/tx.c`). But whoever holds that mutex is inside a socket
+write, and that write is bounded since #3566 (merged 2026-11-11 22:16Z, issue
+2389). This issue's only sighting was on 2026-11-07, before that.
+
+- `tcp_posix.c` (Linux, NuttX) and `tcp_zephyr.c` send through
+  `tcp_write_within.h`: a non-blocking send polled in slices of one socket
+  timeout. It fails once no byte has moved for
+  `Z_TRANSPORT_TX_WAIT_BEFORE_CLOSE` (5000 ms).
+- The alias ports (ThreadX, bare metal) apply the same rule in
+  `c/zpico/platform_aliases.c` `_z_tcp_write`, over a send bounded by
+  `SO_SNDTIMEO`.
+- lwIP sets `SO_SNDTIMEO` itself (`tcp_lwip.c`).
+
+So a writer that the peer stops reading releases the mutex within about 5 s
+and the link closes. The blocked publisher then runs, or fails with the
+session. The wait is finite, though N queued writers can chain to N x 5 s.
+The other way to hold the mutex across calls is batching with
+`Z_FEATURE_BATCH_TX_MUTEX`, which no nano-ros build enables (`ZPICO_TX_BATCH`
+defaults off). So the "waits forever on the TX mutex" mechanism the 2026-11-07
+hang was suspected of no longer exists. If the hang returns, it is somewhere
+else, and the watchdog's stage and backtraces will say where.
+
+**Close rule, the same as issue 2765's:** close as not reproduced if no
+`entity_wake` test reds or trips the watchdog through 2026-12-20.

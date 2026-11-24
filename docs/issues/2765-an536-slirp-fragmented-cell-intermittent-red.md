@@ -71,3 +71,20 @@ reassembly. Capture the guest console, a Cyclone discovery trace on the host
 peer, and a pcap of the slirp side, then decide between discovery and
 reassembly. Close this as not reproduced if the cell stays green through
 2026-12-20.
+
+## No recurrence (2026-11-24)
+
+The failed runs among the last 15 of `run-matrix`, `host-tests`, `live-peer`
+and `nightly` (12 failed runs, 2026-11-14 to 2026-11-23, read with
+`gh run view --log-failed`) were scanned for this cell:
+
+- The `run-matrix` hits (7 lines, `FAIL [0.004-0.008s]`) are `[SKIPPED:lane]`
+  panics in a bare nextest run: the cell is out of that lane, so it was never
+  run there. They are not reds.
+- The only real failure is live-peer 44864729982 on 2026-11-21, already
+  attributed above to issue 2820, which #4589 fixed.
+- The cell passed in every live-peer run since, including the scheduled
+  45324656188 on 2026-11-24.
+
+The 2026-11-11 shape (no sample at all) has not been seen since 2026-11-11.
+The close rule above stands: not reproduced if green through 2026-12-20.
