@@ -297,7 +297,7 @@ Rename the talker's parameter in the contract, from `period_ms` to `period`:
 
 and build:
 
-```bash probe=855 probe-run=600 track=installed variant=qemu
+```bash probe=855 probe-run=600 probe-exit=fail track=installed variant=qemu
 nros build
 ```
 

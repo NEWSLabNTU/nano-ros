@@ -66,6 +66,71 @@ nros_probe_run_expect() {
     echo "probe: step $step printed its documented output"
 }
 
+# nros_probe_run_exit — run a book step that FINISHES and assert both its
+# exit status and its documented output (issue 2933).
+#
+# `nros_probe_run_expect` passes a step the moment its expected lines print and
+# stops it, which is right for a command that runs until stopped and wrong for
+# one that finishes: a build that prints the expected line and then fails
+# would pass. A `probe-run=SECS probe-exit=0|fail` block comes here instead:
+# the command runs to its end (failing past SECS), its status must be 0
+# (`probe-exit=0`) or non-zero (`probe-exit=fail`, a documented refusal), and
+# every expected line must be in its full output.
+#
+#   nros_probe_run_exit <step> <secs> <0|fail> <body-file> <expected line>...
+nros_probe_run_exit() {
+    local step="$1" secs="$2" want="$3" body="$4"
+    shift 4
+    local log="/tmp/probe-run-$step.log"
+    : >"$log"
+    setsid bash "$body" >"$log" 2>&1 </dev/null &
+    local pid=$!
+    local deadline=$((SECONDS + secs))
+    while kill -0 "$pid" 2>/dev/null; do
+        if ((SECONDS >= deadline)); then
+            kill -- "-$pid" 2>/dev/null || true
+            tail -60 "$log" >&2
+            echo "PROBE FAIL: step $step did not finish within ${secs}s" >&2
+            exit 1
+        fi
+        sleep 1
+    done
+    local rc=0
+    wait "$pid" || rc=$?
+    case "$want" in
+        0)
+            if [ "$rc" -ne 0 ]; then
+                tail -60 "$log" >&2
+                echo "PROBE FAIL: step $step exited $rc; the book says it succeeds" >&2
+                exit 1
+            fi
+            ;;
+        fail)
+            if [ "$rc" -eq 0 ]; then
+                tail -60 "$log" >&2
+                echo "PROBE FAIL: step $step exited 0; the book says it is refused" >&2
+                exit 1
+            fi
+            ;;
+        *)
+            echo "PROBE FAIL: step $step: probe-exit must be 0 or fail, not '$want'" >&2
+            exit 1
+            ;;
+    esac
+    local line missing=() grc
+    for line in "$@"; do
+        grc=0
+        nros_grep_q -F -- "$line" "$log" || grc=$?
+        [ "$grc" -eq 0 ] || missing+=("$line")
+    done
+    if [ "${#missing[@]}" -ne 0 ]; then
+        tail -60 "$log" >&2
+        echo "PROBE FAIL: step $step exited $rc as documented but did not print: ${missing[*]}" >&2
+        exit 1
+    fi
+    echo "probe: step $step exited $rc as documented and printed its documented output"
+}
+
 # nros_probe_stop_kept — close the terminals a chapter left open (phase-537
 # W5). A Tutorial track replays several chapters in one shell, and each
 # chapter's reader starts with the last one's `nros run` stopped. Every

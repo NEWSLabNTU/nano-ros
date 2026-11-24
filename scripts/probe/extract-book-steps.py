@@ -28,6 +28,12 @@ the assertion (phase-517 W10; scripts/probe/probe-run.sh). `probe-keep` leaves
 it running for the steps after it. `variant=<v>` selects one of several runs a
 chapter documents (`--variant`).
 
+A step whose command FINISHES (a build, `nros pin`) adds `probe-exit=0`, or
+`probe-exit=fail` for a documented refusal: it then runs to its end and its
+exit status must match, besides printing its `probe-expect` lines (issue
+2933). Without it the step is stopped at its expected output, and a command
+that printed it and then failed would pass.
+
 A block inside a language tab group (`<!-- tabs -->` … `<!-- /tabs -->`,
 scripts/lib/book_tabs.py) belongs to its tab's language: a tabbed page holds
 one step per language under one `probe=NN`, and `--lang rust|c|cpp` picks the
@@ -85,6 +91,11 @@ VARIANT_TOKEN_RE = re.compile(r"(?:^|\s)variant=([A-Za-z0-9_,+-]+)(?:\s|$)")
 # compares against). The documented output IS the assertion.
 RUN_TOKEN_RE = re.compile(r"(?:^|\s)probe-run=(\d+)(?:\s|$)")
 KEEP_TOKEN_RE = re.compile(r"(?:^|\s)probe-keep(?:\s|$)")
+# Issue 2933 — a `probe-run` step whose command FINISHES states how:
+# `probe-exit=0` (it succeeds) or `probe-exit=fail` (a documented refusal).
+# It then runs to its end and its status is checked, instead of being
+# stopped at its expected output (scripts/probe/probe-run.sh).
+EXIT_TOKEN_RE = re.compile(r"(?:^|\s)probe-exit=(0|fail)(?:\s|$)")
 EXPECT_TOKEN_RE = re.compile(r"(?:^|\s)probe-expect=(\d+)(?:\s|$)")
 # A step can be a FILE the reader writes, shown as the file itself rather than
 # a `cat > path <<'EOF'` command: ```` ```yaml probe=NN file=manifest/west.yml ````
@@ -138,6 +149,7 @@ def _tokens(info: str, path: Path, lineno: int):
         "variants": set(vtok.group(1).split(",")) if vtok else None,
         "run": int(rtok.group(1)) if rtok else None,
         "keep": bool(KEEP_TOKEN_RE.search(info)),
+        "exit": (EXIT_TOKEN_RE.search(info) or [None, None])[1],
         "file": FILE_TOKEN_RE.search(info),
     }
 
@@ -333,7 +345,7 @@ def main():
             sys.exit(f"probe extract: bad --after-step (want N=FILE): {spec}")
         after[int(n)] = (f, Path(f).read_text())
 
-    steps = []  # (order, file, lineno, body, run)
+    steps = []  # (order, file, lineno, body, run, keep, exit)
     expects = {}  # order -> (file, lineno, lines)
     skipped = {}  # order -> distros it IS tagged for, when filtered out
     variant_seen = False
@@ -385,6 +397,12 @@ def main():
                 continue
             if b["keep"] and b["run"] is None:
                 sys.exit(f"{f}:{lineno}: `probe-keep` needs `probe-run=SECS`")
+            if b["exit"] is not None and b["run"] is None:
+                sys.exit(f"{f}:{lineno}: `probe-exit` needs `probe-run=SECS` "
+                         "(a plain step already has to exit 0)")
+            if b["exit"] is not None and b["keep"]:
+                sys.exit(f"{f}:{lineno}: `probe-exit` and `probe-keep` contradict: "
+                         "a step left running never exits")
             if steps and steps[-1][0] == order and steps[-1][1] == f:
                 # Several blocks of one chapter under one `probe=NN` are one
                 # step, run in page order: a command, the file it needs (a
@@ -394,9 +412,9 @@ def main():
                 if prev[4] is not None:
                     sys.exit(f"{f}:{lineno}: step {order} continues after its `probe-run` "
                              "block; only a step's last block may run")
-                steps[-1] = (order, f, prev[2], prev[3] + "\n" + body, b["run"], b["keep"])
+                steps[-1] = (order, f, prev[2], prev[3] + "\n" + body, b["run"], b["keep"], b["exit"])
                 continue
-            steps.append((order, f, lineno, body, b["run"], b["keep"]))
+            steps.append((order, f, lineno, body, b["run"], b["keep"], b["exit"]))
 
     if args.variant is not None and not variant_seen:
         sys.exit(
@@ -463,7 +481,7 @@ def main():
     if args.clock_budget is not None:
         out.append(f"PROBE_CLOCK_BUDGET={args.clock_budget}")
     prev_file = None
-    for order, f, lineno, body, run, keep in steps:
+    for order, f, lineno, body, run, keep, exit_ in steps:
         out.append("")
         if args.close_between_chapters and prev_file is not None and f != prev_file:
             out.append(f"echo '=== probe: {Path(prev_file).name} ends; its terminals close ==='")
@@ -498,7 +516,10 @@ def main():
             out.append(body)
             out.append(tag)
             quoted = " ".join(shlex.quote(ln) for ln in lines)
-            out.append(f"nros_probe_run_expect {order} {run} {int(keep)} /tmp/probe-run-{order}.sh {quoted}")
+            if exit_ is not None:
+                out.append(f"nros_probe_run_exit {order} {run} {exit_} /tmp/probe-run-{order}.sh {quoted}")
+            else:
+                out.append(f"nros_probe_run_expect {order} {run} {int(keep)} /tmp/probe-run-{order}.sh {quoted}")
         if clock_on:
             out.append(f"nros_probe_clock_report {order}")
         if order in after:
@@ -619,6 +640,32 @@ def self_test() -> None:
         assert got == '[image.x]\nlocator = "tcp/10.0.2.2:7447"\nrmw = "zenoh"\n', got
         r = subprocess.run(["bash", "-c", body], cwd=d, capture_output=True, text=True)
         assert r.returncode != 0 and "occur 0 times" in r.stderr, r.stderr
+    # Issue 2933: `probe-exit` needs `probe-run`, contradicts `probe-keep`, and
+    # emits the helper that waits for the command and checks its status.
+    rc, err = extract("```bash probe=10 probe-exit=0\nnros pin\n```\n")
+    assert rc != 0 and "`probe-exit` needs `probe-run=SECS`" in err, err
+    rc, err = extract("```bash probe=10 probe-run=5 probe-keep probe-exit=0\nx\n```\n"
+                      "```text probe-expect=10\nhi\n```\n")
+    assert rc != 0 and "contradict" in err, err
+    rc, px = extract("```bash probe=10 probe-run=5 probe-exit=fail\nnros build\n```\n"
+                     "```text probe-expect=10\nError: refused\n```\n")
+    assert rc == 0 and "nros_probe_run_exit 10 5 fail " in px and "nros_probe_run_expect" not in px, px
+    # The helper itself: status and output both count.
+    helper = Path(__file__).resolve().parent / "probe-run.sh"
+    grepq = Path(__file__).resolve().parents[1] / "lib" / "grep-q.sh"
+    for cmd, want, expect, ok in (
+        ("echo done; exit 0", "0", "done", True),
+        ("echo done; exit 3", "0", "done", False),      # printed, then failed
+        ("echo 'Error: refused'; exit 1", "fail", "Error: refused", True),
+        ("echo 'Error: refused'; exit 0", "fail", "Error: refused", False),
+        ("echo other; exit 0", "0", "done", False),     # wrong output
+    ):
+        with tempfile.TemporaryDirectory() as d:
+            (Path(d) / "b.sh").write_text(cmd + "\n")
+            r = subprocess.run(["bash", "-c", f". {shlex.quote(str(grepq))}; . {shlex.quote(str(helper))}; "
+                                f"nros_probe_run_exit 99 10 {want} {shlex.quote(d + '/b.sh')} {shlex.quote(expect)}"],
+                               capture_output=True, text=True)
+            assert (r.returncode == 0) == ok, (cmd, want, r.stdout, r.stderr)
     # `…` in an expected line: the text before it must print.
     rc, ex = extract("```bash probe=10 probe-run=5\nros2 topic echo /chatter\n```\n"
                      "```text probe-expect=10\ndata: 'Hello World: …'\n```\n")
