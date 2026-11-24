@@ -79,6 +79,12 @@ use std::{
 
 use object::{File as ObjectFile, Object, ObjectSymbol, read::archive::ArchiveFile};
 
+// Issue 2840 -- the orchestration's `NROS_*` names, HARVESTED by
+// `scripts/gen-probe-orchestration-knobs.py`: assigned by a workflow, script or
+// justfile, and read by no source that reaches a probed compile.
+mod orchestration_knobs;
+use orchestration_knobs::ORCHESTRATION_KNOBS;
+
 /// Errors returned by this crate's helpers.
 #[derive(Debug)]
 pub enum Error {
@@ -1156,10 +1162,19 @@ const KNOB_PREFIXES_THAT_CANNOT_CHANGE_A_SIZE: &[(&str, &str)] = &[
 ];
 
 /// True when `name` is argued not to reach any probed size.
+///
+/// Two sources: the hand-argued rows above, and the HARVESTED orchestration
+/// names (issue 2840). The hand list was written from one 2026-08-15
+/// measurement; by 2026-11-24 about 28 orchestration names it did not know
+/// (`NROS_FIXTURE_FAILED_ROWS` per lane, `NROS_SUBMODULE_PIN_BASELINE` per base
+/// commit, `NROS_RUNNER_*` per runner) split 22 of 271 keys on the 118 runner's
+/// fixture tree. A harvest keeps up where a hand list cannot; its argument and
+/// its self-test are in the generator.
 fn knob_is_excluded(name: &str) -> bool {
     KNOBS_THAT_CANNOT_CHANGE_A_SIZE
         .iter()
         .any(|(n, _)| *n == name)
+        || ORCHESTRATION_KNOBS.contains(&name)
         || KNOB_PREFIXES_THAT_CANNOT_CHANGE_A_SIZE
             .iter()
             .any(|(p, _)| name.starts_with(p))
@@ -2471,6 +2486,81 @@ mod tests {
                  CONTENT carries sizing knobs — that is issue 0528 by a new route"
             );
         }
+    }
+
+    /// The harvested orchestration names (issue 2840) never take a name the
+    /// probe must key on: a protected file-pointer or a content-keyed knob.
+    /// (That no registry knob is harvested is the generator's own self-test:
+    /// the registry's env names are derived, so only its reader can list them.)
+    #[test]
+    fn harvested_orchestration_names_never_include_a_sizing_input() {
+        const PROTECTED: &[&str] = &[
+            "NROS_BOARD_TOML",
+            "NROS_PLATFORMS_DIR",
+            "NROS_MODEL_DIR",
+            "NROS_HOME",
+        ];
+        for name in ORCHESTRATION_KNOBS {
+            assert!(name.starts_with("NROS_"), "{name} is not an NROS_* name");
+            assert!(!PROTECTED.contains(name), "{name} is protected");
+            assert!(
+                !KNOBS_KEYED_BY_CONTENT.contains(name),
+                "{name} is keyed by content"
+            );
+        }
+    }
+
+    /// The names the 2026-11-24 census caught splitting the key per lane, per
+    /// base commit and per runner (issue 2840) no longer split it.
+    #[test]
+    fn lane_and_runner_orchestration_does_not_split_the_probe_key() {
+        let _g = env_lock();
+        let prior = clear_knob_env();
+        let key = || probe_key("x86_64-unknown-linux-gnu", &["rmw-cffi".into()]);
+        // `restore_knob_env` sets the environment's NROS_* names to exactly
+        // the given set, so the test adds no unsafe site of its own.
+        let only = |pairs: &[(&str, &str)]| {
+            restore_knob_env(
+                pairs
+                    .iter()
+                    .map(|(k, v)| ((*k).to_string(), (*v).to_string()))
+                    .collect(),
+            )
+        };
+
+        let baseline = key();
+        only(&[
+            (
+                "NROS_FIXTURE_FAILED_ROWS",
+                "/runner/_temp/failed-rows-tier2-nightly.tsv",
+            ),
+            (
+                "NROS_FIXTURE_COORDS",
+                "/w/target/nextest/lane-coords-tier2-nightly.txt",
+            ),
+            (
+                "NROS_SUBMODULE_PIN_BASELINE",
+                "3be75ab40a081255f69848346368ba2a9f124f21",
+            ),
+            ("NROS_RUNNER_HOST", "118"),
+            ("NROS_RUNNER_LABELS", "nros-qemu,nros-heavy,nros-host-118"),
+            ("NROS_LANE_INCLUDED", "linux"),
+            ("NROS_CENSUS_PREPASS", "done"),
+        ]);
+        let with_orchestration = key();
+        // Negative control: a registry sizing knob still splits it.
+        only(&[("NROS_EXECUTOR_MAX_CBS", "16")]);
+        let with_sizing = key();
+        restore_knob_env(prior);
+
+        assert_eq!(
+            baseline, with_orchestration,
+            "a lane, runner or base-commit name split the probe key"
+        );
+        assert_ne!(
+            baseline, with_sizing,
+            "NROS_EXECUTOR_MAX_CBS did not key the probe"
+        );
     }
 
     /// The knobs the 2026-08-15 census caught splitting the key run-to-run.
