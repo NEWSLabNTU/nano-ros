@@ -710,8 +710,9 @@ pub(crate) fn recorded_env_to_restore_with(
     }
     let Some(stamp) = keys.iter().find_map(|k| configure_stamp::read(project, k)) else {
         // Ruling R44: only a C1 with a message package to generate needs
-        // ament; a project with none configures on any host.
-        if !ament_set && ws::has_messages_to_generate(project, search) {
+        // ament; a project with none configures on any host. Issue 2850: nor
+        // does one whose messages the bundled core interfaces supply.
+        if !ament_set && ws::needs_ament_for_messages(project, search) {
             // RFC-0120 D2: no record → refuse. Issue 2279: the remedy is a
             // command to retype, the one the reader ran.
             use crate::diag::{Diag, DiagExt};
@@ -1131,8 +1132,11 @@ mod tests {
         let p = crate::test_support::scratch_dir("configure-no-ament");
         let _ = std::fs::remove_dir_all(&p);
         std::fs::create_dir_all(&p).unwrap();
-        // A package with a message dependency: C1 has messages to generate.
+        // An interface package: C1 has messages to generate that the bundled
+        // core interfaces do not supply.
         std::fs::write(p.join("package.xml"), package_xml("talker", &["std_msgs"])).unwrap();
+        std::fs::create_dir_all(p.join("msg")).unwrap();
+        std::fs::write(p.join("msg/Reading.msg"), "int32 value\n").unwrap();
         for verb in ["run", "build", "configure"] {
             let err = recorded_env_to_restore_for(&p, &["linux"], false, true, verb)
                 .expect_err("no record and no AMENT_PREFIX_PATH must refuse");
@@ -1184,6 +1188,27 @@ mod tests {
         assert!(
             recorded_env_to_restore(&p, &["linux"], false, true)
                 .expect("no message to generate, so nothing needs ament")
+                .is_empty()
+        );
+    }
+
+    /// Issue 2850 -- a dependency the bundled core interfaces satisfy is
+    /// generated from them, never from ament: a talker on `std_msgs` alone
+    /// configures with no `AMENT_PREFIX_PATH` and no record, which is a cross
+    /// build on a host with no ROS 2.
+    #[test]
+    fn a_project_on_core_messages_alone_configures_without_ament() {
+        let p = crate::test_support::scratch_dir("configure-core-msgs");
+        let _ = std::fs::remove_dir_all(&p);
+        std::fs::create_dir_all(&p).unwrap();
+        std::fs::write(
+            p.join("package.xml"),
+            package_xml("talker", &["std_msgs", "builtin_interfaces", "rclrs"]),
+        )
+        .unwrap();
+        assert!(
+            recorded_env_to_restore(&p, &["linux"], false, true)
+                .expect("core messages need no ament")
                 .is_empty()
         );
     }
