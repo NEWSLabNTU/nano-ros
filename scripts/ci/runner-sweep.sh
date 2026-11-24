@@ -558,6 +558,35 @@ _newest_mtime() {
     return 0
 }
 
+# One walk over an area's members, answering three questions the sweep used
+# to ask with three walks (issue 2661's `du`, then `_newest_mtime` per unit,
+# then `_du_bytes` per evicted unit): 15.6 + 14.9 + most of 19.6 min on 241
+# (run 44030238880, 598 GiB of fixtures).
+#
+#   _scan_area <member>...
+#
+# Fields are separated by `\x1f` (never in a path we build). Prints `T <bytes>` -- the area's total with every inode counted ONCE
+# across all members, what `du -scx` over them reports (issue 2661) -- then one
+# `U <bytes> <newest> <member>` per member: the member's own bytes
+# (each inode once within it, what `du -sx <member>` reports, so evicting it
+# frees AT MOST that much) and the newest mtime of any regular file inside it
+# (`_newest_mtime`'s answer, issue 1094), empty when it holds none. `-xdev`
+# matches du's `-x`; `%b` is st_blocks in 512-byte units, which is what du
+# sums. Members are find's starting points, so `%H` attributes every entry.
+_scan_area() {
+    [ "$#" -gt 0 ] || { printf 'T\0370\n'; return 0; }
+    find "$@" -xdev -printf '%H\t%D:%i\t%b\t%y\t%T@\n' 2>/dev/null | awk -F'\t' '
+        { b = $3 * 512
+          if (!($2 in seen)) { seen[$2] = 1; tot += b }
+          k = $1 SUBSEP $2
+          if (!(k in useen)) { useen[k] = 1; ub[$1] += b }
+          if (!($1 in ub)) ub[$1] = 0
+          if ($4 == "f") { t = int($5); if (!($1 in nm) || t > nm[$1]) nm[$1] = t } }
+        END { printf "T\037%.0f\n", tot
+              for (m in ub) printf "U\037%.0f\037%s\037%s\n", ub[m], ((m in nm) ? nm[m] : ""), m }' || true
+    return 0
+}
+
 # Evict entries from an area, least-recently-WRITTEN first, until it fits its
 # budget. "Recently written" means the newest file anywhere inside the entry —
 # see `_newest_mtime` above for why the entry's own mtime cannot answer.
@@ -593,8 +622,20 @@ _evict() {
             [ -e "$child" ] && members+=("$child")
         done
     done
-    local total
-    total="$(_du_total ${members[@]+"${members[@]}"})"
+    # One walk for the total, every unit's size and every unit's age.
+    local total=0 scan kind ub newest member
+    local -A unit_bytes=() unit_newest=()
+    scan="$(_scan_area ${members[@]+"${members[@]}"})"
+    # `\x1f`, not a tab: a tab is IFS WHITESPACE, so an empty `newest` (a unit
+    # holding no regular file) would collapse and shift the path into it.
+    while IFS=$'\x1f' read -r kind ub newest member; do
+        case "$kind" in
+            T) total="$ub" ;;
+            U) unit_bytes["$member"]="$ub"
+               unit_newest["$member"]="$newest" ;;
+        esac
+    done <<< "$scan"
+    case "${total:-}" in ''|*[!0-9]*) total=0 ;; esac
     if [ "$total" -eq 0 ]; then
         _say "  $area: nothing on disk"
         return 0
@@ -615,6 +656,12 @@ _evict() {
     dirty=1
     _say "  $area: OVER BUDGET by $(_human $((total - budget))) — evicting least-recently-modified entries"
 
+    # A unit's age from the scan above; a unit it did not see (or that holds
+    # no regular file) falls back to `_newest_mtime`'s own rule.
+    _unit_age() {
+        local n="${unit_newest[$1]:-}"
+        if [ -n "$n" ]; then printf '%s' "$n"; else _newest_mtime "$1"; fi
+    }
     # `<mtime>\t<path>` for every eviction unit, oldest first. Built with globs
     # rather than `find`: one level, no walk, and nothing here is a file git
     # tracks (issue 0844's rule is about tracked files; these are build output
@@ -622,7 +669,7 @@ _evict() {
     local listing=""
     for child in ${units[@]+"${units[@]}"}; do
         [ -d "$child" ] || continue
-        listing="${listing}$(_newest_mtime "$child")"$'\t'"$child"$'\n'
+        listing="${listing}$(_unit_age "$child")"$'\t'"$child"$'\n'
     done
     for d in ${dirs[@]+"${dirs[@]}"}; do
         [ -d "$d" ] || continue
@@ -633,7 +680,7 @@ _evict() {
                     $pinned) _say "      pinned, never evicted: $child"; continue ;;
                 esac
             fi
-            listing="${listing}$(_newest_mtime "$child")"$'\t'"$child"$'\n'
+            listing="${listing}$(_unit_age "$child")"$'\t'"$child"$'\n'
         done
     done
 
@@ -647,12 +694,34 @@ _evict() {
     # members not yet evicted. For a real sweep that is the area re-read, as
     # the evicted units are gone. For --check it is what WOULD remain, since a
     # file still linked from a kept member is not freed by evicting another.
+    #
+    # WHEN to re-read is the running sum's job, though: re-reading after EVERY
+    # eviction made the loop O(evictions x area) — 340 evictions took 55 min
+    # on 118 (job 137168454199), the step's whole cost. `estimate` is the last
+    # measurement minus each unit's own `du` since. A unit's `du` counts every
+    # block it holds, so evicting it frees AT MOST that much and the estimate
+    # never exceeds the true remainder. So whenever the true remainder is
+    # under budget the estimate is too, and the re-read happens on that very
+    # eviction: the loop stops at exactly the unit the per-eviction re-read
+    # stopped at, and the stop is still decided by a measurement. Re-reads
+    # fall from one per eviction to one per time the estimate crosses the
+    # budget, plus one at the end.
     local -A gone=()
-    local mtime path remaining="$total" m
+    local mtime path remaining="$total" estimate="$total" unmeasured=0 m
+    _remeasure_kept() {
+        local kept=()
+        for m in "${members[@]}"; do
+            [ -n "${gone[$m]:-}" ] || kept+=("$m")
+        done
+        remaining="$(_du_total ${kept[@]+"${kept[@]}"})"
+        estimate="$remaining"
+        unmeasured=0
+    }
     while IFS=$'\t' read -r mtime path; do
         [ -n "${path:-}" ] || continue
         [ "$remaining" -le "$budget" ] && break
-        sz="$(_du_bytes "$path")"
+        sz="${unit_bytes[$path]:-}"
+        [ -n "$sz" ] || sz="$(_du_bytes "$path")"
         if [ "$CHECK" -eq 1 ]; then
             _would "rm -rf $path  ($(_human "$sz"), mtime $(date -d "@$mtime" -u +%Y-%m-%d 2>/dev/null || echo "$mtime"))"
         else
@@ -660,12 +729,17 @@ _evict() {
             rm -rf "$path"
         fi
         gone["$path"]=1
-        local kept=()
-        for m in "${members[@]}"; do
-            [ -n "${gone[$m]:-}" ] || kept+=("$m")
-        done
-        remaining="$(_du_total ${kept[@]+"${kept[@]}"})"
+        unmeasured=1
+        estimate=$((estimate - sz))
+        if [ "$estimate" -le "$budget" ]; then
+            _remeasure_kept
+        fi
     done <<< "$sorted"
+    # The list ran out while the estimate still read over budget: the report
+    # and the warning below still take a measured remainder.
+    if [ "$unmeasured" -eq 1 ]; then
+        _remeasure_kept
+    fi
 
     local freed=$((total - remaining))
     [ "$freed" -ge 0 ] || freed=0
