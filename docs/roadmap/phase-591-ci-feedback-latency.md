@@ -122,7 +122,30 @@ Acceptance: each shard under 80 min on a scheduled run.
 
 ### W7 -- local gate capacity (owners: nros 133 disk, nros 241 diagnosis)
 
-- **Status:** OPEN
+- **Status:** OPEN -- 241 diagnosed 2026-11-24; fix chosen, its effect not yet measured.
+
+  Measured on 241. Nine full gates on 2026-11-24 took 3,460-5,026 s; 243's
+  #4771 took 1,506 s. The causes, largest first:
+  1. CPU oversubscription. During two 241 gates the host had p50 75-95 runnable
+     threads (p90 104-128) on 24 hardware threads, against p50 21 on 32 for
+     243. `/proc/pressure/cpu` read "some" 82 %. The co-tenants are long-running
+     research jobs (IsaacLab benchmarks, scenario searches) and two other users.
+  2. Cold builds. Each 241 gate ran in a worktree whose build output was
+     cleaned after the previous gate, while 243 gates in one long-lived worktree.
+     The compile-heavy gates show the gap: `cli-tests` took 920-1,518 s on 241
+     against under 83 s on 243, `built-feature-sets-clippy` 1,052-1,547 s
+     against under 83 s, and `node-std-tests` 397-602 s against 120 s.
+  3. Width. 241 has a 24-thread pool (Core Ultra 7 270K) and 243 a 32-thread
+     one (Ryzen 9 9950X).
+  4. I/O, smaller. `~/.cargo`, `~/.rustup` and `~/.nros` sit on a rotational
+     disk on 241 (`/proc/pressure/io` "some" 44-50 %). Worktrees and the sccache
+     directory are on NVMe, and the sccache directory is not a bottleneck.
+
+  User ruling 2026-11-24: fix cause 2 only. 241's gates run in one long-lived
+  warm worktree (`/mnt/evo/aeon/nros-gate-wt/g-warm`, driven by the manager's
+  gate chain, one PR at a time), with ignored build output kept. Co-tenant jobs
+  are not re-prioritised and `~/.cargo` does not move. The first warm gates,
+  compared against the cold range above, are the measurement.
 
 User ruling 2026-11-24: 241's no-gate window shrinks to 04:30-08:00 UTC (no full gate STARTS
 then), and host 133's disk is to be freed for gates. Remaining: 133 back above 150 GB (its own
