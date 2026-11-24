@@ -73,6 +73,7 @@ dev runner
 dev sdk
 dev shared-build-dir-check
 dev ws
+dev zephyr-toolchain
 reserved bench
 reserved debug
 reserved dev
