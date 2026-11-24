@@ -64,3 +64,15 @@ it.
   `tcp/127.0.0.1:<port>`, as `zephyr/.config` and the guest's boot line show.
 - The gate refuses a slirp address on a native_sim image, with a negative
   control.
+
+## Progress (2026-11-24)
+
+- The seven images now state `tcp/127.0.0.1:<port>`, on the same ports.
+- `check-image-locator-bake` rule 6 refuses a `10.0.2.2` locator on any tracked
+  image whose board's `[board.zephyr] west_board` is native_sim. Before the
+  edit it refused exactly these seven; after it, none.
+- Left for acceptance: one of the seven built with `nros build` and no
+  fixture define bakes `tcp/127.0.0.1:<port>` (its `zephyr/.config` and the
+  guest's boot line). That build needs a host with the Zephyr SDK.
+- Not done: the converse, refusing `127.0.0.1` on a QEMU user-mode board.
+  The rule would need the set of QEMU boards, which no descriptor states yet.

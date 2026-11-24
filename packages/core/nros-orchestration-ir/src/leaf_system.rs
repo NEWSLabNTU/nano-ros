@@ -1955,7 +1955,7 @@ locator = "tcp/10.0.2.2:9830"
 [image.zephyr]
 board = "zephyr"
 entry = "zephyr_entry"
-locator = "tcp/10.0.2.2:7430"
+locator = "tcp/127.0.0.1:7430"
 
 [image.zephyr_robot1]
 board = "zephyr"
@@ -2083,7 +2083,7 @@ domain_id = 4
         let (_d, bringup, e) = workspace("zephyr_entry", CARGO);
         let l = for_entry(&e, "zephyr_entry", &bringup).unwrap().unwrap();
         assert_eq!(l.image.as_deref(), Some("zephyr"));
-        assert_eq!(l.network.locator.as_deref(), Some("tcp/10.0.2.2:7430"));
+        assert_eq!(l.network.locator.as_deref(), Some("tcp/127.0.0.1:7430"));
     }
 
     #[test]
