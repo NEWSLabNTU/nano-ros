@@ -738,6 +738,15 @@ dds-isolation-symmetry:
 fixture-row-keep-going:
     @bash scripts/check-fixture-row-keep-going.sh
 
+# phase-591 W3 — the fixture-shard hand-off (`scripts/ci/fixture-shards.sh`):
+# a shard selection is a partition, a packed fixture keeps its exec bit, a
+# shard built at another commit is REFUSED (the museum-binary case: the
+# freshness probes are mtime-based), a missing shard fails after the others
+# unpack, and pinned source mtimes stay older than what was built. Buildless.
+[private]
+fixture-shards:
+    @bash scripts/ci/fixture-shards.sh self-test
+
 # issue 1650 (phase-477 W2) — every example root is BUILT by some fixture row,
 # or records why not. Keyed on the census's SHAPE (examples/<plat>/<lang>/<name>,
 # examples/workspaces/<ws>, examples/templates/<t>), never on a path list; the

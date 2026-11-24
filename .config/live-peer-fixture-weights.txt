@@ -1,0 +1,115 @@
+# Measured wall time (ms) of each live-peer host fixture unit -- the time
+# between the fixture step's `=== ... ===` markers in scheduled run
+# 45324656188 (2026-11-24, main 11a82cf908, hosted ubuntu-22.04), phase-591 W3.
+#
+# Read by scripts/ci/fixture-shards.sh select (scripts/build/gate-shard.py) to
+# BALANCE live-peer's host fixture shards. It never decides coverage: every
+# unit lands in exactly one shard whatever this file says, a unit missing here
+# gets the median weight, and a stale row is ignored. Refresh it from a run's
+# `unit-time: <unit> <N>s` lines (scripts/ci/live-peer-host-fixtures.sh) when
+# the shards drift apart.
+cc:shadowing                                                             1061837
+fb:linux,cpp,zenoh                                                       318624
+fb:linux,rust,zenoh                                                      244042
+fb:linux,c,zenoh                                                         243749
+cc:cpp_robot_entry                                                       141849
+ws:workspace-graph-query-parity                                          112384
+ws:workspace-cpp-native-service-server                                   76315
+ws:workspace-cpp-native-action-client-cyclonedds                         75809
+ws:workspace-c-native-service-server                                     75522
+ws:workspace-cpp-native-listener                                         75507
+ws:workspace-cpp-native-service-server-cyclonedds                        75159
+ws:workspace-cpp-native-service-client-callback-cyclonedds               75143
+ws:workspace-cpp-native-action-server-cyclonedds                         75114
+ws:workspace-cpp-native-service-client                                   75066
+ws:workspace-cpp-native-action-client                                    75056
+ws:workspace-cpp-native-action-server                                    74818
+ws:workspace-c-native-action-server                                      74207
+ws:workspace-c-native-service-client                                     74108
+ws:workspace-c-native-action-server-cyclonedds                           74062
+ws:workspace-cpp-native-talker                                           73950
+ws:workspace-cpp-native-talker-cyclonedds                                73943
+ws:workspace-c-native-listener                                           73774
+ws:workspace-c-native-action-client-cyclonedds                           73755
+ws:workspace-c-native-action-client                                      73645
+ws:workspace-c-native-service-client-callback-cyclonedds                 73559
+ws:workspace-cpp-native-listener-cyclonedds                              73336
+ws:workspace-c-native-service-server-cyclonedds                          72548
+ws:workspace-c-native-talker-clock-board                                 72416
+ws:workspace-c-native-talker                                             72068
+ws:workspace-c-native-listener-cyclonedds                                71954
+ws:workspace-c-native-talker-cyclonedds                                  70799
+ws:linux-c-zenoh-custom-transport-loopback                               67648
+ws:c-parameters                                                          66834
+ws:c-parameters-cyclonedds                                               61594
+ws:workspace-cpp-native-service-client-callback                          59202
+ws:workspace-c-native-service-client-callback                            58754
+ws:workspace-cpp-native-action-client-callback                           58288
+ws:workspace-cpp-native-service-client-cyclonedds                        58015
+ws:workspace-rust-native-xrce                                            57579
+ws:workspace-cpp-native-talker-clock-board                               57471
+ws:workspace-c-native-service-client-cyclonedds                          56590
+fb:linux,rust,cyclonedds                                                 56510
+ws:workspace-rust-native-bridge                                          53511
+ws:linux-rust-cyclonedds-graph-probe                                     51657
+ws:linux-rust-cyclonedds-talker                                          51011
+ws:workspace-features-rust-qos                                           50176
+ws:workspace-features-rust-params                                        49082
+ws:linux-cpp-zenoh-service-client                                        49038
+ws:int32-sink-cyclonedds                                                 49022
+ws:linux-c-zenoh-custom-platform                                         48580
+ws:workspace-rust-native-talker-cyclonedds                               47454
+ws:workspace-rust-native-service-client-cyclonedds                       47302
+ws:workspace-rust-native-listener-cyclonedds                             47239
+ws:workspace-rust-native-cyclonedds                                      46904
+ws:workspace-rust-native-talker-cyclonedds-clock-board                   46684
+ws:workspace-rust-native-service-server-cyclonedds                       46456
+ws:workspace-rust-native-action-server-cyclonedds                        46241
+ws:param-two-node-talker-cyclone                                         46011
+ws:workspace-rust-native-action-client-cyclonedds                        45313
+ws:linux-c-zenoh-talker                                                  45212
+ws:cpp-parameters                                                        44698
+ws:workspace-rust-native-talker-clock-board                              44406
+ws:workspace-rust-native-service-client                                  43270
+ws:workspace-rust-native-listener-peer-mode                              43062
+ws:workspace-rust-native-listener                                        42939
+ws:workspace-rust-native-talker                                          42708
+ws:linux-rust-zenoh-listener-tls                                         42502
+ws:workspace-rust-native-action-server                                   42391
+ws:linux-c-cyclonedds-talker                                             42185
+ws:workspace-rust-native-service-server                                  42148
+ws:workspace-rust-native-bridge-xrce                                     42069
+ws:workspace-rust-native                                                 41936
+ws:action-server-concurrent-zenoh                                        41745
+ws:linux-rust-zenoh-talker-peer                                          41500
+ws:constrained-link-probe-no-graph-zenoh                                 41413
+ws:linux-rust-zenoh-entry-poc                                            41348
+ws:constrained-link-probe-zenoh                                          41167
+ws:workspace-features-rust-params-xrce                                   41134
+ws:linux-rust-zenoh-talker-tls                                           41080
+ws:linux-rust-zenoh-listener                                             40600
+ws:workspace-rust-native-action-client                                   40491
+ws:int32-sink-zenoh                                                      40385
+ws:linux-rust-zenoh-graph-probe                                          40265
+ws:service-info-client-zenoh                                             39911
+ws:native-rust-talker                                                    39515
+ws:param-two-node-talker-short-liveliness                                39069
+ws:rosout-talker                                                         38932
+ws:param-two-node-talker                                                 38900
+ws:action-server-concurrent-xrce                                         38720
+ws:linux-rust-xrce-talker                                                37553
+fb:linux,rust,xrce                                                       36348
+ws:linux-c-xrce-talker                                                   35700
+ws:linux-rust-zenoh-lifecycle-node                                       35388
+ws:int32-sink-xrce                                                       35203
+ws:graph-probe-xrce                                                      34828
+ws:workspace-rust-native-service-client-xrce                             34746
+ws:workspace-rust-native-listener-xrce                                   34229
+ws:service-info-server-xrce                                              34017
+ws:workspace-rust-native-talker-xrce-clock-board                         33619
+ws:workspace-rust-native-talker-xrce                                     33588
+ws:workspace-rust-native-service-server-xrce                             33478
+ws:workspace-rust-native-action-server-xrce                              33347
+ws:workspace-rust-native-action-client-xrce                              31759
+cc:cyclone_slirp_guest                                                   21391
+ws:linux-rust-zenoh-logging                                              10048

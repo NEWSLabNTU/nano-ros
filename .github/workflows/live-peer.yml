@@ -122,8 +122,114 @@ jobs:
               printf 'ci_narrowing=%s\n' "$ci_narrowing"
           } >> "$GITHUB_OUTPUT"
 
+  # phase-591 W3 -- the host fixture rows, built on FOUR hosted runners at
+  # once. The rows are independent and mostly build configurations no other
+  # row builds (issue 0616), so a cache cannot share them (sccache measured
+  # slower, #4750) but runners can: the single job's fixture step took
+  # 116.6 min (run 45324656188), and `.config/live-peer-fixture-weights.txt`
+  # splits it into four shards of about 30 min each. Each shard packs what the
+  # cells read and uploads it; `regression` below downloads every shard and
+  # runs the cells, with no build step of its own. The mechanism
+  # (`scripts/ci/fixture-shards.sh`: select, pack, unpack, pin-mtimes) is the
+  # one nightly's platform jobs adopt next (phase-591 W5).
+  regression-build:
+    name: rows whose board IS this runner (build ${{ matrix.shard }}/4)
+    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    timeout-minutes: 150
+    container:
+      image: ghcr.io/newslabntu/nano-ros-ci:humble
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+      # The same reclaimable host trees `regression` mounts, for its reason.
+      volumes:
+        - /usr/local/lib/android:/__host-reclaim/android
+        - /usr/share/dotnet:/__host-reclaim/dotnet
+        - /usr/local/.ghcup:/__host-reclaim/ghcup
+        - /opt/ghc:/__host-reclaim/ghc
+        - /usr/share/swift:/__host-reclaim/swift
+        - /usr/local/share/powershell:/__host-reclaim/powershell
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build the nros CLI
+        uses: ./.github/actions/setup-nros-cli
+
+      - name: Reclaim disk before the fixtures
+        run: scripts/ci/reclaim-disk.sh "before the fixture build"
+
+      - name: Check out the submodules the fixtures vendor
+        run: |
+          git submodule update --init --recursive \
+              third-party/dds/cyclonedds \
+              packages/rmw/xrce/xrce-sys/micro-xrce-dds-client \
+              packages/rmw/xrce/xrce-sys/micro-cdr \
+              packages/rmw/zenoh/zpico-sys/zenoh-pico \
+              packages/rmw/zenoh/zpico-sys/mbedtls
+
+      # Every tracked source to the commit's time, here AND in the cells job,
+      # so the artifacts this shard builds stay newer than their sources when
+      # the cells job's own checkout is compared against them.
+      - name: Pin the sources' mtimes to the commit
+        run: scripts/ci/fixture-shards.sh pin-mtimes
+
+      - name: Provision the declared system closure (phase-413 W3)
+        run: |
+          source ./activate.sh
+          nros setup --system --sudo
+
+      # The same setup the single job ran before its fixtures: `just setup
+      # xrce` is the dispatcher, so it also runs `_setup-common`, which
+      # provisions the pinned Corrosion every cmake row configures against.
+      # Without it every shard died at its first C/C++ row (proof dispatch
+      # 45358237792: "the pinned Corrosion is not in the SDK store").
+      - name: Set up what the fixture rows build against (just setup xrce)
+        run: |
+          source ./activate.sh
+          if [ -z "${AMENT_PREFIX_PATH:-}" ]; then
+              echo "no sourced ROS (AMENT_PREFIX_PATH is empty) -- refusing (issue 0741)" >&2
+              exit 1
+          fi
+          just setup xrce
+
+      - name: Build this shard's fixture rows
+        run: |
+          source ./activate.sh
+          bash scripts/ci/live-peer-host-fixtures.sh build "${{ matrix.shard }}/4"
+
+      - name: Pack what the cells read
+        if: ${{ !cancelled() }}
+        run: |
+          source ./activate.sh
+          bash scripts/ci/live-peer-host-fixtures.sh paths > "$RUNNER_TEMP/paths"
+          bash scripts/ci/fixture-shards.sh pack \
+              "$RUNNER_TEMP/live-peer-host-fixtures-${{ matrix.shard }}.tar.zst" \
+              "${{ matrix.shard }}/4" "$RUNNER_TEMP/paths"
+
+      - name: Upload this shard's fixtures
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: live-peer-host-fixtures-${{ matrix.shard }}
+          path: ${{ runner.temp }}/live-peer-host-fixtures-${{ matrix.shard }}.tar.zst
+          if-no-files-found: ignore
+          retention-days: 1
+          compression-level: 0
+
   regression:
     name: rows whose board IS this runner
+    # phase-591 W3 -- the cells, over the fixtures the four `regression-build`
+    # shards built. `!cancelled()`: a failed shard does not stop the others'
+    # cells; its own rows' cells fail as missing fixtures (W1's rule).
+    needs: [regression-build]
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-22.04
     # Capped at 350: GitHub ends a hosted job at 360, and a timeout must sit
     # below it to bind. The old "longest green 177.7 min, twice is 356" basis
@@ -132,7 +238,7 @@ jobs:
     # builds on a 4-vCPU hosted runner whose speed varies 1.5-2x day to day
     # (B16). Run 45148744207 reached the cap inside the fixture step. The
     # lever is the build count, never this number.
-    timeout-minutes: 350
+    timeout-minutes: 120
     # The distro comes from the image, which is why grepping this file for
     # `ros-humble` finds nothing (that reading cost issue 1127 a wrong revision).
     container:
@@ -266,6 +372,13 @@ jobs:
       # skipped membership a verdict, so the absence has to be supplied rather
       # than absorbed — and this is the sanctioned spelling for it, installing
       # what `nros-sdk-index.toml` declares instead of restating it here.
+      # Every tracked source to the commit's time, as the shards did, so the
+      # unpacked fixtures (which keep their build mtimes) read FRESH against
+      # this checkout rather than all STALE.
+      - name: Pin the sources' mtimes to the commit
+        id: pin
+        run: scripts/ci/fixture-shards.sh pin-mtimes
+
       - name: Provision the declared system closure (phase-413 W3)
         id: system
         run: |
@@ -293,6 +406,14 @@ jobs:
           # `_setup-common` (check-workflow-setup-spelling).
           just setup xrce
 
+      - name: Download the shards' fixtures
+        id: download
+        uses: actions/download-artifact@v4
+        with:
+          pattern: live-peer-host-fixtures-*
+          path: ${{ runner.temp }}/fixture-shards
+          merge-multiple: true
+
       # NOT "the fixtures those CELLS resolve", which is what this said until
       # 2026-09-09. `lane-stage.py` classifies a step by keyword, `cells` is the
       # marker for the runtime stage, and the classifier takes the most specific
@@ -300,105 +421,16 @@ jobs:
       # "the cells ran and failed", i.e. as a live-peer regression. Run
       # 34186427723 is exactly that failure. The self-test pins the old spelling
       # as a misclassification so the rename cannot be undone by accident.
+      # Refuses a shard built at another commit; names a shard that did not
+      # arrive AFTER unpacking the rest, so the other rows' cells still run.
       - name: Build the fixtures those rows resolve
         id: fixtures
+        if: ${{ !cancelled() }}
         run: |
           source ./activate.sh
-          # Order is load-bearing: the CLI first (above), then anything that runs
-          # `nros sync` — it rewrites `generated/` and re-stales every row
-          # fixture built before it — then the rows. Building rows first cost a
-          # whole box batch on 2026-09-06.
-          # The WORKSPACE rows the host cells resolve, not all of them. This
-          # was `just linux build-workspace-fixtures` — every native workspace
-          # row, 121 of them — for a membership that reaches 8, and it filled
-          # the runner's disk with 111 G free after the reclaim (run
-          # 37883358718). DERIVED from the cells' tests, directly or through
-          # the nros-tests helper they call
-          # (`check-interop-verdicts.py --host-workspace-fixtures`).
-          # Issue 1846 — free space after every build, so a disk-full run says
-          # which build ate it instead of only where it finally died.
-          avail() { echo "  disk: $(df -h --output=avail / | tail -n 1 | tr -d ' ') free"; }
-          free_gb() { df -BG --output=avail / | tail -n 1 | tr -dc '0-9'; }
-          # Issue 2130 — the builds below took 106 G free under 49 G and the
-          # job died of disk during the cells. After each build, release the
-          # COMPILE intermediates it left (crate libraries, objects, rustc's
-          # incremental cache) and keep every binary and dep-info file the
-          # cells and their freshness probes read. Roots are `build/` and the
-          # ignored build dirs under `examples/`, asked of git rather than
-          # walked. Never `target/`: the cell step compiles the test binaries
-          # there, and a released rlib would be rebuilt.
-          release() {
-              # shellcheck disable=SC2046  # one dir per word, no spaces in them
-              scripts/ci/release-fixture-intermediates.sh build \
-                  $(git ls-files -o -i --exclude-standard --directory -- examples \
-                      | grep -E '/(build|target)[^/]*/$')
-          }
-          avail
-          if ! wss="$(python3 scripts/check-interop-verdicts.py --list-passing --runner host --host-workspace-fixtures)"; then
-              echo "::error::could not derive the host cells' workspace fixtures"
-              exit 1
-          fi
-          echo "host workspace fixtures (derived from the cells' tests):"
-          printf '  %s\n' "$wss"
-          if [ -n "$wss" ]; then
-              just _codegen
-              while IFS= read -r id; do
-                  [ -n "$id" ] || continue
-                  echo "=== workspace-fixtures-build.sh linux --id $id ==="
-                  bash scripts/build/workspace-fixtures-build.sh linux --id "$id"
-                  avail
-                  # Issue 2469 — and mid-loop when free space runs low. Since
-                  # phase-531/535 made the Linux examples one-package
-                  # workspaces the set grew (141 rows on 2026-11-23, until B16
-                  # derived the migrated leaves by name: 97), each 2-3 G
-                  # after a 28 G cold first one, and run 43153068357's runner
-                  # died of disk at 7 G free with the loop unfinished. A release
-                  # costs only a rebuild of the libraries a later row of the
-                  # SAME workspace shares, so it runs when it is needed rather
-                  # than after every row.
-                  if [ "$(free_gb)" -lt 30 ]; then
-                      echo "  under 30G free: releasing compile intermediates before the next row"
-                      release
-                      avail
-                  fi
-              done <<< "$wss"
-              # And once after every row, before the builds below and the cells.
-              release
-              avail
-          fi
-          # DERIVED, not written: one `fixtures-build.sh linux <lang> <rmw>` per
-          # pair the host cells with a recorded PASS run on. The two builds this
-          # step used to name by hand never included C Cyclone or Rust XRCE, so
-          # those cells skipped for fixtures nothing built (run 34497290149).
-          builds="$(python3 scripts/check-interop-verdicts.py --list-passing --runner host --host-builds)"
-          echo "host fixture builds (derived from the ledger):"
-          printf '  %s\n' "$builds"
-          while IFS= read -r b; do
-              [ -n "$b" ] || continue
-              echo "=== fixtures-build.sh $b ==="
-              # `$b` is `linux <lang> <rmw>`: unquoted on purpose, three args.
-              bash scripts/build/fixtures-build.sh $b
-              release
-              avail
-          done <<< "$builds"
-          # The `[[compile_check_fixture]]` rows the host cells' tests resolve,
-          # which no `fixtures-build.sh <triple>` builds: `cpp_multi_node_entry`
-          # consumes the `cpp_robot_entry` cmake template, and run 37413064249
-          # reported its cell as a regression for a fixture nothing here built.
-          # DERIVED from the test sources, like the triples above.
-          if ! ccs="$(python3 scripts/check-interop-verdicts.py --list-passing --runner host --host-compile-checks)"; then
-              echo "::error::could not derive the host cells' compile-check fixtures"
-              exit 1
-          fi
-          echo "host compile-check fixtures (derived from the cells' tests):"
-          printf '  %s\n' "$ccs"
-          while IFS= read -r id; do
-              [ -n "$id" ] || continue
-              echo "=== compile-check-fixtures.sh (NROS_FIXTURE_ID=$id) ==="
-              NROS_FIXTURE_ID="$id" bash scripts/build/compile-check-fixtures.sh
-              release
-              avail
-          done <<< "$ccs"
+          ls -la "$RUNNER_TEMP/fixture-shards" || true
+          bash scripts/ci/fixture-shards.sh unpack 4 "$RUNNER_TEMP"/fixture-shards/*.tar.zst
+
 
       # `host`, not everything — phase-441 W4. A board cell's image is built by
       # an SDK this container does not carry, so running one here resolves no
@@ -412,6 +444,7 @@ jobs:
       # cells produced RESULTS. 2 is the recipe's "this lane could not run".
       - name: Run the cells with a recorded PASS
         id: cells
+        if: ${{ !cancelled() && steps.fixtures.outcome != 'skipped' }}
         run: |
           source ./activate.sh
           set +e
@@ -473,7 +506,7 @@ jobs:
              {"name": "Check out the submodules the fixtures vendor", "conclusion": "${{ steps.submodules.outcome }}"},
              {"name": "Provision the declared system closure (phase-413 W3)", "conclusion": "${{ steps.system.outcome }}"},
              {"name": "Build the XRCE Agent against the sourced ROS (issue 0741)", "conclusion": "${{ steps.agent.outcome }}"},
-             {"name": "Build the fixtures those rows resolve", "conclusion": "${{ steps.fixtures.outcome }}"},
+             {"name": "Build the fixtures those rows resolve", "conclusion": "${{ (needs.regression-build.result == 'success' && steps.fixtures.outcome == 'success') && 'success' || 'failure' }}"},
              {"name": "Run the cells with a recorded PASS", "conclusion": "${{ steps.cells.outcome }}"}]
           # The fourth axis (phase-441 W4): the cells step FAILED tells you the
           # step failed, never whether the cells produced results. Empty when the
