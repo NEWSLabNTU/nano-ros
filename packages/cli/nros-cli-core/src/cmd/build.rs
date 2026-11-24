@@ -9553,6 +9553,19 @@ fn retire_cmake_root(
             return None;
         }
     }
+    // Issue 2928 -- nros11 also wrote its shared configure's resolve INSIDE
+    // the root (`resolved/<bringup>__union/`, `coordinate_resolve_dir`), so the
+    // root was never empty and stayed. That resolve is the root's own when it
+    // names the root's `SYSTEM`; anything else there is not, and keeps the dir.
+    let resolved = legacy.join("resolved");
+    if holds_only_own_union_resolve(&resolved, system)
+        && let Err(e) = remove(&resolved)
+    {
+        eprintln!(
+            "nros build: warning: cannot remove the stale old-layout build dir's `{}`: {e}",
+            shown(&resolved)
+        );
+    }
     // Only if empty: anything else under this name is not the root's.
     let _ = std::fs::remove_dir(&legacy);
     eprintln!(
@@ -9562,6 +9575,36 @@ fn retire_cmake_root(
         shown(current)
     );
     Some(legacy)
+}
+
+/// Issue 2928 -- does `resolved` (a retired root's `resolved/`) hold nothing
+/// but the root's own shared-configure resolve? True only for a real directory
+/// whose every entry is a real directory named `<system>__union`
+/// ([`crate::resolve::dir_name_for`], as [`coordinate_resolve_dir`] spells it)
+/// holding regular files alone. Anything else (another bringup's resolve, a
+/// symlink, a nested dir, an unreadable entry) is not provably the root's.
+fn holds_only_own_union_resolve(resolved: &Path, system: &str) -> bool {
+    if !std::fs::symlink_metadata(resolved).is_ok_and(|m| m.file_type().is_dir()) {
+        return false;
+    }
+    let own = crate::resolve::dir_name_for(system, "union");
+    let Ok(entries) = std::fs::read_dir(resolved) else {
+        return false;
+    };
+    entries.into_iter().all(|e| {
+        let Ok(e) = e else {
+            return false;
+        };
+        if e.file_name().to_str() != Some(own.as_str()) || !e.file_type().is_ok_and(|t| t.is_dir())
+        {
+            return false;
+        }
+        std::fs::read_dir(e.path()).is_ok_and(|files| {
+            files
+                .into_iter()
+                .all(|f| f.is_ok_and(|f| f.file_type().is_ok_and(|t| t.is_file())))
+        })
+    })
 }
 
 /// [`ResolvedBuild::cmake_build_dir`] for a workspace image: its cmake binary
@@ -14992,6 +15035,67 @@ mod per_image_configure_tests {
             other.join("CMakeLists.txt").is_file(),
             "another image's root stays"
         );
+    }
+
+    /// Issue 2928 -- an nros11 per-bringup root also held its shared
+    /// configure's resolve (`resolved/<bringup>__union/`), so the retire left
+    /// an almost-empty directory. That resolve goes with the root and so does
+    /// the directory; a root holding anything else under `resolved/` keeps it
+    /// (and the directory), and so does one with a stray file of its own.
+    #[test]
+    fn an_nros11_root_goes_with_its_own_union_resolve() {
+        let t = tempfile::tempdir().expect("tempdir");
+        let build = t.path().join("build");
+        let current = build.join("posix-zenoh-linux-demo_bringup-a");
+        std::fs::create_dir_all(&current).unwrap();
+        let nros11 = |name: &str| {
+            let d = build.join(name);
+            std::fs::create_dir_all(d.join("cmake")).unwrap();
+            std::fs::write(
+                d.join("CMakeLists.txt"),
+                format!(
+                    "{}nano_ros_workspace(\n    SYSTEM   demo_bringup\n    IMAGES a\n)\n",
+                    crate::builder::cmake_root::GENERATED_HEADER
+                ),
+            )
+            .unwrap();
+            let union = d.join("resolved").join("demo_bringup__union");
+            std::fs::create_dir_all(&union).unwrap();
+            std::fs::write(union.join("resolved.toml"), "").unwrap();
+            std::fs::write(union.join("coordinate.toml"), "").unwrap();
+            d
+        };
+
+        // The measured nros11 shape: header, SYSTEM, cmake/, resolved/<b>__union/.
+        let plain = nros11("posix-zenoh-linux-demo_bringup");
+        assert_eq!(
+            retire_legacy_cmake_root(&build, "posix-zenoh-linux-demo_bringup", &current),
+            Some(plain.clone())
+        );
+        assert!(!plain.exists(), "the whole nros11 root goes");
+
+        // Another bringup's resolve under it is not this root's: it stays.
+        let foreign = nros11("posix-zenoh-linux-demo_bringup-x");
+        let theirs = foreign.join("resolved").join("other_bringup__union");
+        std::fs::create_dir_all(&theirs).unwrap();
+        retire_legacy_cmake_root(&build, "posix-zenoh-linux-demo_bringup-x", &current);
+        assert!(theirs.is_dir(), "another bringup's resolve stays");
+        assert!(
+            foreign
+                .join("resolved/demo_bringup__union/resolved.toml")
+                .is_file(),
+            "a mixed resolved/ is kept whole"
+        );
+        assert!(
+            !foreign.join("CMakeLists.txt").exists(),
+            "the root itself still retires"
+        );
+
+        // A file of its own beside the root keeps the directory.
+        let stray = nros11("posix-zenoh-linux-demo_bringup-y");
+        std::fs::write(stray.join("notes.txt"), "mine").unwrap();
+        retire_legacy_cmake_root(&build, "posix-zenoh-linux-demo_bringup-y", &current);
+        assert!(stray.join("notes.txt").is_file() && !stray.join("resolved").exists());
     }
 
     /// An image renamed or removed from its bringup leaves a per-image root
