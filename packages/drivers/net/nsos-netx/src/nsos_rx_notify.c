@@ -53,17 +53,35 @@
 #define NSOS_RX_NOTIFY_STACK (16 * 1024)
 #endif
 
+/* The board's `tx_user.h` sets TX_MINIMUM_STACK to the host's thread floor and
+ * adds a TX_THREAD field; a TU built without it disagrees with the kernel on
+ * both. */
+#ifndef TX_INCLUDE_USER_DEFINE_FILE
+#error "nsos_rx_notify.c must be built with TX_INCLUDE_USER_DEFINE_FILE, as the ThreadX kernel is"
+#endif
+
+/* A stated stack is a floor the port raises (issue 0667). On the Linux port
+ * TX_MINIMUM_STACK is the host's PTHREAD_STACK_MIN plus 128 (16,512 on
+ * x86_64, 131,200 on aarch64), above the 16 KiB default, and
+ * `tx_thread_create` refused the smaller stack with TX_SIZE_ERROR: the
+ * notifier never started, so no receive notification was ever installed. */
+#if NSOS_RX_NOTIFY_STACK < TX_MINIMUM_STACK
+#define NSOS_RX_NOTIFY_STACK_BYTES TX_MINIMUM_STACK
+#else
+#define NSOS_RX_NOTIFY_STACK_BYTES NSOS_RX_NOTIFY_STACK
+#endif
+
 typedef struct {
     int fd; /* -1 = free */
-    void (*cb)(void *);
-    void *arg;
+    void (*cb)(void*);
+    void* arg;
     bool armed; /* false after firing, until the application reads */
 } nsos_rx_entry_t;
 
 static nsos_rx_entry_t g_entries[NSOS_RX_NOTIFY_MAX];
 static TX_MUTEX g_lock;
 static TX_THREAD g_thread;
-static ULONG g_stack[NSOS_RX_NOTIFY_STACK / sizeof(ULONG)];
+static ULONG g_stack[NSOS_RX_NOTIFY_STACK_BYTES / sizeof(ULONG)];
 static int g_kick[2] = {-1, -1}; /* self-pipe: a table change ends the poll */
 static bool g_started;
 
@@ -71,12 +89,12 @@ static void kick(void) {
     if (g_kick[1] >= 0) {
         char c = 0;
         ssize_t r = write(g_kick[1], &c, 1);
-        (void) r; /* a full pipe already guarantees a wake */
+        (void)r; /* a full pipe already guarantees a wake */
     }
 }
 
 static void watcher(ULONG input) {
-    (void) input;
+    (void)input;
     struct pollfd fds[NSOS_RX_NOTIFY_MAX + 1];
     for (;;) {
         int n = 0;
@@ -93,7 +111,7 @@ static void watcher(ULONG input) {
         }
         tx_mutex_put(&g_lock);
 
-        int r = poll(fds, (nfds_t) n, -1);
+        int r = poll(fds, (nfds_t)n, -1);
         if (r < 0) {
             continue; /* EINTR: the port suspended this thread for a higher one */
         }
@@ -141,7 +159,7 @@ static int start_once(void) {
     return 0;
 }
 
-int nx_bsd_socket_set_rx_notify(int sockID, void (*rx_notify)(void *arg), void *arg) {
+int nx_bsd_socket_set_rx_notify(int sockID, void (*rx_notify)(void* arg), void* arg) {
     if (sockID < 0) {
         errno = EBADF;
         return -1;

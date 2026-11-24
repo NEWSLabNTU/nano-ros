@@ -724,6 +724,21 @@ int nros_threadx_create_task(const char* name, void (*entry)(void*), void* arg,
 
     /* Stack from the shared byte pool (same as the boot app thread). */
     stack_size = (stack_bytes != 0) ? (ULONG)stack_bytes : nros_board_app_stack_size();
+    /* A stated stack is a FLOOR the port raises, as the boot app thread's is
+     * above (issue 0667). On the Linux port TX_MINIMUM_STACK is the host's
+     * thread floor, 131072 on glibc/aarch64 (issue 2800), and a level stated
+     * below it failed with TX_SIZE_ERROR, so it never ran. */
+    if (stack_size != (ULONG)NROS_THREADX_RAISED_STACK(stack_size)) {
+        char line[160];
+        size_t n = census_put(line, 0, sizeof(line), "nros: sched task stack stated ");
+        n = census_put_u(line, n, sizeof(line), (unsigned long)stack_size);
+        n = census_put(line, n, sizeof(line), " bytes, raised to ");
+        n = census_put_u(line, n, sizeof(line), (unsigned long)TX_MINIMUM_STACK);
+        n = census_put(line, n, sizeof(line), " (this port's least stack)\n");
+        line[n] = '\0';
+        nros_board_log(line);
+        stack_size = (ULONG)TX_MINIMUM_STACK;
+    }
     status = tx_byte_allocate(&byte_pool, (VOID**)&stack, stack_size, TX_NO_WAIT);
     if (status != TX_SUCCESS) {
         nros_tx_pool_refuse("a sched task's stack", stack_size);
