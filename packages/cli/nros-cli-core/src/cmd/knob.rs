@@ -316,6 +316,7 @@ fn list(args: ListArgs) -> Result<()> {
             board_toml: args.board_toml.clone(),
             platforms_dir: None,
             workspace: args.workspace.clone(),
+            get: None,
         })?),
         None => None,
     };

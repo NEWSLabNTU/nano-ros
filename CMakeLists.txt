@@ -372,6 +372,15 @@ if(NOT TARGET NanoRos)
     # whole-archive'd RMW objects. See ld(1) single-pass semantics.
 endif()
 
+# Issue 2952 -- the image's resolved `log.max_level` as `NROS_LOG_MAX_LEVEL`
+# (a CACHE INTERNAL and a compile definition on the umbrella), so a C/C++
+# consumer can follow the Rust ceiling. Zephyr images read
+# CONFIG_NROS_LOG_MAX_LEVEL instead and never reach this file's umbrella.
+if(TARGET NanoRos AND NOT NROS_PLATFORM STREQUAL "zephyr")
+    include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/NanoRosLogLevel.cmake")
+    nros_log_max_level_export(NanoRos)
+endif()
+
 # ---------------------------------------------------------------------------
 # RMW link dispatch — phase-439 W4 (RFC-0094 D5).
 #
