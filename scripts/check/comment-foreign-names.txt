@@ -156,11 +156,10 @@ tx_timer_change
 
 # Zephyr
 CONF_FILE_BUILD_TYPE
+ETHERNET_HW_VLAN
 GpioPin::new
 LOG_MODE_IMMEDIATE
 NET_CONFIG_
-NET_CONFIG_AUTO_INIT
-NET_CONFIG_NEED_IPV4
 NET_DHCPV4
 NET_SOCKET_SERVICE
 POSIX_TO_ZEPHYR_PRIORITY
@@ -170,7 +169,6 @@ _system_heap
 arch_proc_id
 cpu_mask_mod
 log_msg_runtime_create
-net_config
 net_if_ipv4_select_src_iface
 net_mgmt_event_handler_t
 posix_exit
