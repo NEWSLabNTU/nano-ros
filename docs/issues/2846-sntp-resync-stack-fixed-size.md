@@ -57,6 +57,22 @@ could not have caught it, and the stack-floor walk skips native_sim.
    `<build>/nros/stack-floor/report.json`.
 2. **A run-time peak on a 32-bit target** (thread analyzer), so the default can
    be argued per word size, or kept at 8 KiB for both.
+   **Measured (host 142, 2026-11-24):**
+   - `mps2-an385-zephyr`, static walk: OPEN's floor is 95,936 B, which fits
+     131,072. SNTP_RESYNC's is 96,952 B against 8,192, an upper bound reached
+     through bound indirect calls (`dns_resolve_name` -> `publish_trampoline`),
+     which the re-sync thread does not take.
+   - `qemu-cortex-a53`: the walk still refuses on the arm64 assembly
+     (issue 2897's step 2), so it has no floor yet.
+   - `mps2-an385-zephyr`, thread analyzer over a 91 s boot: SNTP re-sync
+     thread peak **808 of 8,192 B**; main 13,832 of 131,072; `zpico_exec`
+     1,384 of 16,384.
+   - That peak is the TIMEOUT path only. Slirp has no NTP server at
+     10.0.2.2, so all three queries failed (rc=-116), and the one re-sync at
+     60 s timed out too. A successful exchange (the consumer's 7,024 B on a
+     64-bit board) is still unmeasured on 32-bit.
+   - Next: the same boot with an SNTP responder on the host, so the peak covers
+     a real answer.
 3. With both numbers, record them: a `[[drift]]` row per board
    (`role = "SNTP_RESYNC"`) so the nightly drift check holds the walk, and the
    knob's help updated with the measured values.
