@@ -45,6 +45,15 @@ pub const PARAM_SERVICE_QUERYABLES: usize = 6;
 /// the same way.
 pub const LIFECYCLE_SERVICE_QUERYABLES: usize = 5;
 
+/// phase-554 W4 (RFC-0128 D7, amended 2026-11-24) -- the zenoh QUERYABLES a
+/// managed node's lifecycle family declares: ONE, shared by its five services
+/// (`nros-rmw-zenoh`'s `LifecycleGroup`). The services are still five -- five
+/// liveliness tokens, five request headers and rings -- so
+/// [`LIFECYCLE_SERVICE_QUERYABLES`] stays the SERVER count every backend
+/// prices, and only the zenoh queryable table uses this. Held to the shim by
+/// `check-infra-queryable-counts`.
+pub const ZENOH_LIFECYCLE_QUERYABLES: usize = 1;
+
 /// phase-556 W13 -- the `/rosout` publishers the `rosout` family claims PER
 /// NODE: the executor creates one writer for each node. VOLATILE (a
 /// documented divergence from rclcpp's TRANSIENT_LOCAL), so a publisher slot
@@ -213,6 +222,26 @@ pub fn infra_service_servers_with(
         0
     };
     params + LIFECYCLE_SERVICE_QUERYABLES * lifecycle_machines(infra, lifecycle_nodes)
+}
+
+/// phase-554 W4 -- the zenoh QUERYABLES the runtime's families declare: the
+/// parameter family's servers (one queryable each) plus
+/// [`ZENOH_LIFECYCLE_QUERYABLES`] per lifecycle machine.
+pub fn infra_zenoh_queryables_with(
+    infra: Option<&str>,
+    nodes: Option<&str>,
+    lifecycle_nodes: Option<&str>,
+) -> usize {
+    infra_service_servers_with(infra, nodes, lifecycle_nodes)
+        - lifecycle_attached_servers(infra, lifecycle_nodes)
+}
+
+/// phase-554 W4 -- lifecycle service servers that ATTACH to their node's zenoh
+/// queryable instead of declaring one: four per machine. A zenoh image's
+/// request headers number its queryables plus these.
+pub fn lifecycle_attached_servers(infra: Option<&str>, lifecycle_nodes: Option<&str>) -> usize {
+    (LIFECYCLE_SERVICE_QUERYABLES - ZENOH_LIFECYCLE_QUERYABLES)
+        * lifecycle_machines(infra, lifecycle_nodes)
 }
 
 /// Issue 2482 -- is the PER-NODE term of [`infra_service_servers`] a guess?

@@ -299,7 +299,9 @@ crate = "nros-rmw-zenoh"
 features = ["platform-posix"]
 tolerant = true
 # Issue 2083 — `in_process_graph`: a client and its server on one session.
-targets = ["status_events_matrix", "matched_events_live", "in_process_graph"]
+# phase-554 W4 — `lifecycle_group`: a node's lifecycle services share one
+# queryable, and the shim declares the count the build derives.
+targets = ["status_events_matrix", "matched_events_live", "in_process_graph", "lifecycle_group"]
 
 # Issue 0972 — a MODULE, not a test file: `nros-c`'s `mod node` is inside
 # `rmw_modules!` (`#[cfg(feature = "rmw-cffi")]`), and `test-unit` activates no

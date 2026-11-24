@@ -32,12 +32,13 @@ pub(crate) fn ffi_guard<R>(f: impl FnOnce() -> R) -> R {
 // Re-export FFI types and constants from sys crate
 pub use zpico_sys::{
     ZPICO_ERR_CONFIG, ZPICO_ERR_FULL, ZPICO_ERR_GENERIC, ZPICO_ERR_INVALID, ZPICO_ERR_KEYEXPR,
-    ZPICO_ERR_PUBLISH, ZPICO_ERR_SESSION, ZPICO_ERR_TASK, ZPICO_ERR_TIMEOUT, ZPICO_MAX_LIVELINESS,
-    ZPICO_MAX_PENDING_GETS, ZPICO_MAX_PUBLISHERS, ZPICO_MAX_QUERYABLES, ZPICO_MAX_SESSIONS,
-    ZPICO_MAX_SUBSCRIBERS, ZPICO_OK, ZPICO_PEER_MODE_SUPPORTED,
-    ZPICO_POINT_TO_POINT_PEER_SUPPORTED, ZPICO_QUERYABLE_TABLE_DECLARED, ZPICO_RMW_GID_SIZE,
-    ZPICO_ZID_SIZE, ZpicoCallback, ZpicoCallbackWithAttachment, ZpicoNotifyCallback,
-    ZpicoQueryCallback, zpico_property_t, zpico_ring_desc_t,
+    ZPICO_ERR_PUBLISH, ZPICO_ERR_SESSION, ZPICO_ERR_TASK, ZPICO_ERR_TIMEOUT,
+    ZPICO_LIFECYCLE_ATTACHED_SERVERS, ZPICO_MAX_LIVELINESS, ZPICO_MAX_PENDING_GETS,
+    ZPICO_MAX_PUBLISHERS, ZPICO_MAX_QUERYABLES, ZPICO_MAX_SESSIONS, ZPICO_MAX_SUBSCRIBERS,
+    ZPICO_OK, ZPICO_PEER_MODE_SUPPORTED, ZPICO_POINT_TO_POINT_PEER_SUPPORTED,
+    ZPICO_QUERYABLE_TABLE_DECLARED, ZPICO_RMW_GID_SIZE, ZPICO_ZID_SIZE, ZpicoCallback,
+    ZpicoCallbackWithAttachment, ZpicoNotifyCallback, ZpicoQueryCallback, zpico_property_t,
+    zpico_ring_desc_t,
 };
 
 // Import FFI functions from sys crate
@@ -47,11 +48,11 @@ use zpico_sys::{
     zpico_declare_subscriber_with_attachment, zpico_get_zid, zpico_init, zpico_init_with_config,
     zpico_is_open, zpico_open, zpico_publish, zpico_publish_with_attachment,
     zpico_publish_with_attachment_aliased, zpico_query_reply, zpico_queryable_request_attachment,
-    zpico_queryable_take_reply_seq, zpico_reply_slot_declines, zpico_reply_slot_refusals_total,
-    zpico_reply_slot_stats, zpico_reply_slot_take_announcement, zpico_session_acquire,
-    zpico_session_release, zpico_session_t, zpico_set_connect_timeout, zpico_spin_once,
-    zpico_undeclare_liveliness, zpico_undeclare_publisher, zpico_undeclare_queryable,
-    zpico_undeclare_subscriber, zpico_uses_polling,
+    zpico_queryable_take_reply_seq, zpico_queryables_declared, zpico_reply_slot_declines,
+    zpico_reply_slot_refusals_total, zpico_reply_slot_stats, zpico_reply_slot_take_announcement,
+    zpico_session_acquire, zpico_session_release, zpico_session_t, zpico_set_connect_timeout,
+    zpico_spin_once, zpico_undeclare_liveliness, zpico_undeclare_publisher,
+    zpico_undeclare_queryable, zpico_undeclare_subscriber, zpico_uses_polling,
 };
 
 // ============================================================================
@@ -1023,6 +1024,15 @@ impl Context {
             )
         });
         (ret >= 0).then_some(ret as usize)
+    }
+
+    // phase-554 W4.
+    /// How many queryables this session has declared right
+    /// now: the run-time half of the queryable-table sizing, which a test
+    /// compares with the build's derivation. `None` if the shim refuses.
+    pub fn queryables_declared(&self) -> Option<u32> {
+        let n = unsafe { zpico_queryables_declared(self.handle) };
+        u32::try_from(n).ok()
     }
 
     /// One queryable's reply-slot table:

@@ -28,6 +28,12 @@ pub struct ShimConfig {
     /// the knob" there sends the reader to fix the symptom. Being authoritative
     /// costs this, and it is paid in the same change.
     pub queryable_table_declared: bool,
+    /// Lifecycle service servers that ATTACH to their node's one queryable
+    /// instead of declaring their own (four per managed node): request headers
+    /// the shim needs beyond [`ShimConfig::max_queryables`]. Zero when the
+    /// table was not sized from a declaration (its budget already counts every
+    /// server as a queryable).
+    pub lifecycle_attached_servers: usize,
     pub max_liveliness: usize,
     /// Bytes of NUL-separated liveliness keyexprs the per-session graph cache
     /// holds (`ZPICO_GRAPH_CACHE_SIZE`, default 65536).
@@ -193,6 +199,10 @@ impl ShimConfig {
              /// exhaustion message the shim gives: a budget is raised, a declaration is\n\
              /// corrected.\n\
              pub const ZPICO_QUERYABLE_TABLE_DECLARED: bool = {};\n\
+             /// Lifecycle service servers that share their node's one queryable\n\
+             /// instead of declaring their own: request headers beyond\n\
+             /// the queryable table. Zero when that table is a budget.\n\
+             pub const ZPICO_LIFECYCLE_ATTACHED_SERVERS: usize = {};\n\
              /// Whether this shim was compiled with the multicast transport + scouting\n\
              /// that zenoh PEER mode needs. Emitted from the SAME constant\n\
              /// that writes the C `#define`, so the two cannot drift.\n\
@@ -208,6 +218,7 @@ impl ShimConfig {
             self.max_pending_gets,
             self.max_sessions,
             self.queryable_table_declared,
+            self.lifecycle_attached_servers,
             multicast_transport_enabled(),
             self.point_to_point_peer,
         )
@@ -1376,6 +1387,7 @@ int32_t zpico_init(void);\n";
             max_subscribers: 2,
             max_queryables: 3,
             queryable_table_declared: true,
+            lifecycle_attached_servers: 0,
             max_liveliness: 4,
             graph_cache_size: 4096,
             graph_discovery: true,
@@ -1408,6 +1420,7 @@ int32_t zpico_init(void);\n";
             max_subscribers: 2,
             max_queryables: 3,
             queryable_table_declared: false,
+            lifecycle_attached_servers: 0,
             max_liveliness: 4,
             graph_cache_size: 4096,
             graph_discovery: true,
@@ -1475,6 +1488,7 @@ int32_t zpico_init(void);\n";
                 max_subscribers: 2,
                 max_queryables: 3,
                 queryable_table_declared: false,
+                lifecycle_attached_servers: 0,
                 max_liveliness: 4,
                 graph_cache_size: 4096,
                 graph_discovery: true,

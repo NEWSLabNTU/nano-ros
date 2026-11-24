@@ -315,9 +315,10 @@ are untouched by construction.
 - [x] A reply goes out on its own query's key (the shim reads it from the
   clone in the reply slot), so one queryable can serve several service keys.
 - [x] A service's request header and its zenoh queryable stop sharing one
-  index: each header records the queryable it is served by. (The two TABLES
-  are still one size; splitting them is the counts item below, where the
-  header table becomes rings and the queryable table queryables.)
+  index: each header records the queryable it is served by. The header
+  table is the queryables plus the attached servers
+  (`ZPICO_LIFECYCLE_ATTACHED_SERVERS`, emitted beside `ZPICO_MAX_QUERYABLES`).
+  The attached servers' rings are in the builtin table.
 - [x] The node's lifecycle group: the first of its five lifecycle servers
   declares the node's queryable, the other four attach to it (each keeping its
   own token and ring), and the queryable routes a request by the service in its
@@ -325,10 +326,14 @@ are untouched by construction.
   sixth service; there is no fallback to five queryables.
 - [ ] `transition_event` as a put: the publisher keeps its token and gid,
   declares no zenoh publisher, and each publish is a `zpico_put`.
-- [ ] The counts state 1 queryable per managed node and still 5 request rings
-  (`InfraServices`, the descriptor's infra, `executor_sizing`, the zenoh
-  build's tables), with a gate that the derived count matches what the shim
-  declares at run time.
+- [x] The counts state 1 queryable per managed node and still 5 servers
+  (tokens, headers, rings): `infra::ZENOH_LIFECYCLE_QUERYABLES` and
+  `infra_zenoh_queryables_with` in the sizing descriptor, the zenoh build's
+  queryable default and floor, and the CLI inventory's `MAX_QUERYABLES`
+  (its liveliness pool still counts every server). The run-time check is
+  `nros-rmw-zenoh`'s `lifecycle_group` test (in the `required-features-tests`
+  lane): two managed nodes make the session declare exactly the derived number
+  of queryables, read through the new `zpico_queryables_declared`.
 
 Each step's acceptance includes stock `ros2 lifecycle` and `ros2 service list`
 against a two-managed-node image.

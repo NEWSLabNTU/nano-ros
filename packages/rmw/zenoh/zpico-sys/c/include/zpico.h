@@ -363,6 +363,11 @@ typedef void (*ZpicoQueryCallback)(const char *keyexpr,
  * moved first, and only then that refusals did not.
  */
 /**
+ * How many queryables this session has declared right now, or
+ * `ZPICO_ERR_INVALID` for a NULL session: the run-time half of the
+ * queryable-table sizing, compared against the build's derivation.
+ */
+/**
  * Take the pending "this table just
  * saturated" announcement, clearing it. 1 = announce now, 0 = nothing
  * pending, `ZPICO_ERR_INVALID` for a bad handle.
@@ -1047,6 +1052,13 @@ int32_t zpico_reply_slot_stats(struct zpico_session_t *_session,
  * the table ran out, declines say the arm that used to exhaust it ran.
  */
 int32_t zpico_reply_slot_declines(struct zpico_session_t *_session, int32_t _queryable_handle);
+
+/**
+ * How many queryables this session has declared right now, or
+ * `ZPICO_ERR_INVALID` for a NULL session. The run-time half of the
+ * queryable-table sizing, compared against the build's derivation.
+ */
+int32_t zpico_queryables_declared(struct zpico_session_t *_session);
 
 /**
  * Take the pending "this reply-slot table

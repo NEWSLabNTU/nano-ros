@@ -2019,10 +2019,21 @@ impl InfraServices {
         }
     }
 
-    /// Queryables (service servers) the two families claim at boot.
-    pub fn queryables(self, components: usize) -> usize {
+    /// SERVICE SERVERS the two families claim at boot: each has its own
+    /// liveliness token, request header and ring.
+    pub fn servers(self, components: usize) -> usize {
         // Issue 2553 -- five per state machine, not five per image.
         let lifecycle = LIFECYCLE_SERVICE_QUERYABLES * self.lifecycle_machines();
+        PARAM_SERVICE_QUERYABLES * self.param_nodes(components) + lifecycle
+    }
+
+    /// Zenoh QUERYABLES the two families declare: one per parameter service,
+    /// and ONE per lifecycle machine, shared by its five services
+    /// (phase-554 W4, RFC-0128 D7 as amended). The same rule as
+    /// `nros_sizing_descriptor::infra::infra_zenoh_queryables_with`.
+    pub fn queryables(self, components: usize) -> usize {
+        let lifecycle =
+            nros_sizing_descriptor::infra::ZENOH_LIFECYCLE_QUERYABLES * self.lifecycle_machines();
         PARAM_SERVICE_QUERYABLES * self.param_nodes(components) + lifecycle
     }
 
@@ -5314,6 +5325,11 @@ impl EntityInventory {
         // check-infra-queryable-counts.
         let components = self.components.len();
         let infra_queryables = self.infra.queryables(components);
+        // phase-554 W4 -- the servers the runtime creates, of which the
+        // lifecycle ones beyond the first per machine share their node's
+        // queryable: still a liveliness token each, but no queryable slot.
+        let infra_servers = self.infra.servers(components);
+        let attached_servers = infra_servers - infra_queryables;
         // Issue 1587 -- the lifecycle family is a publisher too. REP-2002's
         // communication interface is the five services AND
         // `~/transition_event`, and `register_lifecycle_services` creates it.
@@ -5405,6 +5421,7 @@ impl EntityInventory {
             + max_publishers
             + max_subscribers
             + (max_queryables - tl_queryables)
+            + attached_servers
             + service_clients;
 
         // Issue 1549 -- same-session queries. The queriers are exactly the
@@ -5428,7 +5445,7 @@ impl EntityInventory {
             max_liveliness,
             entity_liveliness_tokens
                 + node_tokens
-                + infra_queryables
+                + infra_servers
                 + infra_publishers
                 + infra_subscribers,
             "the application half plus the node tokens and the runtime's entities \
@@ -5481,6 +5498,7 @@ impl EntityInventory {
                     ("publishers", max_publishers),
                     ("subscribers", max_subscribers),
                     ("queryables", max_queryables - tl_queryables),
+                    ("lifecycle servers sharing a queryable", attached_servers),
                     ("service clients", service_clients),
                 ],
             },
@@ -9070,7 +9088,10 @@ contracts:
         let both = knobs("param_services, lifecycle");
         assert_eq!(
             both.max_liveliness - none.max_liveliness,
-            both.infra_queryables
+            // Every SERVER has a token, including the lifecycle ones that
+            // share their node's queryable (phase-554 W4).
+            2 * PARAM_SERVICE_QUERYABLES
+                + LIFECYCLE_SERVICE_QUERYABLES
                 + LIFECYCLE_SERVICE_PUBLISHERS
                 + 2 * PARAM_EVENT_PUBLISHERS
                 + 2 * ROSOUT_PUBLISHERS
@@ -9084,7 +9105,9 @@ contracts:
         );
         assert_eq!(
             both.infra_queryables,
-            2 * PARAM_SERVICE_QUERYABLES + LIFECYCLE_SERVICE_QUERYABLES
+            2 * PARAM_SERVICE_QUERYABLES
+                + nros_sizing_descriptor::infra::ZENOH_LIFECYCLE_QUERYABLES,
+            "the lifecycle machine's five services share one queryable"
         );
     }
 
@@ -9201,9 +9224,10 @@ contracts:
         );
         assert_eq!(
             lifecycle.max_queryables - none.max_queryables,
-            LIFECYCLE_SERVICE_QUERYABLES,
-            "the five service servers and NOT a sixth cache queryable — the \
-             announcement publisher is VOLATILE, so it declares none"
+            nros_sizing_descriptor::infra::ZENOH_LIFECYCLE_QUERYABLES,
+            "the five service servers share ONE queryable (phase-554 W4), and \
+             there is no cache queryable — the announcement publisher is \
+             VOLATILE, so it declares none"
         );
         assert_eq!(
             lifecycle.tl_publishers, none.tl_publishers,
@@ -9254,12 +9278,12 @@ structure:
         );
         assert_eq!(
             one.max_queryables - none.max_queryables,
-            LIFECYCLE_SERVICE_QUERYABLES,
-            "one managed node: one machine"
+            nros_sizing_descriptor::infra::ZENOH_LIFECYCLE_QUERYABLES,
+            "one managed node: one machine, one shared queryable"
         );
         assert_eq!(
             two.max_queryables - none.max_queryables,
-            2 * LIFECYCLE_SERVICE_QUERYABLES,
+            2 * nros_sizing_descriptor::infra::ZENOH_LIFECYCLE_QUERYABLES,
             "two managed nodes: two machines, not one per image"
         );
         assert_eq!(
@@ -9825,7 +9849,9 @@ execution:
         let both = knobs("param_services, lifecycle");
         assert_eq!(
             both.max_queryables,
-            1 + tl + 2 * PARAM_SERVICE_QUERYABLES + LIFECYCLE_SERVICE_QUERYABLES
+            1 + tl
+                + 2 * PARAM_SERVICE_QUERYABLES
+                + nros_sizing_descriptor::infra::ZENOH_LIFECYCLE_QUERYABLES
         );
         assert_eq!(
             both.max_cbs - none.max_cbs,
