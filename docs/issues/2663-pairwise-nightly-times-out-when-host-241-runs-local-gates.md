@@ -142,3 +142,81 @@ Still open: "Done when" asks for a nightly on main that reaches its cells.
 The first nightly at or after 2a83e9aa61 answers it. Separately, the sweep
 step now takes about an hour, longer than the build it follows; not measured
 further here.
+
+## Re-measured from job history (2026-11-24)
+
+Read-only, from the Actions job history of 2026-11-20 to 11-24; nothing was
+dispatched.
+
+**The heavy jobs no longer run on host 241.** Since the pin, every `tier 2`
+and pairwise-nightly job ran on `nano-ros-runner-newslab-118-server` (8 of 8
+runs since 44874748326). The timeout this issue records cannot recur while
+the pin holds.
+
+**"Done when" is met.** The scheduled run 45339477050 (2026-11-24, main at
+`64266f1404`, which contains 2a83e9aa61) reached the pairwise nightly's
+cells:
+
+| step | minutes |
+| --- | ---: |
+| check out the persistent fixture tree | 0.5 |
+| `just setup tier2-nightly` | 1 |
+| `just build tier2-nightly` | 3, red |
+| `just ci matrix-nightly` | 23, red |
+| sweep orphans and disk | 1 |
+| job | 28 |
+
+The cells step ran 644 tests in its first suite (642 passed, 2 failed), and
+84 in the longest. The release dispatch 45351389552 reached the cells too
+(build 47 min, cells 44 min, 13 real failures). Those reds are the cells'
+verdicts, tracked in phase-590, not this issue. The hour-long sweep noted
+above is gone: 1 to 2 min on both runs.
+
+**What host 241 still runs, and how it behaves.** Two kinds of self-hosted
+job land there now: the merge queue's `L3 (cross build + link)` on the
+`241-queue` runner, and `tier 1 (cells)` on the `241` runner.
+
+`L3`, 37 jobs from 2026-11-23 20:49 to 11-24 14:38: median 20.9 min, 33 of
+them between 17.9 and 23.7 min. That is below W14's quiet-host median of
+23.8 min. The four outliers all fall inside one window, the release
+dispatch's tier-1 job on the sibling runner (07:52 to 11:53):
+
+| L3 start | minutes | tier 1 on the sibling runner at the time |
+| --- | ---: | --- |
+| 08:13 | 56.2 | `just build tier1` (07:59-11:06) |
+| 09:13 | 70.0, cancelled | `just build tier1` |
+| 10:34 | 37.4 | `just build tier1` |
+| 11:13 | 31.2 | `just ci tier1 run` (11:06-11:38) |
+| 11:45 | 21.6 | sweep, then idle |
+
+So the contention W14 measured is still there, now between the two runners
+on one host rather than between a runner and the agents' local gates. Local
+gate activity on the host is not visible in job history, so this does not
+say whether local gates add to it.
+
+`tier 1 (cells)` against the same job on host 118 (before the pin moved the
+heavy jobs, 118 also took tier 1):
+
+| run | runner | checkout | `just build tier1` | job |
+| --- | --- | ---: | ---: | ---: |
+| 44686847270 | 118 | 1 min | 41 min, red | 61 min |
+| 44768828876 | 118 | 1 min | 34 min | 73 min |
+| 44826080336 | 241 | 5 min | 81 min, red | 117 min |
+| 44874748326 | 241 | 8 min | 70 min, red | 96 min |
+| 44916540238 | 241 | 14 min | 105 min, red | 145 min |
+| 44993007292 | 241 | 21 min | 80 min, red | 114 min |
+| 45129078867 | 241 | 5 min | 133 min, red | 147 min |
+| 45351389552 | 241 | 6 min | 187 min, red | 241 min |
+
+These are not like-for-like: each run builds a different commit, and a red
+build stops at a different point. Read together they say the checkout is 5
+to 21 times slower on 241 (W14's filesystem-bound step, unchanged) and the
+build 2 to 5 times slower. The longest, 241 min, used 60 % of the job's
+405 min `timeout-minutes`, so tier 1 is not near a timeout today. It also
+takes host 241's L3 from 21 to 31-70 min while it builds.
+
+**Still open, for phase-489 W14:** a like-for-like comparison (one commit,
+dispatched to each host through `nros-host-<id>`), which waits for the
+release verdict. If it confirms the build ratio, moving `tier 1` to
+`nros-heavy` as well would take the L3 contention away, at the cost of
+serialising tier 1 behind tier 2 on 118.
