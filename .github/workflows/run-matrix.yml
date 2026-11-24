@@ -1,6 +1,7 @@
-# The self-hosted runner's daily lanes, in sequence on its one machine:
-# tier 2 (`matrix`, below), tier 1 (`tier1`), then the tier-2 NIGHTLY pairwise
-# cover (`matrix-nightly`, moved here from nightly.yml in phase-559 W5a).
+# The self-hosted runners' daily lanes: tier 2 (`matrix`, below), then the
+# tier-2 NIGHTLY pairwise cover (`matrix-nightly`, moved here from nightly.yml
+# in phase-559 W5a), in sequence on the `nros-heavy` runner, with tier 1
+# (`tier1`) beside them on another runner (issue 2663).
 #
 # TIER 2 — build+run, 1-wise cover, ON A CLOCK (phase-410 W3).
 #
@@ -308,13 +309,22 @@ jobs:
   # the tier-1 coordinates). NO `NROS_SKIP_FIXTURE_CHECK`: the build and the
   # run are one lane, so the preflight must hold.
   #
-  # `needs: [matrix]` + `always()` — the runner is single-occupancy (`nros-big`)
-  # and has one Zephyr workspace, so the two tiers must not run at once, and a
-  # red tier 2 must not cost tier 1 its verdict.
+  # NO `needs:` -- tier 1 runs BESIDE tier 2, on another runner. It used to
+  # `needs: [matrix]` because the lanes shared one single-occupancy runner and
+  # one Zephyr workspace. Since issue 2663's ruling, tier 2 and the pairwise
+  # nightly request `nros-heavy`, which only host 118 carries, while tier 1
+  # does not and lands on 241. The chain then only made each host wait for the
+  # other: in runs 44874748326 and 44993007292, tier 1 started on 241 at
+  # 07:48/07:56, when tier 2 ended on 118, and the nightly started on 118 at
+  # 09:24/09:50, when tier 1 ended on 241, about 1.5-2 h idle on each host per
+  # run. "Must not run at once" is still kept per HOST: a runner takes one job
+  # at a time, the Zephyr workspace is per host, and 241's other runner
+  # (`nros-queue`) lacks `nros-qemu`, so it cannot take a tier. If tier 1 does
+  # land on 118 first, the two heavy jobs queue behind it there, which is the
+  # old serial order and no worse.
   tier1:
     name: tier 1 (cells)
-    needs: [matrix]
-    if: ${{ always() && vars.NROS_SELF_HOSTED_READY == 'true' }}
+    if: ${{ vars.NROS_SELF_HOSTED_READY == 'true' }}
     runs-on: [self-hosted, linux, nros-qemu, nros-sdk-zephyr, nros-big]
     # Longest green run 200.2 min (n=12); twice that, rounded up. Self-hosted,
     # so above 360 is legal.
@@ -553,11 +563,12 @@ jobs:
   # look like one that passed. `coverage-matrix-nightly` reports the skip.
   matrix-nightly:
     name: tier 2 nightly (pairwise cover)
-    # phase-559 W5a — moved from nightly.yml. `needs: [tier1]` + `always()`:
-    # the runner is single-occupancy (`nros-big`), so this file runs its
-    # self-hosted lanes in sequence (tier 2, tier 1, then this), and a red
-    # tier 1 must not skip the pairwise cover.
-    needs: [tier1]
+    # phase-559 W5a — moved from nightly.yml. `needs: [matrix]` + `always()`:
+    # this and tier 2 both request `nros-heavy` (issue 2663), so they share
+    # the one heavy runner and run in sequence there, and a red tier 2 must not
+    # skip the pairwise cover. It no longer waits for tier 1, which runs on
+    # another host (see the tier 1 job).
+    needs: [matrix]
     if: ${{ always() && vars.NROS_SELF_HOSTED_READY == 'true' }}
     # `nros-heavy`: see the tier 2 job above (issue 2663).
     runs-on: [self-hosted, linux, nros-qemu, nros-sdk-zephyr, nros-big, nros-heavy]
