@@ -1,16 +1,18 @@
 //! Issue 2812 -- what the runtime's own service families cost on the platform
 //! heap, PER NODE, beyond the one node a port's heap was measured on.
 //!
-//! Every node that serves the PARAMETER services runs six servers, and every
-//! LIFECYCLE state machine runs five. Each server owns a request/reply pair of
-//! `PARAM_SERVICE_BUFFER_SIZE` bytes (nros-node's `config`;
-//! `LIFECYCLE_SERVICE_BUFFER_SIZE` is the same constant) on the platform
-//! heap. A port whose heap default was measured on a one-node image therefore
-//! carries one node's worth, and needs, for each further node or machine:
+//! Every node that serves the PARAMETER services runs six servers, each owning
+//! a request/reply pair of `PARAM_SERVICE_BUFFER_SIZE` bytes (nros-node's
+//! `config`). Every LIFECYCLE state machine runs five, whose buffers are sized
+//! for the lifecycle messages themselves: [`LIFECYCLE_MACHINE_BUFFERS`] bytes
+//! per machine, whatever the image's service size (issue 2919). Both live on
+//! the platform heap. A port whose heap default was measured on a one-node
+//! image therefore carries one node's worth, and needs, for each further node
+//! or machine:
 //!
 //! ```text
 //! extra = (param_nodes - 1) x (6 x 2 x buffer + param_remainder)
-//!       + (machines    - 1) x (5 x 2 x buffer + lifecycle_remainder)
+//!       + (machines    - 1) x (LIFECYCLE_MACHINE_BUFFERS + lifecycle_remainder)
 //! ```
 //!
 //! The remainder is what one more node costs beyond its buffer pairs, measured
@@ -30,10 +32,17 @@ pub const LIFECYCLE_SERVICES_PER_MACHINE: usize = 5;
 /// nros-node's default `PARAM_SERVICE_BUFFER_SIZE`, which every in-tree image
 /// that does not state one runs with.
 pub const DEFAULT_SERVICE_BUFFER: usize = 4096;
+/// nros-node's `LIFECYCLE_MACHINE_BUFFER_BYTES`: the request and reply
+/// buffers of one machine's five servers, each sized for its own lifecycle
+/// message rather than the image's service size (issue 2919). A mirror,
+/// because this crate is host tooling and does not depend on nros-node;
+/// `the_lifecycle_mirror_is_nros_nodes_sum` holds it to the source.
+pub const LIFECYCLE_MACHINE_BUFFERS: usize = 1744;
 
 /// The heap a port needs beyond its one-node measurement for `param_nodes`
-/// parameter-serving nodes and `machines` lifecycle state machines, each
-/// server owning a `buffer`-byte request/reply pair.
+/// parameter-serving nodes, each server owning a `buffer`-byte request/reply
+/// pair, and `machines` lifecycle state machines, each owning
+/// [`LIFECYCLE_MACHINE_BUFFERS`] (which `buffer` does not scale).
 ///
 /// Each count is floored at one: zero means the family is off, which costs
 /// nothing beyond the measured image, never a negative term.
@@ -48,7 +57,7 @@ pub const fn extra_bytes(
     let more_nodes = param_nodes.saturating_sub(1);
     let more_machines = machines.saturating_sub(1);
     more_nodes * (PARAM_SERVICES_PER_NODE * 2 * buffer + param_remainder)
-        + more_machines * (LIFECYCLE_SERVICES_PER_MACHINE * 2 * buffer + lifecycle_remainder)
+        + more_machines * (LIFECYCLE_MACHINE_BUFFERS + lifecycle_remainder)
 }
 
 /// The two counts an image's descriptor states: `(param_nodes, machines)`.
@@ -144,9 +153,17 @@ mod tests {
         // Four parameter nodes: three more, twelve buffers each.
         assert_eq!(extra_bytes(4, 1, 4096, 0, 0), 3 * 12 * 4096);
         assert_eq!(extra_bytes(4, 1, 4096, 100, 0), 3 * (12 * 4096 + 100));
-        // Three machines: two more, ten buffers each.
-        assert_eq!(extra_bytes(1, 3, 4096, 0, 50), 2 * (10 * 4096 + 50));
-        assert_eq!(extra_bytes(2, 2, 1024, 0, 0), 12 * 1024 + 10 * 1024);
+        // Three machines: two more, each its fixed lifecycle buffers.
+        assert_eq!(
+            extra_bytes(1, 3, 4096, 0, 50),
+            2 * (LIFECYCLE_MACHINE_BUFFERS + 50)
+        );
+        // A stated parameter buffer scales the parameter term only.
+        assert_eq!(
+            extra_bytes(2, 2, 1024, 0, 0),
+            12 * 1024 + LIFECYCLE_MACHINE_BUFFERS
+        );
+        assert_eq!(extra_bytes(1, 2, 1024, 0, 0), extra_bytes(1, 2, 9216, 0, 0));
     }
 
     /// `cmake/NanoRosServiceHeap.cmake` is the same formula for the cmake
@@ -170,6 +187,45 @@ mod tests {
         assert_eq!(
             cmake_set("NROS_PARAM_SERVICE_DEFAULT_BUFFER"),
             DEFAULT_SERVICE_BUFFER
+        );
+        assert_eq!(
+            cmake_set("NROS_LIFECYCLE_MACHINE_BUFFER_BYTES"),
+            LIFECYCLE_MACHINE_BUFFERS
+        );
+    }
+
+    /// Issue 2919 -- the mirror IS nros-node's `LIFECYCLE_MACHINE_BUFFER_BYTES`:
+    /// the per-server sizes read out of `lifecycle_services.rs` and summed by
+    /// the same formula, so neither mirror (this one, and the cmake twin the
+    /// test above holds to it) can drift from the buffers the runtime boxes.
+    #[test]
+    fn the_lifecycle_mirror_is_nros_nodes_sum() {
+        let src = include_str!("../../../core/nros-node/src/lifecycle_services.rs");
+        let value = |name: &str| -> usize {
+            let needle = format!("pub const {name}: usize = ");
+            let at = src
+                .find(&needle)
+                .unwrap_or_else(|| panic!("lifecycle_services.rs states no `{name}`"));
+            src[at + needle.len()..]
+                .split(';')
+                .next()
+                .and_then(|v| v.trim().parse().ok())
+                .unwrap_or_else(|| panic!("`{name}` is not a literal"))
+        };
+        let sum = value("LIFECYCLE_CHANGE_STATE_REQUEST_BYTES")
+            + 4 * value("LIFECYCLE_EMPTY_REQUEST_BYTES")
+            + value("LIFECYCLE_CHANGE_STATE_REPLY_BYTES")
+            + value("LIFECYCLE_GET_STATE_REPLY_BYTES")
+            + value("LIFECYCLE_GET_AVAILABLE_STATES_REPLY_BYTES")
+            + value("LIFECYCLE_GET_AVAILABLE_TRANSITIONS_REPLY_BYTES")
+            + value("LIFECYCLE_GET_TRANSITION_GRAPH_REPLY_BYTES");
+        assert_eq!(sum, LIFECYCLE_MACHINE_BUFFERS);
+        // ...and the sum nros-node states is that same formula.
+        assert!(
+            src.contains(
+                "pub const LIFECYCLE_MACHINE_BUFFER_BYTES: usize = LIFECYCLE_CHANGE_STATE_REQUEST_BYTES\n    + 4 * LIFECYCLE_EMPTY_REQUEST_BYTES"
+            ),
+            "nros-node's LIFECYCLE_MACHINE_BUFFER_BYTES changed shape: update this sum with it"
         );
     }
 }

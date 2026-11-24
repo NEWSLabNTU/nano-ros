@@ -15,7 +15,7 @@
 #      carry it (`FreeRTOSConfig.h`, `threadx_hooks.c`, 0 when undefined).
 #   3. Behaviour, on the real cmake function (run on every invocation): no
 #      fragment, or one node and one machine, adds nothing; four nodes add
-#      3 x 12 buffers; three machines add 2 x 10; and it still prices after the
+#      3 x 12 buffers; three machines add 2 x the lifecycle buffers; and it still prices after the
 #      first include ran inside a function frame.
 set -euo pipefail
 repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -98,8 +98,8 @@ selftest() {
     # Remainders are 0 until measured, so the term is the buffers alone.
     case_ four-nodes-threadx THREADX 4 1 $((3 * 12 * 4096))
     case_ four-nodes-freertos FREERTOS 4 0 $((3 * 12 * 4096))
-    case_ three-machines THREADX 1 3 $((2 * 10 * 4096))
-    case_ both FREERTOS 2 2 $((12 * 4096 + 10 * 4096))
+    case_ three-machines THREADX 1 3 $((2 * 1744))
+    case_ both FREERTOS 2 2 $((12 * 4096 + 1744))
 }
 selftest
 

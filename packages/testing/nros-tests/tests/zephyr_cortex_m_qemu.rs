@@ -778,14 +778,18 @@ fn zephyr_cortex_m_idle_xrce_image_wakes_only_for_its_deadlines() {
 /// Issue 2780's lifecycle term -- two managed C nodes on XRCE, on
 /// the heap the configure DERIVES for them.
 ///
-/// Each managed node registers a REP-2002 machine whose five servers are one
-/// 44,200-byte allocation on the platform heap, and on XRCE each server also
-/// takes a slot in `xrce_session_state_t`. Kconfig's flat lifecycle arm
-/// (196,608 B) priced one machine, so the second machine's allocation failed
-/// at boot: `HEAP EXHAUSTED (TOO SMALL): request 44200 bytes`, from
-/// `LifecycleServiceServers::try_new_boxed`, and no node came up. The image
-/// states no heap, so it boots on `zephyr/cmake/nros_heap_floor.cmake`'s
-/// floor; with the flat arm back this cell is red.
+/// What this cell proves: the image BOOTS on whatever heap the build derives
+/// for it, with no heap stated. Both nodes come up and publish.
+///
+/// What it does NOT prove is the derivation's arithmetic. That is checked
+/// statically, on the real cmake functions, by `check-zephyr-heap-param-floor`
+/// and `check-rtos-service-heap`. This cell used to prove it indirectly: a
+/// managed node's five servers were one 44,200-byte allocation on XRCE, so
+/// with Kconfig's flat 196,608-byte arm back the second machine's
+/// `LifecycleServiceServers::try_new_boxed` failed at boot (`HEAP EXHAUSTED`).
+/// Since issue 2919 sized those buffers for the lifecycle messages, a machine
+/// costs about 5 KB and that margin no longer says anything. Each server also
+/// takes a slot in `xrce_session_state_t`.
 ///
 /// Both nodes autostart to Active (`[lifecycle] autostart = "active"`), so a
 /// healthy image publishes from both within a few periods.

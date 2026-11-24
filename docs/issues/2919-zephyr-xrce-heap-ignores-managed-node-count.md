@@ -113,3 +113,30 @@ an efficiency cost, not a boot failure. The nros12 release page drops this
 issue's "two managed XRCE nodes, HEAP EXHAUSTED" known issue for that reason.
 
 This closes when part 1 (phase-554 W5) lands too.
+
+## Progress (2026-11-24): the buffers (phase-554 W5)
+
+The second fact is #4569's, merged: the Zephyr heap now grows with the
+machine count. This addresses the first.
+- Each lifecycle server's request and reply buffers are sized for its own
+  message (nros-node `lifecycle_services.rs`), no longer
+  `PARAM_SERVICE_BUFFER_SIZE` each way. Measured worst-case replies, streamed
+  in every state with the CDR header: get_state 28 B, get_available_states
+  96, get_available_transitions 157, get_transition_graph 429.
+- Buffers: replies 16 / 64 / 128 / 256 / 512 B; requests 512 B for
+  `change_state` (a client sends any label) and 64 B for the four empty ones.
+  That is 1,744 B per machine (`LIFECYCLE_MACHINE_BUFFER_BYTES`), down from
+  40,960. On XRCE a machine's allocation is about 5 KB with its five 648-byte
+  handles, down from 44,200.
+- `lifecycle_buffers_hold_every_reply` streams each reply in every state and
+  holds it under its buffer.
+- The heap floor's per-machine term prices the new buffers, in both of its
+  twins: `NanoRosServiceHeap.cmake` and
+  `nros_sizing_descriptor::service_heap`. The service size no longer scales
+  it, and a test holds both mirrors to nros-node's sum.
+- The one-machine heap bases still price the old buffers (about 39 KB over).
+  Re-measuring them is [issue 2953](2953-lifecycle-heap-arms-priced-old-buffers.md).
+
+Left for acceptance: features' `zephyr_mps2_c_lifecycle_pair_xrce` still
+boots, and its heap peak drops by about 2 x 39 KB from 251,120.
+

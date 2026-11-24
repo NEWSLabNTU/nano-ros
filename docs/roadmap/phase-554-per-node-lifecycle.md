@@ -366,7 +366,15 @@ Acceptance:
 
 ### W5 — DDS backends and the derived pools (D7)
 
-Status: OPEN. Next, ahead of W7 (manager ruling 2026-11-24): two managed nodes
+Owner: nros 139 (2026-11-24).
+
+Status: OPEN. In progress: the lifecycle servers' buffers are sized for
+their messages, 1,744 B per machine where they were 40,960, and the heap
+floor prices that (issue 2919's progress; the one-machine heap bases that
+still price the old buffers are [issue 2953](../issues/2953-lifecycle-heap-arms-priced-old-buffers.md)).
+The `ZENOH_MAX_QUERYABLES` help is corrected (both families counted, the
+lifecycle one per managed node). Still open below: the double count.
+Ahead of W7 (manager ruling 2026-11-24): two managed nodes
 on Zephyr XRCE do not boot, because each machine boxes 44,200 bytes of service
 servers on a heap whose default does not count them
 ([issue 2919](../issues/2919-zephyr-xrce-heap-ignores-managed-node-count.md)).

@@ -7,9 +7,10 @@
 #   - every node carrying the PARAMETER services runs six servers;
 #   - every LIFECYCLE state machine runs five.
 #
-# Each server owns a request/reply pair of PARAM_SERVICE_BUFFER_SIZE bytes
-# (`LIFECYCLE_SERVICE_BUFFER_SIZE` is the same constant, nros-node
-# lifecycle_services.rs). Kconfig's flat arms were each priced on ONE node:
+# A parameter server owns a request/reply pair of PARAM_SERVICE_BUFFER_SIZE
+# bytes; a lifecycle machine's servers own buffers sized for the lifecycle
+# messages (NROS_LIFECYCLE_MACHINE_BUFFER_BYTES, nros-node
+# lifecycle_services.rs, issue 2919). Kconfig's flat arms were each priced on ONE node:
 # 112 KiB for a C/C++ image with param_services, 192 KiB for a Rust one and for
 # any lifecycle image. So a four-node image ran its arm dry at boot:
 # `HEAP EXHAUSTED`, from `_z_write_filter_create`, the last allocation that did
@@ -57,9 +58,12 @@ set(NROS_ZEPHYR_HEAP_ONE_LIFECYCLE_MACHINE 196608 CACHE INTERNAL "issue 2780 hea
 # the 24,576-byte floor.
 set(NROS_ZEPHYR_HEAP_PARAM_NODE_REMAINDER 0 CACHE INTERNAL "issue 2780 heap floor")
 # Issue 2780 -- the lifecycle remainder is PER RMW, because on XRCE a machine
-# costs more than its buffers. Its five servers are one allocation of
-# 5 x (2 x buffer + the server's handle): 44,200 B at the 4096 default, a
-# 648-byte XRCE handle each. And each server takes a service-server slot in
+# costs more than its buffers. Its five servers are one allocation of their
+# lifecycle buffers plus each server's handle, a 648-byte XRCE handle each.
+# The buffers were 5 x 2 x 4096 = 40,960 B when the remainder below was
+# measured; issue 2919 sized them for the lifecycle messages
+# (NROS_LIFECYCLE_MACHINE_BUFFER_BYTES), and the remainder is the cost BEYOND
+# them, so it still holds. And each server takes a service-server slot in
 # `xrce_session_state_t`, which the configure sizes from the same inventory
 # (NROS_XRCE_MAX_SERVICE_SERVERS, 19 -> 24 for the second machine), about
 # 4.7 KiB a slot. MEASURED 2026-11-24, mps2/an385, Zephyr 3.7, two C talkers

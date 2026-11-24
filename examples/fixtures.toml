@@ -7639,8 +7639,9 @@ skip_probe = true
 # Zephyr Cortex-M QEMU board, the (ZephyrQemuCortexM, C, Xrce, Lifecycle,
 # Workspace) cell: `features`' `[image.zephyr_mps2_c_lifecycle_pair_xrce]`.
 # The image states no heap; the configure derives it from its two lifecycle
-# machines, and the second machine's 44,200-byte service set is what Kconfig's
-# flat lifecycle arm could not hold. Agent port 5780 =
+# machines. The second machine's service set (44,200 B until issue 2919 sized
+# its buffers for the lifecycle messages, about 4.9 KiB on XRCE since) is what
+# Kconfig's flat lifecycle arm could not hold. Agent port 5780 =
 # `alloc::xrce_agent_port_of(ZephyrQemuCortexM, C, Lifecycle)`, on the SLIRP
 # host address. Consumed by tests/zephyr_cortex_m_qemu.rs.
 [[workspace_fixture]]
