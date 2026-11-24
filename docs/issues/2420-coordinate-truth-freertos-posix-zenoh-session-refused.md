@@ -176,3 +176,16 @@ failure, and not this issue's. That entry reached its first spin and never
 registered, and it came from a PR's own wait change: the same steps on that
 PR's base passed.
 
+
+## No recurrence of this shape (2026-11-25)
+
+`a_rows_entry_registers_its_nodes_at_runtime` failed in all three lanes of
+run 45351389552 (main `0d9fa3e470`, 2026-11-24), but not with this issue's
+shape. No session was refused after a baked-port wait. Two other rows,
+`workspace-features-c-params` and `workspace-features-mixed-params`, stopped
+before spinning with "component setup failed with code -6/-7", the same in
+every lane: a deterministic setup failure, not this start race. It passed at
+`730dfbebeb` (run 45422927491), so a change between the two heads fixed it.
+The freertos-posix zenoh row registered in every run read. This stays a watch
+item; the next recurrence of the refused-session shape is what decides
+between the two remedies above.

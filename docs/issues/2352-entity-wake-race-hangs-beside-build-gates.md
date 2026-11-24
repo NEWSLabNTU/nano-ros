@@ -259,3 +259,12 @@ else, and the watchdog's stage and backtraces will say where.
 
 **Close rule, the same as issue 2765's:** close as not reproduced if no
 `entity_wake` test reds or trips the watchdog through 2026-12-20.
+
+## No recurrence (2026-11-25)
+
+Read in the junits of the 2026-11-24 runs 45351389552 (tier 1, tier 2,
+pairwise nightly; main `0d9fa3e470`) and 45422927491 (the nros12 release
+dispatch's tier 2; `730dfbebeb`): every `entity_wake` and `xrce_entity_wake`
+case passed, both cases of
+`an_arrival_racing_a_drain_is_never_left_undispatched` included, and no
+watchdog stage line appears. The close rule above stands.

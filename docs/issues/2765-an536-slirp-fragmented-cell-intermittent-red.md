@@ -88,3 +88,10 @@ and `nightly` (12 failed runs, 2026-11-14 to 2026-11-23, read with
 
 The 2026-11-11 shape (no sample at all) has not been seen since 2026-11-11.
 The close rule above stands: not reproduced if green through 2026-12-20.
+
+## Still no recurrence (2026-11-25)
+
+The cell is lane-skipped in run-matrix, so its evidence is the live-peer
+board lane: green in 45394588495 (2026-11-24, the final proof run of #4781). No red of either
+shape since 2026-11-11 (the 2026-11-21 one being issue 2820's). The close
+rule stands.
