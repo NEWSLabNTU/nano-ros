@@ -265,6 +265,100 @@ static inline uint8_t nros_clock_first_source_from_build(void) {
 }
 #endif /* NROS_CLOCK_SOURCE_CSV */
 
+/* ---- SNTP re-sync pacing ------------------------------------------------
+ *
+ * Ruling 2026-11-24: a re-sync is paced on the clock the re-sync maintains,
+ * the server's, not on the image's monotonic time, so the stated interval is
+ * real time even where guest time races (an Arm FVP runs an idle guest 10x to
+ * 100x fast). Between answers this port's wall clock is monotonic + offset and
+ * runs at guest rate too, so the server's clock is followed by its RATE: the
+ * server time two answers advanced over the monotonic time between them. The
+ * next query is due once `elapsed x rate` reaches the interval, where
+ * `elapsed` is monotonic time since the last ATTEMPT (so a failing server is
+ * asked at the same paced spacing, never in a loop).
+ *
+ * The rate is not trusted blindly: a server step (an operator set, a leap), a
+ * monotonic delta of zero, or an answer that went missing can make it zero,
+ * negative or absurd. Outside [RATE_MIN, RATE_MAX] the gap falls back to
+ * monotonic pacing, as before two answers exist, and the caller says so.
+ *
+ * Pure: the caller supplies every time; nothing here sleeps or reads a clock.
+ * The first re-sync after boot has one answer and so no rate: it is paced on
+ * monotonic time. */
+
+/* Server ms per monotonic ms, in parts per million. 0.001 to 100: an FVP
+ * racing 100x reads 0.01, a guest slowed 10x reads 10. */
+#define NROS_SNTP_PACE_RATE_MIN_PPM 1000ULL
+#define NROS_SNTP_PACE_RATE_MAX_PPM 100000000ULL
+
+typedef struct {
+    uint64_t prev_mono_ms; /* the answer before the last: monotonic ... */
+    uint64_t prev_wall_ms; /* ... and the wall clock right after it installed */
+    uint64_t last_mono_ms;
+    uint64_t last_wall_ms;
+    uint32_t answers; /* how many answers were noted, saturating */
+} nros_sntp_pace_t;
+
+typedef enum {
+    NROS_SNTP_PACE_RATE_UNKNOWN = 0, /* fewer than two answers */
+    NROS_SNTP_PACE_RATE_OK = 1,
+    NROS_SNTP_PACE_RATE_OUT_OF_RANGE = 2, /* zero, negative or outside the bounds */
+} nros_sntp_pace_rate_t;
+
+/* Note a successful exchange: the monotonic time and the wall clock read
+ * right after the offset it installed. */
+static inline void nros_sntp_pace_answer(nros_sntp_pace_t* p, uint64_t mono_ms, uint64_t wall_ms) {
+    p->prev_mono_ms = p->last_mono_ms;
+    p->prev_wall_ms = p->last_wall_ms;
+    p->last_mono_ms = mono_ms;
+    p->last_wall_ms = wall_ms;
+    if (p->answers < 2u) {
+        p->answers++;
+    }
+}
+
+/* The rate between the last two answers, in ppm, and whether it is usable. */
+static inline nros_sntp_pace_rate_t nros_sntp_pace_rate(const nros_sntp_pace_t* p,
+                                                        uint64_t* rate_ppm) {
+    *rate_ppm = 0u;
+    if (p->answers < 2u) {
+        return NROS_SNTP_PACE_RATE_UNKNOWN;
+    }
+    if (p->last_mono_ms <= p->prev_mono_ms || p->last_wall_ms <= p->prev_wall_ms) {
+        return NROS_SNTP_PACE_RATE_OUT_OF_RANGE;
+    }
+    uint64_t d_mono = p->last_mono_ms - p->prev_mono_ms;
+    uint64_t d_wall = p->last_wall_ms - p->prev_wall_ms;
+    /* d_wall above ~584 years in ms would overflow the product: out of range. */
+    if (d_wall > UINT64_MAX / 1000000ULL) {
+        return NROS_SNTP_PACE_RATE_OUT_OF_RANGE;
+    }
+    uint64_t r = d_wall * 1000000ULL / d_mono;
+    if (r < NROS_SNTP_PACE_RATE_MIN_PPM || r > NROS_SNTP_PACE_RATE_MAX_PPM) {
+        return NROS_SNTP_PACE_RATE_OUT_OF_RANGE;
+    }
+    *rate_ppm = r;
+    return NROS_SNTP_PACE_RATE_OK;
+}
+
+/* Whether the next query is due, `since_attempt_ms` of monotonic time after
+ * the last attempt. With a usable rate: once that time, scaled to the
+ * server's, reaches `interval_ms`; otherwise once it reaches `interval_ms`
+ * itself. */
+static inline bool nros_sntp_pace_due(const nros_sntp_pace_t* p, uint64_t since_attempt_ms,
+                                      uint32_t interval_ms) {
+    uint64_t rate = 0u;
+    if (nros_sntp_pace_rate(p, &rate) != NROS_SNTP_PACE_RATE_OK) {
+        return since_attempt_ms >= (uint64_t)interval_ms;
+    }
+    /* since x rate / 1e6 >= interval, without the division. `since` above
+     * ~584 years of ms cannot occur; saturate rather than wrap. */
+    if (since_attempt_ms > UINT64_MAX / rate) {
+        return true;
+    }
+    return since_attempt_ms * rate >= (uint64_t)interval_ms * 1000000ULL;
+}
+
 #ifdef NROS_CLOCK_HAS_BOARD
 /* The `board` source's try, in `nros_clock_board__set_by__knobs_clock_source.c`
  * (compiled only with it): ask the board hook until it answers or `settle_ms`

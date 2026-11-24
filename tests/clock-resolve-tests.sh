@@ -24,7 +24,13 @@
 #   7. epoch_failure = halt: no source answered, the image stops through
 #      nros_platform_panic, with a message naming every source;
 #   8. an empty list reads as ["platform"];
-#   9. the knobs' comma-joined spelling parses, in order, whole words only.
+#   9. the knobs' comma-joined spelling parses, in order, whole words only;
+#  10. SNTP re-sync pacing (issue 2884): on the server's clock by the rate two
+#      answers measured, so a racing guest's 10 s interval is 10 s of the
+#      server's; monotonic pacing before two answers;
+#  11. a rate that cannot be trusted (a server step either way, no monotonic
+#      time between answers, outside the bounds) paces that gap on monotonic
+#      time.
 # The negative control rebuilds the same test with the elapsed time between
 # readings FROZEN: both "advances" cases must fail, so neither "never goes
 # backwards" nor "holds" can pass on a clock that never moves.
@@ -261,6 +267,63 @@ int main(void) {
     p = (nros_clock_policy_t){NULL, 0, 100, NROS_CLOCK_UPGRADE_NEVER, NROS_CLOCK_EPOCH_FAILURE_HALT};
     got = nros_clock_resolve(&p, try_source, report, &sc);
     CHECK("8 empty list: platform", got == NROS_WALL_CLOCK_SOURCE_PLATFORM);
+
+    /* 10. SNTP re-sync pacing (issue 2884): on the server's clock, by its rate. */
+    {
+        uint64_t r = 0;
+        nros_sntp_pace_t sp = {0};
+        CHECK("10 no answer: rate unknown",
+              nros_sntp_pace_rate(&sp, &r) == NROS_SNTP_PACE_RATE_UNKNOWN);
+        CHECK("10 no answer: paced on monotonic time, due at the interval, not before",
+              !nros_sntp_pace_due(&sp, 9999, 10000) && nros_sntp_pace_due(&sp, 10000, 10000));
+        nros_sntp_pace_answer(&sp, 1000, 1700000000000ULL);
+        CHECK("10 one answer (the boot sync): still monotonic pacing",
+              nros_sntp_pace_rate(&sp, &r) == NROS_SNTP_PACE_RATE_UNKNOWN &&
+                  nros_sntp_pace_due(&sp, 10000, 10000));
+        /* A guest racing 10x: 10 s of guest time was 1 s of the server's. */
+        nros_sntp_pace_answer(&sp, 11000, 1700000001000ULL);
+        CHECK("10 racing guest: rate 0.1", nros_sntp_pace_rate(&sp, &r) == NROS_SNTP_PACE_RATE_OK &&
+                                               r == 100000ULL);
+        CHECK("10 racing guest: a 10 s interval waits 100 s of guest time (10 s real)",
+              !nros_sntp_pace_due(&sp, 99999, 10000) && nros_sntp_pace_due(&sp, 100000, 10000));
+        /* Hardware: the two clocks agree. */
+        nros_sntp_pace_t hw = {0};
+        nros_sntp_pace_answer(&hw, 0, 1700000000000ULL);
+        nros_sntp_pace_answer(&hw, 60000, 1700000060000ULL);
+        CHECK("10 hardware: rate 1, due at the interval",
+              nros_sntp_pace_rate(&hw, &r) == NROS_SNTP_PACE_RATE_OK && r == 1000000ULL &&
+                  !nros_sntp_pace_due(&hw, 59999, 60000) && nros_sntp_pace_due(&hw, 60000, 60000));
+
+        /* 11. a rate that cannot be trusted falls back to monotonic pacing. */
+        nros_sntp_pace_t st = {0};
+        nros_sntp_pace_answer(&st, 0, 1700000000000ULL);
+        nros_sntp_pace_answer(&st, 10000, 1700003600000ULL); /* the server stepped +1 h */
+        CHECK("11 a server step forward is out of range",
+              nros_sntp_pace_rate(&st, &r) == NROS_SNTP_PACE_RATE_OUT_OF_RANGE && r == 0u);
+        CHECK("11 ... and that gap is paced on monotonic time",
+              !nros_sntp_pace_due(&st, 9999, 10000) && nros_sntp_pace_due(&st, 10000, 10000));
+        nros_sntp_pace_t back = {0};
+        nros_sntp_pace_answer(&back, 0, 1700000060000ULL);
+        nros_sntp_pace_answer(&back, 10000, 1700000000000ULL); /* stepped back */
+        CHECK("11 a server step back is out of range",
+              nros_sntp_pace_rate(&back, &r) == NROS_SNTP_PACE_RATE_OUT_OF_RANGE);
+        nros_sntp_pace_t zero = {0};
+        nros_sntp_pace_answer(&zero, 5000, 1700000000000ULL);
+        nros_sntp_pace_answer(&zero, 5000, 1700000001000ULL); /* no monotonic time */
+        CHECK("11 a zero monotonic delta is out of range",
+              nros_sntp_pace_rate(&zero, &r) == NROS_SNTP_PACE_RATE_OUT_OF_RANGE &&
+                  nros_sntp_pace_due(&zero, 10000, 10000));
+        nros_sntp_pace_t slow = {0};
+        nros_sntp_pace_answer(&slow, 0, 1700000000000ULL);
+        nros_sntp_pace_answer(&slow, 10000000, 1700000005000ULL); /* rate 0.0005 */
+        CHECK("11 a rate below the bound is out of range",
+              nros_sntp_pace_rate(&slow, &r) == NROS_SNTP_PACE_RATE_OUT_OF_RANGE);
+        nros_sntp_pace_t edge = {0};
+        nros_sntp_pace_answer(&edge, 0, 1700000000000ULL);
+        nros_sntp_pace_answer(&edge, 10000, 1700001000000ULL); /* rate 100, the bound */
+        CHECK("11 the upper bound itself is usable",
+              nros_sntp_pace_rate(&edge, &r) == NROS_SNTP_PACE_RATE_OK && r == 100000000ULL);
+    }
     return bad;
 }
 EOF

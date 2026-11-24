@@ -1,7 +1,9 @@
 # Phase 582 — Wall-clock source
 
-**Status (2026-11-19). OPEN: design in review; no item started. Owner: nros
-139.** Implements [RFC-0141](../design/0141-wall-clock-source.md): one selected
+**Status (2026-11-24). OPEN: W2 and W3 are done; W1 and W4 are open (see their
+Status lines). Open issues: 2839 (fix on main, its Zephyr cells running), 2884
+(ruled; server-clock pacing implemented, the FVP measurement pending), 2897
+(the 64-bit Arm stack walk, in progress), 2846, 2866. Owner: nros 139.** Implements [RFC-0141](../design/0141-wall-clock-source.md): one selected
 wall-clock source per image, behind the one wall-clock symbol. A board can
 supply its clock, every source that can fail falls under one stated policy,
 and the libc shims answer from the same symbol.
@@ -360,9 +362,10 @@ SNTP never re-acquires. A consumer's board hook papers over that with
   RFC-0141 D1's 2026-11-22 amendment (in flight on #4619). Found by the island
   (phase-478 I43).
 - [Issue 2884](../issues/2884-sntp-resync-paced-on-guest-time.md): the SNTP
-  re-sync interval runs on guest time, so on an FVP racing an idle guest a
-  10 s interval re-queries several times a real second. A ruling on D5's
-  "image monotonic time" wording, possibly a knob (phase-478 I44).
+  re-sync interval ran on guest time, so on an FVP racing an idle guest a
+  10 s interval re-queried several times a real second. Ruled 2026-11-24: it
+  is paced on the server's clock (D5). Implemented; the FVP measurement is
+  pending (phase-478 I44).
 - [Issue 2897](../issues/2897-a53-stack-walk-refuses-aarch64-builtins.md):
   the stack-floor walk refuses every root on a 64-bit Arm Zephyr image (no
   aarch64 libgcc builtins row, no arm64 arch-entry frames), so W3's SNTP
