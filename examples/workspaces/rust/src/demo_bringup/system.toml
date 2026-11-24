@@ -195,7 +195,7 @@ locator = "tcp/127.0.0.1:9030"
 [image.zephyr]
 board = "zephyr"
 os_config = ["prj-zenoh.conf"]
-locator = "tcp/10.0.2.2:7430"
+locator = "tcp/127.0.0.1:7430"
 
 [image.zephyr.knobs.memory]
 heap_bytes = 262144
@@ -213,7 +213,7 @@ board = "zephyr"
 os_config = ["prj-zenoh.conf"]
 launch = "multihost.launch.xml"
 args = { host = "robot1" }
-locator = "tcp/10.0.2.2:7469"
+locator = "tcp/127.0.0.1:7469"
 
 [image.zephyr_robot1.knobs.memory]
 heap_bytes = 262144

@@ -391,7 +391,7 @@ before_boot = "rust_before_boot_talker_pkg::prepare"
 board = "zephyr"
 os_config = ["prj-zenoh.conf"]
 launch = "rust_lifecycle.launch.xml"
-locator = "tcp/10.0.2.2:7463"
+locator = "tcp/127.0.0.1:7463"
 
 [image.zephyr_rust_lifecycle.knobs.executor]
 max_cbs = 16
@@ -426,7 +426,7 @@ locator = "udp/10.0.2.2:2018"
 board = "zephyr"
 os_config = ["prj-zenoh.conf"]
 launch = "rust_params.launch.xml"
-locator = "tcp/10.0.2.2:7461"
+locator = "tcp/127.0.0.1:7461"
 
 [image.zephyr_rust_params.knobs.executor]
 max_cbs = 16
@@ -446,7 +446,7 @@ board = "zephyr"
 # it used to be a `prj-qos.conf` of its own.
 os_config = ["prj-zenoh.conf"]
 launch = "rust_qos.launch.xml"
-locator = "tcp/10.0.2.2:7465"
+locator = "tcp/127.0.0.1:7465"
 
 [image.zephyr_rust_qos.knobs.executor]
 max_cbs = 16

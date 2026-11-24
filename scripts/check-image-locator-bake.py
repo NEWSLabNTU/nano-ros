@@ -46,6 +46,15 @@ policed by `check-entry-locator-ssot`):
      default 7450, and the row was exempted as router-less by a reason that
      named a test which never ran it.
 
+  6. (issue 2941) an image whose board runs as a HOST PROCESS (a Zephyr
+     board whose west board is `native_sim`) states no QEMU user-mode
+     address (`10.0.2.2`). A native_sim image reaches the host's own network
+     stack through NSOS, so the router is at 127.0.0.1; `10.0.2.2` is QEMU
+     slirp's name for the host and reaches nothing there. Seven images stated
+     it, and the fixtures' command-line locator define hid all seven until it
+     went missing. Unlike rules 1-4 this reads EVERY tracked `system.toml`
+     image, not only fixture rows: a user copies an example, not a row.
+
 Scope (phase-484 W4e): a single-package cargo LEAF row — no `image`, a
 `system.toml` beside its `Cargo.toml` declaring its one image — is an image row
 too; `nros::main!` reads its `system.toml` exactly as a bringup's. Rows that
@@ -406,6 +415,63 @@ def check_router_recipes(sources, rows):
     return problems
 
 
+SLIRP_HOST = "10.0.2.2"
+
+
+def host_process_boards(root):
+    """Board names whose image runs as a host process: a `[[board]]` whose
+    `zephyr.west_board` is a `native_sim` target. Read from every tracked
+    descriptor, so a new native_sim board is covered without a list."""
+    out = subprocess.run(
+        ["git", "-C", root, "ls-files", "packages/boards/**/nros-board.toml"],
+        capture_output=True, text=True, check=True,
+    ).stdout.split()
+    names = set()
+    for rel in out:
+        with open(os.path.join(root, rel), "rb") as f:
+            doc = tomllib.load(f)
+        for board in doc.get("board", []):
+            west = board.get("zephyr", {}).get("west_board", "")
+            if west.startswith("native_sim"):
+                names.update(board.get("names", []))
+    return names
+
+
+def check_host_process_locators(images, host_boards):
+    """Rule 6 over `(where, image_id, board, locator)` tuples."""
+    problems = []
+    for where, image_id, board, locator in images:
+        if board in host_boards and isinstance(locator, str) and \
+                f"/{SLIRP_HOST}:" in locator:
+            problems.append(
+                f"{where} [image.{image_id}]: board `{board}` runs as a host "
+                f"process (native_sim), so `{locator}` reaches nothing -- "
+                f"{SLIRP_HOST} is QEMU user-mode networking's host address. "
+                f"State `tcp/127.0.0.1:<port>` (issue 2941)."
+            )
+    return problems
+
+
+def tracked_images(root):
+    """Every image of every tracked example/test `system.toml`, with the board
+    and locator it resolves (`[image.<id>]` over `[image_defaults]` over
+    `[system]`, the leaf reader's precedence)."""
+    out = subprocess.run(
+        ["git", "-C", root, "ls-files", "examples/**/system.toml",
+         "packages/**/system.toml"],
+        capture_output=True, text=True, check=True,
+    ).stdout.split()
+    images = []
+    for rel in out:
+        doc = system_toml.load(Path(os.path.join(root, rel)))
+        defaults = doc.get("image_defaults", {})
+        for image_id, image in doc.get("image", {}).items():
+            board = image.get("board", defaults.get("board"))
+            locator, _ = stated_locator(doc, image_id)
+            images.append((rel, image_id, board, locator))
+    return images
+
+
 def self_test():
     table = {"brd": (False, []), "envbrd": (True, [])}
 
@@ -442,6 +508,19 @@ def self_test():
         got = len(check_router_recipes([("self-test", text)], rows5))
         if got != want:
             bad.append(f"self-test rule 5 '{name}': {got} problem(s), expected {want}")
+    # Rule 6 -- the 2941 shape, its fix, and a QEMU board that rightly
+    # states the slirp address.
+    host = {"zephyr"}
+    for name, img, want in (
+        ("slirp address on a native_sim image", ("s", "z", "zephyr", "tcp/10.0.2.2:7430"), 1),
+        ("loopback on a native_sim image", ("s", "z", "zephyr", "tcp/127.0.0.1:7430"), 0),
+        ("slirp address on a QEMU board", ("s", "q", "mps2-an385-freertos", "tcp/10.0.2.2:7430"), 0),
+    ):
+        got = len(check_host_process_locators([img], host))
+        if got != want:
+            bad.append(f"self-test rule 6 '{name}': {got} problem(s), expected {want}")
+    if "zephyr" not in host_process_boards(ROOT):
+        bad.append("self-test rule 6: the native_sim `zephyr` board was not found as a host-process board")
     # The table verifier must catch a claim the sources contradict.
     if not verify_table({"freertos": (True, READS_ENV["freertos"][1])}, ROOT):
         bad.append("self-test: a false READS_ENV claim (freertos reads env) was not caught")
@@ -476,6 +555,8 @@ def main(argv):
         with open(path, encoding="utf-8") as f:
             sources.append((os.path.relpath(path, ROOT), f.read()))
     problems += check_router_recipes(sources, rows)
+    images = tracked_images(ROOT)
+    problems += check_host_process_locators(images, host_process_boards(ROOT))
     if "--audit" in argv:
         print("\n".join(audit))
     if problems:
