@@ -78,3 +78,13 @@ script is unchanged.
 Measured on host 142 (aarch64): the self-test alone is 1.4 s against 77 s
 for the normal path. With the change the gate's three shapes take 1.6 s,
 1.5 s and 1.5 s, and `check-hook-repo-side-effects` is OK.
+
+## Next probe heading toward the budget
+
+In the hosted `check / fast` run on this change (PR #4821's head),
+`scripts/check-book-probe-tracks.py` was the slowest probe at 32.1 to 34.3 s
+per shape. The others were under 15 s and `changelog-audit.py` was 1.5 s. That
+probe ALREADY runs on `--self-test` (#4228), so this issue's fix is spent on
+it: the 32 s is its self-test's own cost. If it grows toward the 120 s budget,
+the lever is making that self-test cheaper or splitting it, not swapping its
+arguments.
