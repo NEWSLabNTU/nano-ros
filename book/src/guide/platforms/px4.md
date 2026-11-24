@@ -188,7 +188,7 @@ Startup script returned successfully
 Then, in a second terminal in the same directory, start the module through
 the daemon's client command:
 
-```bash probe=70 probe-run=60
+```bash probe=70 probe-run=60 probe-exit=0
 cd PX4-Autopilot/build/px4_sitl_default
 bin/px4-nano_ros_app start
 ```

@@ -163,7 +163,7 @@ printf '[toolchain]\nversion = "0.6.0-nros10"\n' > nros-toolchain.toml
 Ask for the pin. The release that answers is the pinned one, fetched on first
 use, and it names its own manifest:
 
-```bash probe=50 probe-run=600 track=installed variant=pinned
+```bash probe=50 probe-run=600 probe-exit=0 track=installed variant=pinned
 nros pin
 ```
 

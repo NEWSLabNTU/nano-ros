@@ -168,7 +168,7 @@ the key on every row or on none, so write it on both.
 
 Build:
 
-```bash probe=2030 probe-run=600 track=installed variant=qemu
+```bash probe=2030 probe-run=600 probe-exit=fail track=installed variant=qemu
 nros build
 ```
 

@@ -349,6 +349,12 @@ blocks (`scripts/probe/extract-book-steps.py`).
   how-to and the CLI reference name them; a chapter does not. The probe
   asserts the Output block (`probe-run=SECS`, `probe-expect=NN`), and
   `probe-keep` keeps a run going for the step after it.
+- **A command that finishes is a plain step,** which must exit 0. When its
+  output is the point (a refusal, `nros pin`'s answer), tag it
+  `probe-run=SECS probe-exit=0`, or `probe-exit=fail` for a refusal. It then
+  runs to its end and its exit status is checked as well as its Output
+  block. A `probe-run` step without `probe-exit` is stopped as soon as its
+  output prints, which is right only for a command that runs until stopped.
 - **Trees fit the page.** Each line within about 80 columns; a note longer
   than a few words goes in the prose under the tree.
 - **Width.** Commands and source lines stay within about 80 columns: break a
