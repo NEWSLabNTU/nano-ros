@@ -1565,7 +1565,7 @@ host contend with each other at least as much as with the gates.
 `just build tier2-nightly` (15:23-22:03Z), against 188 min on 2026-11-15, and
 was cancelled at its 490-min job timeout before any cell ran. The host ran a
 tier-1 fixture build of about 425 GB and back-to-back local `ci gate`s in that
-window. Filed as [#2663](../issues/2663-pairwise-nightly-times-out-when-host-241-runs-local-gates.md),
+window. Filed as [#2663](../issues/archived/2663-pairwise-nightly-times-out-when-host-241-runs-local-gates.md),
 with the options (a per-host label, pausing the host queue in the nightly
 window, a larger timeout) for the user.
 
@@ -1649,7 +1649,7 @@ this phase will fix it.
 
 | issue | why it belongs here |
 | --- | --- |
-| [#2663](../issues/2663-pairwise-nightly-times-out-when-host-241-runs-local-gates.md) | Homed 2026-11-17 (W14). The pairwise nightly on `newslab-server-241` was cancelled at its 490-min timeout when the host also ran local gates and a tier-1 fixture build (build step 400 min, against 188 the night before). User ruling 2026-11-17: per-host labels. Prepared as `nros-host-<id>` per runner, and the heavy jobs request the role `nros-heavy`; the operator registers both. |
+| [#2663](../issues/archived/2663-pairwise-nightly-times-out-when-host-241-runs-local-gates.md) | Homed 2026-11-17 (W14). The pairwise nightly on `newslab-server-241` was cancelled at its 490-min timeout when the host also ran local gates and a tier-1 fixture build (build step 400 min, against 188 the night before). User ruling 2026-11-17: per-host labels. Prepared as `nros-host-<id>` per runner, and the heavy jobs request the role `nros-heavy`; the operator registers both. Resolved 2026-11-25: since the pin the nightly runs on 118 and reached its cells (run 45339477050); the contention left on 241 is runner against runner, an input to W14's like-for-like comparison. |
 | [#2654](../issues/archived/2654-cli-release-build-not-incremental.md) | **Resolved** 2026-11-16: the CLI release build is incremental (`packages/cli/Cargo.toml`), every-commit rebuild 38.8 s to 5.0 s. Homed 2026-11-16 (the `nros` CLI build profile). The CLI's release build is not incremental: an edit rebuild takes 35.3 s, against 4.7 s with `incremental = true`. User ruling: GO, no added cleanup (the cache stays flat). Where to set it is open. |
 | [#2655](../issues/2655-cli-stamps-baked-into-largest-crate.md) | Homed 2026-11-16. Every commit recompiles `nros-cli-core` (38.8 s), because its freshness stamps are baked in through `env!` and its build.rs watches the git index. HELD by the user until #2654's result. |
 | [#2656](../issues/2656-cli-dev-profile-inherits-no-incremental.md) | Homed 2026-11-16. `packages/cli` inherits the shared `dev` profile's `incremental = false`, so `cargo test` edit rebuilds take 31.7 s. HELD: phase-340 W6's sccache rlib reproducibility needs it off. |

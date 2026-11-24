@@ -1,15 +1,17 @@
 ---
 id: 2663
 title: "The pairwise nightly times out when host 241 runs local gates"
-status: open
+status: resolved
 type: limitation
 area: ci, runners
 severity: medium
 found: 2026-11-17
 related: [phase-489]
+resolved: 2026-11-25
+resolved_in: "the change that archives this issue"
 ---
 
-**Home: [phase-489](../roadmap/phase-489-ci-build-speedup.md) W14.** The
+**Home: [phase-489](../../roadmap/phase-489-ci-build-speedup.md) W14.** The
 runner `newslab-server-241` shares its host with the agents' local
 `just ci gate` runs and large fixture builds. When both run at once, the
 pairwise nightly's build step takes more than twice as long and the job hits
@@ -215,8 +217,16 @@ build 2 to 5 times slower. The longest, 241 min, used 60 % of the job's
 405 min `timeout-minutes`, so tier 1 is not near a timeout today. It also
 takes host 241's L3 from 21 to 31-70 min while it builds.
 
-**Still open, for phase-489 W14:** a like-for-like comparison (one commit,
+**Left to phase-489 W14 (and phase-591 W7):** a like-for-like comparison (one commit,
 dispatched to each host through `nros-host-<id>`), which waits for the
 release verdict. If it confirms the build ratio, moving `tier 1` to
 `nros-heavy` as well would take the L3 contention away, at the cost of
 serialising tier 1 behind tier 2 on 118.
+
+## Resolution (2026-11-25)
+
+Closed: "Done when" is met (run 45339477050 reached the pairwise nightly's
+cells on main), and the heavy jobs cannot land on host 241 while they request
+`nros-heavy`. The runner-against-runner contention on 241 measured above is
+not tracked here. It is an input to phase-489 W14's like-for-like comparison
+and phase-591 W7's warm-tree work, both after the nros12 release verdict.
