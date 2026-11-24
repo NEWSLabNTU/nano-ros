@@ -1596,3 +1596,16 @@ nuttx-libc-graph:
 [group('needs:cmake')]
 rtos-service-heap:
     @bash scripts/check/check-rtos-service-heap.sh
+
+# Issue 2932 -- a host build never exports a libc name. A bare-metal platform
+# crate's `no_mangle` `malloc`/`memcpy`/... stand in for a libc the IMAGE lacks;
+# built for the host (its unit tests, host tooling, clippy) they REPLACED glibc's
+# for the whole process, and mps2-an385's single-threaded arena aborted a full
+# gate. Derives the names (every `libc_stubs.rs` + the allocator four), the
+# crates that export them, and each crate's host build, then `nm`s it. Its
+# negative control (a C object defining `malloc`) runs on every invocation.
+[metadata("tier", "build")]
+[group('cpu:2')]
+[metadata("cpu-basis", "default", "four small host cargo builds of bare-metal crates; knee not measured")]
+host-libc-symbols:
+    @python3 scripts/check/check-host-libc-symbols.py

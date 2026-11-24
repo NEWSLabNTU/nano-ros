@@ -1489,6 +1489,17 @@ jobs:
           source ./activate.sh
           just check bare-metal-wall-clock
 
+      # Issue 2932 -- a host build of a bare-metal crate must not export a libc
+      # name: there it replaces glibc's for the whole process (mps2-an385's
+      # `malloc` put libtest on a single-threaded arena and aborted a gate).
+      # Builds each stub crate for the host and `nm`s it. Merge group only:
+      # four small host builds, once per batch.
+      - name: just check host-libc-symbols
+        if: ${{ github.event_name == 'merge_group' && !cancelled() }}
+        run: |
+          source ./activate.sh
+          just check host-libc-symbols
+
       # Issue 2722 -- clippy -D warnings over every feature set a recipe, a
       # script or a feature lane BUILDS and no clippy site covers. The list is
       # derived from those build sites, so a set is linted the day a lane

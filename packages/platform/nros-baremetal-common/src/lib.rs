@@ -21,6 +21,8 @@ pub mod sleep;
 // `c-libc` wins over `libc-stubs`: a C-rooted image (CMake owns the final
 // link) brings newlib, which must be the only definition of these symbols,
 // and cargo features are additive, so the opt-out has to be its own feature.
-// Phase-553 W1.
-#[cfg(all(feature = "libc-stubs", not(feature = "c-libc")))]
+// Phase-553 W1. Issue 2932 -- and only on bare metal: on a host build these
+// `no_mangle` names (`memcpy`, `strlen`, `strtol`, ...) would replace glibc's
+// for the whole process, which is what happened to `malloc` one crate over.
+#[cfg(all(feature = "libc-stubs", not(feature = "c-libc"), target_os = "none"))]
 pub mod libc_stubs;
