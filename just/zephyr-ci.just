@@ -634,9 +634,10 @@ build-fixtures:
 # `[zephyr_module.<name>] lines = []` in nros-sdk-index.toml). The row
 # `west_s32z270_rtu0_zephyr` needs `hal_nxp` (1.3 GB in a workspace), which is
 # why no fresh workspace fetches it. This recipe fetches each module THE ROWS
-# name, at the revision this Zephyr tree pins, into this checkout's own build
-# root (`scripts/zephyr/fetch-job-module.sh`: shallow and sparse, ~60 MB for
-# hal_nxp), names it to the rows' configure, and builds them through
+# name, at the revision the row's board's downstream west fragment
+# (`west-downstream.yml`) states, which must be the one this Zephyr tree pins,
+# into this checkout's own build root (`scripts/zephyr/fetch-job-module.sh`:
+# shallow and sparse, ~60 MB for hal_nxp), names it to the rows' configure, and builds them through
 # `west-fixtures.sh`, the west lane's builder. The store workspace is never
 # touched. On CI the whole tree is the job's, so the module is the job's too.
 #
@@ -664,11 +665,15 @@ build-module-fixtures id="":
     mod_root="$(bash scripts/lib/zephyr-workspace.sh --version "{{NROS_ZEPHYR_VERSION}}" build-root)/job-modules"
     ids=()
     supplied=""
-    while IFS=$'\t' read -r id mods; do
+    while IFS=$'\t' read -r id mods frag; do
         ids+=("$id")
+        # The revisions come from the board's downstream west fragment, the
+        # file a consumer imports, so this lane builds with what it ships.
+        [ -n "$frag" ] || { echo "build-module-fixtures: $id's board ships no west-downstream.yml" >&2; exit 1; }
         for m in ${mods//,/ }; do
             case " $supplied " in *" $m="*) continue ;; esac
-            dir="$(bash scripts/zephyr/fetch-job-module.sh "$m" "$mod_root/$m" --zephyr-base "$workspace/zephyr")"
+            dir="$(bash scripts/zephyr/fetch-job-module.sh "$m" "$mod_root/$m" \
+                --zephyr-base "$workspace/zephyr" --manifest "$frag")"
             supplied+="${supplied:+ }$m=$(realpath "$dir")"
         done
     done <<< "$rows"

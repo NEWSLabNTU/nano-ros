@@ -412,6 +412,15 @@ board-vocabulary:
 zephyr-module-allowlist:
     @python3 scripts/check-zephyr-module-allowlist.py
 
+# A board's downstream west fragment (`west-downstream.yml`) holds the projects
+# a consumer imports instead of pinning by hand. Its `zephyr-lang-rust` must be
+# the line manifest's, each Zephyr module the Zephyr tree's own pin, and every
+# west row naming `zephyr_modules` must have its board's fragment declare them
+# (the module-fixtures job fetches through it).
+[group("checks")]
+zephyr-west-downstream:
+    @python3 scripts/check-zephyr-west-downstream.py
+
 # issue 2831 — every patch script a Zephyr patch set runs has a CHECK mode
 # (`nros_patch_would_apply` before each write). `check-zephyr-pin-drift` asks a
 # shared workspace whether it carries this checkout's edits by running the set

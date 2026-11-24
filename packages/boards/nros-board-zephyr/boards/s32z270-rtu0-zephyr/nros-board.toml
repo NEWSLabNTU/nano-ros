@@ -12,7 +12,8 @@
 # What an image on this board states itself (issue 2631, measured by a link):
 # `CONFIG_MAIN_STACK_SIZE` (the S32ZE SoC defconfig's 1024 wins over the nros
 # module's default) and its C++ runtime. `hal_nxp` is not in nano-ros's own
-# west allowlist (`[zephyr_module.hal_nxp]`), so the consumer's manifest names it.
+# west allowlist (`[zephyr_module.hal_nxp]`), so a consumer imports it, with
+# `cmsis` and `zephyr-lang-rust`, from `west-downstream.yml` beside this file.
 
 [[board]]
 names = ["s32z270-rtu0-zephyr"]
@@ -35,7 +36,7 @@ crate_root_deps = ["zephyr = \"0.1.0\"", "log = \"0.4\""]
 [board.zephyr]
 west_board = "s32z2xxdc2@D/s32z270/rtu0"
 # The Zephyr lines this board builds on (issue 2804). 3.7: the line its
-# module-fixture lane runs (`hal_nxp` comes from the consumer's manifest).
+# module-fixture lane runs (`hal_nxp` comes from `west-downstream.yml`).
 lines = ["3.7"]
 sdk_abi = "arm-zephyr-eabi"
 default_rmw = "cyclonedds"

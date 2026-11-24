@@ -32,7 +32,8 @@
 # Then: `west update zephyr-lang-rust`
 #
 # Keep this revision in lock-step with the `zephyr-lang-rust` project in
-# nano-ros's top-level `west.yml` (Phase 199.2). See
+# nano-ros's top-level `west.yml` (Phase 199.2); `just check
+# zephyr-west-downstream` fails when the two differ. See
 # book-internals/src/platform/zephyr-version-support.md.
 
 manifest:

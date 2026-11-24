@@ -1,0 +1,1 @@
+The `s32z270-rtu0-zephyr` board ships a `west-downstream.yml` a downstream west manifest imports with one line: it pins `zephyr-lang-rust`, `hal_nxp` and `cmsis` at the revisions nano-ros builds the board with, so a consumer no longer pins them by hand.

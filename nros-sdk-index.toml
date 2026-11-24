@@ -1703,7 +1703,9 @@ lines = []
 # That downstream re-enables it by adding `hal_nxp` to its OWN manifest's
 # allowlist — a west manifest that `import:`s ours composes, it does not
 # inherit our allowlist as a ceiling. Stated here so the removal is a decision
-# a reader can find rather than a line that vanished.
+# a reader can find rather than a line that vanished. Since then the in-tree
+# `s32z270-rtu0-zephyr` board needs it too: its `west-downstream.yml` pins it
+# for a consumer to import, and its module-fixture row fetches it from there.
 why = "NXP S32/LPC/i.MX-RT HALs — no in-tree board; downstream mr_canhubk3/s32k344"
 needed_by = []
 approx_mb = 1300

@@ -796,7 +796,7 @@ AN536) stay green.
 | #4011 | 2679 (I31) | resolved | FVP images use board network files (P6); the S32Z half is issue 2879 (I39) |
 | #4012 | 2633 | open (RTD strong symbols, `board`-stack `[canN]` hand-off) | P7 done over the driver; the S32Z2 hardware backend is I47 |
 | #4013 | 2646 (I27) | wontfix | the island's `src/eigen` workspace package; nothing waits |
-| #4014 | 2631 | resolved (PR #4086) | used on `nano-ros-next`; the module pins are issue 2880 (I40) |
+| #4014 | 2631 | resolved (PR #4086) | used on `nano-ros-next`; the module pins are issue 2880 (I40, resolved) |
 | #4015 | 2632 | open (NETC netif, port patch, full link) | I46 |
 | #4016 | 2678 (I30) | resolved | used on `nano-ros-next` |
 | #4017 | 2630 | resolved (PR #4039) | used on `nano-ros-next` |
@@ -821,7 +821,7 @@ AN536) stay green.
 | the Zephyr workspace ladder skips the project's west workspace (`run-zephyr-fvp-ci.sh:202-213`, `--zephyr-workspace` on every call) | fixed in nano-ros (2877 resolved); the island drops its flag next | issue 2877, I37 |
 | the island's last Zephyr patch, an out-of-tree tracing backend (`patches/zephyr/0003-*`, `scripts/apply-zephyr-patches.sh`) | declined in 2766, NOT FILED as its own question | issue 2878, I38 |
 | S32Z network: board network file, VLAN, second interface (`network_config.cpp`, the last `PLATFORM_*` reader; the DHCP sleep in `board_network_hook.cpp`) | NOT FILED (2679 D5 cut it) | issue 2879, I39 |
-| S32Z Zephyr module pins (`actuation_module/west.yml`: `cmsis`, `hal_nxp`, `zephyr-lang-rust` by hand) | NOT FILED | issue 2880, I40 |
+| S32Z Zephyr module pins (`actuation_module/west.yml`: `cmsis`, `hal_nxp`, `zephyr-lang-rust` by hand) | fixed in nano-ros (2880 resolved); the island imports the fragment next | issue 2880, I40 |
 | compile-time log floor (`common/logger/logger.hpp`, `CONFIG_LOG_LEVEL`, P4) | NOT FILED | issue 2881, I41 |
 | a release past nros11 (branch `nano-ros` on `0.6.0-nros11`; everything else on `nano-ros-next` with a source CLI) | NOT FILED | issue 2882, I42; planned by [phase-590](phase-590-nros12-release-plan.md) |
 | `halt` after `platform` on a "none" port is unreachable (island writes `sntp` alone, P5) | NOT FILED | issue 2883, tracked by [phase-582](phase-582-wall-clock-source.md) |
@@ -885,11 +885,16 @@ AN536) stay green.
 
 ### I40 -- a downstream west fragment for the S32Z270 Zephyr board
 
-- **Issue:** [2880](../issues/2880-s32z270-rtu0-zephyr-no-west-downstream.md).
+- **Issue:** [2880](../issues/archived/2880-s32z270-rtu0-zephyr-no-west-downstream.md).
 - **What:** `west-downstream.yml` with `zephyr-lang-rust`, `hal_nxp`, `cmsis`,
   held in lockstep by a check.
 - **Acceptance:** 2880's; the island imports it and keeps no hand pin but
   `zephyr` and nano-ros.
+- **Status:** the nano-ros half is done: the board ships the fragment
+  (`zephyr-lang-rust`, `hal_nxp`, `cmsis`), `just check
+  zephyr-west-downstream` holds it to `west.yml` and the Zephyr tree's pins,
+  and the module-fixtures job fetches through it (issue 2880, resolved). The
+  island's import waits on its pin.
 
 ### I41 -- a compile-time log floor
 
@@ -1262,7 +1267,7 @@ unowned.
 - [issue 2877](../issues/archived/2877-zephyr-workspace-ladder-skips-project-west-workspace.md): the Zephyr workspace ladder never looks at the project's own west workspace (I37).
 - [issue 2878](../issues/archived/2878-zephyr-tracing-custom-backend-patch.md): Zephyr 3.7 cannot select an out-of-tree tracing backend; the island carries the patch (I38; resolved).
 - [issue 2879](../issues/2879-s32z270-rtu0-zephyr-no-board-network.md): `s32z270-rtu0-zephyr` declares no `[board.net]`, and no VLAN or second interface renders (I39).
-- [issue 2880](../issues/2880-s32z270-rtu0-zephyr-no-west-downstream.md): `s32z270-rtu0-zephyr` has no `west-downstream.yml` (I40).
+- [issue 2880](../issues/archived/2880-s32z270-rtu0-zephyr-no-west-downstream.md): `s32z270-rtu0-zephyr` has no `west-downstream.yml` (I40, resolved).
 - [issue 2881](../issues/archived/2881-rclcpp-log-min-severity-missing.md): no compile-time log floor, `RCLCPP_LOG_MIN_SEVERITY` (I41).
 - [issue 2882](../issues/2882-nros12-release-for-consumers.md): no release past nros11 (I42; planned by phase-590).
 - [issue 2883](../issues/archived/2883-zephyr-clock-halt-unreachable-after-platform.md): `halt` after `platform` on a "none" port was unreachable and accepted (I43; homed in phase-582; resolved, superseded by RFC-0141 D1's amendment).

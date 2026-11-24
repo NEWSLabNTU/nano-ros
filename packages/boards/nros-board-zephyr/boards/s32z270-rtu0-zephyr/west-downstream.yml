@@ -1,0 +1,50 @@
+# nros-board s32z270-rtu0-zephyr -- downstream west fragment
+#
+# A downstream Zephyr consumer that names nano-ros as an `import: false` west
+# project inherits none of nano-ros's west projects. This board needs three it
+# would otherwise pin by hand:
+#
+#   zephyr-lang-rust  the Rust module, at nano-ros's pin (`west.yml`);
+#   hal_nxp           the S32Z270 SoC; nano-ros's own allowlist leaves it out
+#                     (`[zephyr_module.hal_nxp]` in nros-sdk-index.toml);
+#   cmsis             the Cortex-R core headers.
+#
+# hal_nxp and cmsis sit at the revisions the Zephyr tree in `west.yml` pins
+# (its own `west.yml`), so a consumer on nano-ros's Zephyr line builds against
+# the module trees nano-ros builds this board with.
+#
+# Consumer usage (its own west.yml):
+#
+#     manifest:
+#       self:
+#         import:
+#           - file: <path-to>/packages/boards/nros-board-zephyr/boards/s32z270-rtu0-zephyr/west-downstream.yml
+#
+# then `west update zephyr-lang-rust hal_nxp cmsis`. The consumer keeps its own
+# `zephyr` project (at nano-ros's Zephyr revision) and the nano-ros project.
+#
+# Kept in step:
+#   - `just check zephyr-west-downstream` fails when zephyr-lang-rust differs
+#     from `west.yml`'s, or a module here differs from the revision the
+#     provisioned Zephyr tree at `west.yml`'s pin names;
+#   - `just zephyr build-module-fixtures` fetches hal_nxp from THIS file, and
+#     refuses when it differs from the Zephyr tree's pin.
+
+manifest:
+  remotes:
+    - name: zephyrproject-rtos
+      url-base: https://github.com/zephyrproject-rtos
+
+  projects:
+    - name: zephyr-lang-rust
+      remote: zephyrproject-rtos
+      revision: 404fcefdbab0f2711cd342a1fab9d2eda52a1ba9
+      path: modules/lang/rust
+    - name: hal_nxp
+      remote: zephyrproject-rtos
+      revision: 862e001504bd6e0a4feade6a718e9f973116849c
+      path: modules/hal/nxp
+    - name: cmsis
+      remote: zephyrproject-rtos
+      revision: 4b96cbb174678dcd3ca86e11e1f24bc5f8726da0
+      path: modules/hal/cmsis
