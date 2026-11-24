@@ -980,6 +980,86 @@ def self_test() -> bool:
     return ok
 
 
+# Issue 2931 — the rule, applied to the CMake CACHE. A build dir configured
+# against one nano-ros root and then against another (`nros pin` moving an
+# installed project to the next SDK; a probe build dir shared across
+# checkouts) kept every `CACHE PATH` default the first root wrote, so the new
+# root's sources compiled against the old root's headers.
+def probe_cmake_cache_reroot(tmp: Path) -> list[str]:
+    """A cached PATH naming another root is re-rooted; others are kept."""
+    if shutil.which("cmake") is None:
+        sys.path.insert(0, str(ROOT / "scripts/lib"))
+        import check_skip  # noqa: E402  the NOT VERIFIED ledger (issue 1043)
+        check_skip.unverified(
+            "inherited-checkout-paths",
+            "no cmake on PATH: the cached-path half of issue 2931 was not probed")
+        return []
+    problems: list[str] = []
+    outside = tmp / "opt/cache-sdk/include"
+    outside.mkdir(parents=True)
+    for shape in ("side-by-side", "nested"):
+        base = tmp / f"cache-{shape}"
+        old = make_checkout(base / "old")
+        new = make_checkout(
+            old / ".claude/worktrees/w" if shape == "nested" else base / "new"
+        )
+        for root in (old, new):
+            (root / "cmake").mkdir(exist_ok=True)
+            shutil.copy(CMAKE_WALK, root / "cmake" / CMAKE_WALK.name)
+            (root / "inc").mkdir(exist_ok=True)
+        project = base / "project"
+        project.mkdir()
+        (project / "CMakeLists.txt").write_text(
+            "cmake_minimum_required(VERSION 3.22)\n"
+            "project(p NONE)\n"
+            'include("${ROOT}/cmake/NanoRosCheckoutRoot.cmake")\n'
+            'nros_reroot_cached_checkout_paths("${ROOT}")\n'
+            # The shape of every tree-derived default: written once.
+            "if(NOT DEFINED NROS_TREE_INC)\n"
+            '  set(NROS_TREE_INC "${ROOT}/inc" CACHE PATH "tree default")\n'
+            "endif()\n"
+            f'set(NROS_OUTSIDE "{outside}" CACHE PATH "outside every root")\n'
+            'set(NROS_OWN "${CMAKE_BINARY_DIR}/gen" CACHE PATH "own build tree")\n'
+            'message("INC=${NROS_TREE_INC}")\n'
+            'message("OUT=${NROS_OUTSIDE}")\n'
+            'message("OWN=${NROS_OWN}")\n'
+        )
+        build = project / "build"
+
+        def configure(root: Path) -> dict[str, str] | None:
+            p = subprocess.run(
+                ["cmake", "-S", str(project), "-B", str(build), f"-DROOT={root}"],
+                capture_output=True, text=True, env=_clean_env({}),
+            )
+            if p.returncode != 0:
+                problems.append(
+                    f"cache re-root ({shape}): configure against {root} failed: "
+                    f"{p.stderr.strip()[-300:]} (issue 2931)")
+                return None
+            return dict(
+                l.split("=", 1) for l in p.stderr.splitlines()
+                if l[:4] in ("INC=", "OUT=", "OWN=")
+            )
+
+        if configure(old) is None:
+            continue
+        got = configure(new)
+        if got is None:
+            continue
+        cases = [
+            ("INC", f"{new}/inc",
+             "a cached tree default naming the PREVIOUS root is re-rooted onto this one"),
+            ("OUT", str(outside), "a cached path outside every root is KEPT"),
+            ("OWN", f"{build}/gen", "a path in the project's own build tree is KEPT"),
+        ]
+        for key, expect, what in cases:
+            if got.get(key) != expect:
+                problems.append(
+                    f"cache re-root ({shape}): {what} — got {got.get(key)!r}, "
+                    f"expected {expect!r} (issue 2931)")
+    return problems
+
+
 def main() -> int:
     if not self_test():
         print("check-inherited-checkout-paths: SELF-TEST FAILED", file=sys.stderr)
@@ -1008,6 +1088,7 @@ def main() -> int:
         problems += probe_activation_unexported(tmp)
         problems += probe_cmake_incremental_root(tmp)
         problems += probe_nros_cli(tmp)
+        problems += probe_cmake_cache_reroot(tmp)
 
     if problems:
         print("check-inherited-checkout-paths: FAILED (issue 1280)", file=sys.stderr)
@@ -1023,7 +1104,8 @@ def main() -> int:
         "in both checkout shapes (side-by-side and nested); unexported names dropped by "
         "activation and re-rooted by cmake-incremental, foreign caches dropped (issue 1840); "
         "$NROS_CLI re-rooted by the shell and cmake resolvers (issue 1928), "
-        "PWD physical through a symlinked checkout (issue 2160)"
+        "PWD physical through a symlinked checkout (issue 2160), "
+        "a cached CMake path naming another root re-rooted (issue 2931)"
     )
     return 0
 
