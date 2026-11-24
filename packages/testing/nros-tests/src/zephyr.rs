@@ -888,7 +888,7 @@ pub fn zephyr_workspace_path() -> Option<PathBuf> {
 /// `build_root_derivation.sh`:
 ///
 /// ```text
-/// $NROS_ZEPHYR_BUILD_ROOT                                   as is, else
+/// $NROS_ZEPHYR_BUILD_ROOT/<NROS_ZEPHYR_VERSION or 3.7>        else (issue 2925)
 /// <build_root()>/zephyr-workspace-builds/<NROS_ZEPHYR_VERSION or 3.7>
 /// ```
 ///
@@ -898,8 +898,9 @@ pub fn zephyr_workspace_path() -> Option<PathBuf> {
 /// west-leaf routing keys on the build-dir NAME and is unaffected.
 pub fn zephyr_build_root() -> PathBuf {
     if let Some(path) = std::env::var_os("NROS_ZEPHYR_BUILD_ROOT").filter(|p| !p.is_empty()) {
+        // Issue 2925 -- relocated, still keyed by line.
         let s = path.to_string_lossy();
-        return PathBuf::from(s.trim_end_matches('/'));
+        return PathBuf::from(s.trim_end_matches('/')).join(zephyr_line());
     }
     crate::build_dir(crate::kind::ZEPHYR_WORKSPACE_BUILDS, &[&zephyr_line()])
 }
