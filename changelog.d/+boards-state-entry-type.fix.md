@@ -1,0 +1,1 @@
+A board descriptor copied from an in-tree one now carries the board type, so an out-of-tree board (for example a Linux host board for an embedded SoC) builds without setting `NROS_BOARD_TYPE` by hand. The error for an unknown board names `[board.entry] type` in `nros-board.toml` as the fix.

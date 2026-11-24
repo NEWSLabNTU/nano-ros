@@ -404,6 +404,62 @@ fn the_links_std_column_agrees_with_the_descriptors_entry_kind() {
     );
 }
 
+/// Issue 2849 -- every shipped descriptor a `BOARD_PATHS` key names states
+/// its board's type in `[board.entry] type`, and it is the table's type (or,
+/// for a key the table maps to another framework's entry, one of the
+/// descriptor's `entry_types`). `nros build` forwards that `type` to
+/// `nros::main!` ahead of the table, so a board copied from a shipped
+/// descriptor builds with no `NROS_BOARD_TYPE` in the environment; the Linux
+/// descriptor stated none, and an out-of-tree hosted board copied from it
+/// did not.
+#[test]
+fn every_rust_board_descriptor_states_the_tables_type() {
+    use nros_cli_core::orchestration::board_descriptor::BoardCatalog;
+
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .ancestors()
+        .nth(3)
+        .expect("repo root")
+        .to_path_buf();
+    let catalog = BoardCatalog::load(&root)
+        .unwrap_or_else(|e| panic!("shipped board catalog under {}: {e}", root.display()));
+
+    let mut checked = 0;
+    let mut wrong = Vec::new();
+    for &(key, table_type, _) in nros_orchestration_ir::BOARD_PATHS {
+        let Some(d) = catalog
+            .descriptors()
+            .iter()
+            .find(|d| d.names.iter().any(|n| n == key))
+        else {
+            continue;
+        };
+        checked += 1;
+        let stated = d.entry.as_ref().and_then(|e| e.board_type.as_deref());
+        let per_framework = d
+            .entry_types
+            .values()
+            .any(|t| table_type.ends_with(&format!("::{t}")));
+        match stated {
+            Some(t) if t == table_type || per_framework => {}
+            other => wrong.push(format!(
+                "`{key}` ({}): [board.entry] type = {other:?}, BOARD_PATHS says `{table_type}`",
+                d.names.join(", ")
+            )),
+        }
+    }
+    assert!(
+        wrong.is_empty(),
+        "shipped descriptors must state their board's type, matching the table:\n  {}",
+        wrong.join("\n  ")
+    );
+    assert!(
+        checked >= 8,
+        "only {checked} BOARD_PATHS keys were matched to a descriptor -- the name \
+         matching has probably broken, so this test is checking nothing"
+    );
+}
+
 /// The FRAMEWORK a key resolves to agrees with the descriptors' `entry_kind`,
 /// for every key a descriptor knows.
 ///

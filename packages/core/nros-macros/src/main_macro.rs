@@ -11,7 +11,7 @@
 //! ```
 //!
 //! The old Form 2, `nros::main!(board = X)`, is RETIRED and is a compile
-//! error naming `[package.metadata.nros.board] type`.
+//! error naming the board descriptor's `[board.entry] type`.
 //!
 //! Form 1 reads `[package.metadata.nros.entry] deploy = "<board>"` from
 //! the Entry pkg's own `Cargo.toml` and maps the board key to a board
@@ -54,10 +54,9 @@ use syn::{
 // user-surface: table
 pub(crate) const RETIRED_BOARD_ARG: &str = "nros::main!: `board = ` is retired. \
      Write `nros::main!()` and state the board in the leaf's `system.toml` \
-     (`[image.<id>] board = \"<board>\"`); a board crate outside the in-tree table \
-     states its own type in its Cargo.toml as \
-     `[package.metadata.nros.board] type = \"::my_board::MyBoard\"` \
-     (emitted to the entry by `nros_build::emit_board_framework()`).";
+     (`[image.<id>] board = \"<board>\"`); a board of your own states its type in \
+     its `nros-board.toml` as `[board.entry] type = \"::my_board::MyBoard\"`, which \
+     `nros build` hands to the entry.";
 
 /// Parsed `nros::main!(...)` argument set.
 ///
@@ -677,11 +676,12 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                 Span::call_site(),
                 format!(
                     "nros::main!: unknown board `{deploy}` (from `{}`). \
-                     Known boards: {}.\n  For a board crate not in the default table, \
-                     state its type in the board crate's \
-                     `[package.metadata.nros.board] type = \"::my_board::MyBoard\"` and \
-                     call `nros_build::emit_board_framework()` from this package's \
-                     build.rs.",
+                     Known boards: {}.\n  For a board of your own, state its type in \
+                     the board's `nros-board.toml`, `[board.entry] type = \
+                     \"::my_board::MyBoard\"`, and build with `nros build`, which hands \
+                     it to this macro. A plain cargo build takes it from the board \
+                     crate's `[package.metadata.nros.board] type` through \
+                     `nros_build::emit_board_framework()` in this package's build.rs.",
                     leaf.as_ref()
                         .map(|l| l.origin_path().display().to_string())
                         .unwrap_or_default(),
@@ -6510,7 +6510,7 @@ mod custom_tasks_parser_tests {
                 Err(e) => e.to_string(),
             };
             assert!(err.contains("is retired"), "{err}");
-            assert!(err.contains("[package.metadata.nros.board] type"), "{err}");
+            assert!(err.contains("[board.entry] type"), "{err}");
         }
     }
 
@@ -7672,7 +7672,15 @@ mod leaf_axis_tests {
 
         let err = expand("", "my-board", "").unwrap_err();
         assert!(err.contains("unknown board `my-board`"), "{err}");
-        assert!(err.contains("[package.metadata.nros.board] type"), "{err}");
+        // Issue 2849 -- the descriptor's route comes first.
+        let descriptor = err
+            .find("[board.entry] type")
+            .expect("names the descriptor route");
+        assert!(err.contains("nros-board.toml"), "{err}");
+        let crate_meta = err
+            .find("[package.metadata.nros.board] type")
+            .expect("{err}");
+        assert!(descriptor < crate_meta, "{err}");
     }
 
     /// RFC-0111 D2/D3 (phase-562 W3) — one board, two entries, chosen by the

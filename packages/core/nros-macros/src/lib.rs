@@ -32,7 +32,7 @@ mod source_metadata_sidecars;
 /// Reads the board from the leaf's `system.toml` (`[image.<id>] board`), else
 /// `[package.metadata.nros.entry] deploy = "<board>"`. The old explicit
 /// `board = X` argument is RETIRED: it is a compile error naming
-/// `[package.metadata.nros.board] type`, the out-of-tree board's own
+/// `[board.entry] type` in the board's `nros-board.toml`, a board's own
 /// statement of its type. Consults the workspace pkg-index to resolve the
 /// bringup pkg's launch file.
 ///

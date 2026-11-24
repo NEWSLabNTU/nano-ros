@@ -61,6 +61,9 @@ supported_netstacks = []
 # The crate-root boilerplate a GENERATED Rust entry needs on Zephyr (issue
 # 2177), the same as every other Zephyr board descriptor.
 [board.entry]
+# The marker type `nros::main!` names (RFC-0135 D2). `nros build` hands it
+# to the entry; a board copied from this file carries it.
+type = "::nros_board_zephyr::ZephyrBoard"
 crate_root_extra = "extern crate zephyr;"
 crate_root_deps = ["zephyr = \"0.1.0\"", "log = \"0.4\""]
 

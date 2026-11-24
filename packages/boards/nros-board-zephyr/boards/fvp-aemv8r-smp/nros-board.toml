@@ -26,6 +26,9 @@ supported_netstacks = []
 # them a generated image for this board failed with `cannot find `log` in the
 # crate root` and `#[panic_handler] function required`.
 [board.entry]
+# The marker type `nros::main!` names (RFC-0135 D2). `nros build` hands it
+# to the entry; a board copied from this file carries it.
+type = "::nros_board_zephyr::ZephyrBoard"
 crate_root_extra = "extern crate zephyr;"
 crate_root_deps = ["zephyr = \"0.1.0\"", "log = \"0.4\""]
 
