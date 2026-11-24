@@ -413,6 +413,18 @@ pinned: (platform "pinned")
 [group("main")]
 pinned-newer: (platform "pinned-newer")
 
+# Issue 2912: the candidate's release page, Upgrade block. A linux project the
+# PUBLISHED release makes and builds (through the pin hand-off), then the
+# page's steps move it to this asset (scripts/probe/verify-installed-upgrade.sh).
+[group("main")]
+upgrade-rust: (platform "upgrade-rust")
+
+[group("main")]
+upgrade-c: (platform "upgrade-c")
+
+[group("main")]
+upgrade-cpp: (platform "upgrade-cpp")
+
 # Same probe on a NON-Debian, NON-bash host (issue 0373). The book's install
 # path was only ever exercised on ubuntu+bash, which is how an apt-only prereq
 # block, a `just` contradiction, an unactionable ROS warning and a zsh-fatal

@@ -225,6 +225,11 @@ ALLOWLIST = {
         "twin probe track (phase-524 W4a): runs in the probe's ros:humble "
         "container with NO checkout, so the nros-tests harness is not there; "
         "it starts the router and echo the way a reader's terminal does",
+    "scripts/probe/upgrade-before.sh":
+        "upgrade probe tracks (issue 2912): runs in the probe's ros:humble "
+        "container with no checkout and no nros-tests harness, and sources ROS "
+        "the way a reader's terminal does before the previous release's first "
+        "build",
     "scripts/probe/verify-installed-underlay.sh":
         "installed-track probe (issue 2275): runs in the probe's ros:humble "
         "container against an installed toolchain with no nros-tests harness, "

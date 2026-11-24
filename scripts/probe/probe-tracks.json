@@ -786,6 +786,24 @@
       "weekly": true
     },
     {
+      "track": "upgrade-rust",
+      "chapter": "migrating/releases/0.6.0-nros12.md",
+      "variant": "upgrade",
+      "weekly": true
+    },
+    {
+      "track": "upgrade-c",
+      "chapter": "migrating/releases/0.6.0-nros12.md",
+      "variant": "upgrade",
+      "weekly": true
+    },
+    {
+      "track": "upgrade-cpp",
+      "chapter": "migrating/releases/0.6.0-nros12.md",
+      "variant": "upgrade",
+      "weekly": true
+    },
+    {
       "track": "renode-nucleo",
       "chapter": "starters/nucleo-f767zi.md",
       "variant": "",

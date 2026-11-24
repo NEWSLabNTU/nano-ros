@@ -1,11 +1,13 @@
 ---
 id: 2912
 title: "Nothing tests the upgrade from one release to the next, so the release page's upgrade steps are measured by hand"
-status: open
+status: resolved
 type: test-gap
 area: [testing, ci, docs]
 severity: medium
 found: 2026-11-24
+resolved: 2026-11-24
+resolved_in: "feat(probe, issue 2912): the release page's Upgrade block is replayed on an installed track"
 ---
 
 ## What happens
@@ -67,3 +69,24 @@ Not an nros12 blocker: the nros12 page quotes hand-measured messages.
 - `scripts/probe/run-bootstrap-probe.sh` and `just/probe.just` (the installed
   track this would extend)
 - `book/src/migrating/releases/0.6.0-nros12.md`
+
+## Resolution
+
+The `upgrade-rust`, `upgrade-c` and `upgrade-cpp` installed tracks
+(`just probe upgrade-<lang>`, weekly) replay the candidate's release page.
+
+1. A linux talker is made and built by the PUBLISHED release, through the
+   pin hand-off (scripts/probe/upgrade-before.sh).
+2. The page's own Upgrade steps move it to the candidate: install,
+   `nros pin`, `nros setup`, `nros configure --migrate`, `nros build`.
+   These are plain probe steps, so each must run to its end and exit 0.
+3. scripts/probe/verify-installed-upgrade.sh checks the result: the pin
+   names the candidate, no `rate_hz` remains, a fresh `linux_entry`, and
+   for C/C++ the per-image root with no configure left in the old one.
+
+The release rehearsal runs them against its candidate asset with
+`PROBE_CANDIDATE_ASSET`/`PROBE_CANDIDATE_VERSION`. Their first runs found
+three nros12 upgrade blockers, fixed in #4738, #4755 and #4753. Not yet
+covered: Zephyr, whose stale `-DCONFIG_` cache case needs the SDK in the
+container.
+
