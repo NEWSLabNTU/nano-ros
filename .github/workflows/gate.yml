@@ -483,55 +483,9 @@ jobs:
 
       - name: Configure sccache (compiling events)
         if: ${{ contains(fromJSON('["pull_request","merge_group","workflow_dispatch"]'), github.event_name) }}
-        run: |
-          if ! command -v sccache >/dev/null 2>&1; then
-            echo "::warning::sccache absent from the image — the compile tier runs UNCACHED."
-            exit 0
-          fi
-          sccache --version
-
-          # issue 0874 — an ABSENT sccache degrades gracefully (above); a BROKEN
-          # one used to be fatal, and the asymmetry is the bug. `RUSTC_WRAPPER`
-          # makes sccache a prefix on every `rustc`, so a backend that cannot
-          # start does not lose a cache — it fails the compiler:
-          #
-          #   sccache: error: Server startup failed: create gha cache failed:
-          #     ConfigInvalid (permanent) => ACTIONS_CACHE_URL not found
-          #   error: process didn't exit successfully: `sccache rustc -vV`
-          #
-          # That took down `main` and every open PR at once. So PROVE the
-          # backend before handing it the compiler: export the config into this
-          # step only, start a server, and publish to `$GITHUB_ENV` only if that
-          # worked. On failure sccache stays on PATH with its LOCAL disk cache,
-          # which is the same uncached-but-working state as the absent case.
-          # Report ARRIVAL, never the values: the token is a credential, and
-          # the URL is noise. Without this the only evidence that the backend
-          # was misconfigured was sccache's own error text, which names the
-          # symptom (`cache url ... not found`) and not the cause.
-          # `${V:-UNSET}` expands to the VALUE when V is set, so the obvious
-          # one-liner prints "SET<the url>". Ask the question directly.
-          export SCCACHE_DIR=/tmp/sccache
-          export SCCACHE_CACHE_SIZE=2G
-          # The stats counters give a write-error COUNT and no reason. 777 of
-          # 777 writes failed on run 33294943815 with the backend started and
-          # both variables present, so the next question is WHY, and only the
-          # server's own log answers it. `warn` rather than `debug`: one line
-          # per distinct failure, not one per compilation unit.
-          export SCCACHE_ERROR_LOG=/tmp/sccache-server.log
-          export SCCACHE_LOG=warn
-          if sccache --start-server >/tmp/sccache-start.log 2>&1; then
-            {
-              echo "SCCACHE_DIR=/tmp/sccache"
-              echo "SCCACHE_ERROR_LOG=/tmp/sccache-server.log"
-              echo "SCCACHE_LOG=warn"
-              # Well under the 10 GB cap this store does NOT share; the
-              # justfile's 30G default is a developer-workstation figure.
-              echo "SCCACHE_CACHE_SIZE=2G"
-            } >> "$GITHUB_ENV"
-          else
-            echo "::warning::sccache unavailable — the compile tier runs UNCACHED (issue 0874)."
-            sed 's/^/  /' /tmp/sccache-start.log || true
-          fi
+        # issue 0874's contract, one spelling (issue 2930): prove the server
+        # starts and publish to $GITHUB_ENV only if it did; otherwise warn.
+        run: scripts/ci/sccache-configure.sh --dir /tmp/sccache --size 2G --log /tmp/sccache-server.log --what 'the compile tier'
 
       # ----- the in-tree nros CLI: EVERY event -----
       #
@@ -849,28 +803,9 @@ jobs:
 
       - name: Configure sccache (compiling events)
         if: ${{ contains(fromJSON('["pull_request","merge_group","workflow_dispatch"]'), github.event_name) }}
-        run: |
-          if ! command -v sccache >/dev/null 2>&1; then
-            echo "::warning::sccache absent from the image — the compile tier runs UNCACHED."
-            exit 0
-          fi
-          sccache --version
-
-          export SCCACHE_DIR=/tmp/sccache
-          export SCCACHE_CACHE_SIZE=2G
-          export SCCACHE_ERROR_LOG=/tmp/sccache-server.log
-          export SCCACHE_LOG=warn
-          if sccache --start-server >/tmp/sccache-start.log 2>&1; then
-            {
-              echo "SCCACHE_DIR=/tmp/sccache"
-              echo "SCCACHE_ERROR_LOG=/tmp/sccache-server.log"
-              echo "SCCACHE_LOG=warn"
-              echo "SCCACHE_CACHE_SIZE=2G"
-            } >> "$GITHUB_ENV"
-          else
-            echo "::warning::sccache unavailable — the compile tier runs UNCACHED (issue 0874)."
-            sed 's/^/  /' /tmp/sccache-start.log || true
-          fi
+        # issue 0874's contract, one spelling (issue 2930): prove the server
+        # starts and publish to $GITHUB_ENV only if it did; otherwise warn.
+        run: scripts/ci/sccache-configure.sh --dir /tmp/sccache --size 2G --log /tmp/sccache-server.log --what 'the compile tier'
 
       # The one CLI build road (`.github/actions/setup-nros-cli`): binary cache
       # keyed on the whole source stamp, `just setup-cli`, the stamp assertion.
@@ -990,27 +925,9 @@ jobs:
 
       - name: Configure sccache (compiling events)
         if: ${{ contains(fromJSON('["pull_request","merge_group","workflow_dispatch"]'), github.event_name) }}
-        run: |
-          if ! command -v sccache >/dev/null 2>&1; then
-            echo "::warning::sccache absent from the image — the compile tier runs UNCACHED."
-            exit 0
-          fi
-          sccache --version
-          export SCCACHE_DIR=/tmp/sccache
-          export SCCACHE_CACHE_SIZE=2G
-          export SCCACHE_ERROR_LOG=/tmp/sccache-server.log
-          export SCCACHE_LOG=warn
-          if sccache --start-server >/tmp/sccache-start.log 2>&1; then
-            {
-              echo "SCCACHE_DIR=/tmp/sccache"
-              echo "SCCACHE_ERROR_LOG=/tmp/sccache-server.log"
-              echo "SCCACHE_LOG=warn"
-              echo "SCCACHE_CACHE_SIZE=2G"
-            } >> "$GITHUB_ENV"
-          else
-            echo "::warning::sccache unavailable — the compile tier runs UNCACHED (issue 0874)."
-            sed 's/^/  /' /tmp/sccache-start.log || true
-          fi
+        # issue 0874's contract, one spelling (issue 2930): prove the server
+        # starts and publish to $GITHUB_ENV only if it did; otherwise warn.
+        run: scripts/ci/sccache-configure.sh --dir /tmp/sccache --size 2G --log /tmp/sccache-server.log --what 'the compile tier'
 
       # The one CLI build road (`.github/actions/setup-nros-cli`): binary cache
       # keyed on the whole source stamp, `just setup-cli`, the stamp assertion.
@@ -1235,33 +1152,11 @@ jobs:
 
       - name: Configure sccache (compiling events)
         if: ${{ contains(fromJSON('["pull_request","merge_group","workflow_dispatch"]'), github.event_name) }}
-        run: |
-          if ! command -v sccache >/dev/null 2>&1; then
-            echo "::warning::sccache absent from the image — the compile tier runs UNCACHED."
-            exit 0
-          fi
-          sccache --version
-          # Self-hosted: leave sccache on its persistent volume and the
-          # justfile's size (see `check-workspace-all`).
-          if [ "${RUNNER_ENVIRONMENT:-}" = self-hosted ]; then
-            echo "self-hosted: sccache uses its own volume (${SCCACHE_DIR:-$HOME/.cache/sccache})"
-            exit 0
-          fi
-          export SCCACHE_DIR=/tmp/sccache
-          export SCCACHE_CACHE_SIZE=2G
-          export SCCACHE_ERROR_LOG=/tmp/sccache-server.log
-          export SCCACHE_LOG=warn
-          if sccache --start-server >/tmp/sccache-start.log 2>&1; then
-            {
-              echo "SCCACHE_DIR=/tmp/sccache"
-              echo "SCCACHE_ERROR_LOG=/tmp/sccache-server.log"
-              echo "SCCACHE_LOG=warn"
-              echo "SCCACHE_CACHE_SIZE=2G"
-            } >> "$GITHUB_ENV"
-          else
-            echo "::warning::sccache unavailable — the compile tier runs UNCACHED (issue 0874)."
-            sed 's/^/  /' /tmp/sccache-start.log || true
-          fi
+        # Self-hosted: leave sccache on its persistent volume and the
+        # justfile's size (`--skip-self-hosted`; see `check-workspace-all`).
+        # issue 0874's contract, one spelling (issue 2930): prove the server
+        # starts and publish to $GITHUB_ENV only if it did; otherwise warn.
+        run: scripts/ci/sccache-configure.sh --dir /tmp/sccache --size 2G --log /tmp/sccache-server.log --skip-self-hosted --what 'the compile tier'
 
       # `cli-tests` compiles the CLI sub-workspace's TEST targets, which the
       # binary cache does not hold, so this sibling alone also restores the full
@@ -1628,34 +1523,11 @@ jobs:
 
       - name: Configure sccache (compiling events)
         if: ${{ contains(fromJSON('["pull_request","merge_group","workflow_dispatch"]'), github.event_name) }}
-        run: |
-          if ! command -v sccache >/dev/null 2>&1; then
-            echo "::warning::sccache absent from the image — the compile tier runs UNCACHED."
-            exit 0
-          fi
-          sccache --version
-          # Self-hosted: leave sccache on its persistent volume and the
-          # justfile's size. Exporting the hosted 1G here would make the shared
-          # server EVICT the warm cache queue L3 also reads down to 1 GB.
-          if [ "${RUNNER_ENVIRONMENT:-}" = self-hosted ]; then
-            echo "self-hosted: sccache uses its own volume (${SCCACHE_DIR:-$HOME/.cache/sccache})"
-            exit 0
-          fi
-          export SCCACHE_DIR=/tmp/sccache
-          export SCCACHE_CACHE_SIZE=2G
-          export SCCACHE_ERROR_LOG=/tmp/sccache-server.log
-          export SCCACHE_LOG=warn
-          if sccache --start-server >/tmp/sccache-start.log 2>&1; then
-            {
-              echo "SCCACHE_DIR=/tmp/sccache"
-              echo "SCCACHE_ERROR_LOG=/tmp/sccache-server.log"
-              echo "SCCACHE_LOG=warn"
-              echo "SCCACHE_CACHE_SIZE=2G"
-            } >> "$GITHUB_ENV"
-          else
-            echo "::warning::sccache unavailable — the compile tier runs UNCACHED (issue 0874)."
-            sed 's/^/  /' /tmp/sccache-start.log || true
-          fi
+        # Self-hosted: leave sccache on its persistent volume and the
+        # justfile's size (`--skip-self-hosted`; see `check-workspace-all`).
+        # issue 0874's contract, one spelling (issue 2930): prove the server
+        # starts and publish to $GITHUB_ENV only if it did; otherwise warn.
+        run: scripts/ci/sccache-configure.sh --dir /tmp/sccache --size 2G --log /tmp/sccache-server.log --skip-self-hosted --what 'the compile tier'
 
       # The one CLI build road (`.github/actions/setup-nros-cli`): binary cache
       # keyed on the whole source stamp, `just setup-cli`, the stamp assertion.
@@ -1866,34 +1738,11 @@ jobs:
 
       - name: Configure sccache (compiling events)
         if: ${{ contains(fromJSON('["pull_request","merge_group","workflow_dispatch"]'), github.event_name) }}
-        run: |
-          if ! command -v sccache >/dev/null 2>&1; then
-            echo "::warning::sccache absent from the image — the compile tier runs UNCACHED."
-            exit 0
-          fi
-          sccache --version
-          # Self-hosted: leave sccache on its persistent volume and the
-          # justfile's size. Exporting the hosted 1G here would make the shared
-          # server EVICT the warm cache queue L3 also reads down to 1 GB.
-          if [ "${RUNNER_ENVIRONMENT:-}" = self-hosted ]; then
-            echo "self-hosted: sccache uses its own volume (${SCCACHE_DIR:-$HOME/.cache/sccache})"
-            exit 0
-          fi
-          export SCCACHE_DIR=/tmp/sccache
-          export SCCACHE_CACHE_SIZE=2G
-          export SCCACHE_ERROR_LOG=/tmp/sccache-server.log
-          export SCCACHE_LOG=warn
-          if sccache --start-server >/tmp/sccache-start.log 2>&1; then
-            {
-              echo "SCCACHE_DIR=/tmp/sccache"
-              echo "SCCACHE_ERROR_LOG=/tmp/sccache-server.log"
-              echo "SCCACHE_LOG=warn"
-              echo "SCCACHE_CACHE_SIZE=2G"
-            } >> "$GITHUB_ENV"
-          else
-            echo "::warning::sccache unavailable — the compile tier runs UNCACHED (issue 0874)."
-            sed 's/^/  /' /tmp/sccache-start.log || true
-          fi
+        # Self-hosted: leave sccache on its persistent volume and the
+        # justfile's size (`--skip-self-hosted`; see `check-workspace-all`).
+        # issue 0874's contract, one spelling (issue 2930): prove the server
+        # starts and publish to $GITHUB_ENV only if it did; otherwise warn.
+        run: scripts/ci/sccache-configure.sh --dir /tmp/sccache --size 2G --log /tmp/sccache-server.log --skip-self-hosted --what 'the compile tier'
 
       # The one CLI build road (`.github/actions/setup-nros-cli`): binary cache
       # keyed on the whole source stamp, `just setup-cli`, the stamp assertion.
@@ -2103,31 +1952,11 @@ jobs:
 
       - name: Configure sccache (compiling events)
         if: ${{ contains(fromJSON('["merge_group","workflow_dispatch"]'), github.event_name) }}
-        run: |
-          if ! command -v sccache >/dev/null 2>&1; then
-            echo "::warning::sccache absent from the image — the compile tier runs UNCACHED."
-            exit 0
-          fi
-          sccache --version
-          if [ "${RUNNER_ENVIRONMENT:-}" = self-hosted ]; then
-            echo "self-hosted: sccache uses its own volume (${SCCACHE_DIR:-$HOME/.cache/sccache})"
-            exit 0
-          fi
-          export SCCACHE_DIR=/tmp/sccache
-          export SCCACHE_CACHE_SIZE=2G
-          export SCCACHE_ERROR_LOG=/tmp/sccache-server.log
-          export SCCACHE_LOG=warn
-          if sccache --start-server >/tmp/sccache-start.log 2>&1; then
-            {
-              echo "SCCACHE_DIR=/tmp/sccache"
-              echo "SCCACHE_ERROR_LOG=/tmp/sccache-server.log"
-              echo "SCCACHE_LOG=warn"
-              echo "SCCACHE_CACHE_SIZE=2G"
-            } >> "$GITHUB_ENV"
-          else
-            echo "::warning::sccache unavailable — the compile tier runs UNCACHED (issue 0874)."
-            sed 's/^/  /' /tmp/sccache-start.log || true
-          fi
+        # Self-hosted: leave sccache on its persistent volume and the
+        # justfile's size (`--skip-self-hosted`; see `check-workspace-all`).
+        # issue 0874's contract, one spelling (issue 2930): prove the server
+        # starts and publish to $GITHUB_ENV only if it did; otherwise warn.
+        run: scripts/ci/sccache-configure.sh --dir /tmp/sccache --size 2G --log /tmp/sccache-server.log --skip-self-hosted --what 'the compile tier'
 
       # The one CLI build road (`.github/actions/setup-nros-cli`): binary cache
       # keyed on the whole source stamp, `just setup-cli`, the stamp assertion.
@@ -2381,27 +2210,9 @@ jobs:
 
       - name: Configure sccache (compiling events)
         if: ${{ contains(fromJSON('["pull_request","merge_group","workflow_dispatch"]'), github.event_name) }}
-        run: |
-          if ! command -v sccache >/dev/null 2>&1; then
-            echo "::warning::sccache absent from the image — the compile tier runs UNCACHED."
-            exit 0
-          fi
-          sccache --version
-          export SCCACHE_DIR=/tmp/sccache
-          export SCCACHE_CACHE_SIZE=2G
-          export SCCACHE_ERROR_LOG=/tmp/sccache-server.log
-          export SCCACHE_LOG=warn
-          if sccache --start-server >/tmp/sccache-start.log 2>&1; then
-            {
-              echo "SCCACHE_DIR=/tmp/sccache"
-              echo "SCCACHE_ERROR_LOG=/tmp/sccache-server.log"
-              echo "SCCACHE_LOG=warn"
-              echo "SCCACHE_CACHE_SIZE=2G"
-            } >> "$GITHUB_ENV"
-          else
-            echo "::warning::sccache unavailable — the compile tier runs UNCACHED (issue 0874)."
-            sed 's/^/  /' /tmp/sccache-start.log || true
-          fi
+        # issue 0874's contract, one spelling (issue 2930): prove the server
+        # starts and publish to $GITHUB_ENV only if it did; otherwise warn.
+        run: scripts/ci/sccache-configure.sh --dir /tmp/sccache --size 2G --log /tmp/sccache-server.log --what 'the compile tier'
 
       # The one CLI build road (`.github/actions/setup-nros-cli`): binary cache
       # keyed on the whole source stamp, `just setup-cli`, the stamp assertion.
@@ -2692,37 +2503,12 @@ jobs:
         run: scripts/ci/report-runner-hardware.sh
 
       - name: Configure sccache
-        run: |
-          # Create the dir unconditionally: the cache path must exist at save
-          # time or the step warns and saves nothing, which is the failure this
-          # is fixing. An empty dir is a 0-byte entry, not a wrong one.
-          mkdir -p /tmp/sccache
-          if ! command -v sccache >/dev/null 2>&1; then
-            echo "::warning::sccache absent from the image — this job warms NOTHING."
-            exit 0
-          fi
-          sccache --version
-          export SCCACHE_DIR=/tmp/sccache
-          export SCCACHE_CACHE_SIZE=2G
-          export SCCACHE_ERROR_LOG=/tmp/sccache-server.log
-          export SCCACHE_LOG=warn
-          if sccache --start-server >/tmp/sccache-start.log 2>&1; then
-            {
-              echo "SCCACHE_DIR=/tmp/sccache"
-              echo "SCCACHE_ERROR_LOG=/tmp/sccache-server.log"
-              echo "SCCACHE_LOG=warn"
-              echo "SCCACHE_CACHE_SIZE=2G"
-              # The half the `check` job does not need. Without it the builds
-              # below are plain rustc and this job is decorative.
-              # Issue 1646 — the SHIM, which runs a `staticlib` uncached
-              # (sccache cannot key its transitive closure) and hands
-              # every other call to the sccache on PATH.
-              echo "RUSTC_WRAPPER=$GITHUB_WORKSPACE/scripts/bin/rustc-wrapper/sccache"
-            } >> "$GITHUB_ENV"
-          else
-            echo "::warning::sccache unavailable — this job warms NOTHING (issue 0874)."
-            sed 's/^/  /' /tmp/sccache-start.log || true
-          fi
+        # `--wrapper`: this job calls cargo directly, outside `just`, so it
+        # names the wrapper (the issue 1646 shim) itself. The helper creates
+        # the cache dir either way, so the save below never warns.
+        # issue 0874's contract, one spelling (issue 2930): prove the server
+        # starts and publish to $GITHUB_ENV only if it did; otherwise warn.
+        run: scripts/ci/sccache-configure.sh --dir /tmp/sccache --size 2G --log /tmp/sccache-server.log --wrapper --what 'this job, which then warms nothing'
 
       # phase-489 W3 — the binary cache the `check-*` siblings restore, through
       # the same composite (`check-gate-cache-keys-agree`). `cache: lookup`:
@@ -3204,27 +2990,9 @@ jobs:
         run: scripts/ci/report-runner-hardware.sh
 
       - name: Configure sccache
-        run: |
-          if ! command -v sccache >/dev/null 2>&1; then
-            echo "::warning::sccache absent from the image — the link smoke compiles UNCACHED."
-            exit 0
-          fi
-          sccache --version
-          export SCCACHE_DIR=/tmp/sccache
-          export SCCACHE_CACHE_SIZE=2G
-          export SCCACHE_ERROR_LOG=/tmp/sccache-server.log
-          export SCCACHE_LOG=warn
-          if sccache --start-server >/tmp/sccache-start.log 2>&1; then
-            {
-              echo "SCCACHE_DIR=/tmp/sccache"
-              echo "SCCACHE_ERROR_LOG=/tmp/sccache-server.log"
-              echo "SCCACHE_LOG=warn"
-              echo "SCCACHE_CACHE_SIZE=2G"
-            } >> "$GITHUB_ENV"
-          else
-            echo "::warning::sccache unavailable — the link smoke compiles UNCACHED (issue 0874)."
-            sed 's/^/  /' /tmp/sccache-start.log || true
-          fi
+        # issue 0874's contract, one spelling (issue 2930): prove the server
+        # starts and publish to $GITHUB_ENV only if it did; otherwise warn.
+        run: scripts/ci/sccache-configure.sh --dir /tmp/sccache --size 2G --log /tmp/sccache-server.log --what 'the link smoke'
 
       # `nros locate artifact` names the generated header dir the link reads.
       - name: Build the in-tree nros CLI
