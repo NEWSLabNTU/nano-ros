@@ -331,8 +331,20 @@ so it stays `complete` and routing stays exact. A node pays 1 queryable
 where it paid 5: four fifths of the saving the original text aimed for. The
 rest of this section stands, with "the queryable" read as "the node's
 queryable": it routes by the service in the request key, replies on each
-request's own key, and the tokens and the on-demand `transition_event` put are
-unchanged.
+request's own key, and the tokens are unchanged.
+
+**Amended 2026-11-24 (user ruling): `transition_event` stays an ordinary
+publisher on zenoh.** A put needs the topic's full data key when it publishes,
+and the zenoh publisher keeps only the topic name: its type strings are not
+`'static`, so they cannot be kept from creation. Measured on the native
+lifecycle-node image, the held zenoh publisher costs 168 B of static state
+per managed node (`publisher_entry_t`), plus zenoh-pico's copy of the key.
+Every way to keep the key costs about as much or more: storing it in every
+zenoh publisher adds about 256 B to each one, and a C table of put targets is
+a per-node table of the same size with a knob of its own. So the per-node
+publisher stays, and issue 2956 revisits this if zenoh-pico can put without
+holding a key. The original text below on the put is superseded; a managed
+node on zenoh adds one queryable and one publisher.
 
 **zenoh (original text, 2026-11-12).** One lifecycle queryable per image serves every managed node.
 
