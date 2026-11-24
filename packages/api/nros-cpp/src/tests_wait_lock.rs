@@ -1,15 +1,15 @@
-// Issue 2843 / phase-573 W3.
-//! A C++ callback waiting for a service holds no executor lock while it
-//! sleeps.
+// Issue 2843 / phase-573 W3; issue 2848 replaced the in-callback sleep-poll
+// with a refusal (RFC-0108 D9), so this now holds that contract.
+//! A C++ callback that waits for a service is refused at once, and leaves the
+//! executor to other threads.
 //!
 //! Drives the C++ API (`nros_cpp_*`, the functions the C++ headers call)
 //! over a stub cffi backend whose service is never visible, with the executor
 //! lock a multi-level image installs. A timer callback calls
 //! `nros_cpp_service_client_wait_for_service`, which inside a callback
-//! sleep-polls until its deadline. While it waits, a second thread takes the
-//! executor lock the way any other entry does. Before the fix the wait held
-//! the lock for its whole timeout, so the second thread got in only after it;
-//! now it gets in during the first sleep.
+//! refuses with `NROS_CPP_RET_REENTRANT` instead of blocking the pass. A
+//! second thread then takes the executor lock the way any other entry does,
+//! and must not wait out the callback's budget to get it.
 //!
 //! No network and no router: the backend is a stub registered by name.
 
@@ -292,7 +292,7 @@ fn now_ns(t0: Instant) -> u64 {
 
 static T0: std::sync::OnceLock<Instant> = std::sync::OnceLock::new();
 
-/// The timer callback: wait for a service that never appears.
+/// The timer callback: ask to wait for a service that never appears.
 unsafe extern "C" fn wait_in_callback(_: *mut c_void) {
     if WAITED.swap(true, Ordering::SeqCst) {
         return;
@@ -311,7 +311,7 @@ unsafe extern "C" fn wait_in_callback(_: *mut c_void) {
 }
 
 #[test]
-fn a_callback_waiting_for_a_service_leaves_the_executor_to_other_threads() {
+fn a_callback_waiting_for_a_service_is_refused_at_once() {
     let t0 = *T0.get_or_init(Instant::now);
     let c_name = format!("{STUB}\0");
     // SAFETY: a NUL-terminated name and a vtable that lives for the process.
@@ -412,7 +412,7 @@ fn a_callback_waiting_for_a_service_leaves_the_executor_to_other_threads() {
     };
     assert_eq!(ret, 0, "timer");
 
-    // The spinning thread runs the timer, whose callback waits WAIT_MS.
+    // The spinning thread runs the timer, whose callback asks to wait WAIT_MS.
     let spinner = std::thread::spawn(move || {
         let deadline = Instant::now() + Duration::from_secs(10);
         while !WAITED.load(Ordering::SeqCst) && Instant::now() < deadline {
@@ -439,26 +439,23 @@ fn a_callback_waiting_for_a_service_leaves_the_executor_to_other_threads() {
     let started = WAIT_STARTED_NS.load(Ordering::SeqCst);
     let ended = WAIT_ENDED_NS.load(Ordering::SeqCst);
     let waited_ms = (got - asked) / 1_000_000;
-    // The wait really waited: it ran out its budget against a server that
-    // never appears. A wait that returned at once (a failed lookup, an
-    // unsupported probe) leaves the lock free and would pass the check below
-    // on any code.
+    // Refused, not waited: a blocking wait inside a callback would stall the
+    // pass, so it answers REENTRANT (as the C API does).
     assert_eq!(
         WAIT_RET.load(Ordering::SeqCst),
-        crate::NROS_CPP_RET_TIMEOUT as u32 as u64,
-        "the wait timed out"
+        crate::NROS_CPP_RET_REENTRANT as u32 as u64,
+        "the wait inside a callback is refused"
     );
+    // At once: well inside the budget it was given.
     assert!(
-        ended - started >= u64::from(WAIT_MS) * 1_000_000,
-        "the wait ran {} ms of its {WAIT_MS} ms budget",
+        ended - started < u64::from(WAIT_MS) * 1_000_000 / 2,
+        "the refusal took {} ms of a {WAIT_MS} ms budget",
         (ended - started) / 1_000_000
     );
+    // And the executor is free to another thread without waiting out that
+    // budget.
     assert!(
-        got < ended,
-        "the second thread got the executor lock {waited_ms} ms after asking, at \
-         {} ms; the callback's {WAIT_MS} ms wait ended at {} ms, so the wait \
-         held the lock while it slept",
-        got / 1_000_000,
-        ended / 1_000_000
+        waited_ms < u64::from(WAIT_MS) / 2,
+        "the second thread got the executor lock {waited_ms} ms after asking"
     );
 }

@@ -1,0 +1,1 @@
+C++: `wait_for_service` called from inside a callback now returns `rclcpp::ErrorCode::Reentrant` at once, as the C API does, instead of waiting out its timeout. A client that waits for its server from a timer should check `service_is_ready()` there and send on a later tick.

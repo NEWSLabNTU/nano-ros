@@ -1201,6 +1201,9 @@ pub unsafe extern "C" fn nros_cpp_service_client_server_available(
 /// * `NROS_CPP_RET_UNSUPPORTED` — the backend cannot know (XRCE), returned at
 ///   once rather than after the budget; a caller that may send
 ///   blind proceeds.
+/// * `NROS_CPP_RET_REENTRANT` — called from inside a callback: a blocking
+///   wait there would stall the pass, so it refuses at once, as the C API
+///   does. Use `service_is_ready` inside a callback.
 /// * `NROS_CPP_RET_INVALID_ARGUMENT` — null executor, or neither road resolves.
 /// * `NROS_CPP_RET_TRANSPORT_ERROR` — transport-level failure.
 ///
@@ -1224,26 +1227,17 @@ pub unsafe extern "C" fn nros_cpp_service_client_wait_for_service(
     // — `ServerVisibility` is the one classification.
     use nros_node::executor::ServerVisibility;
     const SPIN_MS: u64 = 10;
-    // Issue 2055 — called from inside a callback (ros2/demos' client calls it
-    // from its timer), this must not start a second dispatch pass: that is
-    // the re-entry `nros_cpp_spin_once` refuses (issue 0290), and this loop
-    // called `Executor::spin_once` directly, past that guard. There it
-    // sleep-polls instead, as `call_polling` does: a multi-threaded backend
-    // (zenoh, Cyclone) keeps the graph current from its own read task, so the
-    // server still shows up; a polled one cannot, and the wait runs out its
-    // budget and answers `Timeout`.
-    //
-    // Issue 2843 -- and it sleeps holding NO lock. The context (and with it
-    // the executor's lock) is taken for each poll and dropped before the
-    // sleep; holding it for the whole wait kept every other thread out of
-    // the executor for the full timeout, a sched task sharing it included.
-    let in_callback = match unsafe { cpp_ctx_checked(executor_handle) } {
-        Some(ctx) => ctx.refuse_in_dispatch().is_err(),
+    // Issue 2848 -- called from inside a callback, the wait REFUSES, as C's
+    // `rclc_client_wait_for_service` does (RFC-0108 D9: a call that would
+    // block inside a callback refuses). It used to sleep-poll there (issue
+    // 2055), so one call answered two ways across the two front ends.
+    match unsafe { cpp_ctx_checked(executor_handle) } {
+        Some(ctx) => {
+            if let Err(ret) = ctx.refuse_in_dispatch() {
+                return ret;
+            }
+        }
         None => return NROS_CPP_RET_INVALID_ARGUMENT,
-    };
-    unsafe extern "C" {
-        // Portable platform sleep (nros-platform-api platform.h).
-        fn nros_platform_sleep_ms(ms: usize);
     }
     let deadline_ns = crate::nros_cpp_time_ns() + (timeout_ms as u64) * 1_000_000;
     loop {
@@ -1269,30 +1263,22 @@ pub unsafe extern "C" fn nros_cpp_service_client_wait_for_service(
         if crate::nros_cpp_time_ns() >= deadline_ns {
             return NROS_CPP_RET_TIMEOUT;
         }
-        if in_callback {
-            // The lock goes back before the sleep, not after it.
-            drop(ctx);
-            // SAFETY: a plain platform sleep; it touches no nano-ros state.
-            unsafe { nros_platform_sleep_ms(SPIN_MS as usize) };
-        } else {
-            // Phase-573 W3 -- the pass marks the context in a callback, as
-            // `nros_cpp_spin_once` does, so a callback it dispatches that
-            // spins or waits again is refused rather than nesting a pass.
-            // SAFETY: the tag proved the context; the lock serialises the flag.
-            let Some(_dispatch) =
-                (unsafe { crate::RawDispatchGuard::enter(ctx.in_dispatch_ptr()) })
-            else {
-                return crate::NROS_CPP_RET_REENTRANT;
-            };
-            // SAFETY: `ctx` holds the lock; no reference to the executor is
-            // live across the pass (RFC-0108 D9, issue 2675).
-            let _ = unsafe {
-                crate::CppExecutor::spin_once_raw(
-                    ctx.exec_ptr(),
-                    core::time::Duration::from_millis(SPIN_MS),
-                )
-            };
-        }
+        // Phase-573 W3 -- the pass marks the context in a callback, as
+        // `nros_cpp_spin_once` does, so a callback it dispatches that spins
+        // or waits again is refused rather than nesting a pass.
+        // SAFETY: the tag proved the context; the lock serialises the flag.
+        let Some(_dispatch) = (unsafe { crate::RawDispatchGuard::enter(ctx.in_dispatch_ptr()) })
+        else {
+            return crate::NROS_CPP_RET_REENTRANT;
+        };
+        // SAFETY: `ctx` holds the lock; no reference to the executor is live
+        // across the pass (RFC-0108 D9, issue 2675).
+        let _ = unsafe {
+            crate::CppExecutor::spin_once_raw(
+                ctx.exec_ptr(),
+                core::time::Duration::from_millis(SPIN_MS),
+            )
+        };
     }
 }
 

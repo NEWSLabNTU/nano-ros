@@ -2,15 +2,15 @@
 //
 //     rclcpp::Client<S>::SharedPtr client_;
 //     client_ = create_client<S>("add_two_ints");
-//     // in a timer callback:
-//     if (!client_->wait_for_service(1s)) { return; }
+//     // in a timer callback (`wait_for_service` refuses there, issue 2848):
+//     if (!client_->service_is_ready()) { return; }
 //     client_->async_send_request(request, [](rclcpp::Client<S>::SharedFuture f) {...});
 //
 // RUNTIME, because the questions are behaviour: does the callback run, from
 // the executor, with the reply staged for ITS request; may it send again from
-// inside the callback; does a removed request's callback stay silent; and may
-// `wait_for_service` be called inside a callback without starting a second
-// dispatch pass (it used to call the executor's `spin_once` directly).
+// inside the callback; does a removed request's callback stay silent; and does
+// `wait_for_service`, called inside a callback, refuse at once (issue 2848: as
+// the C API does) instead of blocking the pass.
 //
 // Real `libnros_cpp.a` + the stub backend, whose replies the test stages by
 // request id (`nros_stub_rmw_stage_reply_for`).
@@ -108,9 +108,9 @@ class ClientNode {
 
     void on_timer() {
         if (sent_ >= 1) return;
-        // Inside a callback: must answer without re-entering the executor.
-        (void)client_->wait_for_service(std::chrono::milliseconds(20));
-        waited_in_callback_ = true;
+        // Inside a callback: a blocking wait refuses at once, as in C.
+        auto waited = client_->wait_for_service(std::chrono::milliseconds(20));
+        refused_in_callback_ = !waited.ok() && waited.code() == rclcpp::ErrorCode::Reentrant;
         auto request = std::make_shared<AddTwoInts::Request>();
         request->a = 2;
         request->b = 3;
@@ -126,7 +126,7 @@ class ClientNode {
     Client::SharedPtr client_;
     rclcpp::TimerBase::SharedPtr timer_;
     int sent_ = 0;
-    bool waited_in_callback_ = false;
+    bool refused_in_callback_ = false;
     int64_t first_id_ = -1;
     std::vector<int64_t> got_;
 };
@@ -155,7 +155,8 @@ int main() {
           "Client<S>::SharedPtr holds what create_client<S>(name) returns");
     spin_for(node, 100);
     check(c.sent_ == 1, "the timer sent the request");
-    check(c.waited_in_callback_, "wait_for_service returned inside the timer callback");
+    check(c.refused_in_callback_,
+          "wait_for_service inside the timer callback refuses with Reentrant");
     check(c.got_.empty(), "no callback before a reply");
     stage_sum_for(c.first_id_, 5);
     spin_for(node, 100);
