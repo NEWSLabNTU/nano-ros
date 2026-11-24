@@ -179,8 +179,9 @@ ARRAY_EXPANSION = re.compile(r"\$\{\w+\[@\]\}")
 # the helper on one line is the evidence; either alone is not.
 FLAG_NAME = "ZEPHYR_EXTRA_MODULES"
 
-# file -> (marker substring, reason). The marker keeps the exemption pinned to
-# the invocation it was written for: move the build and the exemption stops
+# file -> (marker substring, reason), or a list of them for a file with more
+# than one exempt build. The marker keeps the exemption pinned to the
+# invocation it was written for: move the build and the exemption stops
 # matching rather than silently covering a different one.
 EXEMPT = {
     os.path.join("scripts", "probe", "twin", "smoke.sh"): (
@@ -190,13 +191,22 @@ EXEMPT = {
         "to source; it names the installed SDK root, `$(nros dev sdk root)`, which "
         "is the nros module, the way the Zephyr chapter's own build line does.",
     ),
-    os.path.join("just", "zephyr-dev.just"): (
-        "tests/zephyr-c-smoke",
-        "the C-port smoke app is standalone: its CMakeLists pulls "
-        "nros-platform-zephyr's two C files in by relative path and loads no "
-        "nros module at all, so there is no module for a second checkout to "
-        "supply (tests/zephyr-c-smoke/CMakeLists.txt).",
-    ),
+    os.path.join("just", "zephyr-dev.just"): [
+        (
+            "tests/zephyr-c-smoke",
+            "the C-port smoke app is standalone: its CMakeLists pulls "
+            "nros-platform-zephyr's two C files in by relative path and loads no "
+            "nros module at all, so there is no module for a second checkout to "
+            "supply (tests/zephyr-c-smoke/CMakeLists.txt).",
+        ),
+        (
+            "tests/zephyr-tracing-custom-backend",
+            "issue 2878's app is plain Zephyr: it tests the Zephyr TREE the "
+            "patch set leaves (an out-of-tree tracing backend), links no "
+            "nano-ros code and loads no nros module "
+            "(tests/zephyr-tracing-custom-backend/CMakeLists.txt).",
+        ),
+    ],
 }
 
 # A floor, not a count. The harvest is the gate's evidence, so a refactor that
@@ -386,8 +396,7 @@ def is_offence(cmd: str, path: str, file_text: str) -> bool:
     if path.endswith(".py"):
         # No shell helper to call from Python: the evidence is the flag NAME in
         # the argv the function assembles (phase-472 W2).
-        exempt = EXEMPT.get(path)
-        return FLAG_NAME not in cmd and not (exempt and exempt[0] in cmd)
+        return FLAG_NAME not in cmd and not exempted(path, cmd)
     if TARGET_RUN.search(cmd):
         return False
     if any(token in cmd for token in SANCTIONED):
@@ -400,10 +409,16 @@ def is_offence(cmd: str, path: str, file_text: str) -> bool:
         return not argv_array_carries_module(argv.group(1), file_text)
     if carries_assembled_flags(cmd) and file_assembles_module_flag(file_text):
         return False
-    exempt = EXEMPT.get(path)
-    if exempt and exempt[0] in cmd:
+    return not exempted(path, cmd)
+
+
+def exempted(path: str, cmd: str) -> bool:
+    """Whether one of `path`'s EXEMPT markers is in `cmd`."""
+    entry = EXEMPT.get(path)
+    if entry is None:
         return False
-    return True
+    entries = entry if isinstance(entry, list) else [entry]
+    return any(marker in cmd for marker, _reason in entries)
 
 
 def selftest(root: str, quiet: bool = False) -> int:
@@ -477,6 +492,13 @@ def selftest(root: str, quiet: bool = False) -> int:
         "the smoke-app exemption only covers its own marker",
         "    west build -b native_sim/native/64 "
         "-d tests/zephyr-c-smoke/build tests/zephyr-c-smoke -- -DMAKE=x\n",
+        os.path.join("just", "zephyr-dev.just"),
+        False,
+    )
+    expect(
+        "a file's second exemption covers its own marker (issue 2878)",
+        "    west build -b native_sim/native/64 -p always "
+        "-d x tests/zephyr-tracing-custom-backend -- -DMAKE=x\n",
         os.path.join("just", "zephyr-dev.just"),
         False,
     )

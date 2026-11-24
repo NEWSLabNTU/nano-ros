@@ -83,6 +83,39 @@ logs an error and emits nothing. The id is never moved onto another one.
 | POSIX (Linux) | none. Install a sink of your own. |
 | NuttX, ThreadX | none. Install a sink of your own. |
 
+### A Zephyr tracing backend of your own
+
+Zephyr writes the CTF stream through one backend. To keep it in a recorder of
+your own, such as an overwrite-oldest RAM ring, register the backend in your
+application and select it by name. `nros setup board` adds the two Kconfig
+symbols that select it, on Zephyr 3.7 and 4.4; stock Zephyr has no way to
+select an out-of-tree backend.
+
+```c
+#include <tracing_backend.h>
+
+static void ring_init(void) { /* ... */ }
+static void ring_output(const struct tracing_backend *backend,
+                        uint8_t *data, uint32_t length) { /* ... */ }
+
+static const struct tracing_backend_api ring_api = {
+        .init = ring_init,
+        .output = ring_output,
+};
+TRACING_BACKEND_DEFINE(my_trace_ring, ring_api);
+```
+
+```text
+CONFIG_TRACING=y
+CONFIG_TRACING_CTF=y
+CONFIG_TRACING_SYNC=y
+CONFIG_TRACING_BACKEND_CUSTOM=y
+CONFIG_TRACING_BACKEND_CUSTOM_NAME="my_trace_ring"
+```
+
+The name is the first argument of `TRACING_BACKEND_DEFINE()`. No in-tree
+backend is built.
+
 ## If it doesn't work
 
 - **No events at all.** The image was built without `trace-callbacks`, or no
@@ -91,6 +124,9 @@ logs an error and emits nothing. The id is never moved onto another one.
   the executor registered its callbacks; install it first.
 - **`rclc_trace_marker` returns `RCL_RET_INVALID_ARGUMENT`.** The id is
   outside 1 to 15. Ids from 16 up belong to the executor.
+- **Zephyr: `CONFIG_TRACING_BACKEND_CUSTOM` is an undefined symbol.** The
+  workspace was provisioned before nano-ros carried the patch. Re-run
+  `nros setup board <board>`.
 
 ## See also
 

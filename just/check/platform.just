@@ -444,6 +444,14 @@ zephyr-checkout-guard:
 zephyr-patch-set-workspace:
     @bash tests/zephyr-patch-set-workspace-tests.sh
 
+# Issue 2878 -- the out-of-tree tracing backend patch against synthetic 3.7 and
+# 4.4 `subsys/tracing/` trees: check mode, apply, idempotent, half-applied and
+# anchorless trees refused, both patch sets run it. ~1 s, tmpdir, no Zephyr
+# checkout needed; the live image is `just zephyr test-tracing-custom-backend`.
+[group("checks")]
+zephyr-tracing-custom-backend-patch:
+    @bash tests/zephyr-tracing-custom-backend-patch-tests.sh
+
 # phase-460 W6 -- the Zephyr stack-slot pool gives back what it hands out.
 #
 # `zephyr/nros_platform_zephyr_shims.c` owns the ENTIRE task pool of the Zephyr

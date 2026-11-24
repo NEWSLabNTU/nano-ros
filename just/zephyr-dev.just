@@ -392,6 +392,51 @@ test-c-port:
     . scripts/lib/deadline.sh
     "${NROS_DEADLINE[@]}" 15 "{{ZEPHYR_C_PORT_DIR}}/zephyr/zephyr.exe"
 
+# Issue 2878 -- an image selects a tracing backend it registers itself.
+# Builds `tests/zephyr-tracing-custom-backend` (a plain native_sim app whose
+# own backend is picked by CONFIG_TRACING_BACKEND_CUSTOM(_NAME)) against this
+# line's workspace, runs it, and finds its CTF `app_marker` event, id and
+# payload, in the stream that backend recorded. A workspace without the edit
+# is refused by name (the patch script's check mode), not built: re-run
+# `nros setup board` or `just zephyr setup` to apply the patch set. A missing
+# workspace is a REPORTED skip, as `test-c-port`'s.
+[group("debug")]
+test-tracing-custom-backend:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    WORKSPACE="{{ZEPHYR_WORKSPACE}}"
+    if [ ! -f "$WORKSPACE/env.sh" ]; then
+        source scripts/build/check-skip.sh
+        nros_check_unverified zephyr-tracing-custom-backend "no Zephyr west workspace at $WORKSPACE (env.sh absent) -- just setup zephyr" || exit 1
+        exit 0
+    fi
+    NROS_PATCH_CHECK=1 bash scripts/zephyr/tracing-custom-backend-patch.sh "$WORKSPACE"
+    source scripts/lib/zephyr-patchset.sh
+    line="$(nros_zephyr_workspace_line "$WORKSPACE")"
+    source scripts/build/jobserver-pool.sh
+    make_bin="$(nros_pinned_make)" || make_bin="$(command -v make)"
+    source scripts/lib/sdk-tool-path.sh
+    sdk_tool_prefix="$(nros_sdk_tool_path_prefix make ninja)"
+    export PATH="${sdk_tool_prefix:+$sdk_tool_prefix:}$PATH"
+    source "$WORKSPACE/env.sh"
+    source scripts/build/zephyr-python.sh
+    zpy="$(nros_zephyr_python "$WORKSPACE")"
+    west_cmd=(west)
+    [ -z "$zpy" ] || west_cmd=("$zpy" -m west)
+    source scripts/build/zephyr-toolchain.sh
+    export ZEPHYR_TOOLCHAIN_VARIANT="$(nros_zephyr_toolchain_variant native_sim/native/64)"
+    # One build dir per line, always pristine: the test is about the tree.
+    bd="$(scripts/lib/zephyr-workspace.sh --version "$line" build-root)/tracing-custom-backend"
+    mkdir -p "$(dirname "$bd")"
+    "${west_cmd[@]}" build -b native_sim/native/64 -p always \
+        -d "$bd" tests/zephyr-tracing-custom-backend \
+        -- -DMAKE="$make_bin"
+    . scripts/lib/deadline.sh
+    out="$bd/run.log"
+    # -stop_at: main() returns, native_sim does not exit on its own.
+    "${NROS_DEADLINE[@]}" 15 "$bd/zephyr/zephyr.exe" -stop_at=1 > "$out" 2>&1 || true
+    python3 tests/zephyr-tracing-custom-backend/check-output.py "$out" "$line"
+
 # Phase 180.A Task 10 — dual-line CI. Build a representative example
 # (default c/talker zenoh) on BOTH the 3.7 LTS line and the 4.4 rolling
 # line via `build-one`, reporting per-line pass/fail. A line whose
