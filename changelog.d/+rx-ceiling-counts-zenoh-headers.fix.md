@@ -1,0 +1,1 @@
+The build now refuses an image whose largest receivable message, plus zenoh's own headers, does not fit the transport's reassembly buffer. A message that only just fit before was dropped at run time without an error.
