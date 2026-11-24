@@ -269,6 +269,9 @@ jobs:
           if ! boards="$(python3 scripts/ci/nightly-boards.py --modules "$sel")"; then
             echo "::error::nightly-boards.py could not derive the board matrix"; exit 1
           fi
+          # phase-591 W5 EXPERIMENT BRANCH ONLY -- never merged: measure the two
+          # slowest platforms, no other job.
+          boards="$(jq -c '[.[] | select(.board == "ThreadxLinux" or .board == "FreertosMps2")]' <<<"$boards")"
           echo "boards=$boards" >> "$GITHUB_OUTPUT"
           echo "selected boards: $boards"
           echo "zephyr=$zephyr" >> "$GITHUB_OUTPUT"
@@ -358,8 +361,23 @@ jobs:
         include: ${{ fromJSON(needs.changes.outputs.boards) }}
     env:
       NROS_SCOPE_BOARD: ${{ matrix.board }}
+      # phase-591 W5 experiment: keep the justfile's sccache server (and its
+      # counters) alive across gaps in the build.
+      SCCACHE_IDLE_TIMEOUT: "0"
     steps:
       - uses: actions/checkout@v4
+
+      # phase-591 W5 experiment: is the justfile's RUSTC_WRAPPER live here, and
+      # is a server already up? `--show-stats` with NO server would start one
+      # at the default size and change what the build then runs, so the start
+      # only reports, and reads stats only from a server that already exists.
+      - name: sccache at start (W5 experiment)
+        run: |
+          source ./activate.sh
+          # The justfile exports RUSTC_WRAPPER (the sccache shim) exactly when
+          # `command -v sccache` resolves (justfile:20-21), so this answers it.
+          echo "sccache: $(command -v sccache || echo absent)"
+          if pgrep -x sccache >/dev/null; then sccache --show-stats || true; else echo "no sccache server running yet"; fi
 
       # RFC-0114 D13.1 (phase-585 W2) -- where this job's tests write their
       # evidence ledger. From `$GITHUB_WORKSPACE` in the shell, because the job
@@ -517,8 +535,16 @@ jobs:
       # reports. A failed row's own cell fails on its missing fixture and names
       # it. `test` depends on `build-fixtures`, which re-visits the failed row;
       # the same wrapper keeps that rebuild from ending the step before nextest.
+      # phase-591 W5 experiment: the counters, immediately after the build
+      # (issue 1646's shim keeps staticlib calls out of them entirely, so count
+      # those from the log beside these numbers).
+      - name: sccache after build (W5 experiment)
+        if: ${{ !cancelled() }}
+        run: |
+          if command -v sccache >/dev/null; then sccache --show-stats || true; else echo "no sccache on PATH"; fi
+
       - name: Test / e2e (${{ matrix.board }})
-        if: ${{ !cancelled() && steps.build.outcome != 'skipped' && (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.run_e2e)) }}
+        if: ${{ false }}  # phase-591 W5 experiment branch only: build time is what is measured
         run: |
           source ./setup.bash
           source /opt/ros/humble/setup.bash
@@ -622,6 +648,7 @@ jobs:
   # the authority, installed here into the job's throwaway container, never
   # restated as a list.
   px4-sitl:
+    if: ${{ false }}  # phase-591 W5 experiment branch only
     name: px4 sitl
     runs-on: ubuntu-22.04
     # Longest green run 19.4 min (n=3); twice that, rounded up.
@@ -736,7 +763,7 @@ jobs:
     # Not on pull_request: there the matrix is deliberately narrowed by path
     # filters, so it is SUPPOSED to be a subset of the lane. Asserting coverage
     # there would fail every PR and teach people to ignore this job.
-    if: ${{ always() && github.event_name != 'pull_request' }}
+    if: ${{ false }}  # phase-591 W5 experiment branch only
     name: tier-2 nightly lane coverage
     runs-on: ubuntu-latest
     # Longest green run 0.2 min (n=30); floor 10.
@@ -846,7 +873,7 @@ jobs:
   # keeps it running when everything else on the edge does not.
   zephyr-gate-report:
     needs: changes
-    if: ${{ always() }}
+    if: ${{ false }}  # phase-591 W5 experiment branch only
     name: zephyr gate inputs (issue 1029)
     runs-on: ubuntu-latest
     # Longest green run 0.1 min (n=60); floor 10.
@@ -876,6 +903,7 @@ jobs:
           retention-days: 14
 
   zephyr-example-matrix:
+    if: ${{ false }}  # phase-591 W5 experiment branch only
     # No `needs:` — see the issue-1029 block above. Runs on every event this
     # file triggers on (one cron since phase-559 W4b, and dispatch).
     name: zephyr ${{ matrix.line }} / ${{ matrix.example }}
@@ -1023,6 +1051,7 @@ jobs:
           just zephyr build-one "${{ matrix.example }}" zenoh
 
   zephyr-dual-line-summary:
+    if: ${{ false }}  # phase-591 W5 experiment branch only
     # No `needs:` — issue 1029; same gate as zephyr-example-matrix.
     name: zephyr ci-both (3.7 + 4.4)
     env:
@@ -1168,6 +1197,7 @@ jobs:
   # smaller rise, and any fall, is a note. Nightly, not on the
   # merge lane: four image builds cost minutes, and a day is soon enough.
   stack-floor-drift:
+    if: ${{ false }}  # phase-591 W5 experiment branch only
     # No `needs:` — issue 1029; same gate as zephyr-example-matrix.
     name: stack-floor drift (observed + drift rows)
     runs-on: ubuntu-latest
@@ -1269,6 +1299,7 @@ jobs:
           just zephyr stack-floor-drift
 
   zephyr-copy-out:
+    if: ${{ false }}  # phase-591 W5 experiment branch only
     # No `needs:` — issue 1029; same gate as zephyr-example-matrix.
     name: zephyr copy-out check (4.4)
     env:
@@ -1404,6 +1435,7 @@ jobs:
   # STRICT: the workspace IS provisioned here, so a Zephyr project that
   # reaches a NOT VERIFIED is a failure of this job, not a skip.
   template-copy-out-zephyr:
+    if: ${{ false }}  # phase-591 W5 experiment branch only
     # No `needs:` — issue 1029; same gate as zephyr-example-matrix.
     name: check / template-copy-out [zephyr] (daily + manual)
     # phase-489 W2 — ROUTED, as gate.yml's `check-template-copy-out`; the hosted
@@ -1586,6 +1618,7 @@ jobs:
   # Daily per issue 2236 Q19. Its own job, so a red here withholds no
   # platform cell's verdict.
   nuttx-make-road:
+    if: ${{ false }}  # phase-591 W5 experiment branch only
     name: nuttx make road (${{ matrix.config }})
     runs-on: ubuntu-22.04
     # The registry's `roads` lane for both NuttX boards (check-cadence-jobs).
@@ -1664,7 +1697,7 @@ jobs:
   board-results:
     name: board results
     needs: [platform, px4-sitl]
-    if: always()
+    if: ${{ false }}  # phase-591 W5 experiment branch only
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
