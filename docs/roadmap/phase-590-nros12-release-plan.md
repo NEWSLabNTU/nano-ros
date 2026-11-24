@@ -69,7 +69,10 @@ regeneration only if `NROS_CODEGEN_VERSION` did not move. Check it at the cut by
 
 A release cuts only from a commit that all five scheduled lanes passed: `nightly.yml`,
 `run-matrix.yml` tier 1 and tier 2, `host-tests.yml` and `live-peer.yml`. A docs-only
-descendant of such a commit also counts (`scripts/release/release-lanes-green.py`). Run against
+descendant of such a commit also counts (`scripts/release/release-lanes-green.py`). Since the
+user's ruling of 2026-11-24, a green `workflow_dispatch` of a lane counts as well, but only on
+`main`, at the release commit itself (not a docs-only ancestor), with every job of the run green.
+A dispatch on a branch never counts. Run against
 `main` today, it refuses all five. The newest scheduled runs, 2026-11-22/23:
 
 | lane (cron, UTC) | last green | failing now |
@@ -84,8 +87,8 @@ descendant of such a commit also counts (`scripts/release/release-lanes-green.py
 ### Blocker tracker
 
 This table is the W1 tracker. Each row gets its owner and pull request as they are routed, and
-its state as it lands. The state is closed only when a scheduled run of its lane is green after
-the fix.
+its state as it lands. The state is closed only when a scheduled run of its lane, or a dispatch
+on `main` that meets the rule above, is green after the fix.
 
 | # | lane | blocker | issue | owner | PR | state |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -123,14 +126,21 @@ on `main`, so W1 has to fix it before the rehearsal can pass again.
 - **Status:** OPEN.
 
 Fix each red above on `main`, as its own pull request: file an issue, fix the class, and
-re-measure on the next scheduled run. Done when each lane has one green scheduled run on a
-commit at or after its fix. They do not yet have to be the same commit.
+re-measure on the next scheduled run, or on a dispatch on `main`. Done when each lane has one
+green run on a commit at or after its fix. They do not yet have to be the same commit.
 
-### W2 -- one commit all five lanes passed (a quiet night)
+### W2 -- one commit all five lanes passed
 
 - **Status:** OPEN.
 
-The four crons start at 03:00, 04:00, 05:00 and 06:00 UTC, each on whatever `main` is then.
+Two ways to get there. Since the 2026-11-24 ruling, the direct one is to dispatch all four
+workflows on `main` at one commit (`gh workflow run <file> --ref main`, with no inputs that narrow
+it). Each must finish with every job green, and `main` must not move between the dispatches,
+because a dispatch runs whatever `main` is when it starts. The self-hosted runners serve the
+03:00 to 06:00 UTC crons as well, so dispatch outside that window and not while a cron's run is
+still queued.
+
+The other way is a quiet night. The four crons start at 03:00, 04:00, 05:00 and 06:00 UTC, each on whatever `main` is then.
 So a commit passes all five only if no code lands between about 02:50 and 06:20 UTC. Docs-only
 merges are fine. On the chosen night, the merge queue lands docs only in that window, or is
 paused. Then `release-lanes-green.py --shas-from <that sha>` (run read-only, as this plan did)

@@ -17,9 +17,12 @@ imported, never a second spelling (the changelog audit uses the same one).
   COVERAGE  every `.github/workflows/*.yml` with a `schedule:` trigger is in
             LANES or in NOT_LANES (with its reason), never both, and every
             NOT_LANES entry names a scheduled workflow that exists.
-            Scheduled runs on `main` only, as `record-lane-runs.py` reads them:
-            a dispatch may narrow what a lane runs, and a cadence is what a
-            release is measured against.
+            Scheduled runs on `main`, as `record-lane-runs.py` reads them.
+  DISPATCH  a `workflow_dispatch` run counts too (user ruling 2026-11-24), but
+            only when it ran on `main` AT THE COMMIT ITSELF (never a docs-only
+            ancestor) and EVERY job of it is green: a dispatch may narrow what
+            a lane runs, so a skipped or absent job refuses it. A branch
+            dispatch never counts.
   QUALIFIES a run whose head IS the commit, or is an ancestor of it with only
             documentation changed since (by `git diff --name-only`). So this
             needs the full history; `release-nros.yml` checks out with
@@ -170,6 +173,31 @@ def lane_verdict(run, job, jobs_of):
     return "absent"
 
 
+def dispatch_bar(run, sha, jobs_of):
+    """Why a dispatched run cannot count for `sha`, or None when it can.
+
+    A scheduled run passes through (None). A dispatch counts only on `main`, at
+    the commit itself, with the run AND every one of its jobs green: a dispatch
+    may narrow what a lane runs, so one skipped job is enough to refuse it.
+    """
+    if run.get("event", "schedule") == "schedule":
+        return None
+    if run.get("event") != "workflow_dispatch":
+        return f"a `{run.get('event')}` run is not lane evidence"
+    if run.get("headBranch", "main") != "main":
+        return f"a dispatch on `{run.get('headBranch')}`, not main"
+    if run["headSha"] != sha:
+        return (f"a dispatch counts only at the commit itself, and this one ran on "
+                f"{run['headSha'][:10]}")
+    if run.get("conclusion") != "success":
+        return f"the dispatch concluded `{run.get('conclusion')}`"
+    bad = [f"{j.get('name')}={j.get('conclusion')}" for j in jobs_of(run["databaseId"])
+           if j.get("conclusion") != "success"]
+    if bad:
+        return f"not every job of the dispatch is green ({', '.join(bad[:3])})"
+    return None
+
+
 def decide(sha, cwd, included, runs_of, jobs_of):
     """[(lane, ok, message)] over LANES."""
     out = []
@@ -183,6 +211,10 @@ def decide(sha, cwd, included, runs_of, jobs_of):
             if not ok:
                 newest = newest or (run, why)
                 continue
+            bar = dispatch_bar(run, sha, jobs_of)
+            if bar:
+                newest = newest or (run, bar)
+                continue
             v = lane_verdict(run, job, jobs_of)
             if v == "success":
                 hit = (run, why)
@@ -191,15 +223,16 @@ def decide(sha, cwd, included, runs_of, jobs_of):
         newest = red or newest
         if hit:
             run, why = hit
-            out.append((name, True, f"{name}: green in run {run['databaseId']} on "
+            kind = "dispatched" if run.get("event") == "workflow_dispatch" else "scheduled"
+            out.append((name, True, f"{name}: green in {kind} run {run['databaseId']} on "
                                     f"{run['headSha'][:10]} ({why})"))
         elif newest:
             run, why = newest
             out.append((name, False, f"{name}: no green run on {sha[:10]} or a docs-only ancestor "
-                                     f"in the last {len(runs)} scheduled {wf} runs; newest read: "
+                                     f"in the last {len(runs)} scheduled or dispatched {wf} runs on main; newest read: "
                                      f"run {run['databaseId']} on {run['headSha'][:10]}: {why}"))
         else:
-            out.append((name, False, f"{name}: no scheduled {wf} run on main to read"))
+            out.append((name, False, f"{name}: no scheduled or dispatched {wf} run on main to read"))
     return out
 
 
@@ -208,9 +241,11 @@ def live(repo):
 
     def runs_of(wf):
         if wf not in cache:
-            runs = gh_json(["run", "list", "--repo", repo, "--workflow", wf, "--branch", "main",
-                            "--event", "schedule", "--status", "completed", "--limit", str(LIMIT),
-                            "--json", "databaseId,conclusion,headSha,createdAt"])
+            runs = []
+            for event in ("schedule", "workflow_dispatch"):
+                runs += gh_json(["run", "list", "--repo", repo, "--workflow", wf, "--branch", "main",
+                                 "--event", event, "--status", "completed", "--limit", str(LIMIT),
+                                 "--json", "databaseId,conclusion,headSha,headBranch,event,createdAt"])
             cache[wf] = sorted(runs, key=lambda r: r.get("createdAt", ""), reverse=True)
         return cache[wf]
 
@@ -262,8 +297,12 @@ def self_test():
             g("checkout", "-q", "main")
             read_by_rust = {"book/src/guide/a.md"}
 
-            def run(i, head, concl="success"):
-                return {"databaseId": i, "headSha": head, "conclusion": concl, "createdAt": f"{i:04d}"}
+            def run(i, head, concl="success", event="schedule", branch="main"):
+                return {"databaseId": i, "headSha": head, "conclusion": concl, "createdAt": f"{i:04d}",
+                        "event": event, "headBranch": branch}
+
+            def disp(i, head, concl="success", branch="main"):
+                return run(i, head, concl, "workflow_dispatch", branch)
 
             def scenario(nightly, matrix, jobs, daily):
                 def runs_of(wf):
@@ -274,6 +313,8 @@ def self_test():
                 return runs_of, lambda rid: jobs[rid]
 
             green = [{"name": "tier 1 (cells)", "conclusion": "success"},
+                     {"name": "tier 2 (1-wise matrix)", "conclusion": "success"}]
+            skip1 = [{"name": "tier 1 (cells)", "conclusion": "skipped"},
                      {"name": "tier 2 (1-wise matrix)", "conclusion": "success"}]
             red2 = [{"name": "tier 1 (cells)", "conclusion": "success"},
                     {"name": "tier 2 (1-wise matrix)", "conclusion": "failure"}]
@@ -308,6 +349,17 @@ def self_test():
                 ("a red live-peer blocks with every other lane green", b,
                  [run(1, a)], [run(2, a)], {2: green}, {}, {"live-peer"},
                  {"live-peer.yml": [run(6, a, "failure")]}),
+                ("a green dispatch on main at the commit counts", a,
+                 [disp(1, a)], [disp(2, a)], {1: [], 2: green, 5: [], 6: []}, {}, set(),
+                 {"host-tests.yml": [disp(5, a)], "live-peer.yml": [disp(6, a)]}),
+                ("a dispatch at a docs-only ancestor does not count", b,
+                 [disp(1, a)], [run(2, a)], {1: [], 2: green}, {}, {"nightly"}),
+                ("a dispatch on a branch does not count", a,
+                 [disp(1, a, branch="fix/x")], [run(2, a)], {1: [], 2: green}, {}, {"nightly"}),
+                ("a dispatch with a skipped job does not count, even for the green job", a,
+                 [run(1, a)], [disp(2, a)], {2: skip1}, {}, {"tier 1", "tier 2"}),
+                ("a red dispatch does not hide an older green scheduled run", a,
+                 [disp(3, a, "failure"), run(1, a)], [run(2, a)], {3: [], 2: green}, {}, set()),
             ]
             for name, sha, nightly, matrix, jobs, inc, want_refused, *daily in cases:
                 v = verdict(sha, nightly, matrix, jobs, inc, daily[0] if daily else None)
@@ -357,7 +409,8 @@ def self_test():
         return 1
     print("release-lanes-green self-test: OK (exact commit, docs-only descendant, red nightly, "
           "side branch, red tier 2, code since, Rust-read page, older green, no runs, red host-tests, "
-          "red live-peer; coverage: covered, unlisted, stale, both, no reason, this tree)")
+          "red live-peer; dispatch: at the commit, docs-only ancestor, branch, skipped job, red over "
+          "green; coverage: covered, unlisted, stale, both, no reason, this tree)")
     return 0
 
 
