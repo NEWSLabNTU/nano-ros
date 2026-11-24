@@ -3147,13 +3147,20 @@ signature = "#[nros_board_stm32f4::entry]\nfn main() -> !"
     /// first file is narrower than the rule it enforces (the issue-0196 class),
     /// so it follows the include instead.
     ///
-    /// Deliberately NOT a C preprocessor: it resolves `#include "relative/path"`
-    /// against the including file's directory, depth-first, and ignores
+    /// Issue 2687 — a board header now includes the family's by NAME
+    /// (`nros_freertos_family_config.h`), which the compiler finds on the
+    /// family config dir after the board's own. So a quoted include is looked
+    /// up beside the including file first, then in
+    /// `nros_build_paths::FREERTOS_FAMILY_CONFIG_DIR` under `root`; stopping at
+    /// the first read every family setting as `0` again.
+    ///
+    /// Deliberately NOT a C preprocessor: it resolves `#include "path"`
+    /// along that search path, depth-first, and ignores
     /// `#include <system>` and any conditional compilation. That is exactly the
     /// shape these config headers use, and anything richer would be a second
     /// implementation of cpp living in a test.
-    fn read_freertos_config(path: &std::path::Path) -> Option<String> {
-        fn walk(path: &std::path::Path, depth: usize, out: &mut String) {
+    fn read_freertos_config(path: &std::path::Path, root: &std::path::Path) -> Option<String> {
+        fn walk(path: &std::path::Path, family: &std::path::Path, depth: usize, out: &mut String) {
             // A cycle or a pathological chain must not hang the test suite.
             if depth > 8 {
                 return;
@@ -3169,7 +3176,12 @@ signature = "#[nros_board_stm32f4::entry]\nfn main() -> !"
                     && let Some(close) = rest[open + 1..].find('"')
                 {
                     let rel = &rest[open + 1..open + 1 + close];
-                    walk(&dir.join(rel), depth + 1, out);
+                    let found = [dir.join(rel), family.join(rel)]
+                        .into_iter()
+                        .find(|p| p.is_file());
+                    if let Some(p) = found {
+                        walk(&p, family, depth + 1, out);
+                    }
                     continue;
                 }
                 out.push_str(line);
@@ -3179,8 +3191,9 @@ signature = "#[nros_board_stm32f4::entry]\nfn main() -> !"
         if !path.exists() {
             return None;
         }
+        let family = root.join(nros_build_paths::FREERTOS_FAMILY_CONFIG_DIR);
         let mut out = String::new();
-        walk(path, 0, &mut out);
+        walk(path, &family, 0, &mut out);
         Some(out)
     }
 
@@ -3222,10 +3235,10 @@ signature = "#[nros_board_stm32f4::entry]\nfn main() -> !"
                 continue;
             };
             let cfg = root.join(&rel).join("config/FreeRTOSConfig.h");
-            // Follows the W5.a relative include into `nros-board-freertos`; a
+            // Follows the board's include of the family header by name; a
             // board with no co-located config at all yields `None` and is
             // skipped, exactly as before.
-            let Some(src) = read_freertos_config(&cfg) else {
+            let Some(src) = read_freertos_config(&cfg, &root) else {
                 continue; // board without a co-located config — nothing to cross-check
             };
             let caps = d.capabilities();

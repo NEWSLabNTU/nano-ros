@@ -39,6 +39,9 @@ import re
 import sys
 import tempfile
 
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "lib"))
+import freertos_config  # noqa: E402
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 # Ports whose task FPU context is opt-in (`configUSE_TASK_FPU_SUPPORT`).
@@ -84,8 +87,9 @@ def check(root: str) -> tuple[list[str], list[str]]:
             if not os.path.isfile(header):
                 problems.append(f"{rel_cmake}: selects {port} but {rel_header} does not exist")
                 continue
-            with open(header, encoding="utf-8") as fh:
-                htext = fh.read()
+            # Issue 2687 — read what the compiler reads: the board header with
+            # the family header it includes by name inlined.
+            htext = freertos_config.read_config(header, root) or ""
             if not FPU_SUPPORT_2.search(htext):
                 problems.append(
                     f"{rel_header}: {port} needs `#define configUSE_TASK_FPU_SUPPORT 2` — "
