@@ -26,7 +26,14 @@
 nros_probe_run_expect() {
     local step="$1" secs="$2" keep="$3" body="$4"
     shift 4
-    local log="/tmp/probe-run-$step.log"
+    # The log sits beside the body file, never at a name fixed by the step
+    # number: the extractor's self-test runs step 99 from two gates at once
+    # (`starter-image-context` and `book-probe-tracks`), each body in its own
+    # tempdir, and a shared /tmp/probe-run-99.log let one truncate the other's
+    # log mid-run, so a step that printed its line was reported as not having
+    # printed it. In a probe container the body is /tmp/probe-run-<N>.sh, so
+    # the log is the same /tmp/probe-run-<N>.log as before.
+    local log="${body%.sh}.log"
     local pending=("$@")
     : >"$log"
     setsid bash "$body" >"$log" 2>&1 </dev/null &
@@ -81,7 +88,7 @@ nros_probe_run_expect() {
 nros_probe_run_exit() {
     local step="$1" secs="$2" want="$3" body="$4"
     shift 4
-    local log="/tmp/probe-run-$step.log"
+    local log="${body%.sh}.log"  # beside the body: see nros_probe_run_expect
     : >"$log"
     setsid bash "$body" >"$log" 2>&1 </dev/null &
     local pid=$!
