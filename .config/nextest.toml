@@ -420,6 +420,33 @@ filter = "binary(rt_sched_levels_e2e)"
 test-group = "rt-sched-cpu0"
 slow-timeout = { period = "60s", terminate-after = 2 }
 
+# Issue 2959 (release blocker B31) -- the wall-clock LATENCY cells run alone in the run.
+#
+# These cells assert a bound in microseconds on a QEMU guest. While the guest
+# idles in `wfi`, `-icount sleep=on` (which the network needs) runs its clock
+# at wall speed, so whatever delays the host's scheduler delays the guest's
+# timer interrupt too, and lands in the sample. Each test already separates
+# that from the design: the design's bound (500 us) is held where the guest's
+# clock is its own, and the idle samples get a share allowance for QEMU
+# (`ON_TIME_SHARE`, `RTIC_LEVELS_IDLE_ON_TIME_SHARE`, 95 %).
+#
+# What the allowance cannot absorb is the REST OF THE RUN. On 2026-11-24 the
+# nros12 release tier 2 (run 45422927491) failed both baremetal mps2 cells at
+# 94 % against 95 %: 60 other tests overlapped the RTIC cell's 9 s, several of
+# them QEMU guests, and the host was also running local gate tests. The same
+# cells passed that morning at the previous head. So the fix is isolation, not
+# a looser bound: `threads-required = "num-test-threads"` makes nextest start
+# each of these only when nothing else in the run is running, and start
+# nothing beside it until it ends. They take about 10 s each, so the cost to a
+# run is small.
+#
+# This isolates them from the RUN only. Load from outside the job (another
+# user's work on a runner host) still reaches them, and the bound was measured
+# against that background, not an idle host: see issue 2959.
+[[profile.default.overrides]]
+filter = "binary(isr_wake_rtos) or (binary(emulator) and test(=test_qemu_rtic_levels_preempt_and_wake_on_time))"
+threads-required = "num-test-threads"
+
 [[profile.default.overrides]]
 filter = "binary(emulator) or binary(large_msg)"
 test-group = "qemu-baremetal"
