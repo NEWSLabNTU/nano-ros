@@ -299,7 +299,9 @@ crate = "nros-rmw-zenoh"
 features = ["platform-posix"]
 tolerant = true
 # Issue 2083 — `in_process_graph`: a client and its server on one session.
-targets = ["status_events_matrix", "matched_events_live", "in_process_graph"]
+# Issue 2950 — `connect_budget`: the connect budget bounds a dropped SYN in
+# all three modes (it needs a default route, not a router).
+targets = ["status_events_matrix", "matched_events_live", "in_process_graph", "connect_budget"]
 
 # Issue 0972 — a MODULE, not a test file: `nros-c`'s `mod node` is inside
 # `rmw_modules!` (`#[cfg(feature = "rmw-cffi")]`), and `test-unit` activates no

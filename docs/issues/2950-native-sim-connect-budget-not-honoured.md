@@ -1,10 +1,10 @@
 ---
 id: 2950
-title: "On Zephyr native_sim a zenoh connect to an unreachable address blocks ~136 s, whatever the stated connect budget (measured with connect_timeout_ms=0)"
+title: "A zenoh TCP connect to a peer that drops the SYN blocks ~127 s with connect budget 0 or forever, on every port (first seen on Zephyr native_sim)"
 status: open
 type: bug
 severity: medium
-area: [zephyr, zenoh, network]
+area: [zenoh, network, zephyr, posix]
 related: [2941]
 found: 2026-11-24
 ---
@@ -77,3 +77,26 @@ address, separates the three.
 - The fix holds for the other ports that share `_z_tcp_connect_within`, or a
   port that cannot honour a budget says so at configure time instead of
   silently.
+
+## Root cause and fix (2026-11-25)
+
+Not native_sim's sockets: every TCP port. With a budget of 0 or forever, the
+open had no deadline (zenoh-pico fork, `src/net/session.c`), so
+`src/link/unicast/tcp.c` passed `connect_timeout_ms = -1`, and
+`_z_tcp_connect_within` treats a negative timeout as a plain blocking
+`connect()`. A dropped SYN then waits the host's SYN-retry limit. Reproduced
+on Linux: the native C lifecycle-pair image dialling `tcp/10.255.255.1:7447`
+was still blocked in the open at 20 s.
+
+The fix (zenoh-pico fork `nano-ros-1.10.1`, split by mode as ruled):
+- budget 0: the one attempt's connect is bounded by
+  `Z_TCP_ONE_ATTEMPT_CONNECT_TIMEOUT_MS` (1000); its handshake keeps the full
+  per-attempt bound;
+- forever: each attempt gets `Z_TRANSPORT_CONNECT_TIMEOUT` (10 s) as its
+  deadline, so a slow link still connects and the loop still retries;
+- a stated budget is unchanged.
+
+`nros-rmw-zenoh`'s `connect_budget` test checks each mode against
+`10.255.255.1:7447`: 0 fails in 1.0 s, forever starts a new attempt on a new
+socket after 10.3 s, and a 3 s budget ends at 3.0 s. Without the fix the first
+hangs to the test timeout and the second keeps one socket for 25 s.
