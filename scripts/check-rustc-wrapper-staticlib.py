@@ -25,6 +25,11 @@ the two halves of that:
    just file, a workflow / composite action, a shell script or a CMake file
    that names sccache must name the shim. A bare `RUSTC_WRAPPER=sccache` is the
    defect, re-armed.
+3. ONE CONFIGURE STEP (issue 2930) — no workflow or composite action starts an
+   sccache server itself. `scripts/ci/sccache-configure.sh` is the one spelling
+   of issue 0874's contract (prove the server, publish only if it started);
+   gate.yml had grown ten inline copies of it in six variants, and a fix to the
+   contract landed in whichever copies an editor found.
 
 Run: python3 scripts/check-rustc-wrapper-staticlib.py
 """
@@ -147,7 +152,15 @@ def self_test() -> list[str]:
     assert not producer_problem(f'rustc-wrapper = "{SHIM_REL}"')
     assert not ASSIGN.search('echo "sccache not found (RUSTC_WRAPPER empty)"')
     assert not producer_problem('printf "  RUSTC_WRAPPER=%s\\n" "${RUSTC_WRAPPER:-<unset>}"')
+    assert INLINE_START.search("          if sccache --start-server >/tmp/x 2>&1; then")
+    assert not INLINE_START.search("        run: scripts/ci/sccache-configure.sh --wrapper")
+    assert not INLINE_START.search("          # sccache --start-server is the helper's job")
     return bad
+
+
+# Issue 2930 — an inline server start in a workflow step.
+INLINE_START = re.compile(r"^\s*[^#\s].*\bsccache\s+--start-server\b")
+CONFIGURE_HELPER = "scripts/ci/sccache-configure.sh"
 
 
 def producer_problem(line: str) -> bool:
@@ -183,6 +196,22 @@ def main() -> int:
             if producer_problem(line):
                 bad.append(f"{rel}:{n}: sets RUSTC_WRAPPER to a bare sccache — point it at "
                            f"{SHIM_REL}, which runs a staticlib uncached (issue 1646)")
+    helper_uses = 0
+    for rel in files_of_kind("ci"):
+        try:
+            text = (REPO / rel).read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        helper_uses += text.count(CONFIGURE_HELPER)
+        for n, line in enumerate(text.splitlines(), 1):
+            if INLINE_START.search(line):
+                bad.append(f"{rel}:{n}: starts an sccache server inline — call "
+                           f"{CONFIGURE_HELPER} (flags for dir, size, log, wrapper, "
+                           f"self-hosted), the one spelling of issue 0874's contract "
+                           f"(issue 2930)")
+    if not require_population(helper_uses, f"workflow use(s) of {CONFIGURE_HELPER}",
+                              gate="check-rustc-wrapper-staticlib"):
+        return 1
     if not require_population(assignments, "sccache RUSTC_WRAPPER assignment(s)",
                               gate="check-rustc-wrapper-staticlib"):
         return 1
