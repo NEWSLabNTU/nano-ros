@@ -416,8 +416,28 @@ fn built_row_binary(
     if nros_tests::fixtures::lane::absent_row_breaks_promise(row) {
         *promised += 1;
     }
+    // Issue 2940 -- a row OUTSIDE this run's lane was not built by this run, so
+    // whatever sits in its directory is some earlier run's: on a persistent
+    // fixture tree, a museum binary. Never audit it.
+    if let Some(coords) = nros_tests::fixtures::lane::run_coords()
+        && !nros_tests::fixtures::lane::is_in_lane(row, coords)
+    {
+        return None;
+    }
     let root = nros_tests::project_root().join(&row.artifact_root);
-    root.is_dir().then(|| row_binary(&row.id, &root)).flatten()
+    let bin = root
+        .is_dir()
+        .then(|| row_binary(&row.id, &root))
+        .flatten()?;
+    // ... and a row inside it is audited only if its build is THIS checkout's:
+    // the resolvers' own `.inputsig` check, which locating by path skipped. A
+    // stale row is a red naming the row, never a silent drop; one with no
+    // stamp was not built here and counts as not located.
+    match nros_tests::fixtures::workspace_row_build_is_current(&row.id) {
+        Ok(true) => Some(bin),
+        Ok(false) => None,
+        Err(e) => panic!("rmw-coordinate-truth: {e}"),
+    }
 }
 
 /// Issue 1875 -- can this ELF run as a process on THIS machine? Compares the
