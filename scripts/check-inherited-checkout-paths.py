@@ -1018,9 +1018,15 @@ def probe_cmake_cache_reroot(tmp: Path) -> list[str]:
             "if(NOT DEFINED NROS_TREE_INC)\n"
             '  set(NROS_TREE_INC "${ROOT}/inc" CACHE PATH "tree default")\n'
             "endif()\n"
+            # An INTERNAL entry behind the same write-once guard (the shape of
+            # `_NANO_ROS_PREFIX` in NanoRosGenerateInterfaces.cmake).
+            "if(NOT DEFINED CACHE{NROS_TREE_PREFIX})\n"
+            '  set(NROS_TREE_PREFIX "${ROOT}" CACHE INTERNAL "")\n'
+            "endif()\n"
             f'set(NROS_OUTSIDE "{outside}" CACHE PATH "outside every root")\n'
             'set(NROS_OWN "${CMAKE_BINARY_DIR}/gen" CACHE PATH "own build tree")\n'
             'message("INC=${NROS_TREE_INC}")\n'
+            'message("PFX=${NROS_TREE_PREFIX}")\n'
             'message("OUT=${NROS_OUTSIDE}")\n'
             'message("OWN=${NROS_OWN}")\n'
         )
@@ -1038,7 +1044,7 @@ def probe_cmake_cache_reroot(tmp: Path) -> list[str]:
                 return None
             return dict(
                 l.split("=", 1) for l in p.stderr.splitlines()
-                if l[:4] in ("INC=", "OUT=", "OWN=")
+                if l[:4] in ("INC=", "PFX=", "OUT=", "OWN=")
             )
 
         if configure(old) is None:
@@ -1049,6 +1055,8 @@ def probe_cmake_cache_reroot(tmp: Path) -> list[str]:
         cases = [
             ("INC", f"{new}/inc",
              "a cached tree default naming the PREVIOUS root is re-rooted onto this one"),
+            ("PFX", str(new),
+             "a write-once INTERNAL entry naming the PREVIOUS root is re-rooted too"),
             ("OUT", str(outside), "a cached path outside every root is KEPT"),
             ("OWN", f"{build}/gen", "a path in the project's own build tree is KEPT"),
         ]

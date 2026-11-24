@@ -104,8 +104,8 @@ endfunction()
 # SDK's sources compile against the old SDK's headers (the nros11 -> nros12
 # upgrade: `platform.c: unknown type name 'nros_wall_clock_state_t'`).
 #
-# So, before any project reads one: a cached PATH or FILEPATH value whose
-# owning nano-ros root (deepest marker walk) is a DIFFERENT root than <here> is
+# So, before any project reads one: a cached value (any type but STATIC and
+# BOOL) that is one absolute path whose owning nano-ros root (deepest marker walk) is a DIFFERENT root than <here> is
 # re-rooted onto <here>, same sub-path, and said once. A value outside every
 # nano-ros root (a toolchain, an SDK in the store, a user's own tree), one
 # already inside <here>, and one inside the consuming project's own source or
@@ -125,8 +125,12 @@ function(nros_reroot_cached_checkout_paths here)
     get_cmake_property(_vars CACHE_VARIABLES)
     set(_moved "")
     foreach(_v IN LISTS _vars)
+        # Every type that can hold a path. INTERNAL included: a write-once
+        # guard (`if(NOT DEFINED CACHE{_NANO_ROS_PREFIX})`) keeps an INTERNAL
+        # entry exactly as it keeps a PATH one, and the nros11 -> nros12 move
+        # left `_NANO_ROS_PREFIX` on nros11 that way. STATIC is CMake's own.
         get_property(_type CACHE "${_v}" PROPERTY TYPE)
-        if(NOT _type STREQUAL "PATH" AND NOT _type STREQUAL "FILEPATH")
+        if(_type STREQUAL "STATIC" OR _type STREQUAL "BOOL")
             continue()
         endif()
         set(_value "$CACHE{${_v}}")
