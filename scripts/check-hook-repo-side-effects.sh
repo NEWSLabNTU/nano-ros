@@ -873,6 +873,14 @@ probe_args() {
         # clones and commits, the sites this probe is for) and skips the
         # extractions.
         scripts/check-book-probe-tracks.py) echo "--self-test" ;;
+        # Its normal path is the self-test FOLLOWED by a release-range audit
+        # of the real history (`git log`/`describe` reads plus a `gh` GraphQL
+        # call per 100 commits). Every repository it builds (`git init`, the
+        # shallow `git clone`) is in `self_test()`, so the audit adds reads and
+        # network time and no site this probe is for. Measured on host 142
+        # (issue 2955): 82 s and 78 s a shape alone against the 120 s budget,
+        # killed in both shapes at load ~116; the self-test alone is 1.4 s.
+        scripts/changelog-audit.py) echo "--self-test" ;;
         *) echo "" ;;
     esac
 }
