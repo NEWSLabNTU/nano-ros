@@ -396,6 +396,7 @@ int8_t nros_platform_task_init(void *task, void *attr,
 
     pthread_attr_t pattr;
     pthread_attr_t *pattr_p = NULL;
+    bool explicit_sched = false;
     if (a != NULL && (a->stack_bytes > 0u || (a->flags & NROS_PLATFORM_TASK_DETACHED) != 0u)) {
         if (pthread_attr_init(&pattr) != 0) {
             return NROS_PLATFORM_RET_NOMEM;
@@ -456,12 +457,26 @@ int8_t nros_platform_task_init(void *task, void *attr,
             if (pthread_attr_setinheritsched(&pattr, PTHREAD_EXPLICIT_SCHED) == 0
                 && pthread_attr_setschedpolicy(&pattr, SCHED_FIFO) == 0) {
                 (void) pthread_attr_setschedparam(&pattr, &sp);
+                explicit_sched = true;
             }
         }
     }
 
     pthread_t *t = (pthread_t *) task;
     int rc = pthread_create(t, pattr_p, entry, arg);
+    if (rc == EPERM && explicit_sched) {
+        /* issue 2934 — an unprivileged host refuses an EXPLICIT SCHED_FIFO at
+         * CREATE time (no CAP_SYS_NICE, no RLIMIT_RTPRIO), so the attribute path
+         * issue 0636 added turned "this process may not request real-time
+         * scheduling" into "this task never starts". That is the opposite of the
+         * rule the post-create arm below states: a refused priority is
+         * reported and the task runs at the inherited one. So retry with the
+         * creator's scheduling (stack size and detach state kept) and let that
+         * arm, which asks for SCHED_FIFO again on the running thread, report the
+         * refusal once. */
+        (void) pthread_attr_setinheritsched(&pattr, PTHREAD_INHERIT_SCHED);
+        rc = pthread_create(t, pattr_p, entry, arg);
+    }
     if (pattr_p != NULL) {
         (void) pthread_attr_destroy(pattr_p);
     }

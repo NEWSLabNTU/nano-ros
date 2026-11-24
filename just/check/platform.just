@@ -103,6 +103,18 @@ clock-resolve:
     @bash tests/clock-resolve-tests.sh
     @bash tests/clock-board-posix-tests.sh
 
+# Issue 2934 -- a task that states a priority STARTS on a host that may not
+# request real-time scheduling (`tests/posix-task-priority-tests.sh`). The real
+# POSIX port, with RLIMIT_RTPRIO lowered to 0 and the refusal proved first (a
+# process that can still get SCHED_FIFO is an unmet precondition, not a pass):
+# band-priority tasks spawn and run, the refused priority is reported once, an
+# inheriting task is unchanged. Negative control: the port without its EPERM
+# retry fails to spawn. ~2 s.
+[private]
+[group('needs:cc')]
+posix-task-priority:
+    @bash tests/posix-task-priority-tests.sh
+
 # The CMake road's clock-selection reader answers the same case table as the
 # Rust one (`tests/clock-selection-cmake-parity.sh`, and nros-zephyr-build's
 # `the_shared_case_table`), so the two readers cannot drift apart. A rule
