@@ -109,3 +109,131 @@ above in their ranked order:
 The raw samples and logs are kept on host 142 in
 `/home/aeon/repos/nano-ros/tmp/issue-2840/`: `2840-run2-samples.tsv` and
 `2840-run2-fixtures.log` for this run, `2840-run1-*` for the incomplete one.
+
+## The two trees no mitigation named, measured (2026-11-24)
+
+Measured read-only by nros 118 on the persistent fixture tree of the
+`newslab-118-server` runner (`nros-fixture-tree`, which tier 2 and the
+pairwise nightly build into and the runner sweep evicts by age). That tree
+holds more than one tier-1 build: it accumulates across runs and lanes. So
+its totals are larger than the 142 run's. The per-key and per-leaf shapes
+are what carry over.
+
+### `build/sizes-probe`
+
+53 GiB: 271 keys under `rustc-1.99.0` (47 GiB) and 24 under a retired
+1.96-nightly slug. Per key: median 177 MB, minimum 130, maximum 490.
+
+**Where a key's bytes are.** A median key (`449d91ed94bef5e5`, 177 MB):
+
+| part | MB |
+| --- | ---: |
+| host half (`nros-relwithdebinfo/`: build scripts, proc-macros, their deps) | 131 |
+| target half (`x86_64-unknown-linux-gnu/nros-relwithdebinfo/deps`) | 44 |
+
+Across all keys: host halves 26.7 GiB, target halves 11.9 GiB. The host
+half has the same crate set and hashes in 158 of the keys, but it is not
+byte-identical between keys (`toml_edit`, `serde_core` and
+`nros_platform_config` all differ by content). So hardlinking identical
+files would not reclaim it.
+
+**Debuginfo.** The probe builds under `nros-relwithdebinfo` (`debug = 1`,
+`build-override.debug = 0`). The DWARF sections in that key's rlibs sum to
+8.7 MB, about 5 % of the key. Building the probe without debuginfo saves
+about 5 %, roughly 2.4 GiB of the runner's 47.
+
+**Is it issue 2838's fan-out?** In part. That fix (`1ad0b61571`,
+2026-11-23) is in both this tree's latest run and the 142 run
+(`fb2c34e379`). Grouping the keys by their recorded inputs
+(`nros-probe-key-inputs.txt`):
+
+| keys | all 271 | the 66 from today's run (pin baseline `3be75ab40a`) |
+| --- | ---: | ---: |
+| distinct as keyed | 271 | 66 |
+| ignoring the orchestration knobs below | 249 | 66 |
+| also ignoring `NROS_SIZING_DESCRIPTOR` | 115 | 46 |
+
+So within one run, the descriptor still splits 66 keys into what would
+otherwise be 46: about 30 %. The other 46 are real differences, in target,
+features, board, entity counts and pool knobs. Across runs, a second source
+splits keys: about 28 orchestration variables that `knob_identity()` hashes
+because they are not on `KNOBS_THAT_CANNOT_CHANGE_A_SIZE`. Among them:
+
+- `NROS_FIXTURE_COORDS`, `NROS_FIXTURE_FAILED_ROWS` and
+  `NROS_FIXTURE_BUILD_LEDGER` (they differ per lane: tier 2 against the
+  pairwise nightly);
+- `NROS_SUBMODULE_PIN_BASELINE` (it differs per base commit);
+- `NROS_RUNNER_*`, `NROS_LANE_INCLUDED`, `NROS_CENSUS_PREPASS`,
+  `NROS_STAGE_ENV`, `NROS_SCCACHE_REAL`, `NROS_OFFLINE`, `NROS_TEST_*`,
+  `NROS_LEAF_LOCK_LEDGER` and `NROS_CHECKOUT_MARKER`.
+
+These account for 22 of the 271 keys (about 3.8 GiB) in the persistent
+tree. It is phase-353 W4's class again, arriving by new names. The list was
+written from one 2026-08-15 measurement.
+
+### `packages/testing/nros-tests`
+
+51 GiB on the runner tree (18.6 GiB in the 142 tier-1 run). It is the
+single-node test binaries and fixtures: 73 leaves under `bins/` and 54 under
+`fixtures/`, each its own cargo root. Several have one target dir per
+variant (`message-info-observer` has three, about 1 GiB each), because a
+cargo target dir serves one root (issue 0616).
+
+| part | GiB |
+| --- | ---: |
+| cargo target dirs (`target*/`) | 43.0 |
+| cmake build dirs (`build*/`) | 7.9 |
+| of the target dirs: `deps/` | 31.9 |
+| final executables (outside `deps/` and `build/`) | 0.6 |
+
+So about 1 % of it is what the cells run. It is not issue 2838's fan-out.
+It is one cargo root per leaf and variant, each with its own copy of the
+core chain.
+
+`scripts/ci/release-fixture-intermediates.sh --dry-run` over
+`packages/testing/nros-tests/{bins,fixtures}` reports **39.9 GiB
+releasable** (33.7 bins, 6.2 fixtures), 78 % of the tree. Live-peer's host
+shards already reach this tree since phase-591 W3 derived their pack roots
+from the manifest. The tier-1 lane does not: its only prune is the
+workspace-configure one (`nros_prune_cargo_intermediates`).
+
+### Ranked mitigation for these two trees, and what became of it
+
+Ranked by the measurement above, then ruled on 2026-11-25:
+
+1. **Release `packages/testing/nros-tests`' intermediates in the fixture
+   lane.** Estimated at 78 % of that tree. **Not done: it backfires.** Tier
+   1's run half checks freshness with `cargo build` per cargo row
+   (`just ci tier1 run`, then `check-fixtures-stale.sh`, then
+   `scripts/test/rust-fixture-stale.sh`), and cargo rebuilds a crate whose
+   build-script executable or dependency rlib is missing. Measured on a
+   scratch crate: deleting either one recompiles the crate and relinks the
+   binary. So every released row (98 nros-tests rows in the manifest)
+   would rebuild in the preflight, costing the build time again and
+   bringing the disk straight back. Live-peer releases the same tree
+   safely only because that lane never runs this probe.
+2. **Prune each sizes probe's host half once the probe has answered.**
+   Estimated at 74 % of a key. **Not done: it backfires.** The probe has no
+   answer cache. Every call runs `cargo build` in its key directory and
+   reads the sizes from the rlib it just built
+   (`nros-sizes-build::find_dep_rlib_isolated`), so a pruned host half (131 MB of
+   build scripts and proc-macros) recompiles on every reuse of that key.
+   It would become safe only with an answer cache whose key includes a
+   fingerprint of the probed sources, because the probe key does not: a
+   source edit changes the sizes and not the key, and today cargo's own
+   fingerprint is what catches it.
+3. **Exclude the orchestration names from the probe key.** **Done**, as a
+   harvest rather than a hand list
+   (`scripts/gen-probe-orchestration-knobs.py`, checked by
+   `just check probe-orchestration-knobs`). It stops cross-run fan-out on
+   a persistent tree (22 of 271 keys here). In a single cold run it gains
+   nothing.
+4. **Build the probe without debuginfo.** About 5 % of the probe tree.
+   Skipped as not worth a change.
+
+Neither 1 nor 2 should be re-specified without the change it names first.
+The next step is to re-measure a tier-1 build's peak with 3 in, then
+choose between the Corrosion prune, the split lane, and cutting the
+nros-tests duplication at its source. That last one is not "share target
+dirs": a cargo `--target-dir` serves exactly one workspace root (issue
+0616), so the 127 leaves would have to collapse into fewer cargo roots.
