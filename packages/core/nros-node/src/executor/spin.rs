@@ -986,9 +986,14 @@ fn create_param_event_pub(
     let supported = Session::supported_qos_policies(session);
     let qos = super::node::fit_runtime_qos(qos, supported, "publisher", TOPIC);
     super::node::validate_qos_or_report(&qos, supported, "publisher", TOPIC)?;
-    session
-        .create_publisher(&topic, qos)
-        .map_err(|_| NodeError::Transport(TransportError::PublisherCreationFailed))
+    session.create_publisher(&topic, qos).map_err(|e| {
+        super::node::creation_refused(
+            "publisher",
+            topic.name,
+            e,
+            TransportError::PublisherCreationFailed,
+        )
+    })
 }
 
 /// phase-556 W13 -- create `node`'s `/rosout` writer:
@@ -6500,9 +6505,14 @@ impl<'s> Executor<'s> {
             "publisher",
             topic_name,
         )?;
-        session
-            .create_publisher(&topic, qos)
-            .map_err(|_| NodeError::Transport(TransportError::PublisherCreationFailed))
+        session.create_publisher(&topic, qos).map_err(|e| {
+            super::node::creation_refused(
+                "publisher",
+                topic.name,
+                e,
+                TransportError::PublisherCreationFailed,
+            )
+        })
     }
 
     /// Phase 124.B.1 — install the executor's wake callback onto the
@@ -11798,9 +11808,14 @@ impl<'s> Executor<'s> {
                 "client",
                 service_name,
             )?;
-            session
-                .create_client(&info, qos)
-                .map_err(|_| NodeError::Transport(TransportError::ServiceClientCreationFailed))?
+            session.create_client(&info, qos).map_err(|e| {
+                super::node::creation_refused(
+                    "service client",
+                    info.name,
+                    e,
+                    TransportError::ServiceClientCreationFailed,
+                )
+            })?
         };
 
         // phase-515 C3 — a capture rides at the end of the entry's own region,
@@ -11895,9 +11910,14 @@ impl<'s> Executor<'s> {
                 "client",
                 service_name,
             )?;
-            session
-                .create_client(&info, qos)
-                .map_err(|_| NodeError::Transport(TransportError::ServiceClientCreationFailed))?
+            session.create_client(&info, qos).map_err(|e| {
+                super::node::creation_refused(
+                    "service client",
+                    info.name,
+                    e,
+                    TransportError::ServiceClientCreationFailed,
+                )
+            })?
         };
 
         let offset = self.arena_alloc::<ServiceClientCallbackEntry<Svc, F, REPLY_BUF>>()?;

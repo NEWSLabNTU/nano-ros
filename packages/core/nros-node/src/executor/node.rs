@@ -18,6 +18,29 @@ use super::{
     types::NodeError,
 };
 
+/// Issue 2947 -- an entity the backend refused is reported with the backend's
+/// OWN error, once, before it is folded into the creation error the caller
+/// matches on. Every creation site used to drop it (`map_err(|_| ...)`), so a
+/// refused `/rosout` writer said only `PublisherCreationFailed` and its cause
+/// could not be read off the image. Cold: it formats.
+#[cold]
+#[inline(never)]
+pub(crate) fn creation_refused<E: core::fmt::Debug>(
+    kind: &str,
+    name: &str,
+    backend: E,
+    folded: TransportError,
+) -> NodeError {
+    nros_log::log_error!(
+        nros_log::get_logger("nros"),
+        "{} '{}' was refused by the RMW backend: {:?}",
+        kind,
+        name,
+        backend
+    );
+    NodeError::Transport(folded)
+}
+
 /// Validate a profile against what the backend honours, and SAY WHICH POLICY
 /// when it does not — phase-417 G7.
 ///
@@ -465,10 +488,14 @@ impl<'a> NodeHandle<'a> {
             "publisher",
             topic_name,
         )?;
-        let handle = self
-            .session
-            .create_publisher(&topic, qos)
-            .map_err(|_| NodeError::Transport(TransportError::PublisherCreationFailed))?;
+        let handle = self.session.create_publisher(&topic, qos).map_err(|e| {
+            creation_refused(
+                "publisher",
+                topic.name,
+                e,
+                TransportError::PublisherCreationFailed,
+            )
+        })?;
         // RFC-0052 W3b.4 — attach the contracted endpoint's counter cell
         // (exact topic-name match against the baked table; None = free).
         let monitor = self
@@ -531,10 +558,14 @@ impl<'a> NodeHandle<'a> {
             "publisher",
             topic_name,
         )?;
-        let handle = self
-            .session
-            .create_publisher(&topic, qos)
-            .map_err(|_| NodeError::Transport(TransportError::PublisherCreationFailed))?;
+        let handle = self.session.create_publisher(&topic, qos).map_err(|e| {
+            creation_refused(
+                "publisher",
+                topic.name,
+                e,
+                TransportError::PublisherCreationFailed,
+            )
+        })?;
         Ok(crate::executor::handles::EmbeddedRawPublisher {
             handle,
             gate: self.publisher_gate(),
@@ -830,10 +861,14 @@ impl<'a> NodeHandle<'a> {
             Svc::SERVICE_NAME,
             Svc::SERVICE_HASH,
         );
-        let handle = self
-            .session
-            .create_client(&info, qos)
-            .map_err(|_| NodeError::Transport(TransportError::ServiceClientCreationFailed))?;
+        let handle = self.session.create_client(&info, qos).map_err(|e| {
+            creation_refused(
+                "service client",
+                info.name,
+                e,
+                TransportError::ServiceClientCreationFailed,
+            )
+        })?;
         Ok(EmbeddedServiceClient {
             handle,
             req_buffer: [0u8; REQ_BUF],
@@ -915,7 +950,14 @@ impl<'a> NodeHandle<'a> {
         let handle = self
             .session
             .create_client(&info, QoSProfile::services_default())
-            .map_err(|_| NodeError::Transport(TransportError::ServiceClientCreationFailed))?;
+            .map_err(|e| {
+                creation_refused(
+                    "service client",
+                    info.name,
+                    e,
+                    TransportError::ServiceClientCreationFailed,
+                )
+            })?;
         Ok(crate::executor::handles::RawServiceClient::new(handle))
     }
 
