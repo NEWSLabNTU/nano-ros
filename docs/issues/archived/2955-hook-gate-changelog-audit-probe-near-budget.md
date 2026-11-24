@@ -1,11 +1,12 @@
 ---
 id: 2955
 title: "check-hook-repo-side-effects fails under host load: its changelog-audit.py probe takes 78-82 s alone against a 120 s budget"
-status: open
+status: resolved
 type: bug
 area: [ci]
 severity: medium
 found: 2026-11-24
+resolved: 2026-11-25
 related: [2669, 1964]
 ---
 
@@ -47,7 +48,7 @@ entry and every entry behind it, and the ejection names a hook-safety
 gate. That reads like a real git-environment leak (issues 0986/1465), so
 each one gets re-diagnosed from scratch.
 
-## Where to look (not done here)
+## Where to look (as filed)
 
 `changelog-audit.py` runs its NORMAL path in the probe (`probe_args`
 returns `""` for it), which audits the real tree's history. The
@@ -57,3 +58,23 @@ same shape was fixed twice before by giving the probe the self-test:
 (#4228, slow-disk hosts hitting 120 s in all three shapes). Before
 switching it, check that `--self-test` reaches every repository-building
 path in `changelog-audit.py`, since that coverage is what the probe asserts.
+
+## Resolution
+
+The probe now runs `changelog-audit.py --self-test` (`probe_args` in
+`scripts/check-hook-repo-side-effects.sh`), the shape issue 2669 and #4228
+gave two other probes.
+
+Coverage checked first: the script builds repositories only inside
+`self_test()` (its `git init -b main` scratch repo and the shallow
+`git clone --depth 1` used to test the HistoryUnknown outcome). The normal
+path runs that same self-test and then audits the real history, which is
+`git log`/`git describe` reads after `nros_clear_inherited_git_env()` and a
+`gh` GraphQL call per 100 commits. So `--self-test` reaches every
+repository-building site, and the audit adds only reads and network time.
+The separate "clears the inherited git environment" assertion on this
+script is unchanged.
+
+Measured on host 142 (aarch64): the self-test alone is 1.4 s against 77 s
+for the normal path. With the change the gate's three shapes take 1.6 s,
+1.5 s and 1.5 s, and `check-hook-repo-side-effects` is OK.
