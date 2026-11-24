@@ -1,6 +1,6 @@
 ---
 id: 2958
-title: "`just check fast` and the pre-push hook judge the WORKING TREE, not the commit being pushed, so an unstaged edit can make a push green locally and red on hosted CI"
+title: "Pushes skip the pre-push hook on hosts that never ran `just setup-hooks` (host 142: every checkout), and where it runs, `check fast` judges the working tree, not the pushed commit"
 status: open
 type: bug
 area: [ci, gates]
@@ -57,7 +57,46 @@ in `just ci gate` clones the commit and runs the fast tier there
 (`NROS_GATE_SCOPE=pristine`). That lane costs ~6 min, and `ci gate` is not
 what anyone runs before pushing a docs-only change.
 
+## The larger gap: on host 142 no checkout runs the hook at all
+
+Checked 2026-11-25 after the incident above:
+
+- **The hook is not installed anywhere on host 142.** The repository's
+  shared config has none of the four settings in `config/git-settings.txt`
+  (`core.hooksPath=.githooks` required; `diff.submodule`,
+  `status.submoduleSummary`, `push.recurseSubmodules` advisory), and
+  `.git/hooks/` holds only samples. So every push from this host, main
+  checkout and every agent worktree alike, runs no pre-push hook: no
+  `check fast`, no duplicate-issue-id refusal, no submodule-rewind refusal.
+  The server-side gates still catch the last two on the PR (`check fast`
+  in CI, `refs/issue-ids/*` reservation), so they are found later, not
+  missed.
+- **A linked worktree DOES inherit it once set.** There is no
+  `extensions.worktreeConfig`, so `git config` writes the common config
+  every worktree reads. One `just setup-hooks` in any checkout on a host
+  covers all of them; the gap is per HOST, not per worktree.
+- **`just setup-worktree` deliberately does not install it.** `setup-hooks`
+  is opt-in, because pointing `core.hooksPath` at tracked scripts lets a
+  checkout run repository code on push (the justfile's own comment). The
+  provisioning check only prints `worktree-provisioning: NOTE git
+  core.hooksPath=<unset> (want .githooks) -> just setup-hooks; until then
+  pushes skip the pre-push gates`. That line is in every `just ci gate` log
+  on this host today (the #4803 and #4808 runs, for two), and nobody acted on
+  it. A note in a long log is not a refusal.
+
 ## Proposed fix (not built)
+
+**First, and cheaper than anything below: get the hook installed on every
+host that pushes.** Either an operator runs `just setup-hooks` once per
+host (a decision for the host's owner, since it is the opt-in above; it
+also makes every push pay `check fast`, ~4 min under load), or the
+opt-in becomes a stated choice rather than a silent default: for example,
+`setup-worktree` and `just doctor` report the missing hook as a FAIL with
+both remedies (install it, or record `NROS_SKIP_PREPUSH_CHECKS=1` as the
+host's choice) instead of a NOTE. That catches more than the tree-diff
+refusal below, which only matters once a hook runs at all.
+
+Then, for the working-tree reach:
 
 Cheapest first; the first alone covers every case above.
 
