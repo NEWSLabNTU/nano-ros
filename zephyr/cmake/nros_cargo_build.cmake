@@ -1446,18 +1446,26 @@ function(nros_resolve_knobs)
         endif()
 
         if(NOT "${_nros_rx_need}" STREQUAL "")
+            # Issue 2943 -- zenoh-pico reassembles the whole zenoh message: the
+            # sample plus its headers (measured ~88 B). The same headroom as
+            # `nros_sizing_descriptor::receive_ceiling::REASSEMBLY_HEADROOM_BYTES`,
+            # which a test there holds this literal to.
+            set(_nros_rx_headroom 256)
+            math(EXPR _nros_rx_want "${_nros_rx_need} + ${_nros_rx_headroom}")
             set(_nros_rx_ceiling "${NROS_RESOLVED_NROS_ZENOH_FRAG_MAX_BYTES}")
             set(_nros_rx_ceiling_knob "NROS_ZENOH_FRAG_MAX_BYTES")
             if(NROS_RESOLVED_NROS_ZENOH_BATCH_UNICAST_BYTES GREATER _nros_rx_ceiling)
                 set(_nros_rx_ceiling "${NROS_RESOLVED_NROS_ZENOH_BATCH_UNICAST_BYTES}")
                 set(_nros_rx_ceiling_knob "NROS_ZENOH_BATCH_UNICAST_BYTES")
             endif()
-            if(_nros_rx_need GREATER _nros_rx_ceiling)
+            if(_nros_rx_want GREATER _nros_rx_ceiling)
                 message(FATAL_ERROR
                     "nros: this image is built to receive a sample zenoh-pico "
                     "cannot deliver.\n"
                     "  largest receivable sample     = ${_nros_rx_need}"
                     " (${_nros_rx_need_knob})\n"
+                    "  plus zenoh's headers          = ${_nros_rx_want}"
+                    " (headroom ${_nros_rx_headroom})\n"
                     "  NROS_ZENOH_FRAG_MAX_BYTES      ="
                     " ${NROS_RESOLVED_NROS_ZENOH_FRAG_MAX_BYTES}\n"
                     "  NROS_ZENOH_BATCH_UNICAST_BYTES ="
@@ -1474,7 +1482,7 @@ function(nros_resolve_knobs)
                     "defragmented.\n"
                     "\n"
                     "Set CONFIG_NROS_ZENOH_FRAG_MAX_BYTES to at least "
-                    "${_nros_rx_need} (or export NROS_ZENOH_FRAG_MAX_BYTES, which "
+                    "${_nros_rx_want} (or export NROS_ZENOH_FRAG_MAX_BYTES, which "
                     "wins over Kconfig). If ${_nros_rx_need_knob} OVER-states "
                     "what this image actually receives -- it is derived over "
                     "the linked interface closure when no entity inventory "

@@ -47,6 +47,10 @@
 //! receives a type with no size bound and states no class gets a build
 //! warning ([`unpriced_receive_warning`]) rather than a refusal, since nothing
 //! states a number to compare.
+//!
+//! Both arms count zenoh's headers: a sample fits when the class plus
+//! [`REASSEMBLY_HEADROOM_BYTES`] does (issue 2943). A class equal to the
+//! ceiling leaves no room for them and is dropped.
 
 use crate::{Fact, SizingDescriptor};
 
@@ -184,7 +188,8 @@ pub fn unpriced_receive_warning(reason: &str, ceiling: Option<usize>) -> String 
 }
 
 /// `Some(message)` when the image is built to receive a sample its transport
-/// drops; `None` when it fits or nothing was stated.
+/// drops; `None` when it fits or nothing was stated. A sample fits when it
+/// and its headers ([`REASSEMBLY_HEADROOM_BYTES`]) do.
 #[must_use]
 pub fn receive_ceiling_refusal(
     need: ReceiveNeed<'_>,
@@ -193,13 +198,17 @@ pub fn receive_ceiling_refusal(
 ) -> Option<String> {
     let (need, need_knob) = need?;
     let (ceiling, ceiling_knob) = receive_ceiling(frag_max_size, batch_unicast_size);
-    if need <= ceiling {
+    // Issue 2943 -- the reassembled zenoh message is the sample plus its
+    // headers, so a class that only just fits the ceiling is still dropped.
+    let want = need.saturating_add(REASSEMBLY_HEADROOM_BYTES);
+    if want <= ceiling {
         return None;
     }
     Some(format!(
         // issue 1368.
         "this image is built to receive a sample zenoh-pico cannot deliver.\n  \
          largest receivable sample     = {need} ({need_knob})\n  \
+         plus zenoh's headers          = {want} (headroom {REASSEMBLY_HEADROOM_BYTES})\n  \
          NROS_ZENOH_FRAG_MAX_BYTES      = {frag_max_size}\n  \
          NROS_ZENOH_BATCH_UNICAST_BYTES = {batch_unicast_size}\n  \
          receive ceiling               = {ceiling} ({ceiling_knob})\n\n\
@@ -208,7 +217,7 @@ pub fn receive_ceiling_refusal(
          subscription looks like one that never fires. The ceiling above is the LARGER \
          of the two, because a frame that fits one unicast batch whole is never \
          defragmented.\n\n\
-         Raise NROS_ZENOH_FRAG_MAX_BYTES to at least {need} (the board's \
+         Raise NROS_ZENOH_FRAG_MAX_BYTES to at least {want} (the board's \
          `[knobs.zenoh] frag_max_bytes`, or the env knob). If {need_knob} \
          OVER-states what this image receives, state that class yourself instead \
          (NROS_SUBSCRIBER_BUFFER_BYTES / NROS_ZENOH_SUBSCRIBER_LARGE_BYTES): a stated \
@@ -272,9 +281,39 @@ mod tests {
     }
 
     #[test]
-    fn a_class_at_the_ceiling_passes() {
-        let need = receive_need(None, None, Some(2048));
+    fn a_class_and_its_headers_at_the_ceiling_pass() {
+        let need = receive_need(None, None, Some(2048 - REASSEMBLY_HEADROOM_BYTES));
         assert_eq!(receive_ceiling_refusal(need, 2048, 1024), None);
+    }
+
+    /// Issue 2943 -- cmake cannot read this crate, so the Zephyr configure
+    /// restates the headroom; this holds the two to one number.
+    #[test]
+    fn the_zephyr_arm_states_the_same_headroom() {
+        let cmake = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../zephyr/cmake/nros_cargo_build.cmake");
+        let text = std::fs::read_to_string(&cmake)
+            .unwrap_or_else(|e| panic!("read {}: {e}", cmake.display()));
+        let line = text
+            .lines()
+            .find(|l| l.trim_start().starts_with("set(_nros_rx_headroom "))
+            .expect("the Zephyr arm states its headroom");
+        assert_eq!(
+            line.trim(),
+            format!("set(_nros_rx_headroom {REASSEMBLY_HEADROOM_BYTES})"),
+            "the Zephyr arm and REASSEMBLY_HEADROOM_BYTES disagree"
+        );
+    }
+
+    /// Issue 2943 -- a class equal to the ceiling leaves no room for zenoh's
+    /// headers, so every sample is dropped: refused, naming the size with
+    /// the headers.
+    #[test]
+    fn a_class_at_the_ceiling_without_header_room_is_refused() {
+        let need = receive_need(None, None, Some(2048));
+        let msg = receive_ceiling_refusal(need, 2048, 1024).expect("2048 + headers > 2048");
+        let want = 2048 + REASSEMBLY_HEADROOM_BYTES;
+        assert!(msg.contains(&format!("at least {want}")), "{msg}");
     }
 
     #[test]
@@ -290,7 +329,7 @@ mod tests {
 
     #[test]
     fn a_batch_larger_than_the_frag_buffer_is_the_ceiling() {
-        let need = receive_need(None, None, Some(1400));
+        let need = receive_need(None, None, Some(1500 - REASSEMBLY_HEADROOM_BYTES));
         assert_eq!(
             receive_ceiling(1024, 1500),
             (1500, "NROS_ZENOH_BATCH_UNICAST_BYTES")
