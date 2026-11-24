@@ -72,3 +72,44 @@ timeout that scales with it.
 Phase-489 W13 (the make 4.4 token pool, branch `w13-token-pool`) makes the
 pooled launcher the default when a pinned make 4.4 is present. Its 4-core
 re-measure is the acceptance for this issue.
+
+## The re-measure (recipe, 2026-11-24) -- WAITING ON MEASUREMENT
+
+The code half is on main. phase-489 W13 (#4004) makes the pooled launcher the
+default whenever the pinned make 4.4 resolves: one FIFO jobserver of `budget`
+tokens that every stage draws from, so linux can take all four tokens once
+threadx_linux finishes. What remains is the measurement this issue's
+acceptance names.
+
+It does not need a 4-core host. `taskset` pins the whole build to four CPUs,
+which gives real contention, and `nproc` then reports 4, so the budget follows:
+
+```sh
+source ./activate.sh
+just setup-cli                     # a fresh CLI first, or the fixtures re-stale
+taskset -c 0-3 just build-test-fixtures lane=tier1 2>&1 | tee tmp/2606-pooled.log
+```
+
+Record:
+
+1. The banner. It must read `build-test-fixtures: POOLED — 4 tokens (make
+   4.4 fifo jobserver), N stage(s), shared tokens`. `token pool OFF: …;
+   static split instead` means the pinned make did not resolve (`nros setup
+   --tool make`), and the run measures the old path.
+2. The wall time, and the per-stage start and duration from
+   `tmp/build-test-fixtures-*/build-test-fixtures.joblog`. That is the same
+   table as "Measured" above.
+3. Whether linux's tail ran at 4 tokens once the other stages finished: CPU
+   use over the tail, from `sar -u 60` or `top -b -d 60` sampled beside the
+   build.
+
+The static-split arm has no switch: the pool is chosen whenever the pinned
+make resolves, and nothing turns it off. So the baseline is this issue's own
+measurement, 15,803 s on a real 4-core host (linux alone on 1 of 4 cores for
+13,560 s). Comparing against it is fair only on a quiet host, because that
+run shared its machine with other sessions. Note the load average in the
+record.
+
+Acceptance: the pooled run's linux tail uses more than one core, and its wall
+time beats 15,803 s. This issue's last section (test-all on a small host)
+stays open separately.
