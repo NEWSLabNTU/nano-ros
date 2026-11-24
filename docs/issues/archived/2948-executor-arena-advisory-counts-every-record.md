@@ -1,11 +1,12 @@
 ---
 id: 2948
 title: "executor_arena_advisory's one-shot check counts every log record, so any record on the second spin fails it under load"
-status: open
+status: resolved
 type: bug
 area: [testing, executor]
 severity: low
 found: 2026-11-24
+resolved: 2026-11-25
 related: [0900]
 ---
 
@@ -35,3 +36,9 @@ repeated". So the check is about all logging, not about the advisory flag.
 Count only the advisory's own records, matched on its text (an
 `nros_tests::output` constant, per the test-grep rule), before and after the
 second spin. Keep the assertion that the first spin emitted exactly one.
+
+## Resolution
+Fixed by commit 48306ed62f: the one-shot check counts only records that
+contain `output::EXECUTOR_ARENA_ADVISORY`, before and after the second spin,
+and still asserts the first spin emitted exactly one. The issue file was left
+open when that commit landed; this archives it.
