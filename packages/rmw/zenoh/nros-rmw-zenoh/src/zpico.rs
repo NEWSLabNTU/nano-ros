@@ -952,7 +952,8 @@ impl Context {
     /// # Parameters
     ///
     /// * `queryable_handle` - Handle of the queryable that received the query
-    /// * `keyexpr` - Reply key expression (null-terminated)
+    /// * `keyexpr` - Reply key expression (null-terminated), or `None` to reply
+    ///   on the query's own key
     /// * `data` - Reply payload
     /// * `attachment` - Optional attachment data
     ///
@@ -964,7 +965,7 @@ impl Context {
         &self,
         queryable_handle: i32,
         reply_seq: i64,
-        keyexpr: &[u8],
+        keyexpr: Option<&[u8]>,
         data: &[u8],
         attachment: Option<&[u8]>,
     ) -> Result<()> {
@@ -972,13 +973,17 @@ impl Context {
             Some(att) => (att.as_ptr(), att.len()),
             None => (core::ptr::null(), 0),
         };
+        // `None` replies on the query's own key expression (the shim reads it
+        // from the clone it holds), so a request is answered on the key it
+        // arrived on whatever arrived after it.
+        let keyexpr_ptr = keyexpr.map_or(core::ptr::null(), |k| k.as_ptr().cast());
 
         let ret = ffi_guard(|| unsafe {
             zpico_query_reply(
                 self.handle,
                 queryable_handle,
                 reply_seq,
-                keyexpr.as_ptr().cast(),
+                keyexpr_ptr,
                 data.as_ptr(),
                 data.len(),
                 att_ptr,

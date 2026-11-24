@@ -819,7 +819,8 @@ mod cbindgen_stubs {
     /// Reply to a query (must be called within query callback).
     ///
     /// # Parameters
-    /// * `keyexpr` - Reply key expression string, null-terminated.
+    /// * `keyexpr` - Reply key expression string, null-terminated, or NULL to
+    ///   reply on the query's own key expression.
     /// * `data` - Pointer to reply data buffer
     /// * `len` - Length of data in bytes
     /// * `attachment` - Pointer to attachment buffer (may be NULL)

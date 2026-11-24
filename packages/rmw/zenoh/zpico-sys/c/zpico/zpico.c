@@ -5645,10 +5645,20 @@ static int32_t _zpico_query_reply_impl(zpico_session_t* session, int32_t queryab
     }
     z_owned_query_t* stored_query = &s->stored_queries[queryable_handle][reply_seq];
 
+    /* A NULL keyexpr replies on the query's OWN key, read from the clone this
+     * slot holds. A server whose one queryable covers several service keys (a
+     * node's lifecycle services) answers each request on the key it came in
+     * on, which no single stored copy can give it. */
     z_view_keyexpr_t ke;
-    if (z_view_keyexpr_from_str(&ke, keyexpr) < 0) {
-        _zpico_release_reply_slot(s, queryable_handle, reply_seq);
-        return ZPICO_ERR_KEYEXPR;
+    const z_loaned_keyexpr_t* reply_ke;
+    if (keyexpr == NULL) {
+        reply_ke = z_query_keyexpr(z_query_loan(stored_query));
+    } else {
+        if (z_view_keyexpr_from_str(&ke, keyexpr) < 0) {
+            _zpico_release_reply_slot(s, queryable_handle, reply_seq);
+            return ZPICO_ERR_KEYEXPR;
+        }
+        reply_ke = z_view_keyexpr_loan(&ke);
     }
 
     // Create payload
@@ -5712,8 +5722,7 @@ static int32_t _zpico_query_reply_impl(zpico_session_t* session, int32_t queryab
     }
 
     // Reply using the cloned query held in this reply slot.
-    if (z_query_reply(z_query_loan(stored_query), z_view_keyexpr_loan(&ke), z_bytes_move(&payload),
-                      &options) < 0) {
+    if (z_query_reply(z_query_loan(stored_query), reply_ke, z_bytes_move(&payload), &options) < 0) {
         _zpico_release_reply_slot(s, queryable_handle, reply_seq);
         return ZPICO_ERR_GENERIC;
     }

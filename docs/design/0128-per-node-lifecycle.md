@@ -313,7 +313,28 @@ Ruled 2026-11-12. The goal is that the RAM cost of one more managed node
 stays small on the smallest supported board, without anything a stock ROS 2
 tool can see changing.
 
-**zenoh.** One lifecycle queryable per image serves every managed node.
+**Amended 2026-11-24 (user ruling): one queryable per managed NODE, not per
+image.** A queryable that serves every managed node of an image needs one key
+expression covering those nodes' service keys, and zenoh key expressions have
+no alternation. So the key either names no node (`<dom>/**/lifecycle_msgs::srv::dds_::$*/*`)
+and also matches every OTHER image's lifecycle services, or it cannot be
+written. Matching foreign keys breaks routing: the queryable is declared
+`complete`, so it can attract a stock tool's query for a node that lives in
+another image, which then gets no answer. Declaring it not-complete instead
+would make every image receive and drop every other image's lifecycle
+traffic, and share one queryable's pending-reply slots across all its nodes.
+
+Each managed node therefore declares one queryable on
+`<dom>/<ns>/<node>/*/lifecycle_msgs::srv::dds_::$*/*` (zenoh's `$*`
+sub-chunk wildcard covers the five service types). It names this node only,
+so it stays `complete` and routing stays exact. A node pays 1 queryable
+where it paid 5: four fifths of the saving the original text aimed for. The
+rest of this section stands, with "the queryable" read as "the node's
+queryable": it routes by the service in the request key, replies on each
+request's own key, and the tokens and the on-demand `transition_event` put are
+unchanged.
+
+**zenoh (original text, 2026-11-12).** One lifecycle queryable per image serves every managed node.
 
 - **The queryable.** It is declared on a wildcard key that covers the five
   service keys of all the image's managed nodes. A dispatcher reads the node
