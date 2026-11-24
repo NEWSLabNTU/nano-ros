@@ -1296,7 +1296,7 @@ pub trait DeclarativeNode {
         // caller can assert it explicitly.
         const {
             assert!(
-                nros_node::rmw_type_registry::subscription_buffer_ok::<M>(),
+                subscription_buffer_checked::<M>(),
                 "this message type's maximum serialized size exceeds \
                  NROS_EXECUTOR_SUBSCRIPTION_BUFFER_BYTES — every sample would be received, \
                  ACKed and then DROPPED. Raise the knob to at least the type's \
@@ -4053,4 +4053,29 @@ mod tests {
         assert_eq!(strategy, crate::DispatchStrategy::Inline as u8);
         assert_eq!(strategy, 0);
     }
+}
+
+/// The build-time receive-buffer check a subscription makes, as the IMAGE
+/// build sees it.
+///
+/// Issue 2942 -- the metadata probe compiles each component with the crate's
+/// default `NROS_EXECUTOR_SUBSCRIPTION_BUFFER_BYTES`, before the image's
+/// closure-derived value exists, so a bounded message over the default failed
+/// the probe although the image would have been sized for it. The probe
+/// never receives a sample; the image build (which gets the derived buffer)
+/// keeps the check. Keyed on `probe-descriptor-text`, the feature only the
+/// probe harness names: a host image also has `metadata-mode` (its census
+/// producer), so that one would silence the check in real images.
+#[cfg(not(feature = "probe-descriptor-text"))]
+const fn subscription_buffer_checked<M: MessageForRmw>() -> bool {
+    nros_node::rmw_type_registry::subscription_buffer_ok::<M>()
+}
+
+/// See the image-build twin: the probe build does not check the buffer.
+// `M` is unused here on purpose: the signature must match the twin's, which
+// the one call site names with `::<M>`.
+#[cfg(feature = "probe-descriptor-text")]
+#[allow(clippy::extra_unused_type_parameters)]
+const fn subscription_buffer_checked<M: MessageForRmw>() -> bool {
+    true
 }

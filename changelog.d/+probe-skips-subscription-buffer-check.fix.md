@@ -1,0 +1,1 @@
+An image that receives a message larger than the default 1 KiB receive buffer no longer fails its metadata probe before the build has sized that buffer for it. The image build still refuses a buffer that is too small.
