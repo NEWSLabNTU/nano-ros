@@ -104,6 +104,9 @@ nic_model = "lan9118"
 kind = "semihosting"
 
 [board.entry]
+# The marker type `nros::main!` names (RFC-0135 D2). `nros build` hands it
+# to the entry; a board copied from this file carries it.
+type = "::nros_board_mps2_an385::Mps2An385"
 signature = "#[nros_board_mps2_an385::entry]\nfn main() -> !"
 own_panic_root_extra = "use panic_semihosting as _;"
 # `exit`: a panic ends the QEMU run (semihosting exit) instead of hanging it

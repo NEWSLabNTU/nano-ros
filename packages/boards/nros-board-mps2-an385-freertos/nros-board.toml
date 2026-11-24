@@ -88,6 +88,9 @@ nic_model = "lan9118"
 kind = "semihosting"
 
 [board.entry]
+# The marker type `nros::main!` names (RFC-0135 D2). `nros build` hands it
+# to the entry; a board copied from this file carries it.
+type = "::nros_board_mps2_an385_freertos::Mps2An385"
 own_panic_root_extra = "use panic_semihosting as _;"
 # The dependency the line above needs. A generated entry has no author to
 # supply it, so it travels with the item (phase-383 W9.b).

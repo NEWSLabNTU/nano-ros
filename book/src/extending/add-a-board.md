@@ -82,7 +82,12 @@ your RTOS yet, [add the platform](add-a-platform.md) first.
    - `chip`, and `supported_netstacks`: who brings up the network. An empty
      list is a statement, not an omission: an image that names a network
      stack the board does not list is refused.
-   - `[board.entry]`, when `entry_kind = "board-run"`: the crate and the
+   - `[board.entry] type`, the board's marker type that `nros::main!`
+     names (`"::my_board::MyBoard"`), for any board whose images have a
+     Rust entry. `nros build` hands it to the macro, and the generated entry
+     depends on the crate it names. A Linux host board copied from the
+     in-tree one keeps `"::nros_board_linux::LinuxBoard"`.
+   - The rest of `[board.entry]`, when `entry_kind = "board-run"`: the
      `main` signature the generated entry calls. Copy the block from the
      in-tree board nearest yours.
 
@@ -192,6 +197,7 @@ rustflags = ["-C", "link-arg=-Tlink.x"]
 '''
 
 [board.entry]
+type       = "::my_stm32f4_board::MyStm32f4Board"
 crate_name = "my_stm32f4_board"
 signature  = "#[my_stm32f4_board::entry]\nfn main() -> !"
 

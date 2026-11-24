@@ -173,13 +173,17 @@ pub fn macro_board_crate(candidates: &[&str]) -> Option<String> {
             continue;
         }
         if let Some(path) = nros_orchestration_ir::board_path_for(key) {
-            // `::nros_board_linux::LinuxBoard` → `nros_board_linux`
-            //   → `nros-board-linux`
-            let krate = path.trim_start_matches(':').split("::").next()?;
-            return Some(krate.replace('_', "-"));
+            return crate_of_board_type(path);
         }
     }
     None
+}
+
+/// The crate a board type path names: `::nros_board_linux::LinuxBoard` →
+/// `nros-board-linux`.
+fn crate_of_board_type(path: &str) -> Option<String> {
+    let krate = path.trim().trim_start_matches(':').split("::").next()?;
+    (!krate.is_empty()).then(|| krate.replace('_', "-"))
 }
 
 impl BoardFacts {
@@ -212,14 +216,25 @@ impl BoardFacts {
         b
     }
 
-    /// Lift from a descriptor, taking the board crate from the MACRO's mapping.
+    /// Lift from a descriptor, taking the board crate from the type the MACRO
+    /// will name: the descriptor's `[board.entry] type`, else the table.
     ///
     /// `candidates` are deploy-key spellings to try, most specific first —
     /// typically `[image_id, board, platform]`.
     #[must_use]
     pub fn from_descriptor_for(d: &BoardDescriptor, candidates: &[&str]) -> Self {
         let mut f = Self::from_descriptor(d);
-        if let Some(k) = macro_board_crate(candidates) {
+        // Issue 2849 -- the macro's own precedence: the descriptor's
+        // `[board.entry] type` (handed to it as NROS_BOARD_TYPE) before the
+        // compiled-in table. A board copied out of tree from a shipped
+        // descriptor is in no table, so only its `type` can name the crate
+        // the generated entry must depend on.
+        let stated = d
+            .entry
+            .as_ref()
+            .and_then(|e| e.board_type.as_deref())
+            .and_then(crate_of_board_type);
+        if let Some(k) = stated.or_else(|| macro_board_crate(candidates)) {
             // The descriptor's crate_path only applies to ITS crate name; a
             // different crate takes the conventional location.
             if f.board_crate.as_deref() != Some(k.as_str()) {
@@ -1818,6 +1833,41 @@ mod tests {
             m.contains("nros-board-esp32-qemu = "),
             "the board crate still is: {m}"
         );
+    }
+
+    /// Issue 2849 -- a board copied out of tree from the shipped `linux`
+    /// descriptor is in no table; its `[board.entry] type` names the crate the
+    /// macro's path reaches, so the entry depends on it. A type naming another
+    /// crate wins over the table, as it does in the macro.
+    #[test]
+    fn the_board_crate_follows_the_descriptors_stated_type_first() {
+        let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .nth(3)
+            .expect("repo root")
+            .to_path_buf();
+        let catalog = crate::orchestration::board_descriptor::BoardCatalog::load(&root)
+            .expect("shipped board catalog");
+        let linux = catalog
+            .descriptors()
+            .iter()
+            .find(|d| d.names.iter().any(|n| n == "linux"))
+            .expect("the linux descriptor")
+            .clone();
+
+        let mut copied = linux.clone();
+        copied.names = vec!["my-linux".into()];
+        let f = BoardFacts::from_descriptor_for(&copied, &["my-linux", "posix"]);
+        assert_eq!(f.board_crate.as_deref(), Some("nros-board-linux"));
+
+        let mut own = linux;
+        own.names = vec!["my-board".into()];
+        own.entry
+            .as_mut()
+            .expect("linux states [board.entry]")
+            .board_type = Some("::my_board::MyBoard".into());
+        let f = BoardFacts::from_descriptor_for(&own, &["my-board", "linux", "posix"]);
+        assert_eq!(f.board_crate.as_deref(), Some("my-board"));
     }
 
     #[test]

@@ -96,6 +96,11 @@ CC_armv7a_nuttx_eabihf = "arm-none-eabi-gcc"
 # `nuttx-config/<arch>/defconfig` (QEMU's SLIRP plan, 10.0.2.15/24 via
 # 10.0.2.2), which the build script reads. This table states no network and no
 # interfaces, and an image names no board network file here (RFC-0109 D9).
+[board.entry]
+# The marker type `nros::main!` names (RFC-0135 D2). `nros build` hands it
+# to the entry; a board copied from this file carries it.
+type = "::nros_board_nuttx_qemu::NuttxQemu"
+
 [board.net]
 stack = "os"
 # Issue 2064 — the kernel config that states this board's address; the build
@@ -249,6 +254,11 @@ NUTTX_BOARD_LIB_DIR = "arch/risc-v/src/board"
 # `nuttx-config/<arch>/defconfig` (QEMU's SLIRP plan, 10.0.2.15/24 via
 # 10.0.2.2), which the build script reads. This table states no network and no
 # interfaces, and an image names no board network file here (RFC-0109 D9).
+[board.entry]
+# The marker type `nros::main!` names (RFC-0135 D2). `nros build` hands it
+# to the entry; a board copied from this file carries it.
+type = "::nros_board_nuttx_qemu::NuttxQemu"
+
 [board.net]
 stack = "os"
 # Issue 2064 — the kernel config that states this board's address; the build

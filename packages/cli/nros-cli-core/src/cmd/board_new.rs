@@ -185,6 +185,16 @@ fn render_descriptor(args: &NewArgs) -> String {
          # netstack this board does not support is refused.\n\
          supported_netstacks = []\n",
     );
+    // Issue 2849 -- the type `nros::main!` names. No in-tree table knows an
+    // out-of-tree board, so the descriptor is the only place it can come from.
+    out.push_str(
+        "\n# The board's marker type, which `nros::main!` names and `nros build`\n\
+         # hands it. Required for a board with a Rust entry: no in-tree table\n\
+         # knows this board. A Linux host board reuses the in-tree one,\n\
+         # `::nros_board_linux::LinuxBoard`.\n\
+         # [board.entry]\n\
+         # type = \"::my_board::MyBoard\"\n",
+    );
     if let Some(wb) = &args.west_board {
         out.push_str(&format!(
             "\n[board.zephyr]\n\

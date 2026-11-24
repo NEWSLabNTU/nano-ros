@@ -64,6 +64,9 @@ links = ["tcp", "udp", "can"]
 
 # phase-548 W1 — the Rust entry's `main`: the C runtime's, as on threadx-linux.
 [board.entry]
+# The marker type `nros::main!` names (RFC-0135 D2). `nros build` hands it
+# to the entry; a board copied from this file carries it.
+type = "::nros_board_freertos_posix::FreertosPosix"
 signature = "#[unsafe(no_mangle)]\nextern \"C\" fn main(argc: i32, argv: *const *const c_char) -> i32"
 
 # phase-528 W2 (RFC-0118 D4) — the image is a host process.

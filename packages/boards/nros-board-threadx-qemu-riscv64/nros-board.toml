@@ -82,6 +82,9 @@ stack = "board"
 links = ["tcp", "udp"]
 
 [board.entry]
+# The marker type `nros::main!` names (RFC-0135 D2). `nros build` hands it
+# to the entry; a board copied from this file carries it.
+type = "::nros_board_threadx_qemu_riscv64::ThreadxQemuRiscv64"
 
 # RFC-0042 D2 / phase-241 wave C — declared capabilities (SSoT). Bare-metal
 # ThreadX but HAS a heap (CFFI alloc/dealloc) — this is the #38 board; heap=true

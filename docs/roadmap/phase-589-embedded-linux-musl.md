@@ -54,7 +54,12 @@ Each piece of hand wiring is a work item below.
 
 ### W2 — A board states its type
 
-- **Status:** OPEN (issue 2849).
+- **Owner:** nros 175.
+- **Status:** DONE (2026-11-24, issue 2849)
+- **Result:** every in-tree descriptor with a Rust entry states
+  `[board.entry] type`, the entry's board crate follows it before the table,
+  and the macro's refusal names it. A renamed copy of the Linux descriptor
+  builds a talker out of tree with no `NROS_BOARD_TYPE`.
 - **What:** every in-tree board descriptor states `[board.entry] type`, so an
   out-of-tree board copied from one needs no `NROS_BOARD_TYPE`.
 - **Acceptance:** in the issue.

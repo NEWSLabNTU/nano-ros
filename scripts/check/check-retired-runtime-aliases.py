@@ -147,7 +147,7 @@ def main() -> int:
             "\nphase-484 W8c retired ZENOH_LOCATOR / ZENOH_MODE (use NROS_LOCATOR /"
             "\nNROS_SESSION_MODE; the refusal table is packages/api/nros/src/retired_env.rs)"
             "\nand nros::main!(board = X) (write nros::main!() and state the board in"
-            "\nsystem.toml, or [package.metadata.nros.board] type in an out-of-tree board)."
+            "\nsystem.toml; a board of your own states [board.entry] type in its nros-board.toml)."
         )
         return 1
     print(
