@@ -261,6 +261,18 @@ cargo-locked:
 nested-cargo-lock-discipline:
     @python3 scripts/check/check-nested-cargo-lock-discipline.py
 
+# Issue 2962 -- no library crate chooses portable-atomic's backend on a
+# CAS-less target. portable-atomic refuses `critical-section` and
+# `unsafe-assume-*` together, and four libraries chose single-core by target
+# cfg, so every Rust image on rpi-pico-w-zephyr (thumbv6m) failed beside the
+# `zephyr` crate's `critical-section`. The image root chooses: the `zephyr`
+# crate, `nros-c`'s `critical-section` capability, or a board crate. Source
+# only, ~0.3 s; self-tests every spelling (target-scoped dep, renamed dep,
+# `[features]` forward, `?/`), and on 2026-11-25's main it finds the four.
+[private]
+portable-atomic-backend:
+    @python3 scripts/check/check-portable-atomic-backend.py
+
 # phase-559 W10 — a cargo run from INSIDE a build (every `build.rs`, and every
 # in-repo crate reachable as a build-dependency, DERIVED from the manifests)
 # goes through `nros_sizes_build::nested_cargo()`. That helper drops

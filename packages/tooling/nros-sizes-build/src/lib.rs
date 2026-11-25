@@ -510,6 +510,24 @@ fn find_dep_rlib_isolated(
         cmd.env_remove(var);
     }
 
+    // Issue 2962 -- on a target with no atomic CAS (thumbv6m: rpi-pico-w-zephyr),
+    // `nros` alone does not compile: its graph uses portable-atomic's RMW
+    // atomics, and no library in it chooses portable-atomic's backend any more
+    // (the image root does: the `zephyr` crate, or `nros-c`'s
+    // `critical-section`). This nested build IS a library graph alone, so it
+    // chooses one itself, the one that needs no impl: the single-core cfg. Only
+    // the layout is read from the rlib, and a type's size does not depend on
+    // how its atomics are implemented. Asked of the build script's own target
+    // (`CARGO_CFG_TARGET_HAS_ATOMIC`), so a host or CAS-capable build is
+    // untouched.
+    if let Some(flags) = no_cas_probe_rustflags(
+        &target,
+        std::env::var_os("CARGO_CFG_TARGET_ARCH").is_some(),
+        std::env::var("CARGO_CFG_TARGET_HAS_ATOMIC").ok().as_deref(),
+    ) {
+        cmd.arg("--config").arg(flags);
+    }
+
     // Phase 118.E.2: derive the feature set for the nested invocation
     // by intersecting the consumer's active features (CARGO_FEATURE_*
     // env vars) with the probed crate's declared features (queried via
@@ -629,6 +647,33 @@ fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     let tmp = path.with_file_name(format!(".{name}.nros-tmp-{}", std::process::id()));
     std::fs::write(&tmp, bytes)?;
     std::fs::rename(&tmp, path)
+}
+
+/// Issue 2962 -- the `--config` that gives the nested probe a portable-atomic
+/// backend on a target without atomic CAS, or None when the target has CAS or
+/// this is not a build script (`in_build_script`: cargo set the target's
+/// `CARGO_CFG_*`). `has_atomic` is cargo's `CARGO_CFG_TARGET_HAS_ATOMIC`
+/// (`"8,16,32,64,ptr"` on a CAS target); cargo leaves it UNSET on a target
+/// with no CAS at all (thumbv6m reports no `target_has_atomic`), so absent
+/// inside a build script means "no CAS".
+fn no_cas_probe_rustflags(
+    target: &str,
+    in_build_script: bool,
+    has_atomic: Option<&str>,
+) -> Option<String> {
+    if !in_build_script {
+        return None;
+    }
+    if has_atomic
+        .unwrap_or("")
+        .split(',')
+        .any(|w| w.trim() == "ptr")
+    {
+        return None;
+    }
+    Some(format!(
+        "target.{target}.rustflags=[\"--cfg\", \"portable_atomic_unsafe_assume_single_core\"]"
+    ))
 }
 
 /// What the nested probe `cargo build` must not inherit from the build that
@@ -1812,6 +1857,39 @@ pub fn cargo_target_dir() -> Result<PathBuf, Error> {
 
 #[cfg(test)]
 mod tests {
+    /// Issue 2962 -- the single-core cfg reaches the nested probe only on a
+    /// target without CAS, and only when the build script's target facts say so.
+    #[test]
+    fn only_a_cas_less_target_gets_the_probe_backend() {
+        assert_eq!(
+            no_cas_probe_rustflags("x86_64-unknown-linux-gnu", true, Some("8,16,32,64,ptr")),
+            None
+        );
+        assert_eq!(
+            no_cas_probe_rustflags("thumbv7m-none-eabi", true, Some("8,16,32,ptr")),
+            None
+        );
+        // Not a build script: no target facts, so nothing is assumed.
+        assert_eq!(
+            no_cas_probe_rustflags("thumbv6m-none-eabi", false, None),
+            None
+        );
+        // thumbv6m, measured: rustc reports no `target_has_atomic`, so cargo
+        // leaves the variable unset.
+        let got = no_cas_probe_rustflags("thumbv6m-none-eabi", true, None).unwrap();
+        assert!(
+            got.starts_with("target.thumbv6m-none-eabi.rustflags="),
+            "{got}"
+        );
+        assert!(
+            got.contains("portable_atomic_unsafe_assume_single_core"),
+            "{got}"
+        );
+        assert!(
+            no_cas_probe_rustflags("riscv32imc-unknown-none-elf", true, Some("8,16,32")).is_some()
+        );
+    }
+
     use super::*;
 
     /// Each test mutates process-global env state, so they share a mutex to

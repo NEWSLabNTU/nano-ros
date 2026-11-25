@@ -282,7 +282,7 @@ nros-rmw = { version = "0.6.0", path = "../../core/nros-rmw", default-features =
 nros-rmw-metadata = { path = "../../rmw/metadata", optional = true }
 # issue 2206 — the take path's drop throttle is a `fetch_add`, which a CAS-less
 # target (thumbv6m: a Cortex-M0+ Zephyr image) has only through this polyfill.
-# The single-core feature is selected by target below, nros-log's spelling.
+# Its backend is nros-c's `critical-section` capability (issue 2962).
 portable-atomic = { version = "1", default-features = false }
 # phase-361 W8.c — `zpico-alloc` is gone with the duplicate `HeapStats` static;
 # `alloc-stats` forwards to `nros-c`, which forwards to `nros-platform`.
@@ -299,10 +299,16 @@ portable-atomic = { version = "1", default-features = false }
 # restore-state set (the std fallback wins).
 critical-section = { version = "1.1", optional = true }
 
-# issue 2206 — nros-log's row (phase-337 W2.b): no CAS => the interrupt-disable
-# polyfill, bare-metal only.
-[target.'cfg(all(target_os = "none", not(target_has_atomic = "ptr")))'.dependencies]
-portable-atomic = { version = "1", default-features = false, features = ["unsafe-assume-single-core"] }
+# Issue 2962 -- this crate does NOT choose portable-atomic's backend on a
+# CAS-less target (thumbv6m, riscv32imc). portable-atomic refuses
+# `unsafe-assume-single-core` together with `critical-section`, and the
+# backend is a fact about the SYSTEM, which a library cannot know: a Zephyr
+# Rust image gets `critical-section` from upstream's `zephyr` crate, a C/C++
+# image from `nros-c`'s `critical-section` capability, and a bare-metal board
+# names its own in its board crate. Choosing it here (the old
+# `cfg(all(target_os = "none", not(target_has_atomic = "ptr")))` row) failed
+# every Rust image on rpi-pico-w-zephyr, where both halves met. Gate:
+# check-portable-atomic-backend.
 
 [target.'cfg(target_arch = "arm")'.dependencies]
 critical-section = { version = "1.1", optional = true, features = ["restore-state-u32"] }
