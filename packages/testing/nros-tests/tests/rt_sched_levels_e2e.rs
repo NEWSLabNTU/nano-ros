@@ -28,6 +28,12 @@
 //! preemption nor a priority's effect on a deadline is observable. The budget
 //! run is NOT pinned: `SCHED_DEADLINE` refuses a thread whose affinity is
 //! narrower than its root domain.
+//!
+//! Build first with `just build-test-fixtures lane=linux`. Each test runs its
+//! own native levels-cpp entry, and the budget and S1 tests read the
+//! `workspace-cpp-native-levels-budget` and `-s1-flat` rows, not the
+//! `workspace-cpp-native-levels` row the other tests read; building that one
+//! row by id leaves those two `[UNMET PRECONDITION]`.
 
 use nros_tests::{
     fixtures::{

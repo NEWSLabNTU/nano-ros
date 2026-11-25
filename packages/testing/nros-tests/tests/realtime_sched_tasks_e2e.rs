@@ -43,6 +43,16 @@
 //!
 //! Run with: `cargo nextest run -p nros-tests --test realtime_sched_tasks_e2e`
 //! (filter one platform: `-E 'binary(realtime_sched_tasks_e2e) and test(zephyr)'`).
+//!
+//! Build first, or every cell is an `[UNMET PRECONDITION]`. The one test walks
+//! EVERY cell, so it needs every platform's realtime rows, and the native
+//! cells need more than their own workspace rows: the `int32-sink` observer
+//! bin and the native c, cpp, cpp-rclcpp and derived realtime entries, which
+//! `just build-test-fixtures lane=linux` builds. The RTOS rows come from their
+//! platform's own builder (`just zephyr build-fixtures`, `just nuttx
+//! build-fixtures`, `scripts/build/workspace-fixtures-build.sh` for freertos
+//! and threadx-linux). Building only the `*-realtime` workspace rows by id
+//! leaves the native observers out.
 
 use nros_tests::{
     TestResult,
