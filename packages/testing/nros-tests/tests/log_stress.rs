@@ -4,11 +4,15 @@
 //! record that found the guard held waited in a hold queue of 4, so on an SMP
 //! image most records from concurrent loggers were lost. A sink that declares
 //! itself re-entrant now gets each record directly, in the context that raised
-//! it; the Zephyr console sink does.
+//! it; the Zephyr console sink does. Its recursion bound
+//! (`nros_log::REENTRANT_DEPTH`) is counted per task, so concurrent loggers
+//! never spend it: counted process-wide, 16 loggers lost about two thirds of
+//! their records here.
 //!
-//! The image (`bins/log-stress-zephyr-smp`, `qemu_cortex_a53/smp`) releases 16
-//! logger threads at once, 200 records each, while a timer interrupt logs 100
-//! more: well above the sink's buffer pool (2 per CPU). In ONE boot:
+//! The image (`bins/log-stress-zephyr-smp`, `qemu_cortex_a53/smp`) releases 32
+//! logger threads at once, 200 records each (four times the bound), while a
+//! timer interrupt logs 100 more: well above the sink's buffer pool (2 per
+//! CPU). In ONE boot:
 //!
 //! - the console (re-entrant) must get every record. A record that met a full
 //!   pool takes the truncating fallback, which delivers it marked and is

@@ -161,22 +161,28 @@ critical-section = ["dep:critical-section"]
 # clock is a window that never elapses, so a 200 ms window admits the FIRST
 # record and then none (issue 1152; before it the same constant admitted EVERY
 # record: measured 40 of 40 without, 5 of 40 with).
+# Issue 2762 -- and `nros-log/platform-task-identity` on every arm whose port
+# exports `nros_platform_current_task_id` (the C ports; not the bare-metal
+# boards, whose bound stays process-wide).
 # phase-359 W10 stage C — and `global-allocator`, like every other platform: a
 # posix C/C++ image's root is `#![no_std]` now, so Rust's heap goes through the
 # port (`nros_platform_alloc`, `malloc` on posix) instead of libstd's `System`.
 platform-posix = [
     "nros-log/platform-clock",
+    "nros-log/platform-task-identity",
     "global-allocator",
     "nros-platform/platform-posix",
 ]
 platform-zephyr = [
     "nros-log/platform-clock",
+    "nros-log/platform-task-identity",
     "global-allocator",
     "critical-section",
     "nros-platform/platform-zephyr",
 ]
 platform-freertos = [
     "nros-log/platform-clock",
+    "nros-log/platform-task-identity",
     "global-allocator",
     "nros-platform/platform-freertos",
 ]
@@ -191,11 +197,13 @@ platform-nuttx = [
     # "`#[panic_handler]` function required, but not found" and took the whole
     # NuttX fixture family with it.
     "nros-log/platform-clock",
+    "nros-log/platform-task-identity",
     "global-allocator",
     "nros-platform/platform-nuttx",
 ]
 platform-threadx = [
     "nros-log/platform-clock",
+    "nros-log/platform-task-identity",
     "global-allocator",
     "nros-platform/platform-threadx",
 ]

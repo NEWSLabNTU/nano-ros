@@ -46,6 +46,13 @@ alloc = []
 # condition under which the symbol resolves. A bare `cargo test -p nros-log`
 # has neither, so its test binaries link without a port.
 platform-clock = []
+# Issue 2762 -- bound a re-entrant sink's recursion PER TASK through the port's
+# `nros_platform_current_task_id`, so concurrent loggers on different tasks
+# never spend each other's bound. Same two ways in as `platform-clock`: this
+# feature (set by `nros-c`'s arms whose port exports the symbol) or the lane's
+# platform declaring `[capabilities] task_identity = true`. With neither, the
+# bound stays process-wide, which is correct and only conservative.
+platform-task-identity = []
 
 # phase-467 Q4 / ledger row `c:logging_rosout_enabled` — the `/rosout` QUEUE.
 #

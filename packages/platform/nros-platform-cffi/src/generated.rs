@@ -143,6 +143,10 @@ unsafe extern "C" {
     pub fn nros_platform_task_stack_unused_bytes_upto(limit: usize) -> usize;
 }
 unsafe extern "C" {
+    #[doc = " An identity for the CALLING task or thread: a nonzero value no other\n  task alive at the same time has (the native handle's address is the usual\n  answer: `k_current_get()`, `xTaskGetCurrentTaskHandle()`,\n  `tx_thread_identify()`, `pthread_self()`).\n\n  `0` means \"this port cannot tell\", and a caller must then treat every\n  context as possibly the same one. Called from an interrupt, a port may\n  answer the interrupted task's identity or `0`; it must not fault.\n\n  `nros_log` bounds a re-entrant sink's recursion PER TASK with it, so that\n  concurrent loggers on different tasks never spend each other's bound. A port that implements it states `[capabilities] task_identity =\n  true` in its `nros-platform.toml`, which is what makes `nros_log` call it."]
+    pub fn nros_platform_current_task_id() -> usize;
+}
+unsafe extern "C" {
     #[doc = " Total managed heap size in bytes (used + free), or `0` if unknown."]
     pub fn nros_platform_heap_total_bytes() -> usize;
 }

@@ -1410,6 +1410,13 @@ size_t nros_platform_task_stack_unused_bytes(void) {
 
 /* phase-436 E5: the capped query (`nros/platform.h`). The full query is already O(1) here
  * (`tx_thread_stack_highest_ptr`), so it is capped, not re-implemented. */
+/* Issue 2762 -- the calling task's identity, for nros_log's per-task
+ * recursion bound (`nros_platform_current_task_id`, nros/platform.h).
+ * ThreadX: the running thread's control block, `NULL` (0, "cannot tell") from an interrupt or before the scheduler runs. */
+uintptr_t nros_platform_current_task_id(void) {
+    return (uintptr_t)tx_thread_identify();
+}
+
 size_t nros_platform_task_stack_unused_bytes_upto(size_t limit) {
     size_t unused = nros_platform_task_stack_unused_bytes();
     return unused < limit ? unused : limit;

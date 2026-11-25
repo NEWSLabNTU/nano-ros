@@ -306,6 +306,20 @@ size_t nros_platform_task_stack_unused_bytes(void);
  *  meaning above: not instrumented. */
 size_t nros_platform_task_stack_unused_bytes_upto(size_t limit);
 
+/** An identity for the CALLING task or thread: a nonzero value no other
+ *  task alive at the same time has (the native handle's address is the usual
+ *  answer: `k_current_get()`, `xTaskGetCurrentTaskHandle()`,
+ *  `tx_thread_identify()`, `pthread_self()`).
+ *
+ *  `0` means "this port cannot tell", and a caller must then treat every
+ *  context as possibly the same one. Called from an interrupt, a port may
+ *  answer the interrupted task's identity or `0`; it must not fault.
+ *
+ *  `nros_log` bounds a re-entrant sink's recursion PER TASK with it, so that
+ *  concurrent loggers on different tasks never spend each other's bound. A port that implements it states `[capabilities] task_identity =
+ *  true` in its `nros-platform.toml`, which is what makes `nros_log` call it. */
+uintptr_t nros_platform_current_task_id(void);
+
 /** Total managed heap size in bytes (used + free), or `0` if unknown. */
 size_t nros_platform_heap_total_bytes(void);
 

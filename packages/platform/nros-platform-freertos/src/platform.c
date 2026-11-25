@@ -1292,6 +1292,13 @@ size_t nros_platform_task_stack_unused_bytes(void) {
 
 /* phase-436 E5: the capped query (`nros/platform.h`). `uxTaskGetStackHighWaterMark` takes no
  * limit, so this is the full query, capped. */
+/* Issue 2762 -- the calling task's identity, for nros_log's per-task
+ * recursion bound (`nros_platform_current_task_id`, nros/platform.h).
+ * FreeRTOS: the running task's TCB handle; from an interrupt, the interrupted task's. */
+uintptr_t nros_platform_current_task_id(void) {
+    return (uintptr_t)xTaskGetCurrentTaskHandle();
+}
+
 size_t nros_platform_task_stack_unused_bytes_upto(size_t limit) {
     size_t unused = nros_platform_task_stack_unused_bytes();
     return unused < limit ? unused : limit;
