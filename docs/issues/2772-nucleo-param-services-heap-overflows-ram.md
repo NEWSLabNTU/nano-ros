@@ -188,3 +188,34 @@ nano-ros libraries set the single-core cfg, and portable-atomic refuses
 both. With that fixed and a queryable cap of 8 stated per image, nros 118
 linked the three talkers on this board: Rust 72.9 %, C++ 67.2 %, C 67.5 %
 of RAM.
+
+### Where the listener's RAM goes (2026-11-25, nros 118)
+
+Rust rows with PR #4847's portable-atomic fix and this issue's board change
+(no queryable cap), fresh `nros new --template <t>` plus `nros build`:
+
+| Template | Result |
+| --- | --- |
+| talker | links, 196,120 B (72.55 %) |
+| listener | over by 16,344 B |
+| server | over by 18,216 B |
+| action-server | over by 33,152 B |
+
+Top RAM symbols, the talker from `just mem-report` and the listener from
+its failed link's `zephyr_pre0.map`:
+
+| Symbol | Talker | Listener |
+| --- | --- | --- |
+| executor backing (`EXECUTOR_BACKING`) | 14,688 | 102,296 |
+| platform heap (`HEAP`) | 34,512 | 34,512 |
+| thread stacks + `z_main_stack` | 65,536 | 65,536 |
+| `g_sessions` | 17,936 | 17,856 |
+| Zephyr `system_heap` | 16,384 | 16,384 |
+| zenoh shim `BUILTIN_INBOX` | 624 | 6,264 |
+
+The gap is the executor backing: one subscription adds 87,608 B, five
+times the overflow. That is the subscription's receive region, sized
+`(depth + 1)` times the per-subscription buffer at the default depth. The
+heap and the stacks are the same in both images. So the lever is the
+subscription's depth or buffer, not the queryable table, the heap or the
+stacks.
