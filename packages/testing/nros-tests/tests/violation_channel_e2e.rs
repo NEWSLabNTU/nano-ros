@@ -70,10 +70,32 @@ const QEMU_ROW: &str = "workspace-zephyr-cortex-m-cpp-violation";
 const LAST_TICK: &str = "[handler] tick=12";
 
 /// The busy-wait tick 6 does inside its dispatch (`Handler.cpp`,
-/// `OVERRUN_AT_TICK`). Its dispatch measures at least this much on any board,
-/// and an unprovoked tick (three publishes and a printf) measures less on
-/// every board that runs the fixture, so this is what tells the provoked
-/// verdict apart.
+/// `OVERRUN_AT_TICK`). An unprovoked tick (three publishes and a printf)
+/// measures less on every board that runs the fixture, so this is what tells
+/// the provoked verdict apart.
+///
+/// The provoked dispatch can never read below this, so the `>=` line has no
+/// rounding allowance. Both clocks involved count the same timer, and the
+/// conversion to whole milliseconds is exact:
+/// - The wait is `k_busy_wait(110000)`. It spins until 110 ms have passed on
+///   the kernel's cycle counter: SysTick on mps2/an385, and native_sim's
+///   simulated clock, which the busy-wait advances by exactly that amount.
+/// - The executor stamps `now_us` before `dispatch_one` and again after it, so
+///   the callback, and therefore the whole wait, lies between the two stamps.
+/// - `now_us` is `nros_platform_clock_ns() / 1000`. On mps2/an385
+///   (`CONFIG_SYS_CLOCK_HW_CYCLES_PER_SEC=25000000`, no 64-bit counter) that is
+///   the tick clock at `CONFIG_SYS_CLOCK_TICKS_PER_SEC=1000`, read off the same
+///   SysTick, so both stamps are whole milliseconds. If the callback covers
+///   real time `[a, b]` with `b - a >= 110 ms`, then
+///   `floor(b) - floor(a) >= 110`. On native_sim the 1 MHz cycle counter
+///   gives whole microseconds, and the elapsed time is at least 110000 us.
+/// - `check_latency` reports `elapsed_us / 1000`, which is at least 110 in
+///   both cases.
+///
+/// So 110 is a floor, not a typical value, and four of six measured runs read
+/// exactly 110. A tick period that does not divide 110 ms would break the
+/// second-to-last step. `the_overrun_line_is_inclusive_at_110` pins the
+/// boundary.
 const OVERRUN_MS: u32 = 110;
 
 /// The handler's line just before its provoked overrun.
@@ -449,6 +471,23 @@ mod provoked_overrun_check {
         let err = check_provoked_overrun(&c, Floor::StraddlesBound)
             .err()
             .expect("none >= 110");
+        assert!(err.contains("found 0"), "{err}");
+    }
+
+    /// The provoked dispatch reads exactly `OVERRUN_MS` on an idle board
+    /// (4 of 6 measured QEMU runs), so the line must include it, and one
+    /// below it is an unprovoked verdict, not the provoked one.
+    #[test]
+    fn the_overrun_line_is_inclusive_at_110() {
+        let at = console(&[ARMED, OVERRUN, &state(1, 110), LAST]);
+        for floor in [Floor::InsideBound, Floor::StraddlesBound] {
+            let p = check_provoked_overrun(&at, floor).expect("110 is the provoked verdict");
+            assert!(p.line.contains("measured=110"));
+        }
+        let below = console(&[ARMED, OVERRUN, &state(1, 109), LAST]);
+        let err = check_provoked_overrun(&below, Floor::StraddlesBound)
+            .err()
+            .expect("109 is not the provoked verdict");
         assert!(err.contains("found 0"), "{err}");
     }
 
