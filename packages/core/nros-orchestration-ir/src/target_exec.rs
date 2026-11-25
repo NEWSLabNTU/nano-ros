@@ -533,7 +533,11 @@ pub fn parse_image_console(
 /// launcher row: `<kind>:<machine>`. A twin is free and open source
 /// (the emulator-first policy), so a paid hosted simulator is no kind here and a
 /// descriptor naming one is refused like any unknown kind.
-pub const EMULATOR_KINDS: &[&str] = &["qemu", "fvp", "renode"];
+///
+/// `qemu-user` runs a cross-built hosted Linux image under QEMU's user mode,
+/// `qemu-<arch> <elf>`; its machine word is that arch (`qemu-user:aarch64`).
+// RFC-0118 D4b, issue 2852.
+pub const EMULATOR_KINDS: &[&str] = &["qemu", "fvp", "renode", "qemu-user"];
 
 /// The value `[board.run.qemu] semihosting = true` puts on
 /// `-semihosting-config`.

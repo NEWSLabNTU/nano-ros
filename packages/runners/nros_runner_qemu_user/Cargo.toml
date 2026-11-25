@@ -1,0 +1,19 @@
+[package]
+name = "nros_runner_qemu_user"
+version = "0.0.0"
+description = "The `qemu-user` runner package for nano-ros (RFC-0118 D4b)."
+publish = false
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "nros-runner-qemu-user"
+path = "src/main.rs"
+
+[dependencies]
+nros-extension = { path = "../nros-extension" }
+nros-runner-lifetime = { path = "../nros-runner-lifetime" }

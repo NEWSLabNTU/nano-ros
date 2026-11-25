@@ -1,6 +1,6 @@
 # Phase 589 — Embedded Linux (musl) as a deployment target
 
-**Status (2026-11-24). OPEN.** W1 and W4 are done; the rest are open. W10
+**Status (2026-11-25). OPEN.** W1 to W4 and W6 are done; W5 is in progress; the rest are open. W10
 to W12 (the original Jetson Nano) are owned by nros 241; W2 to W9 by nros 175
 (manager assignment 2026-11-24). Makes a hosted Linux image for an embedded SoC running musl a
 supported target: provisioned, built from an in-tree board, and run on the
@@ -86,10 +86,26 @@ Each piece of hand wiring is a work item below.
 
 ### W5 — An in-tree musl board
 
-- **Status:** OPEN (issue 2852).
+- **Owner:** nros 175 (taken 2026-11-25).
+- **Status:** OPEN (issue 2852; in progress, PR to follow).
 - **What:** an aarch64 hosted musl board, its target in the SDK index and the
   toolchain, a provisioned C cross compiler with the flags cc-rs needs, the
   stack it states, and a `[board.run]` that deploys to and starts on a device.
+- **Rulings (user, 2026-11-25):**
+  - **The board.** A cross board, `linux-aarch64-musl`
+    (`packages/boards/linux-aarch64-musl`, reusing `nros-board-linux`). The
+    host-board invariant narrows to "posix, hosted, and NO target triple is
+    the host board", in its gate, its test and the key tables together.
+  - **The run.** A new emulator kind, `qemu-user:aarch64`
+    ([RFC-0118 D4b](../design/0118-target-execution-model.md)), run by
+    `nros_runner_qemu_user` with the host's `qemu-aarch64`. That is the
+    on-host stage. A device deploy stays per image, through
+    `[image.<id>.run] command`, and "runs on the real SoC kernel" stays an
+    open, device-only acceptance line.
+  - **The C compiler.** zig, as an SDK `[tool.zig]` dist. The board's cc
+    config handles cc-rs's `--target=` if zig still rejects it. zig 0.17.1 does:
+    `aarch64-unknown-linux-musl` is `UnknownOperatingSystem` to it, while
+    `aarch64-linux-musl` builds, and the last `--target=` wins.
 - **Acceptance:** in the issue.
 
 ### W6 — Large messages without hand-set transport sizes
