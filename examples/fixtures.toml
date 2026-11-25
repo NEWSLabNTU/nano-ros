@@ -7220,6 +7220,23 @@ west_build_name = "build-log-dead-holder-smp"
 west_id = "zephyr/qemu_cortex_a53/smp/log-dead-holder"
 conf_files = ["prj.conf"]
 
+# issue 2762 -- sixteen threads and a timer interrupt log through nros_log at
+# once on a Zephyr SMP image. The re-entrant console sink must get every
+# record; a serialised C sink in the same boot is the negative control, which
+# must lose some. Consumed by tests/log_stress.rs. Opens no session, as the
+# small-stack rows.
+[[fixture]]
+platform = "zephyr"
+lang = "c"
+rmw = "zenoh"
+builder = "west"
+dir = "packages/testing/nros-tests/bins/log-stress-zephyr-smp"
+board = "qemu_cortex_a53/qemu_cortex_a53/smp"
+west_role = "log-stress"
+west_build_name = "build-log-stress-smp"
+west_id = "zephyr/qemu_cortex_a53/smp/log-stress"
+conf_files = ["prj.conf"]
+
 # issue 2706 — a Zephyr interrupt (a k_timer expiry, in the system clock's
 # interrupt handler) wakes a parked executor through
 # `GuardCondition::trigger_from_isr`. The image's owned entry boots its own
