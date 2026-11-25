@@ -264,7 +264,14 @@ impl GraphSide {
             }
         };
         // A CLI process whose own session failed to close reports that in
-        // its exit status, so its answer is asked again (a few times at most).
+        // its exit status, so a READ is asked again (a few times at most).
+        // A command that changes the node is never asked twice (issue 2961):
+        // its first run already acted, so a second `lifecycle set activate`
+        // finds the node active and answers "Unknown transition", one step
+        // ahead of the side that ran once. Its answer is kept as it is, and
+        // `Compared::diff` leaves out the exit status that reports only the
+        // CLI's teardown.
+        let repeatable = !changes_the_node(&args);
         let mut attempt = 0;
         loop {
             attempt += 1;
@@ -280,7 +287,7 @@ impl GraphSide {
                 output: String::from_utf8_lossy(&out.stdout).into_owned(),
                 exit_code: out.status.code(),
             };
-            if attempt >= 3 || !is_cli_teardown_failure(&answer.output) {
+            if !repeatable || attempt >= 3 || !is_cli_teardown_failure(&answer.output) {
                 return Ok(answer);
             }
         }
@@ -379,7 +386,15 @@ impl Compared {
     /// or `None` when both agree. Lines only nano-ros printed start with `-`,
     /// lines only stock printed with `+`; the exit status is the last line of
     /// each side, as `[exit N]`.
+    ///
+    /// When either side's CLI failed to close its own session, its exit status
+    /// reports that teardown rather than the node, so neither side's status
+    /// is compared; the printed answers still are (issue 2961).
     pub fn diff(&self) -> Option<String> {
+        if is_cli_teardown_failure(&self.nano.output) || is_cli_teardown_failure(&self.stock.output)
+        {
+            return line_diff(&self.nano_text, &self.stock_text);
+        }
         line_diff(
             &with_exit(&self.nano_text, self.nano.exit_code),
             &with_exit(&self.stock_text, self.stock.exit_code),
@@ -557,6 +572,21 @@ pub fn strip_ansi(text: &str) -> String {
         }
     }
     out
+}
+
+/// Issue 2961 -- whether `ros2 <args>` changes the node it is asked of, so it
+/// must run exactly once: a transition, a service call, or a parameter
+/// written, deleted or loaded. Everything else the pairs ask is a read.
+pub fn changes_the_node(args: &str) -> bool {
+    let mut words = args.split_whitespace();
+    matches!(
+        (words.next(), words.next()),
+        (Some("lifecycle"), Some("set"))
+            | (Some("service"), Some("call"))
+            | (Some("param"), Some("set" | "delete" | "load"))
+            | (Some("action"), Some("send_goal"))
+            | (Some("topic"), Some("pub"))
+    )
 }
 
 /// True when the `ros2` CLI process itself failed to tear down its middleware
@@ -762,6 +792,69 @@ mod tests {
             output: output.into(),
             exit_code: Some(code),
         }
+    }
+
+    /// Issue 2961 -- a command that changes the node is never repeated, and
+    /// every read the pairs ask still may be.
+    #[test]
+    fn only_a_read_is_asked_again() {
+        for mutating in [
+            "lifecycle set /alpha activate",
+            "service call /alpha/change_state lifecycle_msgs/srv/ChangeState '{}'",
+            "param set /alpha rate 5",
+            "param delete /alpha rate",
+            "param load /alpha p.yaml",
+            "action send_goal /fib x '{}'",
+            "topic pub /t std_msgs/msg/String '{}'",
+        ] {
+            assert!(changes_the_node(mutating), "{mutating}");
+        }
+        for read in [
+            "lifecycle get /alpha",
+            "lifecycle list /alpha",
+            "param get /alpha rate",
+            "param list /alpha",
+            "param describe /alpha rate",
+            "param dump /alpha",
+            "node list",
+            "topic info /t",
+            "service list",
+            "action list",
+        ] {
+            assert!(!changes_the_node(read), "{read}");
+        }
+    }
+
+    /// Issue 2961 -- the measured red: the stock CLI applied the transition,
+    /// failed to close its own session and exited 1, while nano-ros's exited
+    /// 0. The answers agree, so the pair agrees; a different answer is still
+    /// reported.
+    #[test]
+    fn a_teardown_failure_compares_the_answer_not_the_exit_status() {
+        let ok = "Transitioning successful\n";
+        let torn = "Transitioning successful\nFailed to close the session\n";
+        let c = compare(
+            "q",
+            answer("lifecycle set /alpha activate", ok, 0),
+            "/alpha",
+            answer("lifecycle set /alpha_stock activate", torn, 1),
+            "/alpha_stock",
+        );
+        assert_eq!(c.diff(), None, "{}", c.report());
+
+        let ahead = "Unknown transition requested, available ones are:\n\tdeactivate [4]\n\
+                     Failed to close the session\n";
+        let c = compare(
+            "q",
+            answer("lifecycle set /alpha activate", ok, 0),
+            "/alpha",
+            answer("lifecycle set /alpha_stock activate", ahead, 1),
+            "/alpha_stock",
+        );
+        assert!(
+            c.diff().is_some(),
+            "a different answer must still be reported"
+        );
     }
 
     // The acceptance of the harness itself: a pair known to match reports no
