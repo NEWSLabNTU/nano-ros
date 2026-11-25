@@ -3,192 +3,212 @@
   "about": "issue 2815: the nros-owned stack frames over `max_frame` that exist today, one row per function with the largest size any 32-bit ARM fixture build has (`seen_in` names one such build), shrink-only. A row may be DELETED or LOWERED by hand when its frame shrinks (that only tightens the gate); a row is added or raised only by `scripts/check-max-frame.py --write-baseline`.",
   "frames": [
     {
-      "function": "_RINvMs2_NtNtC9nros_node8executor6actionNtNtB8_4spin8Executor32register_action_server_raw_sizedKj400_KB1I_KB1I_Kj4_EBa_",
-      "bytes": 6192,
-      "seen_in": "zephyr_talker_node_bringup@mps2-an385-zephyr (<zephyr-builds>/3.7/build-cortex-m-rust-talker-serial-zenoh/nros/stack-floor)"
-    },
-    {
-      "function": "_RINvMs2_NtNtC9nros_node8executor6actionNtNtB8_4spin8Executor32register_action_server_raw_sizedKj400_KB1I_KB1I_Kj4_EC4nros",
-      "bytes": 6128,
-      "seen_in": "action_bringup@mps2-an385-baremetal (examples/workspaces/rust/target-fixtures/baremetal-action-client-rtic/nros-stack-floor)"
-    },
-    {
-      "function": "_RINvMs2_NtNtC9nros_node8executor6actionNtNtB8_4spin8Executor32register_action_server_raw_sizedKj400_KB1I_KB1I_Kj4_EC6nros_c",
-      "bytes": 6096,
-      "seen_in": "action_bringup@mps2-an385-freertos (examples/workspaces/c/build/freertos-zenoh-mps2-an385-freertos-action_bringup/cmake/nros/stack-floor)"
-    },
-    {
-      "function": "_RINvMs9_NtNtC9nros_node8executor6actionNtNtB8_4spin8Executor32register_action_client_raw_sizedKj400_KB1I_KB1I_EBa_",
-      "bytes": 9424,
-      "seen_in": "zephyr_talker_node_bringup@mps2-an385-zephyr (<zephyr-builds>/3.7/build-cortex-m-rust-talker-serial-zenoh/nros/stack-floor)"
-    },
-    {
-      "function": "_RINvMs9_NtNtC9nros_node8executor6actionNtNtB8_4spin8Executor32register_action_client_raw_sizedKj400_KB1I_KB1I_EC4nros",
-      "bytes": 6920,
-      "seen_in": "action_bringup@mps2-an385-baremetal (examples/workspaces/rust/target-fixtures/baremetal-action-client-rtic/nros-stack-floor)"
-    },
-    {
-      "function": "_RINvMsh_NtNtC9nros_node8executor4spinNtB6_8Executor32register_service_raw_sized_innerKj400_KB1z_FUKCPhjOhjOjONtNtC4core3ffi6c_voidEbEBa_",
+      "function": "_RINvMNtNtC9nros_node8executor4spinNtB_8Executor32register_service_raw_sized_innerKj400_KB_FUKCPhjOhjOjONtNtC4core3ffi6c_voidEbEB_",
       "bytes": 4904,
       "seen_in": "zephyr_talker_node_bringup@mps2-an385-zephyr (<zephyr-builds>/3.7/build-cortex-m-rust-talker-serial-zenoh/nros/stack-floor)"
     },
     {
-      "function": "_RINvNtC13nros_rmw_cffi12rust_adapter24create_client_trampolineNtNtNtC14nros_rmw_zenoh4shim9transport8ZenohRmwEB1g_",
-      "bytes": 4256,
-      "seen_in": "demo_bringup@mps2-an385-zephyr (<zephyr-builds>/3.7/build-cortex-m-ws-cpp-violation-entry-zenoh/nros/stack-floor)"
+      "function": "_RINvMNtNtC9nros_node8executor6actionNtNtB_4spin8Executor32register_action_client_raw_sizedKj400_KB_KB_EB_",
+      "bytes": 9424,
+      "seen_in": "zephyr_talker_node_bringup@mps2-an385-zephyr (<zephyr-builds>/3.7/build-cortex-m-rust-talker-serial-zenoh/nros/stack-floor)"
     },
     {
-      "function": "_RINvNtC13nros_rmw_cffi12rust_adapter24create_client_trampolineNtNtNtC14nros_rmw_zenoh4shim9transport8ZenohRmwEB1h_",
+      "function": "_RINvMNtNtC9nros_node8executor6actionNtNtB_4spin8Executor32register_action_client_raw_sizedKj400_KB_KB_EC4nros",
+      "bytes": 6920,
+      "seen_in": "action_bringup@mps2-an385-baremetal (examples/workspaces/rust/target-fixtures/baremetal-action-client-rtic/nros-stack-floor)"
+    },
+    {
+      "function": "_RINvMNtNtC9nros_node8executor6actionNtNtB_4spin8Executor32register_action_server_raw_sizedKj400_KB_KB_Kj4_EB_",
+      "bytes": 6192,
+      "seen_in": "zephyr_talker_node_bringup@mps2-an385-zephyr (<zephyr-builds>/3.7/build-cortex-m-rust-talker-serial-zenoh/nros/stack-floor)"
+    },
+    {
+      "function": "_RINvMNtNtC9nros_node8executor6actionNtNtB_4spin8Executor32register_action_server_raw_sizedKj400_KB_KB_Kj4_EC4nros",
+      "bytes": 6128,
+      "seen_in": "action_bringup@mps2-an385-baremetal (examples/workspaces/rust/target-fixtures/baremetal-action-client-rtic/nros-stack-floor)"
+    },
+    {
+      "function": "_RINvMNtNtC9nros_node8executor6actionNtNtB_4spin8Executor32register_action_server_raw_sizedKj400_KB_KB_Kj4_EC6nros_c",
+      "bytes": 6096,
+      "seen_in": "action_bringup@mps2-an385-freertos (examples/workspaces/c/build/freertos-zenoh-mps2-an385-freertos-action_bringup/cmake/nros/stack-floor)"
+    },
+    {
+      "function": "_RINvNtC13nros_rmw_cffi12rust_adapter24create_client_trampolineNtNtNtC14nros_rmw_zenoh4shim9transport8ZenohRmwEB_",
       "bytes": 4256,
       "seen_in": "action_bringup@mps2-an385-baremetal (examples/workspaces/rust/target-fixtures/baremetal-action-client-rtic/nros-stack-floor)"
     },
     {
-      "function": "_RINvNtC19nros_board_freertos5entry19app_task_entry_bareNtC30nros_board_mps2_an385_freertos9Mps2An385NCNvC22isr_wake_freertos_mps24main0NtNtNtC9nros_node8executor5types9NodeErrorEB24_",
-      "bytes": 9936,
+      "function": "_RINvNtC19nros_board_freertos5entry19app_task_entry_bareNtC30nros_board_mps2_an385_freertos9Mps2An385NCNvC22isr_wake_freertos_mps24main0NtNtNtC9nros_node8executor5types9NodeErrorEB_",
+      "bytes": 10056,
       "seen_in": "isr_wake_freertos_mps2_bringup@freertos (packages/testing/nros-tests/bins/isr-wake-freertos-mps2/target/nros-stack-floor)"
     },
     {
-      "function": "_RINvNtC19nros_board_freertos5entry22app_task_entry_runtimeNtC30nros_board_mps2_an385_freertos9Mps2An385NCNvC14freertos_entry16___nros_entry_run0NtNtNtC13nros_platform5board7runtime12RuntimeErrorEB27_",
-      "bytes": 5768,
+      "function": "_RINvNtC19nros_board_freertos5entry22app_task_entry_runtimeNtC30nros_board_mps2_an385_freertos9Mps2An385NCNvC14freertos_entry16___nros_entry_run0NtNtNtC13nros_platform5board7runtime12RuntimeErrorEB_",
+      "bytes": 5800,
       "seen_in": "demo_bringup@mps2-an385-freertos (examples/workspaces/rust/target-fixtures/freertos/nros-stack-floor)"
     },
     {
-      "function": "_RINvNtC19nros_board_freertos5entry22app_task_entry_runtimeNtC30nros_board_mps2_an385_freertos9Mps2An385NCNvC21freertos_talker_entry16___nros_entry_run0NtNtNtC13nros_platform5board7runtime12RuntimeErrorEB27_",
-      "bytes": 5776,
+      "function": "_RINvNtC19nros_board_freertos5entry22app_task_entry_runtimeNtC30nros_board_mps2_an385_freertos9Mps2An385NCNvC21freertos_talker_entry16___nros_entry_run0NtNtNtC13nros_platform5board7runtime12RuntimeErrorEB_",
+      "bytes": 5800,
       "seen_in": "pubsub_bringup@mps2-an385-freertos (examples/workspaces/rust/target-fixtures/freertos-talker/nros-stack-floor)"
     },
     {
-      "function": "_RINvNtC19nros_board_freertos5entry22app_task_entry_runtimeNtC30nros_board_mps2_an385_freertos9Mps2An385NCNvC23freertos_listener_entry16___nros_entry_run0NtNtNtC13nros_platform5board7runtime12RuntimeErrorEB27_",
-      "bytes": 5776,
+      "function": "_RINvNtC19nros_board_freertos5entry22app_task_entry_runtimeNtC30nros_board_mps2_an385_freertos9Mps2An385NCNvC23freertos_listener_entry16___nros_entry_run0NtNtNtC13nros_platform5board7runtime12RuntimeErrorEB_",
+      "bytes": 5800,
       "seen_in": "pubsub_bringup@mps2-an385-freertos (examples/workspaces/rust/target-fixtures/freertos-listener/nros-stack-floor)"
     },
     {
-      "function": "_RINvNtC19nros_board_freertos5entry22app_task_entry_runtimeNtC30nros_board_mps2_an385_freertos9Mps2An385NCNvC24freertos_br_robot1_entry16___nros_entry_run0NtNtNtC13nros_platform5board7runtime12RuntimeErrorEB27_",
-      "bytes": 5776,
+      "function": "_RINvNtC19nros_board_freertos5entry22app_task_entry_runtimeNtC30nros_board_mps2_an385_freertos9Mps2An385NCNvC24freertos_br_robot1_entry16___nros_entry_run0NtNtNtC13nros_platform5board7runtime12RuntimeErrorEB_",
+      "bytes": 5800,
       "seen_in": "demo_bringup@mps2-an385-freertos (examples/workspaces/rust/target-fixtures/freertos-br-robot1/nros-stack-floor)"
     },
     {
-      "function": "_RINvNtC19nros_board_freertos5entry22app_task_entry_runtimeNtC30nros_board_mps2_an385_freertos9Mps2An385NCNvC24freertos_br_robot2_entry16___nros_entry_run0NtNtNtC13nros_platform5board7runtime12RuntimeErrorEB27_",
-      "bytes": 5776,
+      "function": "_RINvNtC19nros_board_freertos5entry22app_task_entry_runtimeNtC30nros_board_mps2_an385_freertos9Mps2An385NCNvC24freertos_br_robot2_entry16___nros_entry_run0NtNtNtC13nros_platform5board7runtime12RuntimeErrorEB_",
+      "bytes": 5800,
       "seen_in": "demo_bringup@mps2-an385-freertos (examples/workspaces/rust/target-fixtures/freertos-br-robot2/nros-stack-floor)"
     },
     {
-      "function": "_RINvNtC19nros_board_freertos5entry22app_task_entry_runtimeNtC30nros_board_mps2_an385_freertos9Mps2An385NCNvC25mps2_an385_freertos_entry16___nros_entry_run0NtNtNtC13nros_platform5board7runtime12RuntimeErrorEB27_",
-      "bytes": 5776,
-      "seen_in": "freertos_rs_talker_bringup@freertos (examples/mps2-an385-freertos/rust/talker/target-fixtures/nros-stack-floor)"
+      "function": "_RINvNtC19nros_board_freertos5entry22app_task_entry_runtimeNtC30nros_board_mps2_an385_freertos9Mps2An385NCNvC25mps2_an385_freertos_entry16___nros_entry_run0NtNtNtC13nros_platform5board7runtime12RuntimeErrorEB_",
+      "bytes": 7072,
+      "seen_in": "param_five_node_bringup@mps2-an385-freertos (packages/testing/nros-tests/bins/param-five-node/target-freertos/nros-stack-floor)"
     },
     {
-      "function": "_RINvNtC19nros_board_freertos5entry22app_task_entry_runtimeNtC30nros_board_mps2_an385_freertos9Mps2An385NCNvC28freertos_action_client_entry16___nros_entry_run0NtNtNtC13nros_platform5board7runtime12RuntimeErrorEB27_",
-      "bytes": 5776,
+      "function": "_RINvNtC19nros_board_freertos5entry22app_task_entry_runtimeNtC30nros_board_mps2_an385_freertos9Mps2An385NCNvC28freertos_action_client_entry16___nros_entry_run0NtNtNtC13nros_platform5board7runtime12RuntimeErrorEB_",
+      "bytes": 5800,
       "seen_in": "action_bringup@mps2-an385-freertos (examples/workspaces/rust/target-fixtures/freertos-action-client/nros-stack-floor)"
     },
     {
-      "function": "_RINvNtC19nros_board_freertos5entry22app_task_entry_runtimeNtC30nros_board_mps2_an385_freertos9Mps2An385NCNvC28freertos_action_server_entry16___nros_entry_run0NtNtNtC13nros_platform5board7runtime12RuntimeErrorEB27_",
-      "bytes": 5776,
+      "function": "_RINvNtC19nros_board_freertos5entry22app_task_entry_runtimeNtC30nros_board_mps2_an385_freertos9Mps2An385NCNvC28freertos_action_server_entry16___nros_entry_run0NtNtNtC13nros_platform5board7runtime12RuntimeErrorEB_",
+      "bytes": 5800,
       "seen_in": "action_bringup@mps2-an385-freertos (examples/workspaces/rust/target-fixtures/freertos-action-server/nros-stack-floor)"
     },
     {
-      "function": "_RINvNtC19nros_board_freertos5entry22app_task_entry_runtimeNtC30nros_board_mps2_an385_freertos9Mps2An385NCNvC29freertos_service_client_entry16___nros_entry_run0NtNtNtC13nros_platform5board7runtime12RuntimeErrorEB27_",
-      "bytes": 5776,
+      "function": "_RINvNtC19nros_board_freertos5entry22app_task_entry_runtimeNtC30nros_board_mps2_an385_freertos9Mps2An385NCNvC29freertos_service_client_entry16___nros_entry_run0NtNtNtC13nros_platform5board7runtime12RuntimeErrorEB_",
+      "bytes": 5800,
       "seen_in": "service_bringup@mps2-an385-freertos (examples/workspaces/rust/target-fixtures/freertos-service-client/nros-stack-floor)"
     },
     {
-      "function": "_RINvNtC19nros_board_freertos5entry22app_task_entry_runtimeNtC30nros_board_mps2_an385_freertos9Mps2An385NCNvC29freertos_service_server_entry16___nros_entry_run0NtNtNtC13nros_platform5board7runtime12RuntimeErrorEB27_",
-      "bytes": 5776,
+      "function": "_RINvNtC19nros_board_freertos5entry22app_task_entry_runtimeNtC30nros_board_mps2_an385_freertos9Mps2An385NCNvC29freertos_service_server_entry16___nros_entry_run0NtNtNtC13nros_platform5board7runtime12RuntimeErrorEB_",
+      "bytes": 5800,
       "seen_in": "service_bringup@mps2-an385-freertos (examples/workspaces/rust/target-fixtures/freertos-service-server/nros-stack-floor)"
     },
     {
-      "function": "_RINvNtC19nros_board_freertos5entry26app_task_entry_sched_tasksNtC30nros_board_mps2_an385_freertos9Mps2An385NCNvC23freertos_realtime_entry16___nros_entry_run0NtNtNtC13nros_platform5board7runtime12RuntimeErrorEB2b_",
-      "bytes": 7136,
+      "function": "_RINvNtC19nros_board_freertos5entry26app_task_entry_sched_tasksNtC30nros_board_mps2_an385_freertos9Mps2An385NCNvC23freertos_realtime_entry16___nros_entry_run0NtNtNtC13nros_platform5board7runtime12RuntimeErrorEB_",
+      "bytes": 7176,
       "seen_in": "demo_bringup@freertos (examples/workspaces/realtime-rust/target-fixtures/freertos/nros-stack-floor)"
     },
     {
-      "function": "_RINvNtC21nros_board_mps2_an3854node8run_bareNCNvC23isr_wake_baremetal_mps218___cortex_m_rt_main0NtNtNtC9nros_node8executor5types9NodeErrorEBX_",
+      "function": "_RINvNtC21nros_board_mps2_an3854node8run_bareNCNvC23isr_wake_baremetal_mps218___cortex_m_rt_main0NtNtNtC9nros_node8executor5types9NodeErrorEB_",
       "bytes": 4168,
       "seen_in": "isr_wake_baremetal_mps2_bringup@mps2-an385-baremetal (packages/testing/nros-tests/bins/isr-wake-baremetal-mps2/target/nros-stack-floor)"
     },
     {
-      "function": "_RINvNtC21nros_board_mps2_an3854node8run_bareNCNvC23qemu_bsp_large_msg_test18___cortex_m_rt_main0NtNtNtC9nros_node8executor5types9NodeErrorEBX_",
-      "bytes": 4656,
+      "function": "_RINvNtC21nros_board_mps2_an3854node8run_bareNCNvC23qemu_bsp_large_msg_test18___cortex_m_rt_main0NtNtNtC9nros_node8executor5types9NodeErrorEB_",
+      "bytes": 4664,
       "seen_in": "qemu_bsp_large_msg_test_bringup@mps2-an385-baremetal (packages/testing/nros-bench/large-msg-baremetal/target/nros-stack-floor)"
     },
     {
-      "function": "_RINvNtC21nros_board_mps2_an3855entry4bootNCNvC23qemu_baremetal_main_e2e16___nros_entry_run0NtNtNtC13nros_platform5board7runtime12RuntimeErrorEBU_",
+      "function": "_RINvNtC21nros_board_mps2_an3855entry4bootNCNvC23qemu_baremetal_main_e2e16___nros_entry_run0NtNtNtC13nros_platform5board7runtime12RuntimeErrorEB_",
       "bytes": 4272,
       "seen_in": "qemu_baremetal_main_e2e_bringup@mps2-an385-baremetal (packages/testing/nros-tests/bins/qemu-baremetal-main-e2e/target/nros-stack-floor)"
     },
     {
-      "function": "_RINvNtC4nros12node_runtime11out_of_lineINtNtC4core6result6ResultuNtNtB4_4node13NodeDeclErrorENCNvXsf_B2_NtB2_12ExecutorSinkNtB1t_9FrameSink13create_entitys0_0EB4_",
-      "bytes": 5720,
+      "function": "_RINvNtC4nros12node_runtime11out_of_lineINtNtC4core6result6ResultuNtNtB_4node13NodeDeclErrorENCNvXB_NtB_12ExecutorSinkNtB_9FrameSink13create_entitys0_0EB_",
+      "bytes": 5744,
       "seen_in": "zephyr_talker_node_bringup@mps2-an385-zephyr (<zephyr-builds>/3.7/build-cortex-m-rust-talker-serial-zenoh/nros/stack-floor)"
     },
     {
-      "function": "_RINvNtC4nros12node_runtime11out_of_lineINtNtC4core6result6ResultuNtNtB4_4node13NodeDeclErrorENCNvXsf_B2_NtB2_12ExecutorSinkNtB1t_9FrameSink13create_entitys3_0EB4_",
+      "function": "_RINvNtC4nros12node_runtime11out_of_lineINtNtC4core6result6ResultuNtNtB_4node13NodeDeclErrorENCNvXB_NtB_12ExecutorSinkNtB_9FrameSink13create_entitys3_0EB_",
       "bytes": 4536,
       "seen_in": "action_bringup@mps2-an385-freertos (examples/workspaces/rust/target-fixtures/freertos-action-client/nros-stack-floor)"
     },
     {
-      "function": "_RINvNtC4nros12node_runtime11out_of_lineINtNtC4core6result6ResultuNtNtB4_4node13NodeDeclErrorENCNvXsf_B2_NtB2_12ExecutorSinkNtB1t_9FrameSink13create_entitys6_0EB4_",
+      "function": "_RINvNtC4nros12node_runtime11out_of_lineINtNtC4core6result6ResultuNtNtB_4node13NodeDeclErrorENCNvXB_NtB_12ExecutorSinkNtB_9FrameSink13create_entitys6_0EB_",
       "bytes": 7048,
       "seen_in": "action_bringup@qemu-armv7a-nuttx (examples/workspaces/rust/target-fixtures/nuttx-action-client/nros-stack-floor)"
     },
     {
-      "function": "_RINvNtC4nros12node_runtime11out_of_lineINtNtC4core6result6ResultuNtNtB4_4node13NodeDeclErrorENCNvXsf_B2_NtB2_12ExecutorSinkNtB1t_9FrameSink13create_entitys7_0EB4_",
+      "function": "_RINvNtC4nros12node_runtime11out_of_lineINtNtC4core6result6ResultuNtNtB_4node13NodeDeclErrorENCNvXB_NtB_12ExecutorSinkNtB_9FrameSink13create_entitys7_0EB_",
       "bytes": 16880,
       "seen_in": "zephyr_talker_node_bringup@mps2-an385-zephyr (<zephyr-builds>/3.7/build-cortex-m-rust-talker-serial-zenoh/nros/stack-floor)"
     },
     {
-      "function": "_RINvNtC4nros12node_runtime29install_in_with_launch_paramsNtC10talker_pkg6TalkerKj2_Kj1_Kj0_KB1O_KB1O_KB1O_KB1O_EB18_",
+      "function": "_RINvNtC4nros12node_runtime29install_in_with_launch_paramsNtC10talker_pkg6TalkerKj2_Kj1_Kj0_KB_KB_KB_KB_EB_",
       "bytes": 7960,
       "seen_in": "demo_bringup@qemu-armv7a-nuttx (examples/workspaces/rust/target-fixtures/nuttx/nros-stack-floor)"
     },
     {
-      "function": "_RINvNtC4nros12node_runtime29install_in_with_launch_paramsNtC12listener_pkg8ListenerKj2_Kj0_KB1O_KB1O_KB1O_KB1O_KB1O_EB18_",
+      "function": "_RINvNtC4nros12node_runtime29install_in_with_launch_paramsNtC12listener_pkg8ListenerKj2_Kj0_KB_KB_KB_KB_KB_EB_",
       "bytes": 9128,
       "seen_in": "pubsub_bringup@qemu-armv7a-nuttx (examples/workspaces/rust/target-fixtures/nuttx-listener/nros-stack-floor)"
     },
     {
-      "function": "_RINvNtC4nros12node_runtime29install_in_with_launch_paramsNtC12nuttx_talker6TalkerKj2_Kj1_Kj0_KB1Q_KB1Q_KB1Q_KB1Q_EB18_",
+      "function": "_RINvNtC4nros12node_runtime29install_in_with_launch_paramsNtC12nuttx_talker6TalkerKj2_Kj1_Kj0_KB_KB_KB_KB_EB_",
       "bytes": 7824,
       "seen_in": "nuttx_talker_bringup@nuttx (examples/qemu-armv7a-nuttx/rust/talker/target-fixtures/nros-stack-floor)"
     },
     {
-      "function": "_RINvNtC4nros12node_runtime29install_in_with_launch_paramsNtC17action_client_pkg15FibonacciClientKj2_Kj0_KB21_Kj1_KB21_KB21_KB21_EB18_",
+      "function": "_RINvNtC4nros12node_runtime29install_in_with_launch_paramsNtC17action_client_pkg15FibonacciClientKj2_Kj0_KB_Kj1_KB_KB_KB_EB_",
       "bytes": 7480,
       "seen_in": "action_bringup@qemu-armv7a-nuttx (examples/workspaces/rust/target-fixtures/nuttx-action-client/nros-stack-floor)"
     },
     {
-      "function": "_RINvNtC4nros12node_runtime29install_in_with_launch_paramsNtC17action_server_pkg15FibonacciServerKj2_Kj0_KB21_KB21_Kj1_KB21_KB21_EB18_",
+      "function": "_RINvNtC4nros12node_runtime29install_in_with_launch_paramsNtC17action_server_pkg15FibonacciServerKj2_Kj0_KB_KB_Kj1_KB_KB_EB_",
       "bytes": 7488,
       "seen_in": "action_bringup@qemu-armv7a-nuttx (examples/workspaces/rust/target-fixtures/nuttx-action-server/nros-stack-floor)"
     },
     {
-      "function": "_RINvNtC4nros12node_runtime29install_in_with_launch_paramsNtC18freertos_rs_talker6TalkerKj2_Kj1_Kj0_KB1W_KB1W_KB1W_KB1W_EB18_",
+      "function": "_RINvNtC4nros12node_runtime29install_in_with_launch_paramsNtC17param_five_node_a6ParamAKj2_Kj1_Kj0_KB_KB_KB_KB_EB_",
+      "bytes": 8048,
+      "seen_in": "param_five_node_bringup@mps2-an385-freertos (packages/testing/nros-tests/bins/param-five-node/target-freertos/nros-stack-floor)"
+    },
+    {
+      "function": "_RINvNtC4nros12node_runtime29install_in_with_launch_paramsNtC17param_five_node_b6ParamB_Kj1_Kj0_KB_KB_KB_KB_EB_",
+      "bytes": 8048,
+      "seen_in": "param_five_node_bringup@mps2-an385-freertos (packages/testing/nros-tests/bins/param-five-node/target-freertos/nros-stack-floor)"
+    },
+    {
+      "function": "_RINvNtC4nros12node_runtime29install_in_with_launch_paramsNtC17param_five_node_c6ParamCKj2_Kj1_Kj0_KB_KB_KB_KB_EB_",
+      "bytes": 8048,
+      "seen_in": "param_five_node_bringup@mps2-an385-freertos (packages/testing/nros-tests/bins/param-five-node/target-freertos/nros-stack-floor)"
+    },
+    {
+      "function": "_RINvNtC4nros12node_runtime29install_in_with_launch_paramsNtC17param_five_node_d6ParamDKj2_Kj1_Kj0_KB_KB_KB_KB_EB_",
+      "bytes": 8048,
+      "seen_in": "param_five_node_bringup@mps2-an385-freertos (packages/testing/nros-tests/bins/param-five-node/target-freertos/nros-stack-floor)"
+    },
+    {
+      "function": "_RINvNtC4nros12node_runtime29install_in_with_launch_paramsNtC17param_five_node_e6ParamEKj2_Kj1_Kj0_KB_KB_KB_KB_EB_",
+      "bytes": 8048,
+      "seen_in": "param_five_node_bringup@mps2-an385-freertos (packages/testing/nros-tests/bins/param-five-node/target-freertos/nros-stack-floor)"
+    },
+    {
+      "function": "_RINvNtC4nros12node_runtime29install_in_with_launch_paramsNtC18freertos_rs_talker6TalkerKj2_Kj1_Kj0_KB_KB_KB_KB_EB_",
       "bytes": 7784,
       "seen_in": "freertos_rs_talker_bringup@freertos (examples/mps2-an385-freertos/rust/talker/target-fixtures/nros-stack-floor)"
     },
     {
-      "function": "_RINvNtC4nros12node_runtime29install_in_with_launch_paramsNtC18service_client_pkg9AddClientKj2_Kj0_Kj1_KB1V_KB1V_KB1V_KB1V_EB18_",
+      "function": "_RINvNtC4nros12node_runtime29install_in_with_launch_paramsNtC18service_client_pkg9AddClientKj2_Kj0_Kj1_KB_KB_KB_KB_EB_",
       "bytes": 7952,
       "seen_in": "service_bringup@qemu-armv7a-nuttx (examples/workspaces/rust/target-fixtures/nuttx-service-client/nros-stack-floor)"
     },
     {
-      "function": "_RINvNtC4nros12node_runtime29install_in_with_launch_paramsNtC18service_server_pkg9AddServerKj2_Kj0_KB1V_KB1V_KB1V_Kj1_KB1V_EB18_",
+      "function": "_RINvNtC4nros12node_runtime29install_in_with_launch_paramsNtC18service_server_pkg9AddServerKj2_Kj0_KB_KB_KB_Kj1_KB_EB_",
       "bytes": 9128,
       "seen_in": "service_bringup@qemu-armv7a-nuttx (examples/workspaces/rust/target-fixtures/nuttx-service-server/nros-stack-floor)"
     },
     {
-      "function": "_RINvNtC4nros12node_runtime29install_in_with_launch_paramsNtC26param_store_nuttx_qemu_arm11ParamTalkerKj2_Kj1_Kj0_KB2a_KB2a_KB2a_KB2a_EB18_",
+      "function": "_RINvNtC4nros12node_runtime29install_in_with_launch_paramsNtC26param_store_nuttx_qemu_arm11ParamTalkerKj2_Kj1_Kj0_KB_KB_KB_KB_EB_",
       "bytes": 7944,
       "seen_in": "param_store_nuttx_qemu_arm_bringup@nuttx (packages/testing/nros-tests/bins/param-store-nuttx-qemu-arm/target/nros-stack-floor)"
     },
     {
-      "function": "_RINvNtC4nros12node_runtime29install_in_with_launch_paramsNtC8ctrl_pkg7ControlKj2_Kj1_Kj0_KB1M_KB1M_KB1M_KB1M_EB18_",
+      "function": "_RINvNtC4nros12node_runtime29install_in_with_launch_paramsNtC8ctrl_pkg7ControlKj2_Kj1_Kj0_KB_KB_KB_KB_EB_",
       "bytes": 7960,
       "seen_in": "demo_bringup@nuttx (examples/workspaces/realtime-rust/target-fixtures/nuttx/nros-stack-floor)"
     },
     {
-      "function": "_RINvNtC4nros12node_runtime29install_in_with_launch_paramsNtC9telem_pkg5TelemKj2_Kj1_Kj0_KB1L_KB1L_KB1L_KB1L_EB18_",
+      "function": "_RINvNtC4nros12node_runtime29install_in_with_launch_paramsNtC9telem_pkg5TelemKj2_Kj1_Kj0_KB_KB_KB_KB_EB_",
       "bytes": 7960,
       "seen_in": "demo_bringup@nuttx (examples/workspaces/realtime-rust/target-fixtures/nuttx/nros-stack-floor)"
     },
@@ -208,34 +228,44 @@
       "seen_in": "action_bringup@mps2-an385-baremetal (examples/workspaces/rust/target-fixtures/baremetal-action-client-rtic/nros-stack-floor)"
     },
     {
-      "function": "_RNCNvNtC18qemu_rtic_main_e2e10___nros_app10___nros_run0B5_",
+      "function": "_RNCNvNtC18qemu_rtic_main_e2e10___nros_app10___nros_run0B_",
       "bytes": 4112,
       "seen_in": "qemu_rtic_main_e2e_bringup@mps2-an385-baremetal (packages/testing/nros-tests/bins/rtic-run-plan-e2e/target/nros-stack-floor)"
     },
     {
-      "function": "_RNvMNtNtC14nros_rmw_zenoh4shim7sessionNtB2_12ZenohSession24names_and_types_filtered",
+      "function": "_RNvMNtNtC14nros_rmw_zenoh4shim7sessionNtB_12ZenohSession24names_and_types_filtered",
       "bytes": 4288,
       "seen_in": "action_bringup@mps2-an385-freertos (examples/workspaces/c/build/freertos-zenoh-mps2-an385-freertos-action_bringup/cmake/nros/stack-floor)"
     },
     {
-      "function": "_RNvMs2_NtNtC9nros_node8executor6actionNtNtB7_4spin8Executor26register_action_server_raw",
-      "bytes": 6096,
-      "seen_in": "action_bringup@mps2-an385-freertos (examples/workspaces/cpp/build/freertos-zenoh-mps2-an385-freertos-action_bringup/cmake/nros/stack-floor)"
-    },
-    {
-      "function": "_RNvMsj_NtNtC9nros_node8executor4spinNtB5_8Executor22ensure_parameter_store",
-      "bytes": 8448,
-      "seen_in": "qemu_bsp_large_msg_test_bringup@mps2-an385-baremetal (packages/testing/nros-bench/large-msg-baremetal/target/nros-stack-floor)"
-    },
-    {
-      "function": "_RNvMsl_NtNtC9nros_node8executor4spinNtB5_8Executor22ensure_parameter_store",
+      "function": "_RNvMNtNtC9nros_node8executor4spinNtB_8Executor22ensure_parameter_store",
       "bytes": 8824,
       "seen_in": "zephyr_talker_node_bringup@mps2-an385-zephyr (<zephyr-builds>/3.7/build-cortex-m-rust-talker-serial-zenoh/nros/stack-floor)"
     },
     {
-      "function": "_RNvMsl_NtNtC9nros_node8executor4spinNtB5_8Executor28declare_parameter_overridden",
+      "function": "_RNvMNtNtC9nros_node8executor4spinNtB_8Executor28declare_parameter_overridden",
       "bytes": 8720,
       "seen_in": "action_bringup@qemu-armv7a-nuttx (examples/workspaces/rust/target-fixtures/nuttx-action-client/nros-stack-floor)"
+    },
+    {
+      "function": "_RNvMNtNtC9nros_node8executor4spinNtB_8Executor33register_lifecycle_services_named",
+      "bytes": 8120,
+      "seen_in": "demo_bringup@mps2-an385-zephyr (<zephyr-builds>/3.7/build-cortex-m-ws-c-lifecycle-pair-xrce/nros/stack-floor)"
+    },
+    {
+      "function": "_RNvMNtNtC9nros_node8executor4spinNtB_8Executor4pass",
+      "bytes": 4512,
+      "seen_in": "isr_wake_nuttx_qemu_arm_bringup@nuttx (packages/testing/nros-tests/bins/isr-wake-nuttx-qemu-arm/target/nros-stack-floor)"
+    },
+    {
+      "function": "_RNvMNtNtC9nros_node8executor6actionNtNtB_4spin8Executor26register_action_client_raw",
+      "bytes": 6888,
+      "seen_in": "action_bringup@mps2-an385-freertos (examples/workspaces/c/build/freertos-zenoh-mps2-an385-freertos-action_bringup-freertos_action_client/cmake/nros/stack-floor)"
+    },
+    {
+      "function": "_RNvMNtNtC9nros_node8executor6actionNtNtB_4spin8Executor26register_action_server_raw",
+      "bytes": 6096,
+      "seen_in": "action_bringup@mps2-an385-freertos (examples/workspaces/cpp/build/freertos-zenoh-mps2-an385-freertos-action_bringup/cmake/nros/stack-floor)"
     },
     {
       "function": "_RNvNtC21nros_board_mps2_an3854node13init_hardware",
@@ -248,7 +278,7 @@
       "seen_in": "zephyr_talker_node_bringup@mps2-an385-zephyr (<zephyr-builds>/3.7/build-cortex-m-rust-talker-serial-zenoh/nros/stack-floor)"
     },
     {
-      "function": "_RNvXsf_NtC4nros12node_runtimeNtB5_12ExecutorSinkNtNtB7_4node9FrameSink11create_node",
+      "function": "_RNvXNtC4nros12node_runtimeNtB_12ExecutorSinkNtNtB_4node9FrameSink11create_node",
       "bytes": 17856,
       "seen_in": "pubsub_bringup@mps2-an385-baremetal (examples/workspaces/rust/target-fixtures/baremetal-listener-serial/nros-stack-floor)"
     },

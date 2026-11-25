@@ -40,7 +40,9 @@ all: a gate that read nothing would pass on any tree.
 """
 from __future__ import annotations
 
+import importlib.util
 import json
+import os
 import re
 import subprocess
 import sys
@@ -73,15 +75,32 @@ _V0_CRATE = re.compile(r"C(?:s[0-9A-Za-z]*_)?(\d+)")
 # disambiguator (`Cs<base62>_`), a legacy hash (`17h<16 hex>E`) and LLVM's
 # ThinLTO suffix. The baseline keys on the symbol with these removed, or every
 # change of flags or toolchain would read as a new frame.
+#
+# Two more v0 parts move with code that is not the function (B34, run-matrix
+# 45533259451, where 9 of 20 "new" frames were baseline rows under another
+# spelling):
+# - an impl block's index in its module (`Ms<n>_`, `Xs<n>_`): adding an impl
+#   block above renames every function after it (`Executor`'s
+#   declare_parameter_overridden went `Msl_` -> `Msn_` at the same 8,720 B).
+#   One type cannot define a method twice across its inherent impls, nor
+#   implement one trait twice, so the index tells nothing apart here;
+# - a back-reference (`B<base62>_`), a BYTE offset into the symbol, which
+#   moves when anything before its target changes length.
 _V0_DISAMBIG = re.compile(r"Cs[0-9A-Za-z]*_")
+_V0_IMPL_INDEX = re.compile(r"([MX])s[0-9A-Za-z]*_")
+_V0_BACKREF = re.compile(r"B[0-9A-Za-z]*_")
 _LEGACY_HASH = re.compile(r"17h[0-9a-f]{16}E$")
 _LLVM_SUFFIX = re.compile(r"\.llvm\.\d+$")
 
 
 def stable_name(sym: str) -> str:
+    """The baseline's key for a symbol: idempotent, so a stored key keys the
+    same as the symbol it was made from."""
     sym = _LLVM_SUFFIX.sub("", sym)
     if sym.startswith("_R"):
-        return _V0_DISAMBIG.sub("C", sym)
+        sym = _V0_DISAMBIG.sub("C", sym)
+        sym = _V0_IMPL_INDEX.sub(r"\1", sym)
+        return _V0_BACKREF.sub("B_", sym)
     return _LEGACY_HASH.sub("E", sym)
 
 
@@ -170,6 +189,89 @@ def find_reports() -> list[Path]:
     return sorted(found)
 
 
+# B34 -- which reports this run may judge. The check read every report on
+# disk, and a self-hosted runner's workspace persists, so the tier-2 run that
+# refused (run-matrix 45533259451) judged half its frames from builds tier 2
+# never makes (another lane's fixtures, left from an earlier run). The scope
+# is MEMBERSHIP, never mtime: an in-lane image that was already current is not
+# relinked, so its report is older than the build and still ships. A report is
+# RESIDUE only when it is proven to belong to rows outside the lane; anything
+# unattributable, or attributed to an in-lane row, is checked (fail closed).
+# The rows, their coordinates and roots come from the fixture manifest's own
+# functions, the predicate the fixture build and the test resolver use.
+STAMP = ROOT / os.environ.get("NROS_FIXTURE_STAMP", "target/nextest/.fixtures-built")
+MANIFEST = ROOT / "scripts" / "build" / "fixtures-manifest.py"
+
+
+def _manifest():
+    spec = importlib.util.spec_from_file_location("fixtures_manifest", MANIFEST)
+    assert spec is not None and spec.loader is not None
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def lane_coords(stamp_text: str | None) -> tuple[set | None, str]:
+    """The coordinates the last fixture build covered, from its stamp, or None
+    (scope nothing, check every report) with the reason. `lane=all`, or a
+    stamp with no `lane=` (pre-0393), means everything."""
+    if stamp_text is None:
+        return None, (f"no fixture-build stamp at {STAMP.relative_to(ROOT) if STAMP.is_relative_to(ROOT) else STAMP}, "
+                      "so no lane is known: every report is checked")
+    lane = next((l[5:].strip() for l in stamp_text.splitlines() if l.startswith("lane=")),
+                "all")
+    coords = {tuple(l[6:].strip().split(",")) for l in stamp_text.splitlines()
+              if l.startswith("coord=")}
+    if lane == "all" or not coords:
+        return None, f"lane `{lane}` names every coordinate: every report is checked"
+    return coords, f"lane `{lane}`, {len(coords)} coordinate(s)"
+
+
+def row_roots(fm, manifest: Path) -> list[tuple[str, dict]]:
+    """(root, row) for every buildable row: a cargo/cmake row's artifact root
+    (`row_artifact_root`), a west row's build dir under the Zephyr build root,
+    spelled as `report_where` spells it (`<zephyr-builds>/<line>/<name>`, the
+    line left as `*`)."""
+    out = []
+    for e in fm.load(str(manifest)) + fm.load_workspace_fixtures(str(manifest)):
+        if e.get("skip_build"):
+            continue
+        if fm.row_builder(e) == "west" or e.get("west_build_name"):
+            out.append((f"<zephyr-builds>/*/{fm.west_build_name(e)}", e))
+        elif fm.row_artifact_root(e):
+            out.append((fm.row_artifact_root(e), e))
+    return out
+
+
+def is_residue(where: str, roots: list[tuple[str, dict]], coords: set, in_coords) -> bool:
+    """Whether the report at `where` (as `report_where` spells it) belongs only
+    to rows outside `coords`. The longest root containing it decides; no root,
+    or any in-lane row at that root, keeps it checked."""
+    best, rows = -1, []
+    parts = where.split("/")
+    for root, e in roots:
+        rp = root.split("/")
+        if len(rp) > len(parts):
+            continue
+        if all(a == "*" or a == b for a, b in zip(rp, parts)):
+            if len(rp) > best:
+                best, rows = len(rp), [e]
+            elif len(rp) == best:
+                rows.append(e)
+    return bool(rows) and not any(in_coords(e, coords) for e in rows)
+
+
+def scope(reports: list[dict], coords: set | None, roots, in_coords
+          ) -> tuple[list[dict], list[dict]]:
+    """(the reports this run judges, the residue it skips)."""
+    if coords is None:
+        return reports, []
+    keep, skip = [], []
+    for r in reports:
+        (skip if is_residue(r.get("_path", ""), roots, coords, in_coords) else keep).append(r)
+    return keep, skip
+
+
 def offenders(reports: list[dict], crates: set[str], allow: list[dict]
               ) -> tuple[dict[str, tuple[int, str]], list[str]]:
     """(the nros-owned frames over the cap that no allow row accepts, keyed by
@@ -183,14 +285,24 @@ def offenders(reports: list[dict], crates: set[str], allow: list[dict]
             problems.append(f"{r.get('_path', image)}: the report has no `big_frames`, so "
                             "it predates this gate; rebuild the fixture")
             continue
+        # B34 -- one image holds each function once, so two DIFFERENT symbols
+        # of one image under one key are two functions the key would merge.
+        # Refuse, naming both, rather than let one hide the other's frame.
+        names: dict[str, set[str]] = {}
         for fn, n in r["big_frames"]:
             if owner(fn, crates) is None:
                 continue
             if any(a["match"] in fn for a in allow):
                 continue
             key = stable_name(fn)
+            names.setdefault(key, set()).add(_LLVM_SUFFIX.sub("", fn))
             if int(n) > seen.get(key, (0, ""))[0]:
                 seen[key] = (int(n), image)
+        for key, raw in sorted(names.items()):
+            if len(raw) > 1:
+                problems.append(f"{image}: {len(raw)} different functions share the baseline "
+                                f"key {key}: {', '.join(sorted(raw))}. The key would merge "
+                                "them; make `stable_name` tell them apart")
     return seen, problems
 
 
@@ -234,7 +346,13 @@ def read_baseline() -> dict[str, int]:
     if not BASELINE.is_file():
         return {}
     doc = json.loads(BASELINE.read_text())
-    return {r["function"]: int(r["bytes"]) for r in doc.get("frames", [])}
+    out: dict[str, int] = {}
+    for r in doc.get("frames", []):
+        # Rows written under an older key keep counting (stable_name is
+        # idempotent); two that now share a key keep the larger size.
+        k = stable_name(r["function"])
+        out[k] = max(out.get(k, 0), int(r["bytes"]))
+    return out
 
 
 def write_baseline(seen: dict[str, tuple[int, str]], merge: bool = False) -> None:
@@ -246,7 +364,7 @@ def write_baseline(seen: dict[str, tuple[int, str]], merge: bool = False) -> Non
     if merge:
         old = json.loads(BASELINE.read_text()).get("frames", []) if BASELINE.is_file() else []
         for r in old:
-            fn, n = r["function"], int(r["bytes"])
+            fn, n = stable_name(r["function"]), int(r["bytes"])
             if n >= rows.get(fn, (0, ""))[0]:
                 rows[fn] = (n, r.get("seen_in", ""))
     doc = {"schema": 2,
@@ -298,6 +416,60 @@ def self_test(quiet: bool = False) -> int:
     b = "_RNvMsh_NtNtCs4xKnRAC4kOP_9nros_node8executor4spinNtB5_8Executor4pass.llvm.123"
     if stable_name(a) != stable_name(b):
         fails.append("a crate disambiguator or LLVM suffix does not change the key")
+    # B34 -- an impl block's index and a back-reference move with unrelated
+    # code; the function does not.
+    if stable_name("_RNvMsl_NtNtC9nros_node8executor4spinNtB5_8Executor28declare_parameter_overridden") \
+            != stable_name("_RNvMsn_NtNtC9nros_node8executor4spinNtB6_8Executor28declare_parameter_overridden"):
+        fails.append("an impl index or a back-reference does not change the key")
+    if stable_name("_RNvMs_NtNtC4nros4spinNtB4_8Executor4pass") == \
+            stable_name("_RNvMs_NtNtC4nros4spinNtB4_8Executor5spin2"):
+        fails.append("two different functions keep different keys")
+    # 243's controls: normalising never hides a NEW frame, and never merges two
+    # functions of one image.
+    fresh = "_RNvMs3_NtNtC9nros_node8executor4spinNtB5_8Executor20brand_new_big_function"
+    s_new, _ = offenders([{"image": "n@b", "big_frames": [[fresh, 6000]]}], crates, allow)
+    if not compare(s_new, {stable_name(a): 9000}, 4096):
+        fails.append("a NEW frame under a fresh name still fails after normalising")
+    clash = [{"image": "c@b", "big_frames": [
+        ["_RNvMs1_NtC9nros_node4spinNtB2_4Exec3run", 5000],
+        ["_RNvMs2_NtC9nros_node4spinNtB3_4Exec3run", 6000]]}]
+    _, probs = offenders(clash, crates, allow)
+    if not any("different functions share the baseline key" in p for p in probs):
+        fails.append("two functions of one image under one key are refused, by name")
+    # B34 scoping, both directions. Roots and the lane are given here; the
+    # manifest's own `row_in_coords` is the predicate.
+    fm = _manifest()
+    roots = [("packages/testing/x/target-freertos", {"platform": "freertos", "lang": "rust"}),
+             ("<zephyr-builds>/*/build-lc", {"platform": "zephyr-cortex-m", "lang": "c"}),
+             ("examples/shared/target", {"platform": "freertos", "lang": "rust"}),
+             ("examples/shared/target", {"platform": "nuttx", "lang": "rust"})]
+    lane = {("nuttx", "rust", "zenoh"), ("zephyr-cortex-m", "c", "zenoh")}
+    big = [[fresh, 6000]]
+    stale_out = {"image": "o@b", "_path": "packages/testing/x/target-freertos/nros-stack-floor/report.json",
+                 "big_frames": big}
+    old_in = {"image": "i@b", "_path": "<zephyr-builds>/3.7/build-lc/nros/stack-floor/report.json",
+              "big_frames": big, "_mtime": 0}
+    unknown = {"image": "u@b", "_path": "somewhere/else/nros-stack-floor/report.json",
+               "big_frames": big}
+    shared = {"image": "s@b", "_path": "examples/shared/target/nros-stack-floor/report.json",
+              "big_frames": big}
+    keep, skip = scope([stale_out, old_in, unknown, shared], lane, roots, fm.row_in_coords)
+    if stale_out not in skip:
+        fails.append("a report of an out-of-lane row is residue, skipped")
+    if old_in not in keep or not compare(offenders([old_in], crates, allow)[0], {}, 4096):
+        fails.append("an in-lane report is checked whatever its age, and fails over the cap")
+    if unknown not in keep:
+        fails.append("an unattributable report is checked (fail closed)")
+    if shared not in keep:
+        fails.append("a root shared with an in-lane row is checked")
+    if scope([stale_out], None, roots, fm.row_in_coords)[0] != [stale_out]:
+        fails.append("with no lane known, every report is checked")
+    if lane_coords(None)[0] is not None or lane_coords("lane=all\n")[0] is not None \
+            or lane_coords("lane=tier2\ncoord=a,b,c\n")[0] != {("a", "b", "c")}:
+        fails.append("the stamp's lane is read: missing or `all` scopes nothing")
+    k2 = stable_name(a)
+    if stable_name(k2) != k2:
+        fails.append("the key is idempotent, so a stored key reads as itself")
     if stable_name("_ZN9nros_node4pass17h0123456789abcdefE") != \
             stable_name("_ZN9nros_node4pass17hfedcba9876543210E"):
         fails.append("a legacy hash does not change the key")
@@ -313,7 +485,7 @@ def self_test(quiet: bool = False) -> int:
     for f in fails:
         print(f"check-max-frame self-test FAIL: {f}", file=sys.stderr)
     if not quiet or fails:
-        print(f"check-max-frame self-test: {len(cases) + 9} checks, {len(fails)} failed")
+        print(f"check-max-frame self-test: {len(cases) + 20} checks, {len(fails)} failed")
     return 1 if fails else 0
 
 
@@ -329,6 +501,15 @@ def main(argv: list[str]) -> int:
     allow = table.get("frame_allow", [])
     paths = find_reports()
     reports = load_reports(paths, zephyr_root())
+    stamp_text = STAMP.read_text() if STAMP.is_file() else None
+    coords, why = lane_coords(stamp_text)
+    fm = _manifest()
+    reports, residue = scope(reports, coords, row_roots(fm, ROOT / fm.DEFAULT_MANIFEST),
+                             fm.row_in_coords)
+    print(f"check-max-frame: {why}; {len(reports)} report(s) judged, {len(residue)} "
+          "skipped as residue of rows outside the lane")
+    for r in residue:
+        print(f"  skipped (residue): {r.get('_path')}")
     if not reports:
         print("check-max-frame: FAIL -- no 32-bit ARM fixture build has a stack-floor "
               f"report under {', '.join(SCAN_DIRS)} ({len(paths)} report(s) in all). Build "
