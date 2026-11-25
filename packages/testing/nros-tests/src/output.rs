@@ -2526,6 +2526,19 @@ pub const LOG_DEAD_HOLDER_STRANDED_RECORD: &str = "record after the unreported d
 /// serialised sink only: the Zephyr console sink is re-entrant.
 pub const LOG_DEAD_HOLDER_SERIAL_PREFIX: &str = "log-dead-holder: serialised sink got [main]: ";
 
+/// Issue 2762 -- `bins/log-stress-zephyr-smp`'s start line: its shape
+/// (`loggers N, records N, isr records N, sink buffers N, cpus N`) follows.
+pub const LOG_STRESS_START: &str = "log-stress: start, ";
+/// Its summary line: `records N, serialised sink got N, fallbacks N` follows.
+pub const LOG_STRESS_DONE: &str = "log-stress: done, ";
+/// A logger thread's record: `t<NN> r<NNNN>` follows.
+pub const LOG_STRESS_THREAD_RECORD: &str = "stress t";
+/// The timer interrupt's record: `r<NNNN>` follows.
+pub const LOG_STRESS_ISR_RECORD: &str = "stress isr r";
+/// What Zephyr's deferred log core prints when its own buffer dropped
+/// messages, which this cell must tell apart from a record nros_log lost.
+pub const ZEPHYR_LOG_MESSAGES_DROPPED: &str = "messages dropped";
+
 /// The executor's first-spin arena advisory
 /// (`nros-node/src/executor/arena.rs`), one-shot per process. A test that checks
 /// the one-shot counts records carrying this, never every record a sink saw.

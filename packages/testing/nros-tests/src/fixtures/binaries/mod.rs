@@ -7331,6 +7331,28 @@ pub fn build_log_dead_holder_smp() -> TestResult<&'static Path> {
         .map(|p| p.as_path())
 }
 
+/// Issue 2762 -- sixteen threads and a timer interrupt log at once on
+/// `qemu_cortex_a53/smp`. Built by the zephyr west lane into
+/// `<build-root>/build-log-stress-smp/`; consumed by `tests/log_stress.rs`.
+static LOG_STRESS_SMP: OnceCell<PathBuf> = OnceCell::new();
+
+pub fn build_log_stress_smp() -> TestResult<&'static Path> {
+    LOG_STRESS_SMP
+        .get_or_try_init(|| {
+            let binary = zephyr_build_root().join("build-log-stress-smp/zephyr/zephyr.elf");
+            require_prebuilt_binary_fresh_zephyr(
+                &binary,
+                ZephyrLeafSource {
+                    dir: "packages/testing/nros-tests/bins/log-stress-zephyr-smp",
+                    lang: Some("c"),
+                    rmw: Some("zenoh"),
+                    conf_files: Some("prj.conf"),
+                },
+            )
+        })
+        .map(|p| p.as_path())
+}
+
 /// Cached path to the Phase 88.15.e `logging-smoke-zephyr-native-sim`
 /// fixture binary (Zephyr `native_sim/native/64` running as a Linux
 /// process).
