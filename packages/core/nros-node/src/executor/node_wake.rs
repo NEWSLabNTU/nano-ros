@@ -54,6 +54,8 @@ unsafe extern "C" {
         n: usize,
         deadline_us: u64,
     ) -> i8;
+    fn nros_platform_wake_park_until_us(w: *mut c_void, deadline_us: u64) -> i8;
+    fn nros_platform_wake_park_granularity_us() -> u64;
     fn nros_platform_wake_storage_size() -> usize;
     fn nros_platform_wake_storage_align() -> usize;
 }
@@ -160,6 +162,36 @@ impl NodeWake {
         // SAFETY: ptr was init'd in `new`; the underlying
         // primitive supports concurrent calls per platform spec.
         unsafe { nros_platform_wake_wait_ms(ptr, timeout_ms) == 0 }
+    }
+
+    /// Issue 2965 -- wait at most `us` microseconds, or until signalled, at
+    /// the finest park the port offers. `true` when signalled.
+    ///
+    /// A band worker's park is the time to its band's next timer, and that is
+    /// rarely a whole number of milliseconds. Rounded up to `wait_ms`'s
+    /// millisecond, a 1 kHz level whose callback takes 300 us parked 1000 us
+    /// for a deadline 700 us away, so every release came 1.3 ms after the last
+    /// and the `Skip` policy dropped one period in four. The port's
+    /// microsecond park (`nros_platform_wake_park_until_us`) takes the bound
+    /// as it is, rounded up only to the port's own granularity; a port that
+    /// offers none (granularity 0) or cannot park (-1) keeps the millisecond
+    /// wait, which still never wakes before the timer.
+    pub(crate) fn wait_us(&self, us: u64) -> bool {
+        let ptr = self.storage.as_ptr() as *mut c_void;
+        // SAFETY: a pure query of the port.
+        let granularity = unsafe { nros_platform_wake_park_granularity_us() };
+        match band_park(us, granularity) {
+            BandPark::Us(us) => {
+                // SAFETY: as `wait_ms`.
+                match unsafe { nros_platform_wake_park_until_us(ptr, us) } {
+                    0 => return true,
+                    1 => return false,
+                    _ => {}
+                }
+            }
+            BandPark::Ms(ms) => return self.wait_ms(ms),
+        }
+        self.wait_ms(band_park_ms(us))
     }
 
     /// phase-521 W3 (RFC-0113 D3) — park on this object AND on the OS
@@ -271,11 +303,10 @@ impl super::scheduler::BandWaiter {
             let _ = unsafe { &*(ctx as *const NodeWake) }.signal_from_isr();
         }
         unsafe extern "C" fn wait(ctx: *mut c_void, us: u64) -> i32 {
-            // The wake primitive's own resolution is the millisecond; a
-            // band's park rounds UP, so it never wakes before its timer.
-            let ms = us.div_ceil(1000).min(u64::from(u32::MAX)) as u32;
+            // Issue 2965 -- at the port's finest park, never the millisecond
+            // when the port can do better ([`NodeWake::wait_us`]).
             // SAFETY: as `wake`.
-            if unsafe { &*(ctx as *const NodeWake) }.wait_ms(ms) {
+            if unsafe { &*(ctx as *const NodeWake) }.wait_us(us) {
                 0
             } else {
                 -1
@@ -289,5 +320,63 @@ impl super::scheduler::BandWaiter {
         // wake contract).
         let waiter = unsafe { Self::new(wake, wake_from_isr, wait, ctx) };
         Some(alloc::boxed::Box::leak(alloc::boxed::Box::new(waiter)))
+    }
+}
+
+/// Issue 2965 -- how a band worker parks for `us` microseconds on a port whose
+/// microsecond park has `granularity_us` resolution.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum BandPark {
+    /// The port's microsecond park, for this many microseconds: `us` rounded
+    /// UP to the granularity, so the park never ends before the timer is due.
+    Us(u64),
+    /// The millisecond wait, for this many milliseconds: the port offers no
+    /// finer park (granularity 0, `PlatformThreading`'s default).
+    Ms(u32),
+}
+
+/// Issue 2965 -- the park a band worker takes for a bound of `us`.
+pub(crate) fn band_park(us: u64, granularity_us: u64) -> BandPark {
+    if granularity_us == 0 {
+        return BandPark::Ms(band_park_ms(us));
+    }
+    BandPark::Us(us.div_ceil(granularity_us).saturating_mul(granularity_us))
+}
+
+/// `us` rounded UP to whole milliseconds, for the millisecond wait.
+pub(crate) fn band_park_ms(us: u64) -> u32 {
+    us.div_ceil(1000).min(u64::from(u32::MAX)) as u32
+}
+
+#[cfg(test)]
+mod band_park_tests {
+    use super::{BandPark, band_park, band_park_ms};
+
+    /// The measured case: a 1 kHz level whose 300 us callback leaves its next
+    /// release 700 us away. A 1 us park waits 700 us; the millisecond wait it
+    /// replaced waited 1000, which put every release 1.3 ms after the last.
+    #[test]
+    fn a_microsecond_port_parks_for_the_bound_itself() {
+        assert_eq!(band_park(700, 1), BandPark::Us(700));
+        assert_eq!(band_park(1, 1), BandPark::Us(1));
+        assert_eq!(band_park(0, 1), BandPark::Us(0));
+    }
+
+    /// A coarser port (an RTOS tick) rounds UP to its tick, so the park never
+    /// ends before the timer is due.
+    #[test]
+    fn a_tick_port_rounds_up_to_its_tick() {
+        assert_eq!(band_park(700, 10_000), BandPark::Us(10_000));
+        assert_eq!(band_park(10_001, 10_000), BandPark::Us(20_000));
+        assert_eq!(band_park(10_000, 10_000), BandPark::Us(10_000));
+    }
+
+    /// The negative control: a port with no microsecond park keeps the
+    /// millisecond wait, rounded up as before.
+    #[test]
+    fn a_port_with_no_microsecond_park_keeps_the_millisecond() {
+        assert_eq!(band_park(700, 0), BandPark::Ms(1));
+        assert_eq!(band_park(1_001, 0), BandPark::Ms(2));
+        assert_eq!(band_park_ms(u64::MAX), u32::MAX);
     }
 }
