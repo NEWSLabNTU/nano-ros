@@ -18404,7 +18404,7 @@ mod p9b_windows {
     }
 
     /// The executor's lock, with a thread identity: passes open windows.
-    fn install_lock(executor: &mut Executor<'static>) {
+    pub(super) fn install_lock(executor: &mut Executor<'static>) {
         let lock: &'static RecLock = std::boxed::Box::leak(std::boxed::Box::new(RecLock {
             state: Mutex::new((0, 0)),
             cv: Condvar::new(),
@@ -18422,7 +18422,7 @@ mod p9b_windows {
     /// The executor, reachable from several threads; every use takes its
     /// lock first.
     #[derive(Clone, Copy)]
-    struct Shared(*mut Executor<'static>);
+    pub(super) struct Shared(pub(super) *mut Executor<'static>);
     // SAFETY: every thread that dereferences it holds the executor's lock
     // (`ExecGuard::acquire`) except inside a callback window, where it touches
     // nothing the window does not allow.
@@ -18432,7 +18432,7 @@ mod p9b_windows {
 
     impl Shared {
         /// The pointer, by a method so a closure captures the whole `Shared`.
-        fn ptr(self) -> *mut Executor<'static> {
+        pub(super) fn ptr(self) -> *mut Executor<'static> {
             self.0
         }
 
@@ -18442,7 +18442,7 @@ mod p9b_windows {
             unsafe { Executor::spin_once_shared(self.0, core::time::Duration::ZERO) }
         }
 
-        fn spin_band(self, w: &mut BandWorker) -> SpinOnceResult {
+        pub(super) fn spin_band(self, w: &mut BandWorker) -> SpinOnceResult {
             // SAFETY: as `spin_shared`.
             let _g = unsafe { ExecGuard::acquire(self.0) };
             unsafe { Executor::spin_band_once(self.0, w, core::time::Duration::ZERO) }
@@ -18450,7 +18450,7 @@ mod p9b_windows {
     }
 
     /// A node of contract rank `rank` with one 1 ms timer running `f`.
-    fn ranked_timer(
+    pub(super) fn ranked_timer(
         executor: &mut Executor<'static>,
         name: &str,
         rank: u8,
@@ -22014,5 +22014,123 @@ mod managed_publishers {
             0,
             "a failed activate leaves it silent"
         );
+    }
+}
+
+/// Phase-573 W4, issue 2675 -- re-entry under preemption. Two band workers
+/// share one executor (RFC-0108 item 2). The less urgent band's timer is in
+/// its callback window when the urgent band's worker runs, and both callbacks
+/// call back into the executor: the urgent one resets the timer the other band
+/// is still dispatching, and the preempted one then resets itself. Neither
+/// pass may hold a reference into the executor across its callbacks, so under
+/// Miri with Tree Borrows (`just check miri-executor-reentry`) neither write
+/// may invalidate a reference the other pass uses afterwards.
+mod reentry_bands {
+    use super::{
+        p9b_windows::{Shared, install_lock, ranked_timer},
+        *,
+    };
+    use crate::executor::{Band, BandWorker, exec_lock::ExecGuard};
+    use portable_atomic::{AtomicU32, Ordering};
+    use std::sync::{Mutex, OnceLock};
+
+    private_test_clock!(reentry_bands_clock);
+
+    static EXEC: OnceLock<Shared> = OnceLock::new();
+    static LO_TIMER: OnceLock<HandleId> = OnceLock::new();
+    /// The urgent band's worker, taken by the preempting thread.
+    static HI_WORKER: Mutex<Option<BandWorker>> = Mutex::new(None);
+    static HI_RUNS: AtomicU32 = AtomicU32::new(0);
+    static LO_RUNS: AtomicU32 = AtomicU32::new(0);
+    /// `HI_RUNS` as the preempted callback saw it after the urgent worker
+    /// finished, so the urgent run is known to have happened in its window.
+    static HI_SEEN_IN_WINDOW: AtomicU32 = AtomicU32::new(0);
+
+    fn exec() -> Shared {
+        *EXEC.get().expect("the executor")
+    }
+
+    /// A callback's re-entry, the way a C callback's `rcl_timer_reset` makes
+    /// it: the lock first, then a reference derived from the raw pointer.
+    fn reset(id: HandleId) {
+        let p = exec().ptr();
+        // SAFETY: the executor outlives the test's passes; its lock is taken
+        // before the reference is made, and the reference ends with the call.
+        let _g = unsafe { ExecGuard::acquire(p) };
+        unsafe { &mut *p }
+            .reset_timer(id)
+            .expect("reset from inside a callback");
+    }
+
+    #[test]
+    fn a_preempting_band_resets_the_timer_a_preempted_band_is_dispatching() {
+        reentry_bands_clock::claim_at_us(0);
+        let mut boxed = Box::new(executor_with_clock_fn(
+            MockSession::new(),
+            reentry_bands_clock::now_us,
+        ));
+        install_lock(&mut boxed);
+        // rank 0 is level 1, in the urgent band; rank 1 is level 2.
+        let hi_band = Band::new(0, 1).unwrap();
+        let lo_band = Band::new(2, 31).unwrap();
+        ranked_timer(&mut boxed, "hi", 0, |_| {
+            HI_RUNS.fetch_add(1, Ordering::SeqCst);
+            // A write to the entry the other band's pass is dispatching.
+            reset(*LO_TIMER.get().expect("lo timer"));
+        });
+        let lo = ranked_timer(&mut boxed, "lo", 1, |_| {
+            if LO_RUNS.fetch_add(1, Ordering::SeqCst) == 0 {
+                // Preempted, in effect: the urgent worker runs its band to
+                // completion while this callback is in its window.
+                std::thread::scope(|sc| {
+                    sc.spawn(|| {
+                        let mut w = HI_WORKER.lock().unwrap().take().expect("hi worker");
+                        exec().spin_band(&mut w);
+                    });
+                });
+                HI_SEEN_IN_WINDOW.store(HI_RUNS.load(Ordering::SeqCst), Ordering::SeqCst);
+            }
+            reset(*LO_TIMER.get().expect("lo timer"));
+        });
+        LO_TIMER.set(lo).unwrap();
+        // From here on the executor is reached only through the raw pointer.
+        let shared = Shared(Box::into_raw(boxed));
+        assert!(EXEC.set(shared).is_ok());
+
+        // A band worker credits its timers with the time since its OWN
+        // previous pass, so each worker passes once at t = 0 first.
+        let mut lo_w = BandWorker::new(1, lo_band);
+        let mut hi_w = BandWorker::new(0, hi_band);
+        shared.spin_band(&mut lo_w);
+        shared.spin_band(&mut hi_w);
+        assert_eq!(HI_RUNS.load(Ordering::SeqCst), 0, "nothing is due at t = 0");
+        assert_eq!(LO_RUNS.load(Ordering::SeqCst), 0, "nothing is due at t = 0");
+        *HI_WORKER.lock().unwrap() = Some(hi_w);
+
+        reentry_bands_clock::set_us(1_000);
+        shared.spin_band(&mut lo_w);
+        assert_eq!(LO_RUNS.load(Ordering::SeqCst), 1, "the lo timer ran");
+        assert_eq!(
+            HI_SEEN_IN_WINDOW.load(Ordering::SeqCst),
+            1,
+            "the hi timer ran, and reset lo's timer, inside lo's callback window"
+        );
+
+        // Both resets left lo's timer running, one period from t = 1 ms.
+        reentry_bands_clock::set_us(2_000);
+        shared.spin_band(&mut lo_w);
+        assert_eq!(
+            LO_RUNS.load(Ordering::SeqCst),
+            2,
+            "a timer reset from both bands runs again one period later"
+        );
+        assert_eq!(
+            HI_RUNS.load(Ordering::SeqCst),
+            1,
+            "the lo worker never runs hi"
+        );
+
+        // SAFETY: the pointer came from `Box::into_raw`; no pass is running.
+        drop(unsafe { Box::from_raw(shared.ptr()) });
     }
 }

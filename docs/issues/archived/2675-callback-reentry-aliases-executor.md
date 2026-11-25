@@ -1,16 +1,18 @@
 ---
 id: 2675
 title: "A C or C++ callback that calls back into its executor (a graph query, a timer cancel, a parameter call) makes a second `&mut` to the executor while `spin_once` holds the first"
-status: open
+status: resolved
 type: bug
 severity: high
 area: [api, executor, safety]
 related: [issue-0290, issue-0278, issue-2674, rfc-0108, rfc-0021, phase-572, phase-573]
 found: 2026-11-17
+resolved: 2026-11-25
+resolved_in: "test(nros-node, phase-573 W4): a callback re-enters its executor while another band preempts it"
 ---
 
-**Home: [phase-573](../roadmap/phase-573-executor-reentry-soundness.md).** Found while
-scoping [phase-572](../roadmap/archived/phase-572-rust-component-graph-query.md), which
+**Home: [phase-573](../../roadmap/phase-573-executor-reentry-soundness.md).** Found while
+scoping [phase-572](../../roadmap/archived/phase-572-rust-component-graph-query.md), which
 keeps the graph queries out of a Rust callback for this reason and waits on it.
 
 ## What
@@ -92,3 +94,35 @@ entries hold a protected `&mut` for the whole pass.
 - Every executor-deriving FFI entry is either safe from a callback or refuses
   there with `RCLC_RET_REENTRANT` / `Reentrant`. The list of entries is in this
   issue.
+
+## Resolution
+
+Fixed by phase-573 W1 to W4, as RFC-0108 D9 describes:
+
+- **The dispatch core (W2, W2b).** `pass` derives its reference again after
+  every callback in every mode. Every spin entry reaches it through
+  `spin_once_raw` and a raw pointer. Each entry kind's dispatch either
+  derives its entry again after the callback or has no FFI path that writes
+  the running entry.
+- **The FFI entries (W3).** Every executor-deriving entry in nros-c and
+  nros-cpp goes through its crate's one locked derive. A call that would
+  block, spin again or release an entry the running pass may touch returns
+  `RCLC_RET_REENTRANT` / `Reentrant` from a callback. The gate
+  `check-ffi-executor-derive` holds the list.
+- **Preemption (W4).** Two band workers over one executor: an urgent band
+  resets the timer a less urgent band is still dispatching, and the preempted
+  callback then resets itself.
+
+Acceptance, item by item:
+
+- A Miri test runs callbacks that call back into their executor, and shows no
+  aliasing violation: `just check miri-executor-reentry`, which runs
+  `executor::tests::reentry*` under Tree Borrows. Each fixed site's case
+  failed on the code before its fix, or was shown sensitive by a measured and
+  reverted mutation.
+- Every executor-deriving FFI entry is safe from a callback or refuses there:
+  `check-ffi-executor-derive` (W3).
+
+One residue is tracked separately. Without `alloc`, an owned session is still
+shared from inside its owner
+([issue 2845](../2845-owned-session-from-executor-backing.md), phase-573 W6).
