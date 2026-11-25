@@ -78,6 +78,11 @@ metadata-mode = ["nros-rmw/sync-spin", "nros-node/registration-observer"]
 # `nros-params`' descriptor-text observer and `record_node_metadata_watching_prose`,
 # and nothing else of a probe. A firmware image never names it.
 probe-descriptor-text = ["nros-params/descriptor-text-observer"]
+# Issue 2964 — the Rust probe harness's half of the parameter-declaration
+# watch: the registration observers that hear an imperative declaration or a
+# node opting into undeclared parameters, so the harness may state that its
+# `parameters` list is whole (`parameter_declarations_watched`). Probe only.
+probe-param-watch = ["nros-node/registration-observer"]
 # phase-463 W7 — the PROFILING half: per-callback host `max_observed` (ns) and
 # the topics each invocation published, as `nros.wcet.measurements/1`
 # (`nros_node::executor::profile`). The census hooks below label every executor

@@ -260,7 +260,7 @@ targets = ["rclrs_talker_port", "context_create_executor"]
 runner = "required-features-tests"
 crate = "nros-rmw-metadata"
 features = ["census-param-store-test"]
-targets = ["imperative_param_census", "imperative_timer_census", "probe_launch_seeds"]
+targets = ["imperative_param_census", "imperative_timer_census", "probe_launch_seeds", "param_watch_rust_harness"]
 
 # Issue 0779 — the FILE-CFG half: crate-level `#![cfg(feature = "lending")]`,
 # which cargo BUILDS with the feature off, so nextest ran zero tests and called
