@@ -3265,14 +3265,20 @@ mod fetch_retry_tests {
     }
 
     /// Issue 2966 — a server that sends the headers and PART of the body, then
-    /// drops the connection: with a reset (`rst`, curl exit 56) or a clean
-    /// close (curl exit 18). From the second connection on it serves a Range
-    /// as 206, unless `ranges` is false, when it always sends the whole body
-    /// as 200. Returns its URL, the body, and the requests and Range headers
-    /// it saw.
+    /// drops the connection: with a reset (`reset_after`, curl exit 56) or a
+    /// clean close (curl exit 18). From the second connection on it serves a
+    /// Range as 206, unless `ranges` is false, when it always sends the whole
+    /// body as 200. Returns its URL, the body, and the requests and Range
+    /// headers it saw.
+    ///
+    /// Issue 2974 — a reset discards what the client has not yet read, so
+    /// sent at once it could discard every byte, and the retry would be a
+    /// fresh download, not a resume. `reset_after` names the client's partial
+    /// file, and the reset waits until that file holds data: what curl has
+    /// written it has read, so a reset can no longer take it back.
     #[allow(clippy::type_complexity)]
     fn serve_dropping(
-        rst: bool,
+        reset_after: Option<std::path::PathBuf>,
         ranges: bool,
     ) -> (
         String,
@@ -3311,7 +3317,18 @@ mod fetch_retry_tests {
                     );
                     let _ = stream.write_all(&served[..70_000]);
                     let _ = stream.flush();
-                    if !rst {
+                    if let Some(partial) = &reset_after {
+                        // Observed, not slept: the reset waits for curl's
+                        // own write. The deadline only bounds a hang; past
+                        // it the test fails on its `> 0` below, naming this.
+                        let deadline =
+                            std::time::Instant::now() + std::time::Duration::from_secs(30);
+                        while std::fs::metadata(partial).map_or(0, |m| m.len()) == 0
+                            && std::time::Instant::now() < deadline
+                        {
+                            std::thread::sleep(std::time::Duration::from_millis(2));
+                        }
+                    } else {
                         // Consume the request, so close() is a clean FIN
                         // short of Content-Length: curl's exit 18.
                         let _ = stream.read(&mut buf);
@@ -3344,21 +3361,51 @@ mod fetch_retry_tests {
 
     /// A connection reset mid-body (curl 56) is retried, and the retry RESUMES
     /// from the bytes already on disk instead of starting over.
+    ///
+    /// Issue 2974: WHERE it resumes is not the reset point. A RST discards
+    /// whatever the client had not yet read off the socket, so the partial on
+    /// disk holds anywhere up to the 70,000 bytes the server sent (hosted CI
+    /// saw 65,536 and 65,513: any count). The server resets only once that
+    /// partial holds data, so there is always something to resume. What is
+    /// true whatever the timing: the retry asks for a Range past zero and no
+    /// further than was sent, and the finished file is the body byte for
+    /// byte. The server answers a Range of `from` with `body[from..]`, so an
+    /// identical file proves `from` was exactly the partial's length.
     #[test]
     fn a_download_reset_mid_stream_resumes_where_it_stopped() {
-        let (url, body, seen) = serve_dropping(true, true);
         let dir = crate::test_support::scratch_path("download_reset_resumes");
         std::fs::create_dir_all(&dir).unwrap();
         let dest = dir.join("dist.tar.zst");
+        let (url, body, seen) = serve_dropping(Some(dest.clone()), true);
         download(&url, &dest).unwrap();
         assert_eq!(std::fs::read(&dest).unwrap(), body);
-        assert_eq!(*seen.lock().unwrap(), vec![None, Some(70_000)]);
+        let seen = seen.lock().unwrap().clone();
+        assert_eq!(seen.len(), 2, "one reset, one retry: {seen:?}");
+        assert_eq!(
+            seen[0], None,
+            "the first request asks for the whole body: {seen:?}"
+        );
+        let from = seen[1].unwrap_or_else(|| {
+            panic!(
+                "the retry resumes (sends a Range) rather than restarting; the server \
+                 resets only once the partial holds data: {seen:?}"
+            )
+        });
+        assert!(
+            (1..=70_000).contains(&from),
+            "the retry resumes within what was sent before the reset (70,000 B): {seen:?}"
+        );
     }
 
     /// A clean close short of Content-Length (curl 18) is the same case.
+    ///
+    /// Issue 2974: here the offset is EXACT whatever the timing. The server
+    /// closes with a FIN, which TCP delivers after every byte before it, so
+    /// curl has all 70,000 on disk when it sees the short body. Only a RST
+    /// (above) can drop unread bytes.
     #[test]
     fn a_download_closed_short_resumes_where_it_stopped() {
-        let (url, body, seen) = serve_dropping(false, true);
+        let (url, body, seen) = serve_dropping(None, true);
         let dir = crate::test_support::scratch_path("download_short_resumes");
         std::fs::create_dir_all(&dir).unwrap();
         let dest = dir.join("dist.tar.zst");
@@ -3368,10 +3415,11 @@ mod fetch_retry_tests {
     }
 
     /// A server that ignores the Range (curl 33) gets one fresh download, not
-    /// a failure and not a spliced file.
+    /// a failure and not a spliced file. A clean close, so the Range it
+    /// ignored is exactly the 70,000 bytes sent (issue 2974).
     #[test]
     fn a_server_that_cannot_resume_gets_a_fresh_download() {
-        let (url, body, seen) = serve_dropping(false, false);
+        let (url, body, seen) = serve_dropping(None, false);
         let dir = crate::test_support::scratch_path("download_no_ranges");
         std::fs::create_dir_all(&dir).unwrap();
         let dest = dir.join("dist.tar.zst");
@@ -3384,7 +3432,7 @@ mod fetch_retry_tests {
     /// from this URL.
     #[test]
     fn a_partial_from_an_earlier_run_is_not_resumed() {
-        let (url, body, seen) = serve_dropping(false, true);
+        let (url, body, seen) = serve_dropping(None, true);
         let dir = crate::test_support::scratch_path("download_stale_partial");
         std::fs::create_dir_all(&dir).unwrap();
         let dest = dir.join("dist.tar.zst");
