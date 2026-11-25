@@ -8176,12 +8176,9 @@ fn resolve_image(
         .map(|mut inv| {
             // Issue 2768 -- floored by the code's declarations the probe
             // recorded, which this composition carries.
-            inv.set_param_declarations(
-                crate::entity_inventory::ParamDeclarations::from_model_with(
-                    &model,
-                    inv.recorded_params(),
-                ),
-            );
+            // Issue 2964 -- and an image watched whole that declares
+            // nothing declares zero.
+            inv.set_param_declarations(inv.observed_param_declarations(&model));
             // phase-462 W6c -- the board's per-frame receive cost, so the
             // read-task budget `resolved.toml` publishes and the descriptor the
             // cargo road writes from this composition derive with the same

@@ -143,3 +143,44 @@ NO contract (or with a contract that omits `params:`) fit the board, at the
 same backing as with `params: {}`; a node that sets
 `allow_undeclared_parameters` keeps the default; a stale cargo-leaf
 sidecar keeps the default.
+
+## Progress (2026-11-25): the fix, on PR #4849
+
+- **The record says when it is whole.** The probe sidecar (schema 7) gains
+  `parameter_declarations_watched`. `metadata_mode` arms it when it installs
+  its parameter-declaration listeners (a build with `param-store`). It writes
+  `false` when a row is refused, a declaration names no node, or a node
+  opts into undeclared parameters: nros-node now reports
+  `allow_undeclared_parameters(true)` and `use_undeclared_parameters()` to
+  the probe through the registration observer. An absent key, from an older
+  sidecar or a producer that does not watch, is no evidence. This answers
+  items 1, 4 and 5 above.
+- **The inventory reads it.** `recorded_for_launch` keeps the record WHOLE
+  only when every launched node's sidecar says `true`, and
+  `ParamDeclarations::from_model_observed` reads a whole, silent record as
+  `Declared` with no parameters. That is the bound `params: {}` gives. The
+  workspace cargo image, the cmake model road, the Zephyr west entry and
+  `--from-model` take it.
+- **Unchanged, so they keep the default:**
+  - the cargo single-package leaf, whose reader still checks no freshness;
+  - `--from-leaf`;
+  - the unwired roads;
+  - the Rust source-metadata harness, which records into its own recorder
+    and does not arm the watch yet, so a Rust component's sidecar states no
+    watch.
+  The multi-entry fragment's `for_shared_runtime` keeps its own, older rule,
+  which does not ask for the watch; tightening it is left for its owner.
+- **Say why.** `--explain-sizing` (and the one-line summary) now names a
+  built store whose parameter count nothing stated, with the reason and the
+  `params: {}` remedy.
+
+Tests:
+- `an_image_watched_whole_that_declares_nothing_declares_zero` and
+  `a_declaration_or_a_contract_answers_as_before_when_watched_whole`
+  (nros-cli-core);
+- the recorder's three watch states (nros `node_metadata`);
+- `imperative_param_census`: every route reported gives `true`, and
+  `allow_undeclared_parameters(true)` turns it `false`;
+- `a_built_store_with_no_stated_count_is_named` (nros-sizing-descriptor).
+
+Not measured yet: a Pico image with no contract, built on this branch.

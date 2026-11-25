@@ -5206,6 +5206,7 @@ mod tests {
             executable: Some("talker".into()),
             description_max_len: None,
             parameters: Vec::new(),
+            parameters_watched: None,
             entities: crate::entity_inventory::ComponentEntities {
                 pkg: "talker_pkg".into(),
                 component: "talker".into(),
@@ -5245,6 +5246,7 @@ mod tests {
                 executable: Some("talker".into()),
                 description_max_len: None,
                 parameters: Vec::new(),
+                parameters_watched: None,
                 entities: crate::entity_inventory::ComponentEntities {
                     pkg: "talker_pkg".into(),
                     component: "talker".into(),

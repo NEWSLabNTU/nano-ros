@@ -29,6 +29,13 @@ pub struct SourceMetadata {
     /// [`Self::parameter_description_max_len`].
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub parameter_constraints_max_len: Option<u64>,
+    /// Issue 2964 (schema v7) -- whether `parameters` is the node's WHOLE
+    /// declaration set: `Some(true)` only when the probe watched every
+    /// declaration route, took every row, and no node opted into undeclared
+    /// parameters. Absent means nobody watched, so an empty `parameters` is
+    /// then no evidence of zero.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parameter_declarations_watched: Option<bool>,
     pub trace: SourceMetadataTrace,
     /// phase-307 W2 — how this sidecar was produced and from what.
     ///
@@ -495,6 +502,8 @@ mod tests {
         // v6: present and distinct from absent.
         assert_eq!(parsed.parameter_description_max_len, Some(42));
         assert_eq!(parsed.parameter_constraints_max_len, Some(7));
+        // v7: the declaration set is stated whole.
+        assert_eq!(parsed.parameter_declarations_watched, Some(true));
 
         // Nothing the producer wrote is dropped or reshaped on the way back.
         // An EMPTY array is the one tolerated difference: the client lists

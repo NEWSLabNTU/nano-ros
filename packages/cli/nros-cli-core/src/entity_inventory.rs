@@ -957,6 +957,11 @@ pub struct EntityInventory {
     /// launch tree starts has exactly one fresh sidecar, so a count over it is
     /// a count over the whole image. See [`Self::recorded_params`].
     recorded_params: Option<RecordedParams>,
+    /// Issue 2964 -- `true` only when every launched node's sidecar states
+    /// that its parameters are the WHOLE declaration set
+    /// (`parameter_declarations_watched: true`). Only then is an empty record
+    /// a declaration of zero. See [`ParamDeclarations::from_model_observed`].
+    recorded_params_whole: bool,
 }
 
 /// Issue 2768 -- per launched node FQN, the `(name, type)` of each parameter
@@ -3462,6 +3467,36 @@ impl ParamDeclarations {
         }
     }
 
+    // Issue 2964.
+    /// [`Self::from_model_with`], reading an image the probe watched WHOLE
+    /// that declares nothing as declaring zero.
+    ///
+    /// `Absent` means "unknown", so it keeps the crate-default store (32
+    /// parameters, 64-byte names, 256-byte strings): about 62 KB of executor
+    /// backing, which overflowed a 264 KiB board. But `from_model_with`
+    /// returns it for two different facts: no record, and a record that
+    /// watched every launched node and saw no declaration. The second is a
+    /// zero when `whole` says every node's sidecar watched every declaration
+    /// route, took every row, and saw no node opt into undeclared parameters.
+    /// Then the image enters as `Declared` with no parameters, which sizes the
+    /// store for the parameter the runtime seeds, as `params: {}` does.
+    pub fn from_model_observed(
+        model: &ros_launch_manifest_model::SystemModel,
+        recorded: Option<&RecordedParams>,
+        whole: bool,
+    ) -> Self {
+        let own = Self::from_model_with(model, recorded);
+        match (&own, recorded) {
+            (ParamDeclarations::Absent, Some(rec)) if whole && !rec.is_empty() => {
+                ParamDeclarations::Declared {
+                    nodes: rec.keys().cloned().collect(),
+                    params: Vec::new(),
+                }
+            }
+            _ => own,
+        }
+    }
+
     /// Read `contracts.node_params` against the nodes the model runs.
     ///
     /// The contract alone. A road that knows the workspace calls
@@ -3711,6 +3746,7 @@ impl EntityInventory {
             unresolved_bridges: Vec::new(),
             param_prose: ParamProse::NotConsulted,
             recorded_params: None,
+            recorded_params_whole: false,
         }
     }
 
@@ -3808,6 +3844,22 @@ impl EntityInventory {
     /// never sized below what the code declares.
     pub fn recorded_params(&self) -> Option<&RecordedParams> {
         self.recorded_params.as_ref()
+    }
+
+    // Issue 2964.
+    /// What this image's contract and its code declare as parameters, for
+    /// sizing the store. An image whose every launched node the probe watched
+    /// whole, and which declares nothing, declares zero; otherwise as
+    /// [`ParamDeclarations::from_model_with`].
+    pub fn observed_param_declarations(
+        &self,
+        model: &ros_launch_manifest_model::SystemModel,
+    ) -> ParamDeclarations {
+        ParamDeclarations::from_model_observed(
+            model,
+            self.recorded_params.as_ref(),
+            self.recorded_params_whole,
+        )
     }
 
     /// Issue 1198 -- state the authored sched task count for an inventory whose
@@ -4472,6 +4524,8 @@ impl EntityInventory {
         };
         let mut recorded: Option<RecordedParams> =
             (!model.structure.nodes.is_empty()).then(RecordedParams::new);
+        // Issue 2964 -- and whole only if every node's sidecar says so.
+        let mut whole = recorded.is_some();
         for (fqn, node) in &model.structure.nodes {
             let component = fqn.rsplit('/').next().unwrap_or(fqn).to_string();
             let found: Vec<&crate::orchestration::metadata_refresh::ProbeRow> = probe
@@ -4506,6 +4560,7 @@ impl EntityInventory {
             // single sidecar leaves the image's parameters unrecorded.
             recorded = match (recorded, found.as_slice()) {
                 (Some(mut all), [one]) => {
+                    whole &= one.parameters_watched == Some(true);
                     all.insert(fqn.clone(), one.parameters.clone());
                     Some(all)
                 }
@@ -4523,6 +4578,7 @@ impl EntityInventory {
             });
         }
         inv.param_prose = prose;
+        inv.recorded_params_whole = whole && recorded.is_some();
         inv.recorded_params = recorded;
         inv
     }
@@ -4557,6 +4613,7 @@ impl EntityInventory {
         inv.apply_frame(&ImageFrame::from_model(model));
         inv.param_prose = recorded.param_prose.clone();
         inv.recorded_params = recorded.recorded_params.clone();
+        inv.recorded_params_whole = recorded.recorded_params_whole;
         for c in recorded.components {
             inv.insert(c);
         }
@@ -4950,6 +5007,12 @@ impl EntityInventory {
             .recorded_params
             .clone()
             .or_else(|| model.recorded_params.clone());
+        // Issue 2964 -- the flag travels with the record it describes.
+        out.recorded_params_whole = if self.recorded_params.is_some() {
+            self.recorded_params_whole
+        } else {
+            model.recorded_params_whole
+        };
         // Issue 2076 -- a bridge either side declared, once by name.
         out.bridges = union_bridges(&self.bridges, &model.bridges);
         out.bridge_backends = self
@@ -13694,6 +13757,7 @@ contracts:
             executable: Some(exec.into()),
             description_max_len: None,
             parameters: Vec::new(),
+            parameters_watched: None,
             entities: ComponentEntities {
                 pkg: pkg.into(),
                 component: exec.into(),
@@ -13726,6 +13790,78 @@ contracts:
 
         let one = EntityInventory::recorded_for_launch(&model, &[talker]);
         assert_eq!(one.recorded_params(), None);
+    }
+
+    /// Issue 2964 -- an image declares ZERO parameters only when every
+    /// launched node's sidecar watched its declarations whole and saw none.
+    /// One sidecar that did not say so (an older schema, or a producer that
+    /// does not watch) leaves the image unknown, and the default store stands.
+    #[test]
+    fn an_image_watched_whole_that_declares_nothing_declares_zero() {
+        let model = partial_model("");
+        let watched = |pkg, exec| {
+            let mut r = probe(pkg, exec, vec![]);
+            r.parameters_watched = Some(true);
+            r
+        };
+        let both = EntityInventory::recorded_for_launch(
+            &model,
+            &[
+                watched("talker_pkg", "talker"),
+                watched("listener_pkg", "listener"),
+            ],
+        );
+        match both.observed_param_declarations(&model) {
+            ParamDeclarations::Declared { nodes, params } => {
+                assert_eq!(nodes, vec!["/listener".to_string(), "/talker".to_string()]);
+                assert!(params.is_empty());
+            }
+            other => panic!("watched whole and silent is a zero, got {other:?}"),
+        }
+
+        // One sidecar that does not state the watch: unknown.
+        let mut broken = watched("listener_pkg", "listener");
+        broken.parameters_watched = Some(false);
+        for listener in [probe("listener_pkg", "listener", vec![]), broken] {
+            let part = EntityInventory::recorded_for_launch(
+                &model,
+                &[watched("talker_pkg", "talker"), listener],
+            );
+            assert!(part.recorded_params().is_some());
+            assert_eq!(
+                part.observed_param_declarations(&model),
+                ParamDeclarations::Absent
+            );
+        }
+
+        // A missing sidecar: no record, unknown.
+        let one = EntityInventory::recorded_for_launch(&model, &[watched("talker_pkg", "talker")]);
+        assert_eq!(
+            one.observed_param_declarations(&model),
+            ParamDeclarations::Absent
+        );
+    }
+
+    /// Issue 2964 -- the zero reading changes nothing an image already says:
+    /// a recorded declaration, or a contract's `params:`, answers as before.
+    #[test]
+    fn a_declaration_or_a_contract_answers_as_before_when_watched_whole() {
+        use ros_launch_manifest_model::ParamType;
+        let model = partial_model("");
+        let mut talker = probe("talker_pkg", "talker", vec![]);
+        talker.parameters = vec![("rate_hz".into(), ParamType::Integer)];
+        talker.parameters_watched = Some(true);
+        let mut listener = probe("listener_pkg", "listener", vec![]);
+        listener.parameters_watched = Some(true);
+        let inv = EntityInventory::recorded_for_launch(&model, &[talker, listener]);
+        assert_eq!(
+            inv.observed_param_declarations(&model),
+            ParamDeclarations::from_model_with(&model, inv.recorded_params()),
+        );
+        assert_ne!(
+            inv.observed_param_declarations(&model),
+            ParamDeclarations::Absent
+        );
     }
 
     /// What the probe sidecars of the stock workspace record: the talker's

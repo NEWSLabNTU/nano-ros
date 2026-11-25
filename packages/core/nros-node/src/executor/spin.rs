@@ -15861,6 +15861,24 @@ impl<'s> Executor<'s> {
         }
     }
 
+    // Issue 2964.
+    /// Tell a metadata probe that `node` opted into undeclared parameters, so
+    /// its recorded declarations are a floor, not a count. Compiles to nothing
+    /// without `registration-observer`.
+    #[inline]
+    #[cfg_attr(not(feature = "registration-observer"), allow(unused_variables))]
+    pub(crate) fn observe_undeclared_parameters(&self, node: super::node_record::NodeId) {
+        #[cfg(feature = "registration-observer")]
+        if let Some(record) = self.nodes.get(node.index()) {
+            super::registration_observer::observe_undeclared_parameters(
+                super::registration_observer::ObservedUndeclaredParameters {
+                    node_name: record.name.as_str(),
+                    node_namespace: record.namespace.as_str(),
+                },
+            );
+        }
+    }
+
     /// Build the parameter STORE and register no service.
     ///
     /// What an image declaring the `params` axis (and not `param_services`)
@@ -17117,6 +17135,9 @@ impl<'s> Executor<'s> {
         node: super::node_record::NodeId,
         allow: bool,
     ) {
+        if allow {
+            self.observe_undeclared_parameters(node);
+        }
         self.ensure_parameter_store();
         if let Some(params) = &mut self.params {
             params.server.set_allow_undeclared(node.into(), allow);
@@ -17640,6 +17661,7 @@ impl<'s> Executor<'s> {
         &mut self,
         node: super::node_record::NodeId,
     ) -> Result<nros_params::Parameters<'_, 's>, NodeError> {
+        self.observe_undeclared_parameters(node);
         self.ensure_parameter_store(); // phase-515 R10, as `parameter_on`
         let server = self
             .params

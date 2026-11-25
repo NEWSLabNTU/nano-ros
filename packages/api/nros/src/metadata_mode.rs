@@ -284,10 +284,13 @@ pub fn record(rec: EntityRecord<'_>) -> bool {
 #[must_use]
 pub fn record_parameter(name: &str, value: &crate::ParameterValue) -> bool {
     let Ok(default) = ParameterDefault::from_value(value) else {
+        state().with(|st| st.recorder.break_parameter_declarations());
         return false;
     };
     state().with(|st| {
         let Some(node_id) = st.current_node.clone() else {
+            // Issue 2964 -- a declaration nobody could attribute.
+            st.recorder.break_parameter_declarations();
             return false;
         };
         push_parameter(st, node_id, name, value.param_type(), default)
@@ -318,10 +321,12 @@ pub fn record_parameter_declared_on(
         None => ParameterDefault::for_type(parameter_type),
     };
     let Ok(default) = default else {
+        state().with(|st| st.recorder.break_parameter_declarations());
         return false;
     };
     let previous = state().with(|st| st.current_node.clone());
     if !begin_node(node_name, node_namespace, 0) {
+        state().with(|st| st.recorder.break_parameter_declarations());
         return false;
     }
     state().with(|st| {
@@ -352,11 +357,17 @@ fn push_parameter(
             qos: crate::QoSProfile::default(),
         };
         let Ok(mut entity) = entity_metadata(spec) else {
+            st.recorder.break_parameter_declarations();
             return false;
         };
         entity.parameter_type = Some(parameter_type);
         entity.parameter_default = Some(default);
-        st.recorder.push_entity(entity).is_ok()
+        let taken = st.recorder.push_entity(entity).is_ok();
+        if !taken {
+            // Issue 2964 -- the list is now short of what the code declared.
+            st.recorder.break_parameter_declarations();
+        }
+        taken
     }
 }
 
@@ -479,6 +490,14 @@ pub fn listen_for_registrations() {
 /// the build reads, so it is dropped.
 #[cfg(feature = "param-store")]
 fn listen_for_parameter_declarations() {
+    // Issue 2964 -- every declaration route this image links now reports:
+    // the C, C++ and declarative Rust routes through `on_param_declare`, the
+    // imperative Rust routes through the observer below. So the sidecar may
+    // say its `parameters` list is whole, until something breaks that.
+    state().with(|st| st.recorder.arm_parameter_declarations());
+    nros_node::executor::registration_observer::set_undeclared_parameters_observer(|_reg| {
+        state().with(|st| st.recorder.break_parameter_declarations());
+    });
     nros_node::executor::registration_observer::set_parameter_declare_observer(|reg| {
         if !record_parameter_declared_on(
             reg.node_name,

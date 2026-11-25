@@ -125,6 +125,26 @@ pub fn defaults_in_use(desc: &SizingDescriptor) -> Vec<DefaultInUse> {
         );
     }
 
+    // Issue 2964 -- nros-params: the store's bounds. A store is built but
+    // nothing stated how many parameters it holds, so it keeps the crate's
+    // default bounds, which is most of a small board's executor backing.
+    if matches!(desc.params.store(), Fact::Stated(store) if store.is_built())
+        && matches!(desc.params.max_parameters(), Fact::Absent)
+    {
+        add(
+            "the parameter store keeps its default bounds (parameter count, name and string \
+             lengths), carved from the executor backing",
+            "nothing stated this image's parameters: its contract has no `params:`, and the \
+             build did not watch every node declare its parameters (a node with no fresh probe \
+             record, a road that reads none, or a node that allows undeclared parameters)"
+                .to_string(),
+            Some(
+                "declare each node's `params:` in the `system.contract.yaml` beside `system.toml` \
+                 (`params: {}` for a node that has none)",
+            ),
+        );
+    }
+
     // nros-rmw-zenoh: the parameter services' inbox slot.
     if desc.params.service_shape().into_stated().is_none() {
         add(
@@ -208,6 +228,28 @@ mod tests {
         let mixed = summary_line(&[entry(None), entry(Some("do"))], "see").unwrap();
         assert!(mixed.contains("declaring 1 of them"), "{mixed}");
         assert!(mixed.ends_with("details: see"), "{mixed}");
+    }
+
+    // Issue 2964.
+    /// A built store whose parameter count nothing stated is named, and one
+    /// whose count is stated, or with no store at all, is not.
+    #[test]
+    fn a_built_store_with_no_stated_count_is_named() {
+        let names_store = |d: &SizingDescriptor| {
+            defaults_in_use(d)
+                .iter()
+                .any(|e| e.consequences.iter().any(|c| c.contains("parameter store")))
+        };
+        let mut d =
+            SizingDescriptor::new("listener", crate::Status::Derived, crate::Basis::Contract);
+        assert!(!names_store(&d), "no store, nothing to say");
+        d.params.set_store(Some(crate::ParamStore::ParamServices));
+        assert!(
+            names_store(&d),
+            "a built store with no count keeps the default"
+        );
+        d.params.set_max_parameters(Some(1));
+        assert!(!names_store(&d), "a stated count is not a default");
     }
 
     #[test]

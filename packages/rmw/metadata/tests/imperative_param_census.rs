@@ -151,4 +151,19 @@ fn imperative_rust_declarations_reach_the_census() {
         1,
         "each declaration is recorded once: {params:?}"
     );
+
+    // Issue 2964 -- every route above reported, so the sidecar may say its
+    // parameter list is the whole declaration set.
+    assert!(
+        json.contains("\"parameter_declarations_watched\":true,"),
+        "a probe that heard every route states the list whole: {json}"
+    );
+    // A node that lets a remote set create names it never declared makes the
+    // list a floor, not a count: the build must keep the default store.
+    executor.node_mut(alpha).allow_undeclared_parameters(true);
+    let json = nros::metadata_mode::to_json(&export).expect("serialize");
+    assert!(
+        json.contains("\"parameter_declarations_watched\":false,"),
+        "allow_undeclared_parameters breaks the watch: {json}"
+    );
 }

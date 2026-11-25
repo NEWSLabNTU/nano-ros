@@ -310,6 +310,57 @@ pub(crate) fn observe_parameter_declare(reg: ObservedParameterDeclare<'_>) {
     }
 }
 
+// Issue 2964.
+/// A node that opted into undeclared parameters: a remote set may create a
+/// name its code never declared (`allow_undeclared_parameters(true)`), or
+/// its code reads and writes names through `use_undeclared_parameters`.
+///
+/// A metadata probe that hears this can no longer say what the node
+/// declares: its store holds whatever a peer or the code writes later, so the
+/// recorded declarations are a floor and never a count. The probe marks its
+/// record incomplete, and the build keeps the default store for that image.
+#[cfg(feature = "param-store")]
+#[derive(Debug, Clone, Copy)]
+pub struct ObservedUndeclaredParameters<'a> {
+    /// The node's final name.
+    pub node_name: &'a str,
+    /// The node's namespace, as the node table holds it.
+    pub node_namespace: &'a str,
+}
+
+/// A sink a metadata probe installs to hear a node opt into undeclared
+/// parameters.
+#[cfg(feature = "param-store")]
+pub type UndeclaredParametersObserver = fn(ObservedUndeclaredParameters<'_>);
+
+#[cfg(feature = "param-store")]
+static UNDECLARED_PARAMETERS_OBSERVER: Mutex<Option<UndeclaredParametersObserver>> =
+    Mutex::new(None);
+
+/// Install the undeclared-parameters sink. Same contract as [`set_observer`]:
+/// only `nros::metadata_mode` calls it, and the last caller wins.
+#[cfg(feature = "param-store")]
+pub fn set_undeclared_parameters_observer(observer: UndeclaredParametersObserver) {
+    UNDECLARED_PARAMETERS_OBSERVER.with(|slot| *slot = Some(observer));
+}
+
+/// Remove the undeclared-parameters sink.
+#[cfg(feature = "param-store")]
+pub fn clear_undeclared_parameters_observer() {
+    UNDECLARED_PARAMETERS_OBSERVER.with(|slot| *slot = None);
+}
+
+/// Report that a node opted into undeclared parameters. A no-op when nothing
+/// is listening.
+#[cfg(all(feature = "param-store", any(has_rmw, test)))]
+pub(crate) fn observe_undeclared_parameters(reg: ObservedUndeclaredParameters<'_>) {
+    // Released before the sink runs, as in `observe`.
+    let sink = UNDECLARED_PARAMETERS_OBSERVER.with(|slot| *slot);
+    if let Some(sink) = sink {
+        sink(reg);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
