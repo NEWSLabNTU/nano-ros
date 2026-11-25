@@ -113,6 +113,7 @@ pub const IN_TREE_PACKAGES: &[InTreePackage] = &[
             "xrce.builtin_service_request_buffer_bytes",
             "xrce.builtin_service_servers",
             "xrce.custom_transport_mtu",
+            "xrce.graph_resync_ms",
             "xrce.max_service_clients",
             "xrce.max_service_servers",
             "xrce.max_subscribers",

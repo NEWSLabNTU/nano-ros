@@ -148,6 +148,9 @@ config NROS_XRCE_BUFFER_BYTES
 config NROS_XRCE_CUSTOM_TRANSPORT_MTU
     int "XRCE custom-transport MTU"
 
+config NROS_XRCE_GRAPH_RESYNC_MS
+    int "Graph re-sync period (ms)"
+
 config NROS_XRCE_MAX_SERVICE_CLIENTS
     int "Maximum concurrent service clients"
 

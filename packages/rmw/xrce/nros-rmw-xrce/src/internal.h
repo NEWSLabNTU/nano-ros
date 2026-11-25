@@ -637,12 +637,23 @@ typedef struct xrce_graph_endpoint {
 #define XRCE_GRAPH_MAX_PEER_NODES 64u
 #endif
 
+/* Issue 2970 -- how often the `ros_discovery_info` reader is re-created so a
+ * participant that left without its last sample reaching this client is
+ * dropped from the graph (graph.c, "The re-sync"). Milliseconds; 0 turns the
+ * re-sync off. Stated through the `xrce.graph_resync_ms` knob. */
+#ifndef XRCE_GRAPH_RESYNC_MS
+#define XRCE_GRAPH_RESYNC_MS 5000
+#endif
+
 typedef struct xrce_graph_peer {
     struct xrce_graph_peer* next;
     uint8_t gid[24];
     uint32_t n_nodes;
     size_t names_len;
     char* names;
+    /* Issue 2970 -- the re-sync generation whose reader last delivered this
+     * participant's sample (`xrce_graph::sync_gen`). */
+    uint32_t seen_gen;
 } xrce_graph_peer;
 
 typedef struct xrce_graph {
@@ -675,6 +686,18 @@ typedef struct xrce_graph {
     bool warned_overflow;
     rmw_event_callback_t on_change;
     const void* on_change_user;
+    /* Issue 2970 -- the re-sync. The reader's three object ids, kept so it
+     * can be re-created in place (UXR_REPLACE); the current generation and
+     * the last one whose re-created reader the Agent confirmed; the pending
+     * re-create's request id (UXR_INVALID_REQUEST_ID when none); and when the
+     * last re-sync went out (`uxr_millis`). */
+    uxrObjectId reader_topic_oid;
+    uxrObjectId reader_sub_oid;
+    uxrObjectId reader_oid;
+    uint32_t sync_gen;
+    uint32_t confirmed_gen;
+    uint16_t resync_req;
+    int64_t resync_at_ms;
 } xrce_graph;
 
 /* ---- Per-session state ---------------------------------------------- */
@@ -1268,6 +1291,17 @@ bool xrce_graph_endpoint_gid(const xrce_session_state_t* st, const xrce_graph_en
                              uint8_t out[24]);
 /* Publish the sample if anything changed. Called from `drive_io`. */
 void xrce_graph_flush(xrce_session_state_t* st);
+/* Issue 2970 -- the re-sync, called from `drive_io`: at most once per
+ * XRCE_GRAPH_RESYNC_MS while the reader exists, drop the participants the last
+ * confirmed generation did not re-deliver, then re-create the reader. */
+void xrce_graph_resync(xrce_session_state_t* st);
+/* Issue 2970 -- the session's status callback forwards every status here; the
+ * graph consumes the one answering its pending re-create. */
+void xrce_graph_on_status(xrce_session_state_t* st, uint16_t request_id, uint8_t status);
+/* Issue 2970 -- drop every participant whose sample the current generation's
+ * reader has not delivered (`seen_gen != sync_gen`), firing the graph-change
+ * edge once if any went. Returns how many were dropped. */
+uint32_t xrce_graph_sweep(xrce_graph* g);
 /* The request callback's first stop: true if the request was the probe's. */
 /* Issue 2106 — the `ros_discovery_info` read side (graph.c). */
 /* Consume a topic sample addressed to the graph reader. True = it was ours. */

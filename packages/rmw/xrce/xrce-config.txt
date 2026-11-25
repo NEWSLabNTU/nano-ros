@@ -268,6 +268,9 @@ define  XRCE_BUILTIN_SERVICE_REQUEST_BUFFER_SIZE NROS_XRCE_BUILTIN_SERVICE_REQUE
 # default; 4 is the floor (reliable retransmission needs at least 2 unACK'd
 # messages outstanding plus headroom).
 define  XRCE_STREAM_HISTORY        NROS_XRCE_STREAM_HISTORY        4
+# Issue 2970 — the graph reader's re-sync period, milliseconds. 0 is a real
+# value (the re-sync off), so the minimum is 0; `internal.h` defaults it to 5000.
+define  XRCE_GRAPH_RESYNC_MS       NROS_XRCE_GRAPH_RESYNC_MS       0
 # Issue 1722 — the parameter family's largest REQUEST, in bytes (CDR header
 # included). Not an XRCE knob: it is the backend-neutral statement nros-node
 # already checks against the request it prices from the declaration and the

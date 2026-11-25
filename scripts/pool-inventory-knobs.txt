@@ -118,6 +118,7 @@ NROS_XRCE_BUFFER_BYTES | heap | | the default the three XRCE buffer sizes above 
 NROS_XRCE_TRANSPORT_MTU | heap | | Micro-XRCE-DDS-Client transport MTU (UDP/TCP): sizes the transport's buffer inside its transport struct
 NROS_XRCE_CUSTOM_TRANSPORT_MTU | heap | | the custom-transport twin of `NROS_XRCE_TRANSPORT_MTU`
 NROS_XRCE_STREAM_HISTORY | heap | | reliable-stream history depth; multiplies the stream buffers inside the session state
+NROS_XRCE_GRAPH_RESYNC_MS | not-a-size | | a time: how often an XRCE session re-creates its ros_discovery_info reader (issue 2970)
 NROS_ZENOH_SUBSCRIBER_LARGE_THRESHOLD_BYTES | not-a-size | | the hint above which a subscription routes to the LARGE payload class — a routing threshold, not storage
 NROS_ZENOH_GRAPH_DISCOVERY | not-a-size | | switches the graph cache on; its bytes are `ZPICO_GRAPH_CACHE_SIZE`
 NROS_SERVICE_TIMEOUT_MS | not-a-size | | milliseconds

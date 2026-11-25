@@ -148,6 +148,16 @@ uxrObjectId xrce_alloc_entity_id(xrce_session_state_t* st, uint8_t type) {
     return uxr_object_id(id, type);
 }
 
+/* Issue 2970 -- every STATUS the Agent sends. A status a blocking confirm is
+ * waiting for is also recorded by the client library itself, so forwarding it
+ * here changes nothing for those waits. */
+static void xrce_status_callback(uxrSession* session, uxrObjectId object_id, uint16_t request_id,
+                                 uint8_t status, void* args) {
+    (void)session;
+    (void)object_id;
+    xrce_graph_on_status((xrce_session_state_t*)args, request_id, status);
+}
+
 rmw_ret_t xrce_confirm_entities(xrce_session_state_t* st, const uint16_t* requests,
                                 uint8_t* statuses, size_t count) {
     bool ok = uxr_run_session_until_all_status(&st->session, XRCE_ENTITY_CREATION_TIMEOUT_MS,
@@ -1070,6 +1080,9 @@ rmw_ret_t xrce_session_create(const char* locator, uint8_t mode, uint32_t domain
     uxr_set_topic_callback(&st->session, xrce_topic_callback, st);
     uxr_set_request_callback(&st->session, xrce_request_callback, st);
     uxr_set_reply_callback(&st->session, xrce_reply_callback, st);
+    /* Issue 2970 -- the graph re-sync's re-create is confirmed here, not
+     * waited for. */
+    uxr_set_status_callback(&st->session, xrce_status_callback, st);
 
     if (!uxr_create_session_retries(&st->session, XRCE_SESSION_CREATION_RETRIES)) {
         /* Issue 1932 — this and the participant confirm below both return
@@ -1322,6 +1335,8 @@ rmw_ret_t xrce_session_drive_io(rmw_session_t* session, int32_t timeout_ms) {
      * one `ros_discovery_info` write rather than N. */
     xrce_session_lock(st);
     xrce_graph_flush(st);
+    /* Issue 2970 -- a no-op until the graph reader exists. */
+    xrce_graph_resync(st);
     xrce_session_unlock(st);
 
     /* A session run can return well before its window (once nothing more
