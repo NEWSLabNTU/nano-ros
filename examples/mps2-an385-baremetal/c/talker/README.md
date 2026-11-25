@@ -27,7 +27,7 @@ staticlib, so the link is rooted in CMake like every RTOS board's.
 The C library is newlib-nano, so `printf` and `snprintf` work.
 
 The main stack is 256 KiB with an MPU guard below it; raise it with
-`NROS_BAREMETAL_STACK_KB`. An overflow stops the image with
+`memory.app_stack_bytes` (`NROS_MEMORY_APP_STACK_BYTES`, bytes). An overflow stops the image with
 `nros: stack overflow`.
 
 ## Build and run

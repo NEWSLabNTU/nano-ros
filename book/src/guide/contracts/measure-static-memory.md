@@ -40,7 +40,7 @@ On the Tutorial's board, `mps2-an385-baremetal`, two figures are worth
 knowing before you read either output:
 
 - **The heap is a static.** `nros_platform_mps2_an385::memory::HEAP` is a
-  128 KiB allocator (`NROS_HEAP_SIZE` changes it, in bytes), so it is
+  128 KiB allocator (`memory.heap_bytes` changes it, in bytes), so it is
   already inside the RAM total. Its symbol reads a little over 128 KiB
   (132,816 B measured) because the allocator's own state sits beside the
   arena. It starts all-zero, so it is in `.bss` and costs no flash.

@@ -80,7 +80,9 @@ generated entry's dependencies.
   and stops the image with
   `nros: stack overflow: the main stack grew past its stated size`. Nothing
   below the stack is overwritten. Raise the size with
-  `NROS_BAREMETAL_STACK_KB` in the image's build environment. A size too big
+  `memory.app_stack_bytes`, in bytes and a whole number of KiB, in the image's
+  `[image.<id>.knobs.memory]` or as `NROS_MEMORY_APP_STACK_BYTES` in its build
+  environment. A size too big
   for the image's statics fails the link, naming the same knob. A size below
   the image's stack floor, a heuristic estimate of what nano-ros needs, fails
   the build with the value to set

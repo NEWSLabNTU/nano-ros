@@ -23,7 +23,7 @@
  *                                 grows down from the top of RAM
  *
  * `_stack_size` is stated, not measured: `nros-stack.x`, which the board's
- * build script writes into its OUT_DIR, sets it from `NROS_BAREMETAL_STACK_KB`
+ * build script writes into its OUT_DIR, sets it from `NROS_MEMORY_APP_STACK_BYTES`
  * (default in `build.rs`). A stack that grows past it writes into the guard,
  * faults, and the board's HardFault handler reports the overflow and stops the
  * image. Before this, the stack had no size and no guard, so an overflow wrote
@@ -58,9 +58,10 @@ _nros_stack_guard = _stack_end - _nros_stack_guard_size;
 
 ASSERT(_stack_size % 1024 == 0, "
 nros: the main stack size must be a whole number of KiB, so that the guard
-below it is aligned for the MPU. Set NROS_BAREMETAL_STACK_KB.");
+below it is aligned for the MPU. Set NROS_MEMORY_APP_STACK_BYTES to a multiple
+of 1024.");
 
 ASSERT(__sheap <= _nros_stack_guard, "
 nros: the image's statics run into the main stack and its guard. Lower
-NROS_BAREMETAL_STACK_KB, or shrink the statics (the Rust heap is
-NROS_HEAP_SIZE).");
+NROS_MEMORY_APP_STACK_BYTES, or shrink the statics (the Rust heap is
+NROS_MEMORY_HEAP_BYTES).");

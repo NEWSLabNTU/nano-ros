@@ -2,7 +2,7 @@
 //! MPS2-AN385 (XRCE's nano-ros wrapper needs them).
 //!
 //! Routes through the same `FreeListHeap` zenoh-pico uses (`crate::memory`,
-//! sized by `NROS_HEAP_SIZE`), so XRCE inherits the same tunable pool — no
+//! sized by `NROS_MEMORY_HEAP_BYTES`), so XRCE inherits the same tunable pool — no
 //! second heap.
 //!
 //! String helpers (`strrchr`, `strtol`, plus the pre-existing

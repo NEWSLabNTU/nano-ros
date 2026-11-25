@@ -52,7 +52,7 @@ pub struct Refusal {
     pub shape: FreeShape,
     /// Which exhaustion it is.
     pub verdict: Exhaustion,
-    /// The knob a TOO SMALL refusal names (e.g. `NROS_HEAP_SIZE`).
+    /// The knob a TOO SMALL refusal names (e.g. `NROS_MEMORY_HEAP_BYTES`).
     pub knob: &'static str,
 }
 
@@ -201,7 +201,7 @@ mod tests {
                 free_blocks: 2,
             },
             verdict: Exhaustion::TooSmall,
-            knob: "NROS_HEAP_SIZE",
+            knob: "NROS_MEMORY_HEAP_BYTES",
         };
         let l = line(&r);
         for want in [
@@ -210,7 +210,7 @@ mod tests {
             "arena 16384 bytes",
             "free 1500 bytes",
             "largest free block 1024 bytes",
-            "raise NROS_HEAP_SIZE",
+            "raise NROS_MEMORY_HEAP_BYTES",
         ] {
             assert!(l.contains(want), "missing {want:?}: {l}");
         }
@@ -227,7 +227,7 @@ mod tests {
                 free_blocks: 6,
             },
             verdict: Exhaustion::Fragmented,
-            knob: "NROS_HEAP_SIZE",
+            knob: "NROS_MEMORY_HEAP_BYTES",
         };
         let l = line(&r);
         assert!(l.starts_with("HEAP EXHAUSTED (FRAGMENTED)"), "{l}");
@@ -250,14 +250,14 @@ mod tests {
             }
             held.push(p);
         }
-        let r = Refusal::of(&HEAP, 1024, "NROS_HEAP_SIZE");
+        let r = Refusal::of(&HEAP, 1024, "NROS_MEMORY_HEAP_BYTES");
         assert_eq!(r.verdict, Exhaustion::TooSmall, "{r:?}");
         assert_eq!(r.capacity, 4096);
         // Free every other block: the bytes are there, the holes are not.
         for p in held.iter().step_by(2) {
             HEAP.free(*p);
         }
-        let r = Refusal::of(&HEAP, 1024, "NROS_HEAP_SIZE");
+        let r = Refusal::of(&HEAP, 1024, "NROS_MEMORY_HEAP_BYTES");
         assert_eq!(r.verdict, Exhaustion::Fragmented, "{r:?}");
         assert!(r.shape.free_total >= 1024, "{r:?}");
     }

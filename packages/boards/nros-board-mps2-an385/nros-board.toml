@@ -130,7 +130,7 @@ ram = 4194304
 # issue 1512 — `heap` was `false`, commented "Pure bare-metal: no heap (static
 # only)", and that was never true of this board: `nros-platform-mps2-an385`
 # holds a `zpico_alloc::FreeListHeap<HEAP_SIZE>` static in `.bss` (128 KB
-# default, `NROS_HEAP_SIZE` override), reaches it through `impl PlatformAlloc
+# default, `NROS_MEMORY_HEAP_BYTES` override), reaches it through `impl PlatformAlloc
 # for Mps2An385Platform`, and its DEFAULT features (`libc-stubs`, `libc-heap`)
 # define `malloc`/`free`/`realloc`/`calloc` as C symbols. This crate's own
 # `nros-platform` dep selects `global-allocator`, so the Rust

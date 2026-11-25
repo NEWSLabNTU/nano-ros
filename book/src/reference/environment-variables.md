@@ -275,7 +275,7 @@ environment; a value you export wins.
 | --- | --- | --- |
 | `NROS_LINK_IP` | on | `0` on a serial-only image drops zenoh-pico's TCP and UDP link code and, with `--gc-sections`, the smoltcp platform code |
 | `NROS_ZENOH_NO_SMOLTCP` | off | `1` skips the smoltcp glue on bare metal |
-| `NROS_HEAP_SIZE` | per platform crate | bare-metal static heap, in bytes; see [Build outputs](build-outputs.md#measured-footprint) |
+| `NROS_MEMORY_HEAP_BYTES` | per platform crate | bare-metal static heap, in bytes (`memory.heap_bytes`); see [Build outputs](build-outputs.md#measured-footprint) |
 
 ### Logging
 

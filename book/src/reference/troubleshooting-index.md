@@ -247,7 +247,7 @@ project records its own, so its first build needs a sourced shell again.
 ### A11. The stack is below the image's floor
 
 ```text
-nros-stack-floor: ERROR: the OPEN stack is 26624 B, below the measured floor 56368 B. Raise it: NROS_BAREMETAL_STACK_KB=56
+nros-stack-floor: ERROR: the OPEN stack is 26624 B, below the measured floor 56368 B. Raise it: NROS_MEMORY_APP_STACK_BYTES=57344
 ```
 
 Every build of an embedded image works out a stack floor for the thread that
@@ -261,7 +261,7 @@ overflows. An exact search that would tighten it is not done yet.
 An image template whose real peak has been observed on a run is measured.
 For a measured image, a stack below the floor fails the build, and the
 message names the setting to raise and the value that clears it:
-`NROS_BAREMETAL_STACK_KB` on bare metal, `NROS_MEMORY_APP_STACK_BYTES` on
+`NROS_MEMORY_APP_STACK_BYTES` on bare metal and
 FreeRTOS, `CONFIG_MAIN_STACK_SIZE` in a Zephyr image's `os_config`. Raise it
 to that value and build again. `nros new` writes a stack that holds the floor
 into the projects it scaffolds. A FreeRTOS image can instead state

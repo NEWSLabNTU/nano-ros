@@ -1562,6 +1562,7 @@ dependencies = [
  "nros-log",
  "nros-platform-api",
  "nros-platform-cffi",
+ "nros-platform-config",
  "nros-smoltcp",
  "zpico-alloc",
 ]
@@ -1576,6 +1577,7 @@ dependencies = [
  "nros-log",
  "nros-platform-api",
  "nros-platform-cffi",
+ "nros-platform-config",
  "nros-smoltcp",
  "zpico-alloc",
 ]

@@ -8,11 +8,12 @@
 //!     entities; same budget as the
 //!     FreeRTOS / ThreadX-RV64 slices)
 //!
-//! `NROS_HEAP_SIZE` (decimal bytes, set in the example's
-//! `.cargo/config.toml` `[env]`) overrides the default. The defaults are
+//! `NROS_MEMORY_HEAP_BYTES` (decimal bytes: the `memory.heap_bytes` knob, in
+//! the image's build environment; `build.rs` reads it through the registry)
+//! overrides the default. The defaults are
 //! generous; a zenoh-pico `tcp/` client's working set is ~12–16 KB and
 //! XRCE's ~3 KB, so a size-critical node can shrink the static heap a lot
-//! (e.g. `NROS_HEAP_SIZE = "16384"`). The default is unchanged when the
+//! (e.g. `NROS_MEMORY_HEAP_BYTES = "16384"`). The default is unchanged when the
 //! var is unset — no regression for examples that don't set it.
 
 use zpico_alloc::FreeListHeap;
@@ -25,18 +26,18 @@ const DEFAULT_HEAP_SIZE: usize = 128 * 1024;
 // (grew past the historical zenoh-pico ~12–16 KB working set with the
 // `Executor<'s>` per-entry storage rework), so 64 KB OOMs the RTIC boot path.
 // 128 KB clears it with headroom; MPS2-AN385 has 16 MB RAM and `HEAP` is
-// `.bss` (zero-init → no flash cost). `NROS_HEAP_SIZE` still shrinks it for
+// `.bss` (zero-init → no flash cost). `NROS_MEMORY_HEAP_BYTES` still shrinks it for
 // size-critical nodes.
 #[cfg(not(any(feature = "link-tls", feature = "dds-heap")))]
 const DEFAULT_HEAP_SIZE: usize = 128 * 1024;
 
-/// `NROS_HEAP_SIZE` (compile-time env, decimal bytes) or [`DEFAULT_HEAP_SIZE`].
-const HEAP_SIZE: usize = match option_env!("NROS_HEAP_SIZE") {
+/// `NROS_MEMORY_HEAP_BYTES` (compile-time env, decimal bytes) or [`DEFAULT_HEAP_SIZE`].
+const HEAP_SIZE: usize = match option_env!("NROS_MEMORY_HEAP_BYTES") {
     Some(s) => parse_usize(s),
     None => DEFAULT_HEAP_SIZE,
 };
 
-/// `const`-evaluable decimal parse — `NROS_HEAP_SIZE` is a build-config
+/// `const`-evaluable decimal parse — `NROS_MEMORY_HEAP_BYTES` is a build-config
 /// literal, so a bad value fails the build rather than at runtime.
 const fn parse_usize(s: &str) -> usize {
     let bytes = s.as_bytes();
@@ -46,12 +47,12 @@ const fn parse_usize(s: &str) -> usize {
         let b = bytes[i];
         assert!(
             b >= b'0' && b <= b'9',
-            "NROS_HEAP_SIZE must be decimal bytes"
+            "NROS_MEMORY_HEAP_BYTES must be decimal bytes"
         );
         n = n * 10 + (b - b'0') as usize;
         i += 1;
     }
-    assert!(n > 0, "NROS_HEAP_SIZE must be > 0");
+    assert!(n > 0, "NROS_MEMORY_HEAP_BYTES must be > 0");
     n
 }
 
@@ -76,7 +77,7 @@ pub fn alloc(size: usize) -> *mut core::ffi::c_void {
     nros_baremetal_common::heap::alloc_or_report::<crate::Mps2An385Platform, HEAP_SIZE>(
         &HEAP,
         size,
-        "NROS_HEAP_SIZE",
+        "NROS_MEMORY_HEAP_BYTES",
     )
 }
 
@@ -85,7 +86,7 @@ pub fn realloc(ptr: *mut core::ffi::c_void, size: usize) -> *mut core::ffi::c_vo
         &HEAP,
         ptr,
         size,
-        "NROS_HEAP_SIZE",
+        "NROS_MEMORY_HEAP_BYTES",
     )
 }
 

@@ -230,7 +230,7 @@ Both tables are checked when `system.toml` is read, and `nros flash` and
    `[knobs]`, not on every command line.
 
 3. Keep the heap at the board default for a `nros::main!` image. Its executor
-   backing is one large allocation; shrink `NROS_HEAP_SIZE` only on a
+   backing is one large allocation; shrink `memory.heap_bytes` only on a
    hand-written direct-mode image whose peak you measured.
 
 Moving from ethernet to a serial link is the largest saving. The measured
