@@ -39,8 +39,8 @@ use nros_tests::{
     },
     lane_scope::require_rt_sched_claimed,
     levels::{
-        attitude_run, deadline_burn_margin, kernel_is_preempt_rt, level_order_verdict, load_ticks,
-        s1_verdict, throttle_verdict,
+        LoadTick, attitude_run, deadline_burn_margin, kernel_is_preempt_rt, level_order_verdict,
+        load_ticks, s1_detection_floor, s1_verdict, throttle_verdict,
     },
 };
 use std::{path::Path, process::Command, time::Duration};
@@ -277,7 +277,7 @@ fn linux_level_budget_overrun_is_throttled_by_the_kernel() {
     let burn_us: u64 = console
         .lines()
         .find_map(|l| l.strip_prefix("[load_capped] burn_us="))
-        .and_then(|v| v.trim().parse().ok())
+        .and_then(|v| v.split_whitespace().next()?.parse().ok())
         .unwrap_or_else(|| panic!("load_capped printed no burn_us\n--- console ---\n{console}"));
     let (min_khz, max_khz) = cpu_clock_range_khz();
     if let Err(e) = deadline_burn_margin(burn_us, CAPPED_BUDGET_US, min_khz, max_khz) {
@@ -294,11 +294,14 @@ fn linux_level_budget_overrun_is_throttled_by_the_kernel() {
 }
 
 /// W2 -- RFC-0002 S1 on levels: the 1 kHz critical loop on its own level
-/// keeps its deadlines for 60 s while S1's 5 ms telemetry runs on a less
-/// urgent level of the same CPU -- every one on a PREEMPT_RT kernel, and on a
-/// generic kernel all but the host's own floor ([`s1_verdict`]). The negative
-/// control runs first: the same two nodes on ONE level must miss, which shows
-/// the count can see a miss.
+/// keeps its rate for 60 s while S1's 5 ms telemetry runs on a less urgent
+/// level of the same CPU, and telemetry never once runs in front of it
+/// ([`s1_verdict`]: no telemetry release holds the CPU past the loop's miss
+/// gap). On a PREEMPT_RT kernel the loop also misses no deadline; on a generic
+/// kernel its misses are the host's floor and judge nothing. The negative
+/// control runs first: the same two nodes on ONE level must miss, and its
+/// telemetry must hold the CPU past the gap, which shows both measures can see
+/// telemetry in front.
 #[test]
 fn s1_critical_loop_meets_every_deadline_on_its_own_level() {
     require_rt_sched_claimed();
@@ -310,8 +313,15 @@ fn s1_critical_loop_meets_every_deadline_on_its_own_level() {
     let console = run_levels_image(flat, S1_FLAT_RUN_MS, true, "levels-s1-flat-entry");
     require_kernel_accepted(&console, flat);
     fail_on_boot_failure(&console);
+    if let Err(e) = s1_detection_floor(&console, "attitude_flat", "load_flat") {
+        panic!("{e}\n--- console ---\n{console}");
+    }
     let control = attitude_run(&console, "attitude_flat");
-    eprintln!("S1 negative control (one level): {control:?}");
+    let control_telemetry = load_ticks(&console, "load_flat");
+    eprintln!(
+        "S1 negative control (one level): {control:?}; telemetry max_run_us {:?}",
+        max_runs(&control_telemetry)
+    );
     assert!(
         control.windows >= 5 && control.misses >= 5,
         "negative control: one level holding both nodes should miss on most \
@@ -323,22 +333,38 @@ fn s1_critical_loop_meets_every_deadline_on_its_own_level() {
     let console = run_levels_image(s1, S1_RUN_MS, true, "levels-s1-entry");
     require_kernel_accepted(&console, s1);
     fail_on_boot_failure(&console);
+    if let Err(e) = s1_detection_floor(&console, "attitude", "load") {
+        panic!("{e}\n--- console ---\n{console}");
+    }
     let run = attitude_run(&console, "attitude");
-    eprintln!("S1 (two levels): {run:?}");
+    let telemetry = load_ticks(&console, "load");
+    eprintln!(
+        "S1 (two levels): {run:?}; telemetry max_run_us {:?}",
+        max_runs(&telemetry)
+    );
     assert!(
         run.windows >= 55,
         "S1 reported {} one-second windows in a 60 s run: the critical loop did \
          not keep its rate ({run:?})\n--- console ---\n{console}",
         run.windows
     );
-    if let Err(e) = s1_verdict(&run, &control, kernel_is_preempt_rt()) {
+    // The negative control, read as if it were S1, is the leak the verdict
+    // exists to refuse: one level, telemetry in front of the loop every time.
+    assert!(
+        s1_verdict(&control, &control_telemetry, &control_telemetry, false).is_err(),
+        "the S1 verdict passed the one-level control's own console, so it cannot see \
+         telemetry in front of the loop"
+    );
+    if let Err(e) = s1_verdict(&run, &telemetry, &control_telemetry, kernel_is_preempt_rt()) {
         panic!("S1 ({run:?}, control {control:?}): {e}\n--- console ---\n{console}");
     }
-    assert!(
-        !load_ticks(&console, "load").is_empty(),
-        "the telemetry level never ran, so nothing competed for the CPU\n\
-         --- console ---\n{console}"
-    );
+}
+
+/// The smallest, median and largest `max_run_us` of `ticks`, for the log.
+fn max_runs(ticks: &[LoadTick]) -> Option<(u64, u64, u64)> {
+    let mut runs: Vec<u64> = ticks.iter().map(|t| t.max_run_us).collect();
+    runs.sort_unstable();
+    Some((*runs.first()?, runs[runs.len() / 2], *runs.last()?))
 }
 
 /// The Linux priority plan (`packages/boards/linux/nros-board.toml`) states

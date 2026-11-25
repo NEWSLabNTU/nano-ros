@@ -92,3 +92,87 @@ before, 1 after.
 Unit tests: `executor::node_wake::band_park_tests` (a 1 us port parks for the
 bound itself; a tick port rounds up to its tick; a port with no microsecond
 park keeps the millisecond, the negative control).
+
+## Reopened: S1's generic-kernel verdict measured the host (2026-11-25)
+
+With the fix in, rt-sched S1 went red again at `cffdca5c9b` (host-tests run
+45596611184, job 139144253612, a GitHub-hosted ubuntu-22.04 VM). The loop
+kept its rate (59 windows, 59,000 releases), and the verdict failed on its
+generic-kernel bound: 55 misses in 59,000 against the control's 94 in 8,000
+is 12.6 times below, and the bound wanted 50.
+
+**The misses were the host's, and the console says so twice.**
+
+- They came in bursts (windows 24-27, 34-35, 44-46, 51-54) and 33 of 59
+  windows had none. Telemetry releases ten times in every window, so a miss it
+  caused would land in every window. The control, where it does run in front,
+  misses in all of them, about one miss per release (94 in 80).
+- The worst S1 gap was 7,239 us. The control's worst, which IS telemetry's
+  5 ms burn in front of the loop, was 5,409 us. No telemetry release can cause
+  a gap longer than that.
+- And all 600 telemetry releases in the S1 run show the loop preempting them:
+  wall time minus CPU time 2,149-3,139 us, about seven 300 us loop callbacks
+  each. In the control that difference is about zero.
+
+The fix made this visible: the loop releases on exactly 1 ms now, so any host
+stall longer than about 1 ms is a miss. Before, it released every 1.3 ms, and
+that was the defect the window count caught.
+
+**Why the bound was wrong.** It compared S1's miss RATE with the control's
+over a fixed divisor of 50, fitted on a quiet 6.8 kernel ("0-5 of 59,000").
+The control's rate is set by telemetry and S1's by the host's stall floor, so
+their ratio measured the host. Lowering the divisor would fit it to one VM.
+
+**The verdict now reads the claim directly.** The claim the levels own is that
+telemetry no longer runs in front of the critical loop. `load_pkg` now prints
+`max_run_us` per release, the longest stretch it held the CPU without a step
+off it. Below a loop that releases every 1 ms, that stretch stays under the
+loop's miss gap (period plus deadline, 2 ms). A stretch past it is a moment
+the loop was overdue while telemetry held the CPU. A host stall cannot make
+one, because it takes the CPU from telemetry too, and that is a step off it.
+
+- A stretch ends at a clock step longer than telemetry's detection floor,
+  `step_us`. It was 200 us against the loop's 300 us callback; it is 100 us
+  now, and `s1_detection_floor` refuses a floor above half the callback, read
+  from both images' start lines, because a preemption below the floor would
+  read as CPU time and a correct S1 as a leak.
+- S1: no telemetry release may hold the CPU past 2 ms.
+- Control: most releases must (the 5 ms burn runs whole), which shows the
+  measure can see it. "Most", not "all": a host stall can split a release.
+- `PREEMPT_RT`: also zero loop misses, as before.
+
+**The slack is stated, and it is smaller than before.** The old bound let a
+leak through as long as the loop's miss rate stayed 50 times below the
+control's, i.e. about 2 % of telemetry releases running in front (and less on
+a host whose own floor used up the budget). The new one tolerates no leaked
+release: a single telemetry release that holds the CPU past the loop's miss
+gap fails it. The loop's own miss count no longer judges on a generic kernel;
+the test prints it for the record.
+
+**Margins over every S1 console available** (rt-sched job of each
+host-tests run since the B33 failure; only failing runs print the full
+console, so `max_run_us` cannot be read retroactively and the column shows
+what the old fields prove):
+
+| Run (head) | Host | Control misses | S1 misses | S1 telemetry releases the loop preempted |
+| --- | --- | --- | --- | --- |
+| 45422896471 (`730dfbebeb`) | GitHub-hosted | 90 / 8,000 | 0 / 59,000 | console not printed |
+| 45533251762 (`939ac840b2`, the B33 red) | GitHub-hosted | 92 / 8,000 | 0 / 45,000 | 600 of 600 (wall - CPU 1,252-2,570 us; the loop released every 1.3 ms then) |
+| 45538275999 (`939ac840b2`) | GitHub-hosted | 96 / 9,000 | 0 / 59,000 | console not printed |
+| 45551837174 (#4851, the fix) | GitHub-hosted | 96 / 8,000 | 0 / 60,000 | console not printed |
+| 45596611184 (`cffdca5c9b`) | GitHub-hosted | 94 / 8,000 | 55 / 59,000 | 600 of 600 (wall - CPU 2,149-3,139 us) |
+
+Under the new rule the margin is the gap between the longest telemetry stretch
+in S1 and the 2 ms line, against the control's ~5 ms. Measured on host 118
+(Linux 6.8 generic, the test's docker launcher, `taskset -c 0`, `step_us`
+100), three solo runs of the test at `cffdca5c9b` plus this change:
+
+| Run | S1 `max_run_us` min / median / max | S1 loop misses | Control `max_run_us` min / median / max | Control misses |
+| --- | --- | --- | --- | --- |
+| 1 | 694 / 694 / 695 | 0 / 60,000 | 5,000 / 5,000 / 5,000 | 98 / 9,000 |
+| 2 | 694 / 695 / 696 | 0 / 60,000 | 5,000 / 5,000 / 5,000 | 100 / 9,000 |
+| 3 | 694 / 695 / 696 | 0 / 60,000 | 5,000 / 5,000 / 5,000 | 101 / 9,000 |
+
+S1's longest stretch is 696 us, the 1 ms period minus the loop's ~300 us
+callback, as predicted: 1,304 us under the line. Every control release ran its
+5 ms burn whole, 3,000 us over it.
