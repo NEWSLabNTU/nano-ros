@@ -3301,7 +3301,8 @@ pub(crate) mod board_rung_tests {
 
     /// The env rows [`BOARD`]'s `[knobs]` must put on a road carrying
     /// `carries`, and a floor on them so the road tests cannot pass vacuously:
-    /// the five RAM knobs phase-524 W3 measured.
+    /// the RAM knobs phase-524 W3 measured. The queryable table is not one
+    /// of them: it derives per image.
     pub(crate) fn expected(carries: BoardRungCarries) -> BTreeMap<String, String> {
         let rows: BTreeMap<String, String> = board_rung_from_file(&descriptor(), BOARD, carries)
             .expect("the descriptor's knobs render")
@@ -3312,7 +3313,6 @@ pub(crate) mod board_rung_tests {
             ("NROS_ZENOH_MAX_LARGE_SUBSCRIBERS", "0"),
             ("NROS_ZENOH_MAX_SUBSCRIBERS", "1"),
             ("NROS_ZENOH_SERVICE_BUFFER_BYTES", "1024"),
-            ("NROS_ZENOH_MAX_QUERYABLES", "1"),
         ] {
             assert_eq!(rows.get(k).map(String::as_str), Some(v), "{k} in {rows:?}");
         }

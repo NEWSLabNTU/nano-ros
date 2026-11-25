@@ -146,9 +146,16 @@ node interfaces. Every template now serves the stock node interfaces (six
 parameter services per node, plus the transient-local publishers' cache
 queryables), so no template could build there.
 
-Ruling (2026-11-25): the board states what fits; the templates keep the
-stock interfaces. The fix drops the board's queryable cap, so the table
-derives from each image's declarations
-(`CONFIG_NROS_MAX_QUERYABLES` = -1), as on the Nucleo. Whether each Pico
+Why the 2026-11-14 opt-out did not catch it: that ruling kept the board's
+cap and had a scaffolded Pico image state `node_interfaces = "none"`, but
+only the single-package scaffolder wrote it. The workspace scaffolder
+(`nros new <ws> --board <b> --template <t>`, the sweep's road) never did.
+
+User ruling (2026-11-25), superseding the 2026-11-14 opt-out: the board
+states what fits; the templates keep the stock interfaces. The fix drops
+the board's queryable cap, so the table derives from each image's
+declarations (`CONFIG_NROS_MAX_QUERYABLES` = -1), as on the Nucleo, and
+drops the single-package scaffolder's Pico opt-out, so both roads write the
+same image. Whether each Pico
 row then fits 264 KiB is the sweep's next answer, recorded here with each
 row's RAM use.

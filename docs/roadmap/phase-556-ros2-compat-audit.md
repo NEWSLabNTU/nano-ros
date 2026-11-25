@@ -566,6 +566,10 @@ Progress (2026-11-14, step 3 of 5; the default is flipped):
   2026-11-14, "Raise XRCE caps, RTIC out"): Pico W, PX4, RTIC. No in-tree
   Pico W image exists; `nros new --board rpi-pico-w-zephyr` scaffolds one
   that opts out, and the board budget (`max_queryables = 1`) is unchanged.
+  Amended 2026-11-25 (user ruling, issue 2772): the Pico W is no longer an
+  opt-out. Neither scaffolder writes `node_interfaces = "none"` for it, and
+  the board drops its queryable cap so each image derives its table. The
+  opt-outs are now PX4 and RTIC.
   PX4: both bringups. RTIC: the seven `rtic-mps2-an385` images, because the
   RTIC entry registers neither interface and refuses the declaration
   ([issue 2559](../issues/2559-rtic-entry-no-node-interfaces.md)). The zenoh
