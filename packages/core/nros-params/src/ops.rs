@@ -76,6 +76,18 @@ pub trait ParameterServerOps<'s>: sealed::Sealed + Sized {
     /// See `ParameterServer::declare_ref` in `server.rs`.
     fn declare_ref(&mut self, node: NodeKey, name: &str, value: &ParameterValue) -> bool;
 
+    /// See `ParameterServer::mark_launch_seed` in `server.rs` (issue 2969).
+    fn mark_launch_seed(&mut self, node: NodeKey, name: &str) -> bool;
+
+    /// See `ParameterServer::adopt_launch_seed` in `server.rs` (issue 2969).
+    fn adopt_launch_seed(
+        &mut self,
+        node: NodeKey,
+        name: &str,
+        param_type: crate::ParameterType,
+        descriptor: Option<&crate::ParameterDescriptor>,
+    ) -> Option<Result<(), crate::DeclarationError>>;
+
     /// See `ParameterServer::declare_with` in `server.rs`.
     fn declare_with(
         &mut self,
@@ -408,6 +420,22 @@ impl<'s> ParameterServerOps<'s> for ParameterServer<'s> {
     #[inline]
     fn declare_ref(&mut self, node: NodeKey, name: &str, value: &ParameterValue) -> bool {
         ParameterServer::declare_ref(self, node, name, value)
+    }
+
+    #[inline]
+    fn mark_launch_seed(&mut self, node: NodeKey, name: &str) -> bool {
+        ParameterServer::mark_launch_seed(self, node, name)
+    }
+
+    #[inline]
+    fn adopt_launch_seed(
+        &mut self,
+        node: NodeKey,
+        name: &str,
+        param_type: crate::ParameterType,
+        descriptor: Option<&crate::ParameterDescriptor>,
+    ) -> Option<Result<(), crate::DeclarationError>> {
+        ParameterServer::adopt_launch_seed(self, node, name, param_type, descriptor)
     }
 
     #[inline]

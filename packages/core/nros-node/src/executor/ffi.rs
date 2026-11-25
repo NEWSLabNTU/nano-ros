@@ -78,6 +78,25 @@ pub trait ExecutorFfi<'s>: sealed::Sealed + Sized {
         value: &nros_params::ParameterValue,
     ) -> bool;
 
+    /// The FFI entry point; see `Executor::seed_launch_parameter_on_ref` in `spin.rs`.
+    #[cfg(feature = "param-store")]
+    fn seed_launch_parameter_on_ref(
+        &mut self,
+        node: super::node_record::NodeId,
+        name: &str,
+        value: &nros_params::ParameterValue,
+    ) -> bool;
+
+    /// The FFI entry point; see `Executor::adopt_launch_seed_on` in `spin.rs`.
+    #[cfg(feature = "param-store")]
+    fn adopt_launch_seed_on(
+        &mut self,
+        node: super::node_record::NodeId,
+        name: &str,
+        param_type: nros_params::ParameterType,
+        descriptor: Option<&nros_params::ParameterDescriptor>,
+    ) -> Option<Result<(), nros_params::DeclarationError>>;
+
     /// The FFI entry point; see `Executor::declare_parameter_with_descriptor_on` in `spin.rs`.
     #[cfg(feature = "param-store")]
     fn declare_parameter_with_descriptor_on(
@@ -785,6 +804,29 @@ impl<'s> ExecutorFfi<'s> for Executor<'s> {
         value: &nros_params::ParameterValue,
     ) -> bool {
         Executor::declare_parameter_on_ref(self, node, name, value)
+    }
+
+    #[inline]
+    #[cfg(feature = "param-store")]
+    fn seed_launch_parameter_on_ref(
+        &mut self,
+        node: super::node_record::NodeId,
+        name: &str,
+        value: &nros_params::ParameterValue,
+    ) -> bool {
+        Executor::seed_launch_parameter_on_ref(self, node, name, value)
+    }
+
+    #[inline]
+    #[cfg(feature = "param-store")]
+    fn adopt_launch_seed_on(
+        &mut self,
+        node: super::node_record::NodeId,
+        name: &str,
+        param_type: nros_params::ParameterType,
+        descriptor: Option<&nros_params::ParameterDescriptor>,
+    ) -> Option<Result<(), nros_params::DeclarationError>> {
+        Executor::adopt_launch_seed_on(self, node, name, param_type, descriptor)
     }
 
     #[inline]

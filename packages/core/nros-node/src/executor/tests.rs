@@ -4627,6 +4627,71 @@ fn executor_set_parameter_enforces_the_wire_rules() {
     );
 }
 
+// Issue 2969.
+/// A launch-seeded name is ADOPTED by the node's typed declaration, as rclrs
+/// applies a launch override at declaration, instead of being refused as
+/// already declared. The declarative route and C/C++ take the same store rule
+/// (`adopt_launch_seed_on`), asserted here at the executor seam they share.
+#[cfg(feature = "param-store")]
+#[test]
+fn a_launch_seed_is_adopted_by_the_first_declaration() {
+    use super::node_record::NodeId;
+    use nros_params::{DeclarationError, ParameterType, ParameterValue};
+
+    let mut executor: Executor = executor_with_clock(MockSession::new());
+    let node = NodeId::PRIMARY;
+    assert!(executor.seed_launch_parameter_on_ref(node, "period", &ParameterValue::Integer(20)));
+    assert!(executor.seed_launch_parameter_on_ref(node, "gain", &ParameterValue::Integer(3)));
+    assert!(executor.seed_launch_parameter_on_ref(node, "mode", &ParameterValue::Integer(1)));
+
+    // Rust typed: the seed over the default.
+    let period = executor
+        .node_mut(node)
+        .declare_parameter::<i64>("period")
+        .expect("store")
+        .default(5)
+        .mandatory()
+        .expect("the launch seed is adopted, not refused")
+        .get();
+    assert_eq!(period, 20);
+    // Once: the next declaration is the code's own duplicate.
+    assert_eq!(
+        executor
+            .node_mut(node)
+            .declare_parameter::<i64>("period")
+            .expect("store")
+            .optional()
+            .err(),
+        Some(DeclarationError::AlreadyDeclared)
+    );
+    // Another type: refused, naming the cause.
+    assert_eq!(
+        executor
+            .node_mut(node)
+            .declare_parameter::<f64>("gain")
+            .expect("store")
+            .optional()
+            .err(),
+        Some(DeclarationError::LaunchValueTypeMismatch)
+    );
+    // The seam the declarative route, C and C++ call: adopt once, then nothing
+    // left to adopt.
+    assert_eq!(
+        executor.adopt_launch_seed_on(node, "mode", ParameterType::Integer, None),
+        Some(Ok(()))
+    );
+    assert_eq!(
+        executor.adopt_launch_seed_on(node, "mode", ParameterType::Integer, None),
+        None
+    );
+    // A name the CODE declared is not a seed: nothing to adopt.
+    assert!(executor.declare_parameter_on_ref(node, "own", &ParameterValue::Integer(1)));
+    assert_eq!(
+        executor.adopt_launch_seed_on(node, "own", ParameterType::Integer, None),
+        None
+    );
+}
+
 /// phase-515 R10 -- the NODE is the parameter receiver: rclrs's
 /// `declare_parameter::<T>(name)` builder on a `Node` needs no prior store
 /// registration, each node's verbs reach its own parameters, and the rest of

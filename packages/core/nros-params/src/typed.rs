@@ -328,6 +328,14 @@ fn declare(
     descriptor: ParameterDescriptor,
     value: Option<&crate::ParameterValue>,
 ) -> Result<(), DeclarationError> {
+    // Issue 2969 -- a name the launch seeded is adopted, not refused: the
+    // launch value wins over `value` (the builder's default), as rclrs applies
+    // an override at declaration, and must have the declared type.
+    if let Some(adopted) =
+        server.adopt_launch_seed(node, name, descriptor.param_type, Some(&descriptor))
+    {
+        return adopted;
+    }
     let consistency = ParameterServer::declaration_consistency(
         Some(&descriptor),
         &value.cloned().unwrap_or_default(),
@@ -703,6 +711,47 @@ mod tests {
         // `?` into a `ParameterError` caller still compiles, and reads as before.
         let as_param_error: ParameterError = DeclarationError::AlreadyDeclared.into();
         assert_eq!(as_param_error, ParameterError::TypeMismatch);
+    }
+
+    // Issue 2969.
+    /// A typed declaration of a name the launch seeded ADOPTS the seed: its
+    /// value over the builder's default, checked against the declared type and
+    /// range. Only the first declaration adopts; a second one is the code's
+    /// own duplicate, refused as before. An unmarked name (no launch seed) is
+    /// refused as before too.
+    #[test]
+    fn a_typed_declaration_adopts_its_launch_seed_once() {
+        let mut storage: ParameterStorage = ParameterStorage::new();
+        let mut server = ParameterServer::new_in(storage.as_table());
+        assert!(server.declare_ref(NODE, "period", &crate::ParameterValue::Integer(20)));
+        assert!(server.mark_launch_seed(NODE, "period"));
+        let period = ParameterBuilder::<i64>::new(&mut server, NODE, "period")
+            .default(5)
+            .mandatory()
+            .expect("the launch seed is adopted");
+        assert_eq!(period.get(), 20, "the launch value wins over the default");
+        let again = ParameterBuilder::<i64>::new(&mut server, NODE, "period").optional();
+        assert_eq!(again.err(), Some(DeclarationError::AlreadyDeclared));
+
+        // Another type: refused naming the cause, never stored over.
+        assert!(server.declare_ref(NODE, "gain", &crate::ParameterValue::Integer(3)));
+        assert!(server.mark_launch_seed(NODE, "gain"));
+        let gain = ParameterBuilder::<f64>::new(&mut server, NODE, "gain").optional();
+        assert_eq!(gain.err(), Some(DeclarationError::LaunchValueTypeMismatch));
+
+        // Outside the declared range: refused like an out-of-range default.
+        assert!(server.declare_ref(NODE, "rate", &crate::ParameterValue::Integer(500)));
+        assert!(server.mark_launch_seed(NODE, "rate"));
+        let rate = ParameterBuilder::<i64>::new(&mut server, NODE, "rate")
+            .integer_range(0, 100, 1)
+            .expect("well-formed range")
+            .optional();
+        assert_eq!(rate.err(), Some(DeclarationError::InitialValueOutOfRange));
+
+        // No mark: a name already there is a duplicate, as before 2969.
+        assert!(server.declare_ref(NODE, "plain", &crate::ParameterValue::Integer(1)));
+        let plain = ParameterBuilder::<i64>::new(&mut server, NODE, "plain").optional();
+        assert_eq!(plain.err(), Some(DeclarationError::AlreadyDeclared));
     }
 
     #[test]
