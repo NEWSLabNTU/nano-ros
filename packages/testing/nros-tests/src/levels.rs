@@ -112,9 +112,10 @@ pub fn attitude_run(console: &str, node: &str) -> AttitudeRun {
     run
 }
 
-/// phase-162 W1 -- one `[<node>] tick=N cpu_us=C wall_us=W max_gap_us=G` line
-/// of `load_pkg`: the CPU one release burned, the wall time it took, and the
-/// longest stretch it was off the CPU.
+/// phase-162 W1 -- one `[<node>] tick=N cpu_us=C wall_us=W max_gap_us=G
+/// max_run_us=R` line of `load_pkg`: the CPU one release burned, the wall time
+/// it took, the longest stretch it was off the CPU, and the longest it held the
+/// CPU in one piece.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct LoadTick {
     /// The release's index.
@@ -125,6 +126,8 @@ pub struct LoadTick {
     pub wall_us: u64,
     /// The longest stretch off the CPU, in microseconds.
     pub max_gap_us: u64,
+    /// The longest stretch ON the CPU without a step off it, in microseconds.
+    pub max_run_us: u64,
 }
 
 /// Every `[<node>] tick=` line `load_pkg` printed under the launch name
@@ -140,6 +143,7 @@ pub fn load_ticks(console: &str, node: &str) -> Vec<LoadTick> {
                 cpu_us: field(l, "cpu_us")?,
                 wall_us: field(l, "wall_us")?,
                 max_gap_us: field(l, "max_gap_us")?,
+                max_run_us: field(l, "max_run_us")?,
             })
         })
         .collect()
@@ -229,86 +233,192 @@ pub fn deadline_burn_margin(
     }
 }
 
-/// How many times the one-level negative control's miss RATE the S1 run may
-/// reach on a kernel without `PREEMPT_RT`. Measured on a generic 6.8 kernel:
-/// the control misses 128-181 of 7,000 releases (~2 %) and S1 0-5 of 59,000
-/// (<0.01 %), so S1 fails only past ~20x what it measured, and a level that
-/// let telemetry run in front of the critical loop (the control's rate) fails
-/// by 50x.
-pub const S1_GENERIC_KERNEL_RATE_DIVISOR: u64 = 50;
+/// The critical loop's period plus its deadline (`attitude_pkg`'s
+/// Attitude.cpp): a release gap longer than this is the loop's miss.
+pub const S1_LOOP_MISS_GAP_US: u64 = 2_000;
+
+/// Issue 2965 -- can telemetry's burn see every preemption the critical loop
+/// makes? `load_pkg` ends an on-CPU stretch only at a clock step longer than
+/// its `step_us`; a preemption shorter than that reads as CPU time, and a
+/// correct S1 would read as a leak. The loop takes the CPU for its `work_us`
+/// plus two context switches, so the floor must sit well below it: at most
+/// half. Both values come from the images' own start lines (`[<load>]
+/// burn_us=B step_us=S`, `[<attitude>] work_us=W miss_gap_us=G`), and `G`
+/// must be the gap [`s1_verdict`] judges against.
+pub fn s1_detection_floor(console: &str, attitude: &str, load: &str) -> Result<(), String> {
+    let start = |node: &str, key: &str| {
+        let tag = format!("[{node}] ");
+        console
+            .lines()
+            .filter(|l| l.starts_with(&tag))
+            .find_map(|l| field(l, key))
+            .ok_or_else(|| format!("`[{node}]` printed no `{key}=` start line"))
+    };
+    let step_us = start(load, "step_us")?;
+    let work_us = start(attitude, "work_us")?;
+    let gap_us = start(attitude, "miss_gap_us")?;
+    if gap_us != S1_LOOP_MISS_GAP_US {
+        return Err(format!(
+            "the loop's miss gap is {gap_us} us, and the verdict judges against \
+             {S1_LOOP_MISS_GAP_US} us"
+        ));
+    }
+    if 2 * step_us > work_us {
+        return Err(format!(
+            "telemetry's burn ends a stretch only at a step over {step_us} us, which is not \
+             well below the loop's {work_us} us callback: a preemption could read as CPU time"
+        ));
+    }
+    Ok(())
+}
 
 /// Whether the running kernel is `PREEMPT_RT` (`/sys/kernel/realtime` is `1`).
 pub fn kernel_is_preempt_rt() -> bool {
     std::fs::read_to_string("/sys/kernel/realtime").is_ok_and(|s| s.trim() == "1")
 }
 
-/// phase-162 W2 -- RFC-0002 S1's verdict on the two-level `run` against the
-/// one-level `control`.
+/// phase-162 W2 -- RFC-0002 S1's verdict: the two-level run's critical loop
+/// `run` and its telemetry releases `telemetry`, against the one-level
+/// control's telemetry `control`.
 ///
-/// On a `PREEMPT_RT` kernel the critical loop on its own level misses no
-/// deadline. A generic kernel cannot promise that to ANY program: a bare C
-/// loop at the same priority, on the same CPU, with nothing else of ours
-/// running, missed 2 of 60,000 releases on the host this was written on. So
-/// there the claim is the part the levels own: telemetry no longer runs in
-/// front of the critical loop, which shows as a miss rate at least
-/// [`S1_GENERIC_KERNEL_RATE_DIVISOR`] times below the control's.
+/// The claim the levels own is that telemetry no longer runs in front of the
+/// critical loop. Telemetry's own console line says whether it did, per
+/// release: `max_run_us` is the longest stretch it held the CPU without a step
+/// off it. With the loop on a more urgent level of the same CPU, the loop
+/// preempts telemetry at every release, so no stretch reaches the loop's miss
+/// gap ([`S1_LOOP_MISS_GAP_US`]). A stretch that does is a moment the loop was
+/// overdue and telemetry was on the CPU instead: a miss telemetry caused. A
+/// host stall cannot produce one, because it takes the CPU from telemetry too,
+/// and that is a step off it. A step counts once it is longer than
+/// telemetry's detection floor, which [`s1_detection_floor`] holds to at most
+/// half the loop's callback, so every preemption the loop makes ends a stretch.
+/// So:
+///
+/// - most control releases must show such a stretch (there telemetry runs its
+///   5 ms burn in one piece; a host stall can split a release, so not every
+///   one), which shows the measure can see telemetry in front;
+/// - no S1 release may show one. The bound tolerates no leaked release.
+///
+/// The loop's own miss count judges only on a `PREEMPT_RT` kernel, where it
+/// must be zero. On a generic kernel it is the host's floor: a bare C loop at
+/// the same priority missed 2 of 60,000 releases on a quiet 6.8 host, and a
+/// GitHub-hosted VM stalled S1's loop 55 times in 60 s in bursts, up to 7.2 ms,
+/// longer than any gap telemetry causes (issue 2965). The rule before this
+/// compared that count with the control's over a fixed 50x divisor; the
+/// control's rate is set by telemetry and S1's by the host, so the ratio
+/// measured the host, and it failed a correct image on a noisy VM.
 pub fn s1_verdict(
     run: &AttitudeRun,
-    control: &AttitudeRun,
+    telemetry: &[LoadTick],
+    control: &[LoadTick],
     preempt_rt: bool,
 ) -> Result<(), String> {
-    if preempt_rt {
-        return if run.misses == 0 {
-            Ok(())
-        } else {
-            Err(format!(
-                "on a PREEMPT_RT kernel the critical loop missed {} deadlines on its own \
-                 level ({run:?})",
-                run.misses
-            ))
-        };
+    let in_front = |t: &&LoadTick| t.max_run_us > S1_LOOP_MISS_GAP_US;
+    let seen = control.iter().filter(in_front).count();
+    if control.is_empty() || 2 * seen <= control.len() {
+        return Err(format!(
+            "the negative control's telemetry held the CPU past the loop's miss gap \
+             ({S1_LOOP_MISS_GAP_US} us) in {seen} of {} releases: with telemetry in front \
+             of the loop most of them must, so this measure cannot see it",
+            control.len()
+        ));
     }
-    if control.ticks == 0 || control.misses == 0 {
-        return Err(format!("the negative control saw no miss ({control:?})"));
+    if telemetry.is_empty() {
+        return Err("S1's telemetry printed no release, so nothing competed for the CPU".into());
     }
-    // run.misses / run.ticks * divisor <= control.misses / control.ticks
-    if run.misses * control.ticks * S1_GENERIC_KERNEL_RATE_DIVISOR <= control.misses * run.ticks {
-        Ok(())
-    } else {
-        Err(format!(
-            "on a generic kernel the critical loop's miss rate ({}/{}) is not {}x below \
-             the one-level control's ({}/{}): telemetry still runs in front of it",
-            run.misses, run.ticks, S1_GENERIC_KERNEL_RATE_DIVISOR, control.misses, control.ticks
-        ))
+    let leaked: Vec<String> = telemetry
+        .iter()
+        .filter(in_front)
+        .map(|t| format!("tick {} ran {} us", t.tick, t.max_run_us))
+        .collect();
+    if !leaked.is_empty() {
+        return Err(format!(
+            "telemetry held the CPU past the loop's miss gap ({S1_LOOP_MISS_GAP_US} us) in {} \
+             of {} releases, so it ran in front of the critical loop: {}",
+            leaked.len(),
+            telemetry.len(),
+            leaked.join(", ")
+        ));
     }
+    if preempt_rt && run.misses != 0 {
+        return Err(format!(
+            "on a PREEMPT_RT kernel the critical loop missed {} deadlines on its own level \
+             ({run:?})",
+            run.misses
+        ));
+    }
+    Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn att(ticks: u64, misses: u64) -> AttitudeRun {
+    fn att(misses: u64) -> AttitudeRun {
         AttitudeRun {
-            windows: ticks / 1000,
-            ticks,
+            windows: 59,
+            ticks: 59_000,
             misses,
             worst_gap_us: 0,
         }
     }
 
+    fn telemetry(runs: &[u64]) -> Vec<LoadTick> {
+        runs.iter()
+            .enumerate()
+            .map(|(i, &max_run_us)| LoadTick {
+                tick: i as u64,
+                cpu_us: 5_000,
+                wall_us: 7_150,
+                max_gap_us: 310,
+                max_run_us,
+            })
+            .collect()
+    }
+
     #[test]
-    fn the_s1_verdict_is_zero_misses_on_preempt_rt_and_a_rate_bound_elsewhere() {
-        let control = att(7_000, 131);
-        assert!(s1_verdict(&att(59_000, 0), &control, true).is_ok());
-        assert!(s1_verdict(&att(59_000, 1), &control, true).is_err());
-        // Measured on a generic kernel: 0-5 of 59,000.
-        assert!(s1_verdict(&att(59_000, 5), &control, false).is_ok());
-        // 131/7000 / 50 * 59000 = 22.08: 22 passes, 23 does not.
-        assert!(s1_verdict(&att(59_000, 22), &control, false).is_ok());
-        assert!(s1_verdict(&att(59_000, 23), &control, false).is_err());
-        // Telemetry in front of the loop: the control's own rate.
-        assert!(s1_verdict(&att(59_000, 1_100), &control, false).is_err());
-        assert!(s1_verdict(&att(59_000, 0), &att(7_000, 0), false).is_err());
+    fn the_s1_verdict_reads_whether_telemetry_ever_held_the_cpu_past_a_miss() {
+        // One level: telemetry's 5 ms burn runs in one piece.
+        let control = telemetry(&[5_000; 80]);
+        // Two levels: the loop preempts it every 1 ms.
+        let s1 = telemetry(&[700; 600]);
+
+        assert!(s1_verdict(&att(0), &s1, &control, true).is_ok());
+        assert!(s1_verdict(&att(1), &s1, &control, true).is_err());
+        // A generic kernel's host floor, bursty misses included (issue 2965:
+        // 55 of 59,000 on a GitHub-hosted VM), is not telemetry's.
+        assert!(s1_verdict(&att(55), &s1, &control, false).is_ok());
+
+        // ONE leaked release fails it, on either kernel.
+        let mut leak = s1.clone();
+        leak[300].max_run_us = 5_000;
+        let e = s1_verdict(&att(0), &leak, &control, false).unwrap_err();
+        assert!(e.contains("tick 300 ran 5000 us"), "{e}");
+        // The bound is the loop's miss gap: a stretch AT it is no miss.
+        leak[300].max_run_us = S1_LOOP_MISS_GAP_US;
+        assert!(s1_verdict(&att(0), &leak, &control, false).is_ok());
+
+        // A host stall split some control releases: still visible.
+        let mut split = control.clone();
+        split[..30].iter_mut().for_each(|t| t.max_run_us = 1_900);
+        assert!(s1_verdict(&att(0), &s1, &split, false).is_ok());
+        // A control whose telemetry the loop preempted sees nothing.
+        assert!(s1_verdict(&att(0), &s1, &s1, false).is_err());
+        assert!(s1_verdict(&att(0), &s1, &[], false).is_err());
+        assert!(s1_verdict(&att(0), &[], &control, false).is_err());
+    }
+
+    #[test]
+    fn telemetry_sees_every_preemption_the_loop_makes() {
+        let good = "[load] burn_us=5000 step_us=100\n[attitude] work_us=300 miss_gap_us=2000\n";
+        assert_eq!(s1_detection_floor(good, "attitude", "load"), Ok(()));
+        // The floor before issue 2965: 200 us against a 300 us callback.
+        let coarse = good.replace("step_us=100", "step_us=200");
+        assert!(s1_detection_floor(&coarse, "attitude", "load").is_err());
+        let other_gap = good.replace("miss_gap_us=2000", "miss_gap_us=3000");
+        assert!(s1_detection_floor(&other_gap, "attitude", "load").is_err());
+        // An image older than the start lines.
+        assert!(s1_detection_floor("[load] burn_us=5000\n", "attitude", "load").is_err());
     }
 
     #[test]
@@ -352,6 +462,7 @@ mod tests {
 
     fn tick(tick: u64, wall_us: u64, max_gap_us: u64) -> LoadTick {
         LoadTick {
+            max_run_us: 2_000,
             tick,
             cpu_us: 10_000,
             wall_us,
@@ -362,12 +473,15 @@ mod tests {
     #[test]
     fn load_lines_parse_under_their_launch_name() {
         let console = "[load_capped] burn_us=10000\n\
-                       [load_capped] tick=0 cpu_us=10000 wall_us=41000 max_gap_us=8000\n\
-                       [load] tick=0 cpu_us=5000 wall_us=5000 max_gap_us=0\n";
+                       [load_capped] tick=0 cpu_us=10000 wall_us=41000 max_gap_us=8000 max_run_us=2000\n\
+                       [load] tick=0 cpu_us=5000 wall_us=5000 max_gap_us=0 max_run_us=5000\n\
+                       [load] tick=1 cpu_us=5000 wall_us=5000 max_gap_us=0\n";
         assert_eq!(
             load_ticks(console, "load_capped"),
             vec![tick(0, 41_000, 8_000)]
         );
+        // A line without `max_run_us` (an image older than the S1 verdict) is
+        // not read as a release.
         assert_eq!(load_ticks(console, "load").len(), 1);
     }
 

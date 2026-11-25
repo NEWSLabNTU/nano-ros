@@ -113,12 +113,23 @@ negative control records misses, which shows the test can see a miss. "Keeps"
 depends on the kernel (`s1_verdict` in `nros_tests::levels`):
 
 - On a `PREEMPT_RT` kernel (`/sys/kernel/realtime` is 1), zero misses.
-- On a generic kernel, a miss rate at least 50 times below the negative
-  control's. Zero is not a property any program has there: a bare C loop at
-  the same `SCHED_FIFO` 88, on the same CPU, with no nano-ros and no load,
-  missed 2 of 60,000 releases (worst gap 2.6 ms) on CPU 0 and 0 on CPU 23.
-  What the levels own is that telemetry no longer runs in front of the
-  critical loop, and that is what the bound measures.
+- On a generic kernel, the loop's misses judge nothing. Zero is not a
+  property any program has there: a bare C loop at the same `SCHED_FIFO` 88,
+  on the same CPU, with no nano-ros and no load, missed 2 of 60,000 releases
+  (worst gap 2.6 ms) on CPU 0 and 0 on CPU 23.
+- On both, what the levels own is that telemetry no longer runs in front of
+  the critical loop, and telemetry's own line says so per release:
+  `max_run_us`, the longest stretch it held the CPU in one piece. No S1
+  release may reach the loop's miss gap (2 ms), and most control releases
+  must (there the 5 ms burn runs whole), which shows the measure can see it.
+
+Until issue 2965 (2026-11-25) the generic-kernel bound was a miss RATE 50
+times below the control's. The control's rate is set by telemetry (about one
+miss per release) and S1's by the host's stall floor, so the ratio measured
+the host. It held here, and failed a correct image on a GitHub-hosted VM that
+stalled the loop 55 times in 60 s, in bursts, up to 7.2 ms: longer than any
+gap telemetry causes, while all 600 telemetry releases showed the loop
+preempting them about seven times each.
 
 Measured 2026-10-25, same host as W1, pinned to CPU 0, six runs: the
 negative control missed 128-181 of 6,000-7,000 releases (about 2 %, worst gap

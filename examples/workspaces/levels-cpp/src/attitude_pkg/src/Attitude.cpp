@@ -6,7 +6,9 @@
 // a LOWER bound on deadline misses: it never reports a miss that did not
 // happen, and the negative control (s1_flat.launch.xml) shows it can see one.
 //
-// Every 1000 releases it prints, under the node's launch name,
+// At start it prints its work and its miss gap (period plus deadline),
+//   [attitude] work_us=300 miss_gap_us=2000
+// and every 1000 releases, under the node's launch name,
 //   [attitude] window=W ticks=1000 misses=M worst_gap_us=G
 // which the test sums over the run (phase-162 W2).
 
@@ -55,6 +57,9 @@ void Attitude::on_timer() {
 
 Attitude::Attitude(::rclcpp::NodeHandle h) : ::rclcpp::NodeWithTimers<1>(h, "attitude") {
     ::setvbuf(stdout, nullptr, _IOLBF, 0);
+    std::printf("[%s] work_us=%llu miss_gap_us=%llu\n", get_name(),
+                static_cast<unsigned long long>(kWorkNs / 1000u),
+                static_cast<unsigned long long>((kPeriodNs + kDeadlineNs) / 1000u));
     pub_ = create_publisher_in<std_msgs::msg::Int32>("/levels/attitude");
     create_wall_timer_in<Attitude, &Attitude::on_timer>(1);
 }
