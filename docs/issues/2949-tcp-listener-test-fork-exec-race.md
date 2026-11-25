@@ -35,3 +35,31 @@ inode, with a bound. That fixes the start race; a retry would not.
 ## Acceptance
 The test asks only after the child has exec'd, and fails if the child
 genuinely still holds the socket.
+
+## The fork/exec window does not reach this check (measured 2026-11-25)
+
+Host 118, rustc 1.99.0, `main` at `b3ffe8a739`. The stated mechanism needs the
+check to run while the child is between `fork` and `exec`. On Linux,
+`Command::spawn` returns only after the child's `exec` succeeded: through
+`posix_spawn` (glibc uses `CLONE_VFORK`, so the parent resumes at the exec),
+or through fork+exec, where the parent blocks on a `CLOEXEC` error pipe until
+the exec closes it. So by the time `holder(child.id(), port)` runs, the
+listener (`SOCK_CLOEXEC`) is already gone from the child's fd table.
+
+Measured with the test as it is on `main`:
+
+| Run | Failures |
+| --- | --- |
+| the test alone, 300 times | 0 |
+| the test alone, 400 times, 16 at once | 0 |
+| the whole `nros-tests` lib suite, 60 times at `--test-threads 32` (other tests spawning beside it) | 0 from this test |
+
+A wait for the child's exec (`/proc/<pid>/exe` differing from the test
+binary's) was written and passes, but it waits for something `spawn` already
+guarantees, so it is not the fix and was not landed.
+
+What is still unexplained is the original `left: Ours`. For `Ours`, a process
+in `tree(sleep_pid)` must hold a fd whose inode is one of the port's LISTEN
+rows, and `sleep` has no children. The next red should be read with that in
+hand: log `tree(child.id())` and each member's matching fd when the negative
+control fails, before choosing a fix. Kept open, severity low.
