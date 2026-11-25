@@ -189,3 +189,27 @@ Tests:
   (nros-cli-core).
 
 Not measured yet: a Pico image with no contract, built on this branch.
+
+## The second gap: the zenoh builtin inbox (same cause)
+
+The Pico measurement showed the zenoh shim's `BUILTIN_INBOX` at 6,264 B in
+every non-talker image against 624 B in the talker. Read from source, it is
+this issue again, one consumer over:
+
+- The builtin family's request slot (`nros-rmw-zenoh` `build.rs`, rule in
+  `build_param_slot.rs` `builtin_slot`) is priced from the descriptor's
+  `[params] service_shape`. With no shape it is `Unpriced` and takes the
+  floor, `max(user-service slot, 1,024 B)`.
+- `service_shape` is written only for `ParamDeclarations::Declared`
+  (`nros-cli-core` `sizing_descriptor.rs`). Each node's shape includes the
+  seeded `use_sim_time`, so an empty `Declared` still gets a small,
+  derived slot.
+- So `Absent` gives six 1,024-byte slots, one per parameter service on the
+  one node: 6 x 1,044 B with the ring header is 6,264 B. `params: {}` gives
+  the talker's 624 B.
+
+No new issue: the fix above also fixes this one. An image read as
+"observed none", or one with a `params: {}` contract (PR #4843's
+templates), gets a `Declared` with no parameters, and so a priced slot. The
+explain line for it already existed: "the parameter services' inbox keeps
+its builtin slot".
