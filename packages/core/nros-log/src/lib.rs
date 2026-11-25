@@ -64,6 +64,7 @@ pub mod sinks;
 pub mod throttle;
 
 mod buffer;
+mod reentry;
 
 /// The resolved `[knobs.log]` tenant, written by `build.rs` (phase-479 W5,
 /// issue 1037). One file, one place each value enters the crate.
@@ -253,16 +254,15 @@ pub trait LogSink: Sync {
 }
 
 // Issue 2762.
-/// Deliveries to re-entrant sinks that may be in progress at once before a
-/// record takes the guarded path instead. It bounds a
+/// How deeply ONE task's direct deliveries to re-entrant sinks may nest
+/// before its next record takes the guarded path instead. It bounds a
 /// re-entrant sink that logs through `nros_log` (each nested record is one
 /// more), so it is kept small: a nested delivery is a frame on the raising
-/// stack. Concurrent loggers past it are not lost; they queue as they did
-/// before re-entrant sinks existed.
+/// stack. It is counted per task where the port can name the task, so
+/// concurrent loggers on different tasks never spend it; where it cannot, it
+/// is counted process-wide, and loggers past it queue as they did before
+/// re-entrant sinks existed (see the `reentry` module).
 pub const REENTRANT_DEPTH: usize = 8;
-
-/// Re-entrant deliveries in progress (issue 2762).
-static REENTRANT_ACTIVE: AtomicUsize = AtomicUsize::new(0);
 
 /// The stored byte meaning "this logger has NO level of its own", so its
 /// threshold is whatever [`Logger::default_level`] currently says.
@@ -1200,13 +1200,13 @@ fn dispatch_to_sinks(record: &Record<'_>) {
     // guard: they are what concurrent loggers must not queue for. Past the
     // depth bound (a re-entrant sink logging, or that many contexts inside
     // one at once) the record takes the guarded path for every sink.
-    let owed = if REENTRANT_ACTIVE.fetch_add(1, Ordering::AcqRel) < REENTRANT_DEPTH {
-        deliver_to(record, early::Owed::All, Reentrancy::Reentrant);
-        REENTRANT_ACTIVE.fetch_sub(1, Ordering::AcqRel);
-        early::Owed::Serialised
-    } else {
-        REENTRANT_ACTIVE.fetch_sub(1, Ordering::AcqRel);
-        early::Owed::All
+    let owed = match reentry::enter() {
+        Some(entered) => {
+            deliver_to(record, early::Owed::All, Reentrancy::Reentrant);
+            reentry::leave(entered);
+            early::Owed::Serialised
+        }
+        None => early::Owed::All,
     };
     if !dispatch_guard_try_acquire() {
         // Another delivery is in progress — this thread's own sink logging
@@ -1251,8 +1251,8 @@ fn deliver(record: &Record<'_>, owed: early::Owed) {
 /// it would otherwise stall every other context's direct delivery.
 fn deliver_held_record(record: &Record<'_>, owed: early::Owed) {
     if owed == early::Owed::All {
-        REENTRANT_ACTIVE.fetch_add(REENTRANT_DEPTH, Ordering::AcqRel);
-        HOLDER_SPENT_DEPTH.store(true, Ordering::SeqCst);
+        let spent = reentry::spend_all();
+        record_holder_spent(spent);
         deliver_to(record, owed, Reentrancy::Reentrant);
         return_holder_depth();
     }
@@ -1265,13 +1265,21 @@ fn deliver_held_record(record: &Record<'_>, owed: early::Owed) {
 /// that delivery leaves it set, and [`release_dead_dispatch_holder`] gives the
 /// depth back with the guard (issues 2738 and 2762). Without that, every later
 /// record would take the guarded path for good.
-static HOLDER_SPENT_DEPTH: AtomicBool = AtomicBool::new(false);
+///
+/// One word, never a lock: a fault handler releasing a dead holder must not
+/// wait on anything the dead holder held (`reentry::Spent::encode`, `0` when
+/// nothing is spent).
+static HOLDER_SPENT: AtomicUsize = AtomicUsize::new(0);
+
+fn record_holder_spent(spent: reentry::Spent) {
+    HOLDER_SPENT.store(spent.encode(), Ordering::SeqCst);
+}
 
 /// Give back the depth [`deliver_held_record`] spent, exactly once, whether
 /// the holder returns or a fault handler releases a dead one.
 fn return_holder_depth() {
-    if HOLDER_SPENT_DEPTH.swap(false, Ordering::SeqCst) {
-        REENTRANT_ACTIVE.fetch_sub(REENTRANT_DEPTH, Ordering::AcqRel);
+    if let Some(spent) = reentry::Spent::decode(HOLDER_SPENT.swap(0, Ordering::SeqCst)) {
+        reentry::give_back(spent);
     }
 }
 
@@ -1486,9 +1494,11 @@ pub fn dispatch_holder_frame() -> usize {
 /// A holder that died delivering a held record to a re-entrant sink had spent
 /// the whole re-entrant depth on it; that is given back too.
 /// A thread that dies inside a re-entrant sink's DIRECT delivery holds no
-/// guard, so nothing here can see it: it keeps one unit of
-/// [`REENTRANT_DEPTH`] until reboot, and once that many have died, records
-/// take the guarded path for every sink (delivered, one at a time).
+/// guard, so nothing here can see it. Where the port names tasks it keeps its
+/// one task slot until reboot (a later task reusing its identity starts at
+/// its depth); otherwise it keeps one unit of the process-wide count, and
+/// once [`REENTRANT_DEPTH`] have died, records take the guarded path for
+/// every sink (delivered, one at a time).
 pub fn release_dead_dispatch_holder(frame: usize) -> bool {
     if frame == 0
         || DISPATCH_HOLDER

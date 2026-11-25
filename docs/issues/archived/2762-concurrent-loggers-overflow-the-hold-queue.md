@@ -1,12 +1,14 @@
 ---
 id: 2762
 title: "Concurrent loggers lose most of their records: one delivery at a time, and the hold queue behind it holds 4"
-status: open
+status: resolved
 type: bug
 severity: medium
 area: [logging, core, zephyr]
 related: [issue-2000, issue-2738]
 found: 2026-11-20
+resolved: 2026-11-25
+resolved_in: "#4631 (re-entrant sinks), #4842 (per-task bound, stress cell)"
 ---
 
 ## Measured
@@ -145,3 +147,45 @@ The `log-dead-holder` Zephyr cell read its negative control from the console,
 which is now re-entrant and gets the phase-2 record without the guard. It now
 reads both verdicts from the faulting sink's own echo (serialised), and
 asserts that the console does get that record.
+
+
+## The stress cell, and what it found (2026-11-25)
+
+Acceptance 1's cell is `tests/log_stress.rs` over
+`bins/log-stress-zephyr-smp` (`qemu_cortex_a53/smp`, 2 CPUs, a 4-buffer pool):
+K threads x 200 records at once plus a 1 ms timer interrupt logging 100. The
+console (re-entrant) must get every record, Zephyr's own reported drops
+charged to Zephyr. The negative control, in the same boot, is a serialised C
+sink (`rclc_log_add_sink`) holding the guard 20 us per record, which must get
+fewer than all.
+
+Its first runs were RED on the fix above. With K = 16 the console got 1,031
+and 996 of 3,200 thread records (Zephyr reported 1 drop each); with K = 8 it
+got 1,596 of 1,600, the 4 missing matching Zephyr's 4. The bound
+(`REENTRANT_DEPTH`, 8 direct deliveries in flight) was counted
+PROCESS-WIDE: it was meant to stop a sink that logs from recursing, but
+concurrency spent it, and past it every record, the console's included, took
+the guarded path and overflowed the hold queue. Since issue 2847 a thread
+inside the console sink can block waiting for Zephyr's buffer, so more than 8
+sit there at once.
+
+## Fixed: the bound is per task
+
+`nros_platform_current_task_id` (nros/platform.h, a new platform ABI hook,
+bindings regenerated) names the calling task: `pthread_self()` on POSIX and
+NuttX, `k_current_get()` on Zephyr, `xTaskGetCurrentTaskHandle()` on
+FreeRTOS, `tx_thread_identify()` on ThreadX; `0` ("cannot tell") from the Rust
+ports' `PlatformThreading` default. `nros_log`'s `reentry` module gives each
+task inside a direct delivery one of 64 slots with its own depth; the
+`REENTRANT_DEPTH` bound then counts ONE task's nesting. Where the task is
+unknown (`0`, a port without `[capabilities] task_identity`, the bare-metal
+boards) or every slot is taken, the process-wide counter answers as before.
+A held record's delivery spends the holder TASK's depth, no longer every
+task's, and a dead holder's is given back through the existing release.
+
+Measured with the fix (two runs each): K = 16, console missing 14 and 18
+against Zephyr's 15 and 19 reported drops, control 339 and 438 of 3,300;
+K = 32, missing 30 and 36 against 30 and 36, control 292 and 299 of 6,500.
+The committed cell runs K = 32, four times the bound. Unit tests
+(`reentry::tests`) pin per-task admission, the per-task recursion bound, the
+full-table and unknown-task fallbacks, and the held-record spend.

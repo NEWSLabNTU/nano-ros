@@ -33,3 +33,4 @@ compile = { opt_level = 2, warnings = false, cflags = ["-ffunction-sections", "-
 ip_stack = true    # host sockets
 serial   = true    # tty
 clock = true       # issue 1037 — exports nros_platform_clock_ns (src/platform.c)
+task_identity = true  # issue 2762 — exports nros_platform_current_task_id (src/platform.c)

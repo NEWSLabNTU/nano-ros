@@ -1673,6 +1673,13 @@ size_t nros_platform_task_stack_unused_bytes(void) {
 
 /* phase-436 E5: the capped query (`nros/platform.h`). This port does not instrument stacks,
  * so it answers 0, like the full query. */
+/* Issue 2762 -- the calling task's identity, for nros_log's per-task
+ * recursion bound (`nros_platform_current_task_id`, nros/platform.h).
+ * POSIX: a `pthread_t` is an integer or a pointer on every libc we build for. */
+uintptr_t nros_platform_current_task_id(void) {
+    return (uintptr_t)pthread_self();
+}
+
 size_t nros_platform_task_stack_unused_bytes_upto(size_t limit) {
     size_t unused = nros_platform_task_stack_unused_bytes();
     return unused < limit ? unused : limit;

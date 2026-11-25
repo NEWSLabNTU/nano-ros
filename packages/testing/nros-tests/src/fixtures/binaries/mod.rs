@@ -7344,7 +7344,7 @@ pub fn build_log_dead_holder_smp() -> TestResult<&'static Path> {
         .map(|p| p.as_path())
 }
 
-/// Issue 2762 -- sixteen threads and a timer interrupt log at once on
+/// Issue 2762 -- thirty-two threads and a timer interrupt log at once on
 /// `qemu_cortex_a53/smp`. Built by the zephyr west lane into
 /// `<build-root>/build-log-stress-smp/`; consumed by `tests/log_stress.rs`.
 static LOG_STRESS_SMP: OnceCell<PathBuf> = OnceCell::new();

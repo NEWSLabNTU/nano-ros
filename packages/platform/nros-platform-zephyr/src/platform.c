@@ -2015,6 +2015,13 @@ size_t nros_platform_task_stack_unused_bytes(void) {
  * - CONFIG_NO_UNUSED_STACK_INSPECTION: the hardware faults on a read of the
  *   unused part of the stack the caller is running on, and the kernel refuses
  *   (the full query answers 0, "not instrumented"). */
+/* Issue 2762 -- the calling task's identity, for nros_log's per-task
+ * recursion bound (`nros_platform_current_task_id`, nros/platform.h).
+ * Zephyr: the running thread; from an interrupt, the interrupted thread. */
+uintptr_t nros_platform_current_task_id(void) {
+    return (uintptr_t)k_current_get();
+}
+
 size_t nros_platform_task_stack_unused_bytes_upto(size_t limit) {
 #if defined(CONFIG_INIT_STACKS) && defined(CONFIG_THREAD_STACK_INFO) &&                            \
     !defined(CONFIG_USERSPACE) && !defined(CONFIG_THREAD_STACK_MEM_MAPPED) &&                      \

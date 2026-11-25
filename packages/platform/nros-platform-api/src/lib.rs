@@ -556,6 +556,14 @@ pub trait PlatformThreading {
     fn task_stack_unused_bytes_upto(limit: usize) -> usize {
         Self::task_stack_unused_bytes().min(limit)
     }
+
+    /// A nonzero identity for the CALLING task, unique among tasks alive at
+    /// once, or `0` when this platform cannot tell (issue 2762;
+    /// `nros_platform_current_task_id` in `nros/platform.h`). Defaulted to `0`,
+    /// which every caller must treat as "any context may be this one".
+    fn current_task_id() -> usize {
+        0
+    }
     // -- Tasks --
 
     /// Spawn a new task. `task` is opaque caller-provided storage;

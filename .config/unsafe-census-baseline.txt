@@ -56,7 +56,7 @@ nros-cli-core                             46   0     0       0      0
 nros-condvar-contract                     10   0     1       2      0
 nros-core                                  3   0     2       3      0
 nros-cpp                                1191  51     0     472      0
-nros-log                                  24   0     7       1      0
+nros-log                                  25   0     7       2      0
 nros-macros                               25   0     1       4      0
 nros-node                                942  290    43     204      0
 nros-nuttx-ffi                             1   0     0       1      0
@@ -65,7 +65,7 @@ nros-orchestration-ir                      4   0     0       0      0
 nros-params                                4   1     0       0      0
 nros-platform                             16   5     1       8      0
 nros-platform-api                         22   5     1      10      0
-nros-platform-cffi                       106   0     4     129      0
+nros-platform-cffi                       106   0     4     130      0
 nros-platform-critical-section             2   2     1       1      0
 nros-platform-mps2-an385                  24   6     3       8      0
 nros-platform-stm32f4                     15   6     3       2      0

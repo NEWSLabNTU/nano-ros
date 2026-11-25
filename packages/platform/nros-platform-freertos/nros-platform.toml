@@ -93,6 +93,7 @@ reserved.foreign = [4, 4]
 [capabilities]
 ip_stack = true    # lwIP / FreeRTOS-Plus-TCP, both named in [build]
 clock = true       # issue 1037 — exports nros_platform_clock_ns (src/platform.c)
+task_identity = true  # issue 2762 — exports nros_platform_current_task_id (src/platform.c)
 # issue 2342 (phase-546) — the family brings its own network stack, so its
 # sockets are not the host's. A board whose network the HOST owns
 # (`[board.net] stack = "host"`, the FreeRTOS POSIX port) answers `true` on the
