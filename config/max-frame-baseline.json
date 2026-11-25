@@ -248,11 +248,6 @@
       "seen_in": "action_bringup@qemu-armv7a-nuttx (examples/workspaces/rust/target-fixtures/nuttx-action-client/nros-stack-floor)"
     },
     {
-      "function": "_RNvMNtNtC9nros_node8executor4spinNtB_8Executor33register_lifecycle_services_named",
-      "bytes": 8120,
-      "seen_in": "demo_bringup@mps2-an385-zephyr (<zephyr-builds>/3.7/build-cortex-m-ws-c-lifecycle-pair-xrce/nros/stack-floor)"
-    },
-    {
       "function": "_RNvMNtNtC9nros_node8executor4spinNtB_8Executor4pass",
       "bytes": 4512,
       "seen_in": "isr_wake_nuttx_qemu_arm_bringup@nuttx (packages/testing/nros-tests/bins/isr-wake-nuttx-qemu-arm/target/nros-stack-floor)"
