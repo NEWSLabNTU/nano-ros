@@ -8344,6 +8344,25 @@ west_build_name = "build-ws-rust-talker-clock-sntp-resync-zenoh"
 west_id = "zephyr/native_sim/native/64/workspace-rust-talker-clock-sntp-resync-zenoh"
 skip_probe = true
 
+# Issue 2846 -- the SNTP re-sync talker on a real 32-bit Zephyr target, for
+# the re-sync thread's stack-floor walk (role SNTP_RESYNC). Its
+# `[[observed]]` row in config/stack-floors.toml enforces the floor, and the
+# nightly drift check builds this row and re-walks it. Build-only: its peak was
+# measured by hand under QEMU (the row's `method`), because the twin measures
+# only the main thread.
+[[workspace_fixture]]
+id = "workspace-rust-zephyr-mps2-talker-clock-sntp-resync"
+platform = "zephyr-cortex-m"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/workspaces/rust"
+bringup = "src/pubsub_bringup"
+image = "zephyr_cortex_m_talker_clock_sntp_resync"
+board = "mps2/an385"
+west_build_name = "build-ws-rust-mps2-talker-clock-sntp-resync-zenoh"
+west_id = "zephyr/mps2/an385/workspace-rust-talker-clock-sntp-resync-zenoh"
+skip_probe = true
+
 [[workspace_fixture]]
 id = "workspace-rust-zephyr-talker-clock-sntp-once"
 platform = "zephyr"

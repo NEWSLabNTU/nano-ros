@@ -5,7 +5,7 @@ status: open
 type: bug
 severity: medium
 area: [zephyr, clock]
-related: [rfc-0141, phase-582, issue-0758, issue-2400]
+related: [rfc-0141, phase-582, phase-557, issue-0758, issue-2400, issue-2897, issue-2963]
 found: 2026-11-23
 ---
 
@@ -60,3 +60,60 @@ could not have caught it, and the stack-floor walk skips native_sim.
 3. With both numbers, record them: a `[[drift]]` row per board
    (`role = "SNTP_RESYNC"`) so the nightly drift check holds the walk, and the
    knob's help updated with the measured values.
+
+## 32-bit measured, floor enforced (2026-11-25)
+
+Items 1–3 are done for the 32-bit board:
+
+- **Image.** `examples/workspaces/rust` `pubsub_bringup`'s
+  `zephyr_cortex_m_talker_clock_sntp_resync` (`mps2-an385-zephyr`, fixture row
+  `workspace-rust-zephyr-mps2-talker-clock-sntp-resync`, a BuildOnly matrix
+  cell). Its server is a hostname (`ntp.nros.test:12399`), so the thread runs
+  Zephyr's DNS resolver too, the deeper path.
+- **Walk.** `SNTP_RESYNC` walks 90,728 B from `nros_zephyr_sntp_resync_loop`,
+  an upper bound through `z_impl_zsock_sendto -> _zp_unicast_lease_task_fn`
+  (bound by C type): a socket edge into zenoh's lease task that this thread
+  never takes.
+- **Peak.** 1,160 B in the thread analyzer under QEMU with icount, the same
+  in two runs (888 B with a numeric server). That is far below the
+  consumer's 7,024 B on 64-bit Arm. The exact command, responders and
+  analyzer counts are in the row's `method`.
+- **Guard.** An `[[observed]]` row (`config/stack-floors.toml`, role
+  `SNTP_RESYNC`, peak 1,160, static 90,728). With it the image is measured:
+  its floor is the peak plus 10 %, 1,280 B, held against
+  `CONFIG_NROS_CLOCK_SNTP_RESYNC_STACK_BYTES`. Negative control:
+  `sntp_resync_stack_bytes = 1024` refuses the build ("below the measured
+  floor 1280 B"), and 8,192 B holds. The nightly drift check re-walks the
+  row (`just zephyr stack-floor-drift --only
+  pubsub_bringup@zephyr_cortex_m_talker_clock_sntp_resync`: OK, as recorded).
+  A walk that ever reads below the peak is refused as a walker defect.
+- **Knob help** now gives both numbers. The default stays 8,192 B: it is
+  what the 64-bit figure needs, and 64-bit is not measured in-tree yet.
+
+Nothing re-measures the run-time peak yet. The twin measures only a
+template image's main thread, so this row was taken by hand:
+[issue 2963](2963-stack-floor-twin-measures-only-main-thread.md).
+
+## Still open: 64-bit
+
+Zephyr 3.7 builds no Rust for `qemu_cortex_a53` (`RUST_SUPPORTED` excludes
+`TIMER_READS_ITS_FREQUENCY_AT_RUNTIME`), so the 64-bit image is a C one. The
+re-sync thread is the shim's C either way. A C talker with the same clock
+knobs on `qemu-cortex-a53` builds, but its walk is REFUSED: aarch64 libgcc
+has no row in `config/stack-builtins.toml` (the `__aarch64_*` atomics), and
+the arm64 assembly entry points (`__start`, `arch_cpu_idle`,
+`arm_smccc_hvc`, `arm_smccc_smc`, `z_arm64_context_switch`,
+`z_arm64_exit_exc`, `z_arm64_fpu_save`) have no frames.
+[Issue 2897](2897-a53-stack-walk-refuses-aarch64-builtins.md) owns that
+groundwork, in three steps: (1) the aarch64 libgcc row for the atomics (draft
+#4760); (2) frames for the arm64 assembly entry points above; (3) the
+observed `SNTP_RESYNC` row on `qemu-cortex-a53`, from a boot's stack-peak
+line. Step 3 is that issue's, so this one does not add a second row.
+
+**After issue 2897's steps 1-2 land:** the a53 walk can run. The C image is
+`examples/workspaces/c` `pubsub_bringup` with `board = "qemu-cortex-a53"` and
+the 32-bit image's clock and sntp knobs, plus board fragments under
+`boards/qemu_cortex_a53_qemu_cortex_a53_smp/`; this issue's 32-bit row's
+`method` is how its peak was taken. **When 2897's step 3 records the row:**
+decide whether the 8,192 B default is still right for 64-bit, update the
+knob's help with the in-tree 64-bit figure, and close this issue.

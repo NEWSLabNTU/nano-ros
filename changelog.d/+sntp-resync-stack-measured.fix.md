@@ -1,0 +1,1 @@
+Zephyr's SNTP re-sync thread now has a measured stack peak (1,160 B on a 32-bit Cortex-M3, DNS lookup included), and the build refuses a `clock.sntp_resync_stack_bytes` below that peak plus the stack-floor margin on an image whose peak is recorded. The help for `clock.sntp_resync_stack_bytes` gives the 32-bit and 64-bit figures.
