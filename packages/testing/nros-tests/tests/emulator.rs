@@ -842,19 +842,31 @@ const RTIC_LEVELS_BOUND_US: i64 = 500;
 
 /// While the boot level idles in `wfi`, QEMU's `-icount` advances the guest's
 /// clock at wall speed (`sleep=on`, which the network needs), so the one-shot
-/// fires late by whatever the host's scheduler adds. That jitter is the
-/// emulator's, not the design's: this share of idle activations must still
-/// meet [`RTIC_LEVELS_BOUND_US`], and every one must meet
-/// [`RTIC_LEVELS_IDLE_CAP_US`], under the 200 ms the boot level's own park
-/// would take without the level wake.
+/// fires late by however long the host takes to wake QEMU's timer thread.
+/// That is the host's, not the design's, and it moves both ways with the
+/// host's state. In ONE run, with nothing beside it, 392 of 758 idle
+/// activations (52 %) met [`RTIC_LEVELS_BOUND_US`] on a near-idle 48-thread
+/// runner (tier2-nightly, 2026-11-25), against 93 to 99.6 % over five runs of
+/// the same build at load 48 of 24 cores. A quiet host wakes slower than a
+/// busy one, so an on-time share asserts nothing about the image, and this
+/// cell asserts none. It held one (95 %) until that measurement.
+///
+/// What still proves the level wake while idle: every idle activation must
+/// run before [`RTIC_LEVELS_IDLE_CAP_US`], not early, and on the 10 ms grid.
+/// Without the level wake, nothing else ends the boot level's park before
+/// the boot level's own 200 ms timer (`burner`, 5 Hz). Then an urgent
+/// activation is late by up to 190 ms, and nearly every idle one is past the
+/// cap. The cap (20 ms) is a tenth of that fallback. Mutation:
+/// `rtic_levels_check::a_missing_level_wake_is_refused_by_the_cap`. This is
+/// issue 2748's ruling for the interrupt-wake images, by a different
+/// mechanism (`isr_wake_rtos.rs`, `Latency::CapOnly`).
 ///
 /// The design's bound (RFC-0112 D3, phase-562 W10) is
 /// [`RTIC_LEVELS_BOUND_US`], and it is measured where the guest's clock is its
-/// own: while the boot level burns. These two idle numbers are an allowance
-/// for QEMU, not part of that bound. Do not tighten them to make the bound
-/// look stricter, and do not loosen [`RTIC_LEVELS_BOUND_US`] to absorb idle
-/// jitter.
-const RTIC_LEVELS_IDLE_ON_TIME_SHARE: f64 = 0.95;
+/// own: while the boot level burns (worst 199 to 213 us in every run above).
+/// The idle cap is an allowance for QEMU, not part of that bound. Do not
+/// tighten it to make the bound look stricter, and do not loosen
+/// [`RTIC_LEVELS_BOUND_US`] to absorb idle delay.
 const RTIC_LEVELS_IDLE_CAP_US: i64 = 20_000;
 
 /// One `URGENT_FIRE <now_us> <late_us>` line and the burn it ran in, if any.
@@ -976,13 +988,19 @@ fn test_qemu_rtic_levels_preempt_and_wake_on_time() {
         tail()
     );
 
-    // TIMER: deadlines on the timer's grid, activations not early, on time.
+    check_rtic_levels_timer(&fires, burns.len());
+}
+
+/// TIMER: deadlines on the timer's grid, activations not early, the busy
+/// ones within [`RTIC_LEVELS_BOUND_US`], the idle ones within
+/// [`RTIC_LEVELS_IDLE_CAP_US`].
+fn check_rtic_levels_timer(fires: &[UrgentFire], burns: usize) {
     let first_deadline = fires[0].at_us - fires[0].late_us;
     let mut off_grid = Vec::new();
     let mut early = Vec::new();
     let mut busy_late = Vec::new();
     let (mut idle, mut idle_on_time, mut idle_over_cap) = (0usize, 0usize, Vec::new());
-    for f in &fires {
+    for f in fires {
         let deadline = f.at_us - f.late_us;
         // `late` is the executor's, taken a few instructions before the
         // callback reads the clock, so a deadline rebuilt from the two sits
@@ -1023,7 +1041,7 @@ fn test_qemu_rtic_levels_preempt_and_wake_on_time() {
         fires.len(),
         worst(true),
         worst(false),
-        burns.len()
+        burns
     );
     assert!(
         off_grid.is_empty(),
@@ -1043,10 +1061,6 @@ fn test_qemu_rtic_levels_preempt_and_wake_on_time() {
         busy_late.is_empty(),
         "urgent activations past {RTIC_LEVELS_BOUND_US} us while the boot level burned: {:?}",
         &busy_late[..busy_late.len().min(5)]
-    );
-    assert!(
-        idle_on_time as f64 >= RTIC_LEVELS_IDLE_ON_TIME_SHARE * idle as f64,
-        "only {idle_on_time} of {idle} idle-time activations within {RTIC_LEVELS_BOUND_US} us"
     );
     assert!(
         idle_over_cap.is_empty(),
@@ -1310,4 +1324,78 @@ fn cases_bound_to_matrix_cells() {
             ),
         ],
     );
+}
+
+/// What [`check_rtic_levels_timer`] refuses, over synthetic traces.
+mod rtic_levels_check {
+    use super::{RTIC_LEVELS_PERIOD_US, UrgentFire, check_rtic_levels_timer};
+
+    /// 1000 activations on the 10 ms grid, every fourth inside a burn;
+    /// `late(i, in_burn)` gives each one's lateness.
+    fn trace(late: impl Fn(usize, bool) -> i64) -> Vec<UrgentFire> {
+        (0..1000)
+            .map(|i| {
+                let in_burn = i % 4 == 0;
+                let late_us = late(i, in_burn);
+                UrgentFire {
+                    at_us: 1_000_000 + i as i64 * RTIC_LEVELS_PERIOD_US + late_us,
+                    late_us,
+                    in_burn,
+                }
+            })
+            .collect()
+    }
+
+    fn refused(fires: Vec<UrgentFire>) -> String {
+        let err = std::panic::catch_unwind(move || check_rtic_levels_timer(&fires, 50))
+            .expect_err("the check must refuse this trace");
+        err.downcast_ref::<String>()
+            .cloned()
+            .or_else(|| err.downcast_ref::<&str>().map(|s| s.to_string()))
+            .unwrap_or_default()
+    }
+
+    /// The quiet runner's shape: half the idle activations past 500 us, all
+    /// under the cap, the busy ones at ~200 us. The host's, so it passes.
+    #[test]
+    fn idle_wake_jitter_under_the_cap_passes() {
+        let fires = trace(|i, busy| {
+            if busy {
+                200
+            } else if i % 2 == 0 {
+                2_400
+            } else {
+                300
+            }
+        });
+        check_rtic_levels_timer(&fires, 50);
+    }
+
+    /// Without the level wake the urgent level waits for the boot level's
+    /// own 200 ms timer, so an idle activation is late by anywhere up to
+    /// 190 ms. The cap is a tenth of that and refuses it.
+    #[test]
+    fn a_missing_level_wake_is_refused_by_the_cap() {
+        let fires = trace(|i, busy| {
+            if busy {
+                200
+            } else {
+                (i as i64 * 10_000) % 200_000
+            }
+        });
+        let err = refused(fires);
+        assert!(err.contains("idle-time activations past 20000 us"), "{err}");
+    }
+
+    #[test]
+    fn the_busy_bound_still_holds_the_design() {
+        let err = refused(trace(|_, busy| if busy { 600 } else { 300 }));
+        assert!(err.contains("while the boot level burned"), "{err}");
+    }
+
+    #[test]
+    fn an_early_activation_is_refused() {
+        let err = refused(trace(|i, _| if i == 9 { -40 } else { 200 }));
+        assert!(err.contains("before their deadline"), "{err}");
+    }
 }
