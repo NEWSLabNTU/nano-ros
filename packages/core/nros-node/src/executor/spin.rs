@@ -16353,6 +16353,48 @@ impl<'s> Executor<'s> {
         self.declare_parameter_on_ref(node, name, &value)
     }
 
+    // Issue 2969.
+    /// Declare `name` on `node` from a LAUNCH file: the value an entry seeds
+    /// before the node's code runs. It is declared like any value, then
+    /// marked, so the code's first declaration of the name adopts it
+    /// ([`adopt_launch_seed_on`](Self::adopt_launch_seed_on)) rather than being
+    /// refused as a duplicate. Every seeding path calls this (the Rust board
+    /// entry, the Rust probe, nros-cpp's seed for C and C++ entries).
+    #[must_use]
+    pub(crate) fn seed_launch_parameter_on_ref(
+        &mut self,
+        node: super::node_record::NodeId,
+        name: &str,
+        value: &nros_params::ParameterValue,
+    ) -> bool {
+        if !self.declare_parameter_on_ref(node, name, value) {
+            return false;
+        }
+        if let Some(params) = self.params.as_deref_mut() {
+            params.server.mark_launch_seed(node.into(), name);
+        }
+        true
+    }
+
+    // Issue 2969.
+    /// The code declares `name` on `node` as `param_type`: adopt its launch
+    /// seed if it has one (see `ParameterServer::adopt_launch_seed`). `None`
+    /// when there is none, or no store: declare as usual.
+    pub(crate) fn adopt_launch_seed_on(
+        &mut self,
+        node: super::node_record::NodeId,
+        name: &str,
+        param_type: nros_params::ParameterType,
+        descriptor: Option<&nros_params::ParameterDescriptor>,
+    ) -> Option<Result<(), nros_params::DeclarationError>> {
+        self.params.as_deref_mut()?.server.adopt_launch_seed(
+            node.into(),
+            name,
+            param_type,
+            descriptor,
+        )
+    }
+
     /// [`declare_parameter_on`](Self::declare_parameter_on), borrowing the
     /// value — issue 2070, and THE declare path the by-value spelling forwards
     /// to. A `ParameterValue` is ~8 KiB at the default capacities, and moving

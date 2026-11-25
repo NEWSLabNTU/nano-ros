@@ -122,6 +122,22 @@ int main() {
     check(std::strstr(g_header_line, "write 1.0 in the YAML") != nullptr,
           "the mismatch line says what to write");
 
+    // Issue 2969 -- a seed with the declared type is ADOPTED through the
+    // store's one rule (`adopt_launch_seed_on`): the launch value over the code
+    // default, no error. A second declaration of the name still answers the
+    // value in effect (C++ re-declaration is not an error here).
+    check(nros_cpp_declare_node_param(exec.handle(), "seeded_node", "period", "20") ==
+              NROS_CPP_RET_OK,
+          "seed period from the launch text \"20\"");
+    rclcpp::Node seeded;
+    check(exec.create_node(seeded, "seeded_node").ok(), "create the seeded node");
+    check(seeded.declare_parameter<int64_t>("period", 5) == 20,
+          "an integer declaration adopts the integer launch seed");
+    check(seeded.ok(), "adopting a seed of the declared type latches nothing");
+    check(seeded.declare_parameter<int64_t>("period", 5) == 20,
+          "a second declaration reads the value in effect");
+    check(seeded.ok(), "the second declaration latches nothing");
+
     // A launch list of doubles (`[40.0, 50.0, 60.0]` in a YAML `<param from>`)
     // arrives as a double array, so declaring it `std::vector<double>` passes
     // the type check above and reads back every element.

@@ -69,6 +69,11 @@ pub(crate) struct ParameterEntry {
     param: Parameter,
     /// Optional descriptor with constraints
     descriptor: Option<ParameterDescriptor>,
+    // Issue 2969.
+    /// The entry holds a launch value the code has not declared yet. The first
+    /// declaration of the name ADOPTS it ([`ParameterServer::adopt_launch_seed`])
+    /// and clears this, so a second declaration is the code's own duplicate.
+    launch_seed: bool,
 }
 
 /// Why a declaration was refused.
@@ -103,6 +108,10 @@ pub enum DeclarationError {
     /// `NoValueAvailable`; phase-515 R8). A read-only value can never be set
     /// later, so it must arrive with the declaration.
     NoValueAvailable,
+    // Issue 2969.
+    /// The launch value seeded for this name has another type than the code
+    /// declares it with (rclrs `OverrideValueTypeMismatch`).
+    LaunchValueTypeMismatch,
 }
 
 /// What each refusal means, for a caller that prints the `Err` it got back. A
@@ -130,6 +139,10 @@ impl core::fmt::Display for DeclarationError {
             DeclarationError::NoValueAvailable => {
                 f.write_str("a read-only parameter was declared with no default")
             }
+            DeclarationError::LaunchValueTypeMismatch => f.write_str(
+                "the parameter's launch value has another type than the code declares it with; \
+                 write the launch value in the declared type",
+            ),
         }
     }
 }
@@ -148,6 +161,7 @@ impl From<DeclarationError> for crate::ParameterError {
                 crate::ParameterError::StorageFull
             }
             DeclarationError::NoValueAvailable => crate::ParameterError::NotFound,
+            DeclarationError::LaunchValueTypeMismatch => crate::ParameterError::TypeMismatch,
         }
     }
 }
@@ -841,6 +855,66 @@ impl<'s> ParameterServer<'s> {
         self.try_declare_ref(node, name, value, None).is_ok()
     }
 
+    // Issue 2969.
+    /// Mark `name` on `node`, just declared from a launch file, as a launch
+    /// seed: the first declaration the code makes of it adopts the value
+    /// ([`adopt_launch_seed`](Self::adopt_launch_seed)). `false` when the name
+    /// is not in the store.
+    pub(crate) fn mark_launch_seed(&mut self, node: NodeKey, name: &str) -> bool {
+        match self.find_index(node, name) {
+            Some(i) => {
+                if let Some(entry) = self.table.entries[i].as_mut() {
+                    entry.launch_seed = true;
+                }
+                true
+            }
+            None => false,
+        }
+    }
+
+    // Issue 2969.
+    /// The code declares `name` on `node` as `param_type`. When the store
+    /// holds a launch seed for it, the declaration ADOPTS the seed, as rclcpp
+    /// and rclrs apply a launch override at declaration: `Some(Ok(()))`, the
+    /// seed's value kept, `descriptor` (if any) attached and checked against
+    /// it, and the mark cleared so a later declaration is a duplicate.
+    /// `Some(Err(LaunchValueTypeMismatch))` when the seed has another type,
+    /// `Some(Err(InitialValueOutOfRange))` when the descriptor's range
+    /// refuses it. `None` when there is no seed to adopt: the caller declares
+    /// as it always did.
+    ///
+    /// The ONE rule for every language's declaration (the Rust typed and
+    /// declarative routes, C's rclc server, C++'s node), so a launch value
+    /// is adopted or refused the same way whichever code declares it.
+    pub(crate) fn adopt_launch_seed(
+        &mut self,
+        node: NodeKey,
+        name: &str,
+        param_type: crate::ParameterType,
+        descriptor: Option<&ParameterDescriptor>,
+    ) -> Option<Result<(), DeclarationError>> {
+        let i = self.find_index(node, name)?;
+        let entry = self.table.entries[i].as_mut()?;
+        if !entry.launch_seed {
+            return None;
+        }
+        if entry.param.value.param_type() != param_type {
+            return Some(Err(DeclarationError::LaunchValueTypeMismatch));
+        }
+        if let Some(d) = descriptor {
+            if let Err(e) = Self::declaration_consistency(Some(d), &entry.param.value) {
+                return Some(Err(e));
+            }
+        }
+        let entry = self.table.entries[i].as_mut()?;
+        entry.launch_seed = false;
+        if let Some(d) = descriptor {
+            entry.descriptor = Some(d.clone());
+            self.note_descriptor(Some(d));
+        }
+        Some(Ok(()))
+    }
+
     /// Declare a new parameter with value and descriptor on `node`
     ///
     /// The descriptor provides metadata like description, constraints, and read-only flag.
@@ -973,6 +1047,7 @@ impl<'s> ParameterServer<'s> {
                 value: ParameterValue::NotSet,
             },
             descriptor,
+            launch_seed: false,
         });
         if let Some(entry) = cell {
             fill(&mut entry.param.value);
@@ -1169,6 +1244,7 @@ impl<'s> ParameterServer<'s> {
                 value: ParameterValue::NotSet,
             },
             descriptor: None,
+            launch_seed: false,
         });
         self.count += 1;
         Some(slot)
@@ -1784,6 +1860,7 @@ impl<'s> ParameterServer<'s> {
             node,
             param,
             descriptor: Some(descriptor),
+            launch_seed: false,
         });
         self.count += 1;
         Ok(())

@@ -1806,7 +1806,9 @@ impl ExecutorSink<'_> {
                     return Err(NodeDeclError::Runtime);
                 }
             }
-            if !executor.declare_parameter_on_ref(node, name, &value)
+            // Issue 2969 -- declared AS a launch seed, so the code's own first
+            // declaration of the name adopts it instead of being refused.
+            if !executor.seed_launch_parameter_on_ref(node, name, &value)
                 && executor.get_parameter_on(node, name).is_none()
             {
                 // GitHub #4018 -- the line names the store's capacity and the
@@ -2367,6 +2369,20 @@ impl crate::node::FrameSink for ExecutorSink<'_> {
                     // entity's node, not the executor's primary (issue 1272):
                     // a second node declaring a name the first also declares
                     // is its own parameter, not a duplicate.
+                    // Issue 2969 -- a launch seed for this name is adopted by
+                    // the one store rule every language shares: kept if it has
+                    // the declared type, refused naming the cause if not.
+                    match executor.adopt_launch_seed_on(node, name, value.param_type(), None) {
+                        Some(Ok(())) => return Ok(()),
+                        Some(Err(e)) => {
+                            nros_log::log_error!(
+                                nros_log::get_logger("nros"),
+                                "parameter '{name}': {e}"
+                            );
+                            return Err(NodeDeclError::ParameterRejected);
+                        }
+                        None => {}
+                    }
                     if !executor.declare_parameter_on_ref(node, name, &value)
                         && executor.get_parameter_on(node, name).is_none()
                     {

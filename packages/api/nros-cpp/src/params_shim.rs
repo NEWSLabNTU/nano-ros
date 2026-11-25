@@ -286,7 +286,9 @@ fn seed_launch_text(
             }
         };
     }
-    if ctx.executor.declare_parameter_on_ref(node, name, &pv) {
+    // Issue 2969 -- declared AS a launch seed, so the node's own first
+    // declaration of the name adopts it by the store's one rule.
+    if ctx.executor.seed_launch_parameter_on_ref(node, name, &pv) {
         NROS_CPP_RET_OK
     } else {
         seed_refused(ctx, node, name)
@@ -594,6 +596,21 @@ fn declare_on_node(
     name: &str,
     value: &ParameterValue,
 ) -> nros_cpp_ret_t {
+    // Issue 2969 -- a launch seed is adopted by the store's one rule. Both
+    // verdicts answer ALREADY_EXISTS, as a seed did before: the header reads
+    // the value back as the declared type, and reports a type mismatch
+    // (naming the launch value) when that read fails. Adopting clears the
+    // seed's mark, so a later declaration is the node's own duplicate.
+    match ctx
+        .executor
+        .adopt_launch_seed_on(id, name, value.param_type(), None)
+    {
+        Some(Ok(()) | Err(nros::DeclarationError::LaunchValueTypeMismatch)) => {
+            return NROS_CPP_RET_ALREADY_EXISTS;
+        }
+        Some(Err(_)) => return NROS_CPP_RET_INVALID_ARGUMENT,
+        None => {}
+    }
     if ctx.executor.declare_parameter_on_ref(id, name, value) {
         flush_events(ctx);
         NROS_CPP_RET_OK

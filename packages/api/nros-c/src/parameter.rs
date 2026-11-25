@@ -289,6 +289,22 @@ mod imp {
             return RCL_RET_INVALID_ARGUMENT;
         };
         nros::census_hooks::on_param_declare(n, &value);
+        // Issue 2969 -- a launch seed is adopted by the store's one rule
+        // (every language's): kept with the declared type, refused naming
+        // the cause otherwise. The mark clears, so the next is a duplicate.
+        match exec.adopt_launch_seed_on(id, n, value.param_type(), None) {
+            Some(Ok(())) => return RCL_RET_OK,
+            Some(Err(e)) => {
+                nros_log::log_error!(
+                    nros_log::get_logger("nros-c"),
+                    "parameter \"{}\": {}; the declaration is refused",
+                    n,
+                    e
+                );
+                return RCL_RET_ERROR;
+            }
+            None => {}
+        }
         if let Some(t) = exec.get_parameter_type_on(id, n) {
             return if t == value.param_type() {
                 RCL_RET_OK
