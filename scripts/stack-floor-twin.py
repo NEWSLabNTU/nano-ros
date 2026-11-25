@@ -10,13 +10,17 @@ the UNSAFE direction: a frame on the walk shrinks, the walk falls, the row
 stays, and the floor drops below the peak while every build still says
 "holds". Nothing a build does can see that; only running the image can.
 
-This lane runs the image. For every `[[allowance]]` row whose key is a
-`nros new` template key (`<template>/<lang>/<rmw>@<board>`) and whose board
-has a twin (`[board.run] emulator = "renode:<machine>"` or
-`"qemu:<machine>"`; a QEMU twin boots under `-icount`, so its runs agree too):
+This lane runs the image. For every `[[allowance]]` and `[[observed]]` row
+whose key is a `nros new` template key (`<template>/<lang>/<rmw>@<board>`) or
+a bringup key (`<bringup>@<image>`, issue 2963), and whose board has a twin
+(`[board.run] emulator = "renode:<machine>"` or `"qemu:<machine>"`; a QEMU
+twin boots under `-icount`, so its runs agree too):
 
-1. `nros new` the template into `--out` (kept between runs, so a rerun is an
-   incremental build), and add `twin.conf` to the image's `os_config`: the
+1. Make the project in `--out` (kept between runs, so a rerun is an
+   incremental build). A template key: `nros new` the template. A bringup
+   key: copy the files git tracks in the workspace its `[[workspace_fixture]]`
+   row names (the drift check's lookup), so nothing in the checkout is
+   edited. Then add `twin.conf` to the image's `os_config`: the
    thread analyzer, `CONFIG_INIT_STACKS`, and a 64 KiB main stack, so an
    image whose row is stale still runs (Renode does not enforce the MPU
    guard, so an overflow would be silent, issue 2359) and is measured
@@ -24,9 +28,13 @@ has a twin (`[board.run] emulator = "renode:<machine>"` or
 2. `nros build`. The build walks the image and writes what it measured to
    `nros/stack-floor/report.json` (`--report`): the static walk, the
    allowance it applied and the floor.
-3. `nros run` in the twin for `--seconds`, and read the main thread's peak
-   from the analyzer's rounds (the maximum; Renode is deterministic, so the
-   rounds agree).
+3. `nros run` in the twin for `--seconds`, and read the peak of the role's
+   thread from the analyzer's rounds (the maximum; the twins are
+   deterministic, so the rounds agree). The thread is the one the build names
+   for the role (`--role-thread`, recorded in the report); OPEN's is `main`.
+   A row's `twin_peers` (`["sntp=<port>", "dns=<port>"]`) are started on the
+   host for the run (`scripts/lib/twin_peers.py`), and a peer that answers
+   nothing fails the row: the run never reached the path it measures.
 4. Verdict, per row. It FAILS when `peak > floor` (the floor does not hold
    the image), and when `bytes != peak - static` (the row is stale). A stale
    row fails in either direction, and the message says which direction and
@@ -62,6 +70,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 TABLE = ROOT / "config" / "stack-floors.toml"
+FIXTURES = ROOT / "examples" / "fixtures.toml"
+sys.path.insert(0, str(ROOT / "scripts" / "lib"))
+import twin_peers  # noqa: E402
 TWIN_CONF = "twin.conf"
 TWIN_STACK = 65536
 # The analyzer's line for one thread:
@@ -72,6 +83,7 @@ ANALYZER = re.compile(r"^\s*(?P<name>\S+)\s*:\s*STACK:\s*unused\s+\d+\s+usage\s+
 NEVER = "nros-stack-floor-twin: never printed"
 
 
+@functools.cache
 def _walker():
     """`scripts/nros-stack-floor.py`, whose table reader and floor formula
     this lane must agree with, so it imports them rather than restating."""
@@ -82,6 +94,78 @@ def _walker():
     sys.modules[spec.name] = mod  # its dataclasses look their module up there
     spec.loader.exec_module(mod)
     return mod
+
+
+@functools.cache
+def _drift():
+    """`scripts/stack-floor-drift.py`, whose bringup-key lookup and build
+    environment a bringup row is built with (issue 2963), so this lane and the
+    drift check build the same image the same way."""
+    spec = importlib.util.spec_from_file_location(
+        "stack_floor_drift", ROOT / "scripts" / "stack-floor-drift.py")
+    assert spec is not None and spec.loader is not None
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = mod
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def bringup_source(key: str, fixtures: list[dict]) -> tuple[dict | None, str]:
+    """The `[[workspace_fixture]]` row that builds bringup key `key` (the drift
+    check's lookup), or None and why."""
+    hits = _drift().bringup_rows(key, fixtures)
+    if len(hits) != 1:
+        return None, (f"{len(hits)} [[workspace_fixture]] rows in examples/fixtures.toml "
+                      "declare this bringup and image, not 1")
+    return hits[0], ""
+
+
+def image_board(system_toml: Path, image: str) -> str | None:
+    """`[image.<image>] board` of a bringup's system.toml, read through the
+    walker's loader (tomllib, or tomli on Python 3.10)."""
+    try:
+        doc = _walker().load_toml(system_toml)
+    except (OSError, ValueError):
+        return None
+    b = doc.get("image", {}).get(image, {}).get("board")
+    return b if isinstance(b, str) else None
+
+
+def row_board(key: str, fixtures: list[dict], w) -> tuple[str | None, str]:
+    """The board a row's image runs on: a template key states it, a bringup
+    key's image declares it in its bringup's `system.toml`."""
+    parsed = parse_key(key)
+    if parsed:
+        return parsed[3], ""
+    shape = (w.parse_image_key(key) or ("",))[0]
+    if shape != "bringup":
+        return None, "not a template or bringup key, so the lane cannot make it"
+    fx, why = bringup_source(key, fixtures)
+    if fx is None:
+        return None, why
+    sysf = ROOT / fx["dir"] / fx["bringup"] / "system.toml"
+    board = image_board(sysf, fx["image"]) if sysf.is_file() else None
+    if board is None:
+        return None, f"{sysf} declares no board for image `{fx['image']}`"
+    return board, ""
+
+
+def copy_tracked(src: str, dest: Path) -> int:
+    """Copy the files git tracks under `src` (repo-relative) into `dest`,
+    writing only those whose bytes differ, so a rerun is an incremental build.
+    Returns how many it wrote. The copy is a project of its own under the
+    lane's `--out`, so the lane never edits a tracked file."""
+    p = subprocess.run(["git", "-C", str(ROOT), "ls-files", "-z", "--", src],
+                       stdout=subprocess.PIPE, check=True)
+    wrote = 0
+    for f in filter(None, p.stdout.decode().split("\0")):
+        data = (ROOT / f).read_bytes()
+        d = dest / Path(f).relative_to(src)
+        if not d.is_file() or d.read_bytes() != data:
+            d.parent.mkdir(parents=True, exist_ok=True)
+            d.write_bytes(data)
+            wrote += 1
+    return wrote
 
 
 def stamped_stack(conf: Path) -> int | None:
@@ -247,7 +331,7 @@ def verdict(row: dict, role: dict, peak: int, size: int, margin: int, floor_form
             "lane built is not keyed to this row"])
     if peak >= size:
         return Verdict(False, lines + [
-            f"  FAIL: the main thread used its whole {size} B stack in the twin; the peak is "
+            f"  FAIL: the measured thread used its whole {size} B stack in the twin; the peak is "
             "not a measurement. Raise TWIN_STACK."])
     ok = True
     implied = peak - static
@@ -296,7 +380,7 @@ def verdict_observed(row: dict, role: dict, peak: int, size: int, drift) -> Verd
             "built is not keyed to this row"])
     if peak >= size:
         return Verdict(False, lines + [
-            f"  FAIL: the main thread used its whole {size} B stack in the twin; the peak is "
+            f"  FAIL: the measured thread used its whole {size} B stack in the twin; the peak is "
             "not a measurement. Raise TWIN_STACK."])
     ok = True
     if peak > floor:
@@ -333,7 +417,7 @@ def measured_row(row: dict, role: dict, peak: int, size: int,
              f"static {role['depth']} B"]
     if peak >= size:
         return Verdict(False, lines + [
-            f"  FAIL: the main thread used its whole {size} B stack in the twin; the peak is "
+            f"  FAIL: the measured thread used its whole {size} B stack in the twin; the peak is "
             "not a measurement. Raise TWIN_STACK."])
     if len(rounds) > 1:
         lines.append(f"  note: the rounds disagree ({rounds}); the row takes the largest")
@@ -347,28 +431,62 @@ def measured_row(row: dict, role: dict, peak: int, size: int,
     return Verdict(True, lines)
 
 
+def prepare_template(nros: str, row: dict, out: Path, lf
+                     ) -> tuple[Path, Path, str] | Verdict:
+    """`nros new` the template into `out` (once; kept, so a rerun is
+    incremental). Returns (project, system.toml, board)."""
+    template, lang, rmw, board = parse_key(row["image"])  # type: ignore[misc]
+    proj = out / project_name(template, lang)
+    if not proj.exists():
+        rc = subprocess.run([nros, "new", proj.name, "--board", board, "--lang", lang,
+                             "--rmw", rmw, "--template", template],
+                            cwd=out, stdout=lf, stderr=subprocess.STDOUT).returncode
+        if rc:
+            return Verdict(False, [f"{row['image']}: FAIL: `nros new` exited {rc}"])
+    systems = [p for p in proj.glob("src/*/system.toml")
+               if "stack_floor_image" in p.read_text()]
+    if len(systems) != 1:
+        return Verdict(False, [f"{row['image']}: FAIL: {proj} holds {len(systems)} "
+                               "system.toml stating stack_floor_image, not 1"])
+    return proj, systems[0], board
+
+
+def prepare_bringup(row: dict, out: Path, fixtures: list[dict]
+                    ) -> tuple[Path, Path, str, str] | Verdict:
+    """A bringup key (issue 2963): copy the workspace its fixture row names
+    into `out` (tracked files only) and build the row's image there, so the
+    twin's conf goes into a copy and never into the checkout. Returns
+    (project, system.toml, board, `<bringup>:<image>`)."""
+    fx, why = bringup_source(row["image"], fixtures)
+    if fx is None:
+        return Verdict(False, [f"{row['image']}: FAIL: {why}"])
+    proj = out / f"twin_{fx['image']}"
+    copy_tracked(fx["dir"], proj)
+    sysf = proj / fx["bringup"] / "system.toml"
+    board = image_board(sysf, fx["image"])
+    if board is None:
+        return Verdict(False, [f"{row['image']}: FAIL: {sysf} declares no board for "
+                               f"image `{fx['image']}`"])
+    return proj, sysf, board, f"{Path(fx['bringup']).name}:{fx['image']}"
+
+
 def run_row(nros: str, row: dict, out: Path, seconds: int, rounds: int, w,
-            drift, measure: bool = False) -> Verdict:
-    key = parse_key(row["image"])
-    assert key is not None
-    template, lang, rmw, board = key
-    name = project_name(template, lang)
-    proj = out / name
-    log = out / f"{name}.log"
+            drift, measure: bool = False, fixtures: list[dict] | None = None) -> Verdict:
     out.mkdir(parents=True, exist_ok=True)
+    bringup = parse_key(row["image"]) is None
+    log = out / f"{re.sub(r'[^A-Za-z0-9_.-]', '_', row['image'])}.log"
+    env = _drift()._env() if bringup else None
     with log.open("w") as lf:
-        if not proj.exists():
-            rc = subprocess.run([nros, "new", name, "--board", board, "--lang", lang,
-                                 "--rmw", rmw, "--template", template],
-                                cwd=out, stdout=lf, stderr=subprocess.STDOUT).returncode
-            if rc:
-                return Verdict(False, [f"{row['image']}: FAIL: `nros new` exited {rc} ({log})"])
-        systems = [p for p in proj.glob("src/*/system.toml")
-                   if "stack_floor_image" in p.read_text()]
-        if len(systems) != 1:
-            return Verdict(False, [f"{row['image']}: FAIL: {proj} holds {len(systems)} "
-                                   "system.toml stating stack_floor_image, not 1"])
-        sysf = systems[0]
+        if bringup:
+            prep = prepare_bringup(row, out, fixtures or [])
+            if isinstance(prep, Verdict):
+                return prep
+            proj, sysf, board, target = prep
+        else:
+            prep = prepare_template(nros, row, out, lf)
+            if isinstance(prep, Verdict):
+                return Verdict(False, [f"{prep.lines[0]} ({log})"])
+            (proj, sysf, board), target = prep, None
         text = sysf.read_text()
         if f'stack_floor_image = "{row["image"]}"' not in text:
             return Verdict(False, [f"{row['image']}: FAIL: {sysf} is not keyed to this row"])
@@ -377,9 +495,10 @@ def run_row(nros: str, row: dict, out: Path, seconds: int, rounds: int, w,
         (sysf.parent / TWIN_CONF).write_text(
             twin_conf(stack, qemu=bool(emu and emu[0] == "qemu")))
         sysf.write_text(with_twin_conf(text))
+        tgt = [target] if target else []
 
-        rc = subprocess.run([nros, "build"], cwd=proj, stdout=lf,
-                            stderr=subprocess.STDOUT).returncode
+        rc = subprocess.run([nros, "build", *tgt], cwd=proj, stdout=lf,
+                            stderr=subprocess.STDOUT, env=env).returncode
         if rc:
             return Verdict(False, [f"{row['image']}: FAIL: `nros build` exited {rc} ({log})"])
         # The build walks only when the image relinks, so a table edit alone
@@ -387,7 +506,7 @@ def run_row(nros: str, row: dict, out: Path, seconds: int, rounds: int, w,
         # command, current table, and a warm llc cache makes it seconds.
         # The report and its walk are where the build says (issue 2795): its
         # plan states the road's directory, `report_path` the file in it.
-        rdir, why = w.plan_report_dir(nros, None, proj, lf)
+        rdir, why = w.plan_report_dir(nros, target, proj, lf, env=env)
         if rdir is None:
             return Verdict(False, [f"{row['image']}: FAIL: {why} ({log})"])
         check = rdir / "check.cmake"
@@ -400,33 +519,54 @@ def run_row(nros: str, row: dict, out: Path, seconds: int, rounds: int, w,
         if not rpath.is_file():
             return Verdict(False, [f"{row['image']}: FAIL: the build wrote no stack-floor "
                                    f"report at {rpath}"])
-        reports = [rpath]
-        report = json.loads(reports[0].read_text())
+        report = json.loads(rpath.read_text())
         role = report["roles"].get(row["role"])
         if role is None:
             return Verdict(False, [f"{row['image']}: FAIL: the build's report has no "
                                    f"{row['role']} role (refused: {report.get('refused')})"])
+        # The thread whose analyzer line is this role's (issue 2963): the
+        # build states it (`--role-thread`), OPEN's is `main`.
+        thread = role.get("thread") or ("main" if row["role"] == "OPEN" else None)
+        if thread is None:
+            return Verdict(False, [f"{row['image']}: FAIL: the build names no thread for "
+                                   f"role {row['role']} (`--role-thread`), so the lane cannot "
+                                   "tell which analyzer line is its"])
 
+        try:
+            peers = twin_peers.Peers(row.get("twin_peers"))
+        except ValueError as e:
+            return Verdict(False, [f"{row['image']}: FAIL: {e}"])
         start = time.time()
-        subprocess.run([nros, "run", "--expect", NEVER, "--timeout", str(seconds)],
-                       cwd=proj, stdout=lf, stderr=subprocess.STDOUT)
+        with peers:
+            subprocess.run([nros, "run", *tgt, "--expect", NEVER, "--timeout", str(seconds)],
+                           cwd=proj, stdout=lf, stderr=subprocess.STDOUT, env=env)
     consoles = [c for c in proj.glob("build/nros/run/*/console.log")
                 if c.stat().st_mtime >= start]
     if len(consoles) != 1:
         return Verdict(False, [f"{row['image']}: FAIL: the twin run left {len(consoles)} fresh "
                                f"console logs, not 1 ({log})"])
-    peaks = main_peaks(consoles[0].read_text(errors="replace"))
+    quiet = [k for k, n in peers.answered.items() if n == 0]
+    if quiet:
+        return Verdict(False, [f"{row['image']}: FAIL: peer(s) {', '.join(quiet)} answered "
+                               "nothing, so the run never reached the path the row measures "
+                               f"({consoles[0]}, {log})"])
+    peaks = main_peaks(consoles[0].read_text(errors="replace"), thread)
     if len(peaks) < rounds:
-        return Verdict(False, [f"{row['image']}: FAIL: {len(peaks)} analyzer round(s) of the "
-                               f"main thread in {seconds} s, fewer than {rounds} "
+        return Verdict(False, [f"{row['image']}: FAIL: {len(peaks)} analyzer round(s) of "
+                               f"thread `{thread}` in {seconds} s, fewer than {rounds} "
                                f"({consoles[0]}, {log})"])
     peak = max(u for u, _ in peaks)
     size = peaks[-1][1]
     if measure:
-        return measured_row(row, role, peak, size, peaks)
-    if "bytes" not in row:
-        return verdict_observed(row, role, peak, size, drift)
-    return verdict(row, role, peak, size, int(report_margin(report, row)), w.floor_formula)
+        v = measured_row(row, role, peak, size, peaks)
+    elif "bytes" not in row:
+        v = verdict_observed(row, role, peak, size, drift)
+    else:
+        v = verdict(row, role, peak, size, int(report_margin(report, row)), w.floor_formula)
+    if peers.answered:
+        v.lines.insert(1, "  peers answered: " + ", ".join(
+            f"{k} {n}" for k, n in peers.answered.items()))
+    return v
 
 
 def report_margin(report: dict, row: dict) -> int:
@@ -556,6 +696,19 @@ def self_test() -> int:
     check("observed: a walk 1 % below the row's static is a note",
           v.ok and any("note:" in x for x in v.lines))
 
+    # issue 2963 -- a bringup key is a row the lane can make; its board is its
+    # image's, read from the bringup the fixture row names.
+    fixtures = w.load_toml(FIXTURES).get("workspace_fixture", [])
+    check("a bringup row's board is its image's (the SNTP re-sync row)",
+          row_board("pubsub_bringup@zephyr_cortex_m_talker_clock_sntp_resync", fixtures, w)
+          == ("mps2-an385-zephyr", ""))
+    pb = row_board("talker_entry/talker@mps2-an385-zephyr", fixtures, w)
+    check("a program key is NOT RUN, with a reason", pb[0] is None and "cannot make" in pb[1])
+    nb = row_board("no_such_bringup@no_image", fixtures, w)
+    check("a bringup key no fixture row builds is NOT RUN, naming the count",
+          nb[0] is None and "0 [[workspace_fixture]] rows" in nb[1])
+    bad += [f"twin_peers: {b}" for b in twin_peers.self_test()]
+
     for b in bad:
         print(f"stack-floor-twin self-test: FAIL {b}", file=sys.stderr)
     print(f"stack-floor-twin self-test: {'FAIL' if bad else 'OK'}")
@@ -604,20 +757,21 @@ def main() -> int:
                 if (not args.only or r["image"] in args.only) and "unwalked" not in r]
     if args.only and len(rows) != len(set(args.only)):
         raise SystemExit(f"stack-floor-twin: --only names a key with no row: {args.only}")
+    fixtures = w.load_toml(FIXTURES).get("workspace_fixture", [])
     failed = 0
     ran = 0
     for row in rows:
-        key = parse_key(row["image"])
-        if key is None:
-            print(f"{row['image']}: NOT RUN: not a template key, so the lane cannot make it")
+        board, why = row_board(row["image"], fixtures, w)
+        if board is None:
+            print(f"{row['image']}: NOT RUN: {why}")
             continue
-        if twin_emulator(key[3]) is None:
-            print(f"{row['image']}: NOT RUN: board {key[3]} has no Renode or QEMU twin")
+        if twin_emulator(board) is None:
+            print(f"{row['image']}: NOT RUN: board {board} has no Renode or QEMU twin")
             continue
         print(f"== {row['image']} {row['role']}", flush=True)
         v = run_row(nros, row, Path(args.out), args.seconds, args.rounds, w,
                     functools.partial(w.static_drift, rise_pct=w.drift_rise_pct(doc)),
-                    measure=bool(args.measure))
+                    measure=bool(args.measure), fixtures=fixtures)
         ran += 1
         failed += not v.ok
         print("\n".join(v.lines), flush=True)

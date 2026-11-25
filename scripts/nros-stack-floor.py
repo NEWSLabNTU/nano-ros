@@ -3619,6 +3619,13 @@ def validate_table(doc: dict, issue_ids: set[str], root: Path | None = None) -> 
             problems.append(f"{where}: role must be one of {ROLES}")
         if not isinstance(o.get("peak"), int) or o.get("peak", 0) <= 0:
             problems.append(f"{where}: needs a positive integer `peak`")
+        if "twin_peers" in o:
+            # Issue 2963 -- the host services the twin starts for this row.
+            import twin_peers
+            try:
+                twin_peers.parse(o["twin_peers"])
+            except ValueError as e:
+                problems.append(f"{where}: {e}")
         if "unwalked" in o:
             # Issue 2834 -- a host image: sized from its peak, with no walk.
             if not str(o.get("unwalked", "")).strip():
@@ -4190,6 +4197,21 @@ def apply_role_knobs(args: argparse.Namespace) -> None:
             raise SystemExit(f"--role-knob `{spec}`: write ROLE=<what raises it>")
         args.role_knobs = dict(getattr(args, "role_knobs", None) or {})
         args.role_knobs[role.upper()] = text
+    for spec in getattr(args, "role_thread", None) or []:
+        role, _, name = spec.partition("=")
+        if not role or not name:
+            raise SystemExit(f"--role-thread `{spec}`: write ROLE=<thread name>")
+        args.role_threads = dict(getattr(args, "role_threads", None) or {})
+        args.role_threads[role.upper()] = name
+
+
+def role_thread(args: argparse.Namespace, role: str) -> str | None:
+    """The thread that runs `role`, for the twin lane's analyzer (issue 2963):
+    the one `--role-thread` states, else `main` for OPEN (the main/boot
+    thread), else None (the lane cannot tell which analyzer line is the
+    role's, and says so)."""
+    stated = (getattr(args, "role_threads", None) or {}).get(role.upper())
+    return stated or ("main" if role.upper() == "OPEN" else None)
 
 
 def run(args: argparse.Namespace) -> int:
@@ -4601,6 +4623,7 @@ def run(args: argparse.Namespace) -> int:
                 "measured": measured_by is not None and unmeasured_reason is None,
                 "unmeasured_reason": unmeasured_reason if measured_by is not None else None,
                 "root": best_root,
+                "thread": role_thread(args, role),
                 "margin_pct": args.margin, "indirect_charged": best.indirect,
                 "indirect_mode": mode, "indirect_charge": charge,
                 "path": best.chain,
@@ -6408,6 +6431,10 @@ def main() -> int:
     ap.add_argument("--role-knob", action="append",
                     help="ROLE=<text>: what raises that role's stack, when it is not "
                     "--stack-knob (`{bytes}` / `{kb}` as --stack-knob)")
+    ap.add_argument("--role-thread", action="append",
+                    help="ROLE=<name>: the thread that runs that role, as the RTOS names it "
+                    "(Zephyr: the K_THREAD_DEFINE id). Recorded in the report, so the twin lane "
+                    "reads that thread's stack peak (issue 2963); OPEN with none is `main`")
     ap.add_argument("--check-stack", action="append",
                     help="ROLE=<bytes>: the stated stack to CHECK (a measured image whose floor "
                     "exceeds it fails; an unmeasured one warns)")

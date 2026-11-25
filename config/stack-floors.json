@@ -127,7 +127,7 @@
     {
       "image": "pubsub_bringup@zephyr_cortex_m_talker_clock_sntp_resync",
       "issue": "2846",
-      "method": "QEMU mps2-an385 under icount (CONFIG_QEMU_ICOUNT=y, Zephyr's run line), thread analyzer peak of the `nros_sntp_resync_tid` thread, 2026-11-25. Built with `nros build zephyr_cortex_m_talker_clock_sntp_resync` in examples/workspaces/rust plus a fragment adding CONFIG_INIT_STACKS, CONFIG_THREAD_NAME, CONFIG_THREAD_STACK_INFO, CONFIG_THREAD_ANALYZER, CONFIG_THREAD_ANALYZER_USE_PRINTK, CONFIG_THREAD_ANALYZER_AUTO, CONFIG_THREAD_ANALYZER_AUTO_INTERVAL=5 and CONFIG_QEMU_ICOUNT=y to the image's os_config. Run with `west build -d <build> -t run` for 90 s, with three host peers on 127.0.0.1 (the guest's 10.0.2.2): a zenoh router on the image's locator port (rmw_zenohd with ZENOH_CONFIG_OVERRIDE listen/endpoints=[\"tcp/0.0.0.0:<port>\"]; tcp 7473 when measured, the image now bakes its cell's allocator port 10600); an SNTP responder on udp 12399 giving the reply tests/zephyr_clock_resolve.rs's SntpServer gives (mode 4, stratum 1, originate = the request's transmit, host time); and a DNS responder on udp 15353 answering every A query with 10.0.2.2, so the image's hostname server `ntp.nros.test` goes through Zephyr's DNS resolver. Two runs: 181 and 183 SNTP exchanges (362 and 366 DNS answers), 2,559 and 2,572 analyzer rounds, peak 1,160 of 8,192 B both times. The same image with a numeric server (no DNS) peaked at 888 B. Not yet re-measured by the twin (issue 2963).",
+      "method": "QEMU mps2-an385 under icount (CONFIG_QEMU_ICOUNT=y, Zephyr's run line), thread analyzer peak of the `nros_sntp_resync_tid` thread, 2026-11-25. Built with `nros build zephyr_cortex_m_talker_clock_sntp_resync` in examples/workspaces/rust plus a fragment adding CONFIG_INIT_STACKS, CONFIG_THREAD_NAME, CONFIG_THREAD_STACK_INFO, CONFIG_THREAD_ANALYZER, CONFIG_THREAD_ANALYZER_USE_PRINTK, CONFIG_THREAD_ANALYZER_AUTO, CONFIG_THREAD_ANALYZER_AUTO_INTERVAL=5 and CONFIG_QEMU_ICOUNT=y to the image's os_config. Run with `west build -d <build> -t run` for 90 s, with three host peers on 127.0.0.1 (the guest's 10.0.2.2): a zenoh router on the image's locator port (rmw_zenohd with ZENOH_CONFIG_OVERRIDE listen/endpoints=[\"tcp/0.0.0.0:<port>\"]; tcp 7473 when measured, the image now bakes its cell's allocator port 10600); an SNTP responder on udp 12399 giving the reply tests/zephyr_clock_resolve.rs's SntpServer gives (mode 4, stratum 1, originate = the request's transmit, host time); and a DNS responder on udp 15353 answering every A query with 10.0.2.2, so the image's hostname server `ntp.nros.test` goes through Zephyr's DNS resolver. Two runs: 181 and 183 SNTP exchanges (362 and 366 DNS answers), 2,559 and 2,572 analyzer rounds, peak 1,160 of 8,192 B both times. The same image with a numeric server (no DNS) peaked at 888 B. Re-measured 2026-11-25 by the twin lane (issue 2963), `just zephyr stack-floor-twin --only pubsub_bringup@zephyr_cortex_m_talker_clock_sntp_resync`, which starts the router and the row's `twin_peers` itself: 1,160 B in two runs (150 and 153 SNTP answers).",
       "peak": 1160,
       "rmw": "zenoh",
       "role": "SNTP_RESYNC",
@@ -141,6 +141,10 @@
       },
       "static": 90728,
       "target": "thumbv7m-none-eabi",
+      "twin_peers": [
+        "sntp=12399",
+        "dns=15353"
+      ],
       "upper_bound": "z_impl_zsock_sendto -> _zp_unicast_lease_task_fn (c_type)"
     },
     {

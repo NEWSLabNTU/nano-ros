@@ -1,7 +1,7 @@
 ---
 id: 2963
 title: "The stack-floor twin measures only template images' main thread, so a thread role's peak is taken by hand"
-status: open
+status: resolved
 type: limitation
 severity: low
 area: [tooling, zephyr, stack-floor]
@@ -48,3 +48,32 @@ never the peak.
 `just zephyr stack-floor-twin --only pubsub_bringup@zephyr_cortex_m_talker_clock_sntp_resync`
 re-measures the `SNTP_RESYNC` row: two runs read the same peak, and that
 peak matches the row.
+
+## Resolution (2026-11-25)
+
+All three gaps are closed:
+
+- **Bringup keys.** The twin resolves a `<bringup>@<image>` row through the
+  drift check's own lookup (`bringup_rows`, one `[[workspace_fixture]]` row)
+  and builds it in the drift check's environment. It copies the files git
+  tracks in that workspace into `--out` and adds `twin.conf` there, so no
+  tracked file is edited. The board is the image's own, from its bringup's
+  `system.toml`.
+- **Thread per role.** The build names the thread: `--role-thread
+  ROLE=<name>` on the walker, recorded as `thread` in the role's report.
+  `cmake/NanoRosStackFloor.cmake` states `SNTP_RESYNC=nros_sntp_resync_tid`
+  next to that role's root, and OPEN defaults to `main`. A role with no
+  thread fails, naming the flag.
+- **Host peers.** A row's `twin_peers` (`["sntp=<port>", "dns=<port>"]`)
+  are started for the run by `scripts/lib/twin_peers.py`, and the table
+  validator checks them. A peer that answers nothing fails the row, because
+  the run never reached the path it measures.
+
+**Acceptance.** `just zephyr stack-floor-twin --only
+pubsub_bringup@zephyr_cortex_m_talker_clock_sntp_resync`, run twice: peak
+1,160 B both times (SNTP answered 150 and 153), the row's peak, and "OK:
+the static walk covers the run". The twin build's walk is 94,408 B against
+the row's 90,728 B, because the analyzer is in it; the check reports that
+as a note, since the walk is an upper bound. The template path is
+unchanged: `--only talker/rust/zenoh@mps2-an385-zephyr` still runs and
+passes.
