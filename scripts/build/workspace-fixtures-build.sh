@@ -837,6 +837,17 @@ mapfile -t unit_lines < <(printf '%s\n' "${live_records[@]}" \
     echo "workspace-fixtures-build.sh: unit partition returned ${#unit_lines[@]} of ${#live_records[@]} rows" >&2
     exit 2
 }
+# Issue 2840 (c2) — the class ORDER: a unit holding the first row of a build
+# class leads it, and every other unit with a row of that class waits for its
+# leader, so the leaves of one class do not each hold a pool slot while they
+# queue on cargo's lock of their shared build dir. `workspace-fixture-units.py`
+# states the rule and its self-test keeps it.
+declare -A unit_after=()
+while IFS=$'\t' read -r au aleaders; do
+    [ -n "$au" ] || continue
+    unit_after[$au]="$aleaders"
+done < <(printf '%s\n' "${live_records[@]}" \
+    | python3 "$repo_root/scripts/build/workspace-fixture-units.py" after)
 unit_count=0
 for line in "${unit_lines[@]}"; do
     u="${line%%$'\t'*}"
@@ -922,7 +933,10 @@ done
         rest="${spec#*|}"
         gfile="${rest%%|*}"
         gdir="${rest#*|}"
-        printf '%s:\n' "$tgt"
+        gi="${tgt#ws-group-}"
+        printf '%s:' "$tgt"
+        for lu in ${unit_after[$gi]:-}; do printf ' ws-group-%s' "$lu"; done
+        printf '\n'
         # Only pass filters that are actually SET. This used to interpolate
         # `%q %q` unconditionally, sending two EMPTY positional arguments on the
         # common path (no lang, no id). Harmless while the callee read

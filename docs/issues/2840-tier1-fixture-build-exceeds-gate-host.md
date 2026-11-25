@@ -374,7 +374,17 @@ write one root unit.
 Disk for the class drops 59 %. **Wall rises 63 % when a class's leaves run in
 parallel**: cargo locks a build dir for a whole invocation, so they queue
 (3–5 `Blocking waiting` lines each). The lane builds rows of DIFFERENT classes
-side by side, so the queue costs only within a class. Ordering the fan-out
-so that one row per class builds first, and the rest of each class trails
-behind other classes' rows, would keep the queue off the lane's critical
-path. That is the next step if the lane's wall time moves.
+side by side, so the queue costs only within a class.
+
+**The fan-out orders by class** (`workspace-fixture-units.py after`, in the
+same PR, so the tier-1 re-measure sees it). One unit per class LEADS, and
+every other unit with a row of that class is a make prerequisite away from
+its leader: it starts once the leader has built the class's shared units, and
+does not hold a pool slot while it would only queue on the lock. The leader is
+the class's smallest unit, so the wait is one image build and never a
+workspace's serial chain; a leader waits for nothing, so the edges have no
+cycle. The class key itself is computed by `nros build`, so the fan-out orders
+by what the record states (image id, env, cargo args, board). A wrong guess
+costs parallelism, never correctness. On the linux lane: 95 cargo rows in 46
+stand-in classes, and 40 of 190 units wait for a leader (the largest class,
+`linux`, has 36 rows).
