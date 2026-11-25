@@ -136,7 +136,15 @@ global-allocator = ["nros-platform/global-allocator"]
 # the platform vtable (`nros_platform_critical_section_{acquire,release}`).
 # Phase 248: replaces the `platform-zephyr` cfg on the critical-section
 # block. Mirrors nros-platform's `critical-section`.
-critical-section = ["dep:critical-section"]
+#
+# Issue 2962 -- and make that impl portable-atomic's backend. A C/C++ image's
+# cargo ROOT is this crate, so this is where the image chooses: on a CAS-less
+# target (rpi-pico-w-zephyr, thumbv6m) the RMW atomics nros-cpp/nros-log/
+# zpico-alloc/nros-smoltcp use go through the platform's critical section.
+# portable-atomic only reaches for it where the target lacks native CAS, so a
+# target with CAS is unchanged. No library crate picks a backend
+# (check-portable-atomic-backend).
+critical-section = ["dep:critical-section", "portable-atomic/critical-section"]
 
 # phase-361 W8.d / issue 0594 — a `platform-*` feature selects the PROVIDER of
 # malloc + panic for this platform (that is the "unified per platform" half of

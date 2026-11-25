@@ -36,17 +36,20 @@ rlsf = { version = "0.2.3", default-features = false, features = ["unstable"] }
 #   error[E0599]: no method named `fetch_add` found for struct `Atomic<usize>`
 #     --> packages/rmw/zenoh/zpico-alloc/src/lib.rs:395:32
 #
-# `portable-atomic` supplies them. Same shape `nros-board-esp32-qemu` already
-# uses, including the split below: the `unsafe-assume-single-core` feature is a
-# claim about the SYSTEM (no other core can race the emulated RMW), so it is
-# enabled only for the bare-metal no-RMW targets that need it, and never
-# unconditionally — that crate's own comment records the accident of doing so.
+# `portable-atomic` supplies them; which backend it uses there is the image's
+# choice (note below).
 portable-atomic = { version = "1", default-features = false }
 
-[target.'cfg(all(target_os = "none", not(target_has_atomic = "ptr")))'.dependencies]
-portable-atomic = { version = "1", default-features = false, features = [
-    "unsafe-assume-single-core",
-] }
+# Issue 2962 -- this crate does NOT choose portable-atomic's backend on a
+# CAS-less target (thumbv6m, riscv32imc). portable-atomic refuses
+# `unsafe-assume-single-core` together with `critical-section`, and the
+# backend is a fact about the SYSTEM, which a library cannot know: a Zephyr
+# Rust image gets `critical-section` from upstream's `zephyr` crate, a C/C++
+# image from `nros-c`'s `critical-section` capability, and a bare-metal board
+# names its own in its board crate. Choosing it here (the old
+# `cfg(all(target_os = "none", not(target_has_atomic = "ptr")))` row) failed
+# every Rust image on rpi-pico-w-zephyr, where both halves met. Gate:
+# check-portable-atomic-backend.
 
 [features]
 default = []
