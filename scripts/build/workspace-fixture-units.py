@@ -33,6 +33,17 @@ resulting unit is independent of every other. What is NOT a key:
                each `nros build` takes the project's exclusive lock and finds
                the stamp current.
 
+Issue 2840 (c2) — ORDER across units, by build class. Under the lane's
+`NROS_BUILD_CLASS_ROOT` every cargo image of one build class shares ONE cargo
+build dir, and cargo locks a build dir for a whole invocation: the leaves of a
+class queue on it, each holding a pool slot while it waits. So the unit that
+holds the FIRST row of a class LEADS it, and every other unit with a row of
+that class waits for its leader (`after`): the leader builds the class's
+shared units while the classes' leaders run side by side, and the rest then
+reuse them. A leader waits for nothing, so the edges form no cycle. The class
+key itself is computed by `nros build`, so this orders by a proxy the record
+states (`class_proxy`); a wrong guess costs parallelism, never correctness.
+
 Input: the `\\x1f`-separated records of `fixtures-manifest.py list-workspaces`
 on stdin, one per line. Output (`group`): `<unit>\\t<record>` per record, units
 numbered from 0 in order of first appearance, records in input order.
@@ -95,6 +106,42 @@ def group(records: list[str]) -> list[int]:
             unit_of_root[root] = len(unit_of_root)
         units.append(unit_of_root[root])
     return units
+
+
+def class_proxy(record: str) -> str | None:
+    """Issue 2840 — a cargo row's stand-in for its build class: what the record
+    states of the image's configuration (image id, env, cargo args, board).
+    None for a cmake row, which has no shared class dir."""
+    f = record.split(SEP)
+    f += [""] * (15 - len(f))
+    if row_road(f[1], f[14]) != "cargo":
+        return None
+    return "|".join([f[13], f[9], f[10], f[11]])
+
+
+def after(records: list[str], units: list[int]) -> dict[int, list[int]]:
+    """Issue 2840 — for each unit that leads no class, the leader units of the
+    classes it holds rows of. A class's leader is its SMALLEST unit (fewest
+    rows, then first), so the wait behind it is one image build and never a
+    workspace's serial chain; leaders get no edge."""
+    size: dict[int, int] = {}
+    for u in units:
+        size[u] = size.get(u, 0) + 1
+    leader: dict[str, int] = {}
+    for r, u in zip(records, units):
+        c = class_proxy(r)
+        if c is not None and (c not in leader or (size[u], u) < (size[leader[c]], leader[c])):
+            leader[c] = u
+    leading = set(leader.values())
+    out: dict[int, list[int]] = {}
+    for r, u in zip(records, units):
+        c = class_proxy(r)
+        if c is None or u in leading:
+            continue
+        lu = leader[c]
+        if lu != u and lu not in out.setdefault(u, []):
+            out[u].append(lu)
+    return {u: sorted(v) for u, v in out.items() if v}
 
 
 def _rec(id_, lang, ws, bringup="src/b", subdir="", target="", image=""):
@@ -188,9 +235,76 @@ def self_test() -> int:
         if got != want:
             print(f"FAIL: {name}: want {want}, got {got}", file=sys.stderr)
             bad += 1
+    # Issue 2840 — the class order. Each case: records (one unit per
+    # workspace), and the `after` edges wanted.
+    order_cases = [
+        (
+            "one class over three leaves: the first leads, the rest wait for it",
+            [
+                _rec("a", "rust", "w1", image="linux"),
+                _rec("b", "rust", "w2", image="linux"),
+                _rec("c", "rust", "w3", image="linux"),
+            ],
+            {1: [0], 2: [0]},
+        ),
+        (
+            "different classes run side by side",
+            [
+                _rec("a", "rust", "w1", image="linux"),
+                _rec("b", "rust", "w2", image="linux_cyclonedds"),
+            ],
+            {},
+        ),
+        (
+            "crossed classes never wait on each other (no cycle): one unit leads both",
+            [
+                _rec("a", "rust", "w1", target="t/a", image="linux"),
+                _rec("b", "rust", "w2", target="t/b", image="linux_xrce"),
+                _rec("c", "rust", "w2", target="t/b", image="linux"),
+                _rec("d", "rust", "w1", target="t/a", image="linux_xrce"),
+            ],
+            {1: [0]},
+        ),
+        (
+            "a cmake row is never ordered",
+            [
+                _rec("a", "c", "w1", subdir="build/x/cmake", image="linux"),
+                _rec("b", "c", "w2", subdir="build/x/cmake", image="linux"),
+            ],
+            {},
+        ),
+        (
+            "the smallest unit leads, not a long serial chain that came first",
+            [
+                _rec("a", "rust", "w1", target="t", image="linux"),
+                _rec("b", "rust", "w1", target="t", image="linux_two"),
+                _rec("c", "rust", "w2", image="linux"),
+                _rec("d", "rust", "w3", image="linux_two"),
+            ],
+            {0: [1, 2]},
+        ),
+        (
+            "a unit trailing two classes waits for both leaders",
+            [
+                _rec("a", "rust", "w1", image="linux"),
+                _rec("b", "rust", "w2", image="linux_xrce"),
+                _rec("c", "rust", "w3", target="t", image="linux"),
+                _rec("d", "rust", "w3", target="t", image="linux_xrce"),
+            ],
+            {2: [0, 1]},
+        ),
+    ]
+    for name, recs, want in order_cases:
+        got = after(recs, group(recs))
+        if got != want:
+            print(f"FAIL: {name}: want {want}, got {got}", file=sys.stderr)
+            bad += 1
     if bad:
         return 1
-    print(f"workspace-fixture-units self-test: {len(cases)} case(s) OK")
+    print(
+        f"workspace-fixture-units self-test: {len(cases)} partition + "
+        f"{len(order_cases)} class-order case(s) OK"
+    )
     return 0
 
 
@@ -198,9 +312,9 @@ def main(argv: list[str]) -> int:
     mode = argv[1] if len(argv) > 1 else ""
     if mode == "--self-test":
         return self_test()
-    if mode not in ("group", "plan"):
+    if mode not in ("group", "plan", "after"):
         print(
-            "usage: workspace-fixture-units.py group|plan|--self-test < records",
+            "usage: workspace-fixture-units.py group|plan|after|--self-test < records",
             file=sys.stderr,
         )
         return 2
@@ -209,6 +323,11 @@ def main(argv: list[str]) -> int:
     if mode == "group":
         for u, r in zip(units, records):
             print(f"{u}\t{r}")
+        return 0
+    if mode == "after":
+        # Issue 2840: `<unit>\t<leader unit> ...`, one line per waiting unit.
+        for u, leaders in sorted(after(records, units).items()):
+            print(f"{u}\t{' '.join(map(str, leaders))}")
         return 0
     n = max(units) + 1 if units else 0
     print(f"{len(records)} row(s) in {n} unit(s)")
