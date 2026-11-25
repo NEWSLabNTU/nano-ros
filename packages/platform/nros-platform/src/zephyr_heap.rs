@@ -37,7 +37,7 @@ const HEAP_SIZE: usize = match option_env!("NROS_MEMORY_HEAP_BYTES") {
 };
 
 /// `const`-evaluable decimal parse — same pattern as the bare-metal ports'
-/// `memory.rs` (`NROS_HEAP_SIZE`).
+/// `memory.rs` (`NROS_MEMORY_HEAP_BYTES`).
 const fn parse_usize(s: &str) -> usize {
     let b = s.as_bytes();
     let mut v = 0usize;

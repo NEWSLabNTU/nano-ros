@@ -13,21 +13,30 @@ use std::path::PathBuf;
 /// FreeRTOS Rust talker's walked floor is about 26 KiB, so this leaves wide
 /// room while giving the stack a bound and a guard. Before W7 the stack had
 /// no size at all: it ran from the top of RAM down to the statics.
-const DEFAULT_STACK_KB: u32 = 256;
+const DEFAULT_STACK_BYTES: u32 = 256 * 1024;
 
-/// The knob that sizes the main stack, in KiB.
-const STACK_KNOB: &str = "NROS_BAREMETAL_STACK_KB";
+/// The knob that sizes the main stack, in bytes: `memory.app_stack_bytes`,
+/// the application stack on every platform that sizes one. The whole
+/// application runs on this board's main stack. Issue 2918 retired
+/// `NROS_BAREMETAL_STACK_KB` for it; `knob_env` refuses the old name, naming
+/// this one.
+const STACK_KNOB: &str = "NROS_MEMORY_APP_STACK_BYTES";
 
-fn stack_kb() -> u32 {
+/// The board's RAM, which the stack must fit below.
+const RAM_BYTES: u32 = 4 * 1024 * 1024;
+
+fn stack_bytes() -> u32 {
     nros_board_common::platform_config::watch_knob_env(STACK_KNOB);
     let raw = nros_board_common::platform_config::knob_env(&|k| std::env::var(k).ok(), STACK_KNOB);
     match raw.as_deref().map(str::trim) {
-        None | Some("") => DEFAULT_STACK_KB,
+        None | Some("") => DEFAULT_STACK_BYTES,
         Some(v) => match v.parse::<u32>() {
-            Ok(kb) if kb > 0 && kb < 4096 => kb,
+            // A whole number of KiB, so the 1 KiB MPU guard below it is
+            // aligned (`mps2-an385.x`).
+            Ok(b) if b > 0 && b < RAM_BYTES && b % 1024 == 0 => b,
             _ => panic!(
-                "{STACK_KNOB}='{v}': the main stack size is a whole number of KiB, \
-                 at least 1 and below the board's 4096 KiB of RAM"
+                "{STACK_KNOB}='{v}': the main stack size is a whole number of KiB in bytes \
+                 (a multiple of 1024), at least 1024 and below the board's {RAM_BYTES} bytes of RAM"
             ),
         },
     }
@@ -53,11 +62,11 @@ fn main() {
     // its link directory.
     let out_dir =
         PathBuf::from(std::env::var_os("OUT_DIR").expect("OUT_DIR is set for a build script"));
-    let kb = stack_kb();
+    let bytes = stack_bytes();
     // phase-553 W7.
     let script = format!(
         "/* Written by nros-board-mps2-an385's build script. */\n\
-         _stack_size = {kb}K;\n"
+         _stack_size = {bytes};\n"
     );
     let path = out_dir.join("nros-stack.x");
     std::fs::write(&path, script).unwrap_or_else(|e| panic!("writing {}: {e}", path.display()));
@@ -70,8 +79,10 @@ fn main() {
         &[nros_board_common::stack_stated::Stated {
             role: "OPEN",
             root: "main",
-            bytes: kb * 1024,
-            knob: "NROS_BAREMETAL_STACK_KB={kb}",
+            bytes,
+            // A template `nros-stack-floor.py` fills: the floor in bytes, rounded
+            // up to a whole KiB, as the linker guard needs.
+            knob: "NROS_MEMORY_APP_STACK_BYTES={bytes_kib}",
         }],
     );
 }

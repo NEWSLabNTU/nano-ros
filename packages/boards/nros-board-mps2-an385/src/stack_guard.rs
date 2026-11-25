@@ -100,7 +100,7 @@ unsafe fn HardFault(frame: &ExceptionFrame) -> ! {
     if sp < stack_end() {
         say(
             b"nros: stack overflow: the main stack grew past its stated size and \
-              hit the guard below it. Raise NROS_BAREMETAL_STACK_KB.\n",
+              hit the guard below it. Raise NROS_MEMORY_APP_STACK_BYTES.\n",
         );
     } else {
         crate::println!(

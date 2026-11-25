@@ -8,10 +8,11 @@
 
 use zpico_alloc::FreeListHeap;
 
-/// Phase 204.5 — `NROS_HEAP_SIZE` (compile-time env, decimal bytes, set in
-/// the example's `.cargo/config.toml` `[env]`) overrides the 32 KB default.
+/// Phase 204.5 — `NROS_MEMORY_HEAP_BYTES` (compile-time env, decimal bytes: the
+/// `memory.heap_bytes` knob, which `build.rs` reads through the registry;
+/// issue 2918) overrides the 32 KB default.
 const DEFAULT_HEAP_SIZE: usize = 32 * 1024;
-const HEAP_SIZE: usize = match option_env!("NROS_HEAP_SIZE") {
+const HEAP_SIZE: usize = match option_env!("NROS_MEMORY_HEAP_BYTES") {
     Some(s) => parse_usize(s),
     None => DEFAULT_HEAP_SIZE,
 };
@@ -24,12 +25,12 @@ const fn parse_usize(s: &str) -> usize {
         let b = bytes[i];
         assert!(
             b >= b'0' && b <= b'9',
-            "NROS_HEAP_SIZE must be decimal bytes"
+            "NROS_MEMORY_HEAP_BYTES must be decimal bytes"
         );
         n = n * 10 + (b - b'0') as usize;
         i += 1;
     }
-    assert!(n > 0, "NROS_HEAP_SIZE must be > 0");
+    assert!(n > 0, "NROS_MEMORY_HEAP_BYTES must be > 0");
     n
 }
 
@@ -43,7 +44,7 @@ pub fn alloc(size: usize) -> *mut core::ffi::c_void {
     nros_baremetal_common::heap::alloc_or_report::<crate::Stm32f4Platform, HEAP_SIZE>(
         &HEAP,
         size,
-        "NROS_HEAP_SIZE",
+        "NROS_MEMORY_HEAP_BYTES",
     )
 }
 pub fn realloc(ptr: *mut core::ffi::c_void, size: usize) -> *mut core::ffi::c_void {
@@ -51,7 +52,7 @@ pub fn realloc(ptr: *mut core::ffi::c_void, size: usize) -> *mut core::ffi::c_vo
         &HEAP,
         ptr,
         size,
-        "NROS_HEAP_SIZE",
+        "NROS_MEMORY_HEAP_BYTES",
     )
 }
 pub fn dealloc(ptr: *mut core::ffi::c_void) {

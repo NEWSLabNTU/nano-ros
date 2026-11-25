@@ -1891,7 +1891,9 @@ config NROS_MEMORY_HEAP_BYTES
       (configTOTAL_HEAP_SIZE; the board build converts it to the KiB its
       FreeRTOSConfig.h takes, and derives it when unset). On Zephyr it is the
       nros heap arena, with the defaults below. ThreadX's byte pool is its
-      own knob, threadx.byte_pool_bytes.
+      own knob, threadx.byte_pool_bytes. On bare metal (mps2-an385, stm32f4)
+      it is the platform crate's static free-list heap, read at compile time
+      (defaults 128 KiB and 32 KiB).
 
       A PARAM_SERVICES image, one whose launch seeds a parameter
       (NROS_PARAMS_STORE), and a LIFECYCLE one get 192 KiB: those capabilities

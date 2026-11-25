@@ -304,7 +304,7 @@ tree reproduces these rows.
 `NROS_XRCE_MAX_SERVICE_CLIENTS=1`, `NROS_XRCE_SUBSCRIBER_RING_DEPTH=1`,
 `NROS_XRCE_BUFFER_BYTES=256`.
 
-| Static heap (`NROS_HEAP_SIZE`, bare metal) | Peak working set | Recommended |
+| Static heap (`memory.heap_bytes`, bare metal) | Peak working set | Recommended |
 | --- | --- | --- |
 | zenoh-pico over TCP | ~16 KB | 24–32 KB |
 | zenoh-pico over serial | below TCP | 16–24 KB |

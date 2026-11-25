@@ -63,6 +63,11 @@ cffi-export = ["dep:nros-platform-cffi", "dep:nros-log"]
 # SECOND one and bypassed the RFC-0034 D6 funnel doing it; a board that enabled
 # both it and `nros-platform/global-allocator` failed to compile.
 
+[build-dependencies]
+# Issue 2918 -- `build.rs` reads `memory.heap_bytes` through the knob registry,
+# which refuses the retired `NROS_HEAP_SIZE`.
+nros-platform-config = { path = "../../tooling/nros-platform-config" }
+
 [dependencies]
 # issue 0710 follow-up — this crate EMITS `nros_platform_log_write`, so it is
 # one of the places that can safely turn on `nros-log`'s dispatch auto-install.

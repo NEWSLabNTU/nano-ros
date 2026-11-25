@@ -1,7 +1,7 @@
 ---
 id: 2918
 title: "Two bare-metal build settings are read by code but are not knob-registry rows, so no naming rule covers them"
-status: open
+status: resolved
 type: bug
 area: [config, knobs, baremetal]
 severity: low
@@ -64,3 +64,27 @@ Found during the book's retired-name sweep (#4726).
 - `packages/tooling/nros-zephyr-build/knobs.toml` (`memory.heap_bytes`,
   whose retired entries show the KiB-to-bytes form)
 - `scripts/check/check-config-names.py`, `scripts/check-book-retired-names.py`
+
+## Resolution (2026-11-25)
+
+Both are retired spellings on the existing registry rows; no new row was
+needed, because each one's meaning reaches bare metal unchanged.
+
+- `NROS_HEAP_SIZE` is retired on `memory.heap_bytes`. The mps2-an385 and
+  stm32f4 platform crates gained a `build.rs` that reads the knob through
+  `knob_env`, which stops the build on the retired name and names
+  `NROS_MEMORY_HEAP_BYTES`. It hands the resolved value to `memory.rs`'s
+  `option_env!`. Before this, `option_env!` alone would have dropped a
+  retired name without a word.
+- `NROS_BAREMETAL_STACK_KB` is retired on `memory.app_stack_bytes`
+  (`factor = 1024, from_unit = "KiB"`). On this board the whole application
+  runs on the main stack. The mps2 board's `build.rs` reads the canonical
+  name in bytes and refuses a value that is not a whole number of KiB,
+  because the 1 KiB MPU guard below the stack must stay aligned. The stack
+  floor's raise hint is `NROS_MEMORY_APP_STACK_BYTES={bytes_kib}`, as
+  FreeRTOS's is.
+- The refusals (`heap.rs`, `stack_guard.rs`, the linker asserts), the book
+  pages and the stack-floors method text name the new spellings. A
+  `breaking` changelog fragment names both renames.
+- Both sizes still read the environment rung only, as before; neither
+  build reads a board rung for them.

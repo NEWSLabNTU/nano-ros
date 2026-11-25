@@ -882,16 +882,20 @@ retired = [
     { spelling = "env:NROS_FREERTOS_APP_STACK_KB", factor = 1024, from_unit = "KiB" },
     { spelling = "toml:threadx.app_stack_kb", factor = 1024, from_unit = "KiB" },
     { spelling = "env:NROS_THREADX_APP_STACK_KB", factor = 1024, from_unit = "KiB" },
+    { spelling = "env:NROS_BAREMETAL_STACK_KB", factor = 1024, from_unit = "KiB" },
 ]
 ladder = true
 help = '''
 Bytes of the application task's stack: the task that runs registration,
 Executor::open and the spin loop. One knob on every platform that sizes
-it (FreeRTOS, ThreadX); each platform's build converts it to the unit its
+it (FreeRTOS, ThreadX, and bare-metal mps2-an385, where the application
+runs on the main stack); each platform's build converts it to the unit its
 RTOS configuration takes, in the one place that writes that
 configuration. Unset, the board's own default applies (FreeRTOS: 128 KiB
-on the cargo road, 64 KiB on the cmake road; ThreadX rv-virt: 512 KiB),
-raised to the measured stack floor where the build walks one.
+on the cargo road, 64 KiB on the cmake road; ThreadX rv-virt: 512 KiB;
+mps2-an385 bare metal: 256 KiB, a whole number of KiB so the MPU guard
+below it stays aligned), raised to the measured stack floor where the
+build walks one.
 '''
 
 [[knob]]
@@ -905,6 +909,7 @@ retired = [
     { spelling = "cmake:NROS_OVERRIDE_ZEPHYR_HEAP_SIZE" },
     { spelling = "toml:freertos.heap_kb", factor = 1024, from_unit = "KiB" },
     { spelling = "env:NROS_FREERTOS_HEAP_KB", factor = 1024, from_unit = "KiB" },
+    { spelling = "env:NROS_HEAP_SIZE" },
 ]
 ladder = true
 type = "int"
@@ -922,7 +927,9 @@ Bytes of the application heap. On FreeRTOS it is heap_4's arena
 (configTOTAL_HEAP_SIZE; the board build converts it to the KiB its
 FreeRTOSConfig.h takes, and derives it when unset). On Zephyr it is the
 nros heap arena, with the defaults below. ThreadX's byte pool is its
-own knob, threadx.byte_pool_bytes.
+own knob, threadx.byte_pool_bytes. On bare metal (mps2-an385, stm32f4)
+it is the platform crate's static free-list heap, read at compile time
+(defaults 128 KiB and 32 KiB).
 
 A PARAM_SERVICES image, one whose launch seeds a parameter
 (NROS_PARAMS_STORE), and a LIFECYCLE one get 192 KiB: those capabilities
