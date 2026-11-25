@@ -392,6 +392,27 @@ probe-source-dirs:
 probe-orchestration-knobs:
     @python3 scripts/gen-probe-orchestration-knobs.py --check
 
+# Issue 2840 -- every feature `nros-sizes-build` drops from the sizes probe's
+# key (`SIZE_NEUTRAL_FEATURES`) still changes no probed size. The probe stops
+# keying on such a feature, so two images that differ only by it share one
+# probe directory and one answer; that is issue 0528's corruption the day the
+# feature starts changing a size. This builds `nros` the way the probe does,
+# with and without each listed feature, over the seven feature sets the tier-1
+# probe tree held a `profile-mode` twin of and one thumbv7m set, and compares
+# the `__NROS_SIZE_*` markers through the probe's own reader. Negative control,
+# measured: listing `lifecycle-services`, `rosout`, `sim-time` or `param-store`
+# fails it (EXECUTOR_SIZE, LIFECYCLE_CTX_SIZE move). 83 s warm on host 118.
+[private]
+[metadata("tier", "build")]
+[group('cpu:2')]
+[metadata("cpu-basis", "default")]
+probe-size-neutral-features:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    . scripts/build/build-root.sh
+    root="$(NROS_REPO_ROOT="$PWD" nros_build_root)"
+    cargo run -q -p nros-sizes-build --example probe-size-neutral-features -- "$root/size-neutral-features"
+
 # Issue 1018 — every input the CLI source stamp folds must be one the stale-CLI
 # refusal can NAME.
 #

@@ -287,9 +287,34 @@ pub fn find_dep_rlib_with_probe_features(
 /// features, sorted and de-duplicated so order can never split a probe key.
 fn with_probe_features(mut forwarded: Vec<String>, probe_features: &[&str]) -> Vec<String> {
     forwarded.extend(probe_features.iter().map(|f| (*f).to_string()));
+    // Issue 2840 -- a feature MEASURED not to change any probed size neither
+    // keys the probe nor reaches its nested build, so its twins share one.
+    forwarded.retain(|f| !is_size_neutral_feature(f));
     forwarded.sort();
     forwarded.dedup();
     forwarded
+}
+
+/// Issue 2840 -- probed-crate features that change no `__NROS_SIZE_*` answer.
+///
+/// Not an argument, a MEASUREMENT: `just check probe-size-neutral-features`
+/// builds the probed crate with and without each one, over every feature set
+/// the tier-1 probe tree held a twin of and over a 32-bit target, and fails
+/// when any marker differs. A feature that starts changing a size turns that
+/// gate red instead of handing one image another's sizes (issue 0528).
+///
+/// `profile-mode` (nros-node's host profiler, which also turns on
+/// `nros-rmw/sync-spin`): on host 142's tier-1 run of 2026-11-25, 89 probe
+/// keys carried it, each with a plain twin whose 18 size markers were
+/// identical: 15.3 GiB of the 34.6 GiB probe tree.
+pub const SIZE_NEUTRAL_FEATURES: &[(&str, &str)] = &[(
+    "profile-mode",
+    // Issue 2840.
+    "89 of 89 tier-1 twins measured identical",
+)];
+
+fn is_size_neutral_feature(f: &str) -> bool {
+    SIZE_NEUTRAL_FEATURES.iter().any(|(n, _)| *n == f)
 }
 
 fn find_dep_rlib_isolated(
@@ -1882,6 +1907,34 @@ mod tests {
             b.sort();
             b
         });
+    }
+
+    /// Issue 2840 -- a size-neutral feature neither keys the probe nor reaches
+    /// its nested build, so a profile-mode image shares its plain twin's probe.
+    /// The negative control: a feature not on the list still splits the key.
+    #[test]
+    fn a_size_neutral_feature_shares_its_twins_probe() {
+        let plain = vec!["metadata-mode".to_string(), "rmw-cffi".to_string()];
+        let mut profiled = plain.clone();
+        profiled.push("profile-mode".to_string());
+        let plain = with_probe_features(plain, &["ffi-size-markers"]);
+        let profiled = with_probe_features(profiled, &["ffi-size-markers"]);
+        assert_eq!(
+            profiled, plain,
+            "profile-mode must not reach the nested build"
+        );
+        assert_eq!(
+            probe_key("x86_64-unknown-linux-gnu", &profiled),
+            probe_key("x86_64-unknown-linux-gnu", &plain)
+        );
+        let mut other = plain.clone();
+        other.push("lifecycle-services".to_string());
+        let other = with_probe_features(other, &[]);
+        assert_ne!(
+            probe_key("x86_64-unknown-linux-gnu", &other),
+            probe_key("x86_64-unknown-linux-gnu", &plain),
+            "a feature not measured neutral still keys the probe"
+        );
     }
 
     /// The backstop restores byte-for-byte, and says nothing when the file did
