@@ -780,9 +780,11 @@ pub(crate) fn fold_models_for_shared_runtime(
             )?;
             // Issue 2768 -- each image floored by its own probe record, and an
             // image the probe saw declare nothing declares zero.
+            // Issue 2964 -- only where every node's sidecar watched whole.
             let params = crate::entity_inventory::ParamDeclarations::for_shared_runtime(
                 model,
                 inv.as_ref().and_then(|i| i.recorded_params()),
+                inv.as_ref().is_some_and(|i| i.recorded_params_whole()),
             );
             Ok((src.clone(), inv, params))
         })
