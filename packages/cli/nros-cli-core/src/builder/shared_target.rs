@@ -77,6 +77,74 @@ pub fn caller_target_dir(
     Some(cwd.join(named))
 }
 
+/// Issue 2840 (c2) — a lane-wide class root. When set, every image's class dir
+/// lives under it (`<root>/nros-class/<key>`) instead of under its own
+/// `--target-dir`, so leaves whose images share a configuration share one
+/// cargo build dir ACROSS cargo roots. Final artifacts stay in each leaf's
+/// target dir, so no locator moves.
+///
+/// Sharing across roots rests on two facts, which `check-shared-class-premise`
+/// checks rather than trusts: every root reaches a shared crate by one path
+/// spelling (cargo hashes a path package outside the root by its absolute
+/// path), and no two roots can yield one root unit (cargo hashes the root
+/// package by its root-relative path, so by name and version alone).
+pub const CLASS_ROOT_ENV: &str = "NROS_BUILD_CLASS_ROOT";
+
+/// The lane-wide class root, when one is named.
+pub fn class_root(env: &dyn Fn(&str) -> Option<String>) -> Option<PathBuf> {
+    env(CLASS_ROOT_ENV)
+        .filter(|s| !s.trim().is_empty())
+        .map(PathBuf::from)
+}
+
+/// Where the class dirs of an image whose caller named `target_dir` live: the
+/// lane-wide class root when one is named, else the target dir itself.
+pub fn class_base(target_dir: &Path, env: &dyn Fn(&str) -> Option<String>) -> PathBuf {
+    class_root(env).unwrap_or_else(|| target_dir.to_path_buf())
+}
+
+/// The prefix `nros build` remaps out of an image's debug info (issue 2322).
+///
+/// The workspace, by default: that is what lets a copied-out project build
+/// byte-identical from any directory, and it is untouched here. Under a
+/// lane-wide class root, a workspace INSIDE the checkout remaps the checkout
+/// root instead. The flag is a rustflag, which cargo keeps out of `-C metadata`
+/// but checks in every unit's fingerprint, so a per-workspace flag makes every
+/// leaf of a shared class see every unit dirty (measured: 128 of 129 units
+/// recompiled on a no-change rebuild). An in-tree workspace gives up nothing:
+/// it reaches the nros crates outside it by absolute path, so it reproduces
+/// only at the same path anyway (2322's own scope note). A workspace outside
+/// the checkout keeps its own prefix.
+pub fn remap_prefix(ws: &Path, checkout: &Path, env: &dyn Fn(&str) -> Option<String>) -> PathBuf {
+    if class_root(env).is_some() && ws.starts_with(checkout) {
+        checkout.to_path_buf()
+    } else {
+        ws.to_path_buf()
+    }
+}
+
+/// Issue 2840 — under a lane-wide class root, every path-valued settings row
+/// is written ABSOLUTE. A `relative = true` row is resolved against each
+/// leaf's own settings dir and keeps the leaf's name in its text
+/// (`…/<leaf>/build/posix-zenoh/../../…`), which cargo compares as text: every
+/// build script watching it re-ran for the next leaf of the class, and the
+/// crates above it recompiled (measured: 8 of 9 units on a no-change rebuild).
+/// phase-489 W6 made the descriptor row absolute on the single-package road
+/// for the same reason; this is every row, on every road. Without a class root
+/// nothing moves, so a user's leaf keeps rows that survive a moved checkout.
+pub fn absolute_rows_under_class_root(
+    env: &mut BTreeMap<String, String>,
+    path_env: &mut BTreeMap<String, PathBuf>,
+    getenv: &dyn Fn(&str) -> Option<String>,
+) {
+    if class_root(getenv).is_none() {
+        return;
+    }
+    for (k, p) in std::mem::take(path_env) {
+        env.insert(k, p.display().to_string());
+    }
+}
+
 /// Did the caller choose cargo's build dir itself? Then it is theirs.
 pub fn caller_names_build_dir(
     native_args: &[String],
@@ -110,8 +178,10 @@ impl Class {
 /// `extra` is every other input of the settings file that is not an `[env]`
 /// row but reaches the build (the board's `cargo_config` template, the target
 /// triple); it is keyed verbatim.
+///
+/// `base` is where the classes live: [`class_base`] of the caller's target dir.
 pub fn apply(
-    target_dir: &Path,
+    base: &Path,
     env: &BTreeMap<String, String>,
     path_env: &mut BTreeMap<String, PathBuf>,
     extra: &[(&str, &str)],
@@ -156,7 +226,7 @@ pub fn apply(
         feed("descriptor", t);
     }
     let key: String = format!("{:x}", h.finalize())[..16].to_string();
-    let dir = target_dir.join(CLASS_SUBDIR).join(&key);
+    let dir = base.join(CLASS_SUBDIR).join(&key);
     if let Some(d) = &class_desc {
         let (_, text) = nros_sizing_descriptor::as_build_class(d, &format!("class-{key}"))?;
         let copy = dir.join(CLASS_DESCRIPTOR);
@@ -287,5 +357,63 @@ mod tests {
             &none
         ));
         assert!(!caller_names_build_dir(&a(&["--target-dir", "x"]), &none));
+    }
+
+    /// Issue 2840 — a lane-wide class root moves the classes out of every
+    /// leaf's target dir and into one place; without it nothing moves.
+    #[test]
+    fn a_class_root_names_where_every_leaf_keeps_its_classes() {
+        let none = |_: &str| None;
+        let root = |k: &str| (k == CLASS_ROOT_ENV).then(|| "/lane/classes".to_string());
+        let blank = |k: &str| (k == CLASS_ROOT_ENV).then(|| "  ".to_string());
+        let t = Path::new("/ws/a/target");
+        assert_eq!(class_base(t, &none), t);
+        assert_eq!(class_base(t, &blank), t);
+        assert_eq!(class_base(t, &root), Path::new("/lane/classes"));
+    }
+
+    /// Issue 2840 — two in-repo leaves of one class root pass ONE remap flag
+    /// (a rustflag is in every unit's fingerprint); a leaf outside the
+    /// checkout, and every leaf without a class root, keeps its own (issue
+    /// 2322's copied-out reproducibility).
+    #[test]
+    fn in_repo_leaves_of_a_class_root_remap_one_prefix_and_nothing_else_moves() {
+        let none = |_: &str| None;
+        let root = |k: &str| (k == CLASS_ROOT_ENV).then(|| "/lane/classes".to_string());
+        let checkout = Path::new("/repo");
+        let a = Path::new("/repo/packages/testing/nros-tests/bins/a");
+        let b = Path::new("/repo/examples/workspaces/rust");
+        let outside = Path::new("/w/sensor_ws");
+        assert_eq!(remap_prefix(a, checkout, &root), checkout);
+        assert_eq!(remap_prefix(b, checkout, &root), checkout);
+        assert_eq!(remap_prefix(outside, checkout, &root), outside);
+        assert_eq!(remap_prefix(a, checkout, &none), a);
+        assert_eq!(remap_prefix(outside, checkout, &none), outside);
+        // A sibling whose name merely STARTS with the checkout's is outside it.
+        let sibling = Path::new("/repo-other/ws");
+        assert_eq!(remap_prefix(sibling, checkout, &root), sibling);
+    }
+
+    /// Issue 2840 — rows go absolute under a class root and stay as they are
+    /// without one.
+    #[test]
+    fn path_rows_are_absolute_only_under_a_class_root() {
+        let none = |_: &str| None;
+        let root = |k: &str| (k == CLASS_ROOT_ENV).then(|| "/lane/classes".to_string());
+        let rows = || {
+            let mut p = BTreeMap::new();
+            p.insert(
+                "NROS_BOARD_TOML".to_string(),
+                PathBuf::from("/repo/boards/linux/nros-board.toml"),
+            );
+            p
+        };
+        let (mut env, mut path_env) = (BTreeMap::new(), rows());
+        absolute_rows_under_class_root(&mut env, &mut path_env, &none);
+        assert!(env.is_empty());
+        assert_eq!(path_env, rows());
+        absolute_rows_under_class_root(&mut env, &mut path_env, &root);
+        assert!(path_env.is_empty());
+        assert_eq!(env["NROS_BOARD_TOML"], "/repo/boards/linux/nros-board.toml");
     }
 }

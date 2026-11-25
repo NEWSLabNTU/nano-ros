@@ -636,6 +636,17 @@ repo-root-walk-scope:
 path-env-fingerprints:
     @python3 scripts/check-path-env-fingerprints.py
 
+# issue 2840 (c2) — the fixture lane shares ONE cargo build dir per build class
+# across leaves (`NROS_BUILD_CLASS_ROOT`). Cargo names a path package by its
+# location, absolute outside the root and root-relative inside it, so that is
+# safe on two facts this checks over every rust `[[workspace_fixture]]` leaf:
+# a shared crate has one spelling (no symlink, inside no lane leaf), and no two
+# roots can write one root unit (each depends on a package of its own leaf, or
+# its name and version are unique). Buildless; self-tests its rules first.
+[private]
+shared-class-premise:
+    @python3 scripts/check-shared-class-premise.py
+
 # issue 1570 — the CONTENT side of the same question. A build script that
 # compiles sources handed to it in an env LIST (the NuttX image link) must
 # declare what the compiler READ — every source and header, via the depfiles

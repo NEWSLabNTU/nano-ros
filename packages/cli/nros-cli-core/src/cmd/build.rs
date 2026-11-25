@@ -1938,6 +1938,14 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
                 // copy, so equal configurations share every unit and different
                 // ones never rebuild or reuse each other's. The user's road
                 // names no target dir and is untouched.
+                // Issue 2840 — one remap flag for every in-repo leaf of a
+                // lane-wide class root, and the flag is keyed: it is a
+                // rustflag, so leaves that differ in it must not share units.
+                let remap_config = remap_workspace_config(
+                    &crate::builder::shared_target::remap_prefix(&root, nros_root, &|k| {
+                        std::env::var(k).ok()
+                    }),
+                );
                 let shared_class = {
                     let getenv = |k: &str| std::env::var(k).ok();
                     match crate::builder::shared_target::caller_target_dir(
@@ -1952,14 +1960,20 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
                                     descriptor.cargo_config.as_deref().unwrap_or(""),
                                 ),
                                 ("target", descriptor.target.as_deref().unwrap_or("")),
+                                ("remap", remap_config.as_str()),
                             ];
                             let class = crate::builder::shared_target::apply(
-                                &tdir,
+                                &crate::builder::shared_target::class_base(&tdir, &getenv),
                                 &env,
                                 &mut path_env,
                                 &extra,
                             )
                             .map_err(|e| eyre::eyre!("`{image_id}`'s shared build class: {e}"))?;
+                            crate::builder::shared_target::absolute_rows_under_class_root(
+                                &mut env,
+                                &mut path_env,
+                                &getenv,
+                            );
                             eprintln!(
                                 "nros build:   shared target dir → build class {} ({})",
                                 class.key,
@@ -2029,7 +2043,7 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
                     "--config".to_string(),
                     config_arg.clone(),
                     "--config".to_string(),
-                    remap_workspace_config(&root),
+                    remap_config.clone(),
                 ];
                 // phase-550 W3b — NuttX's CPU flags, from the kernel export.
                 if let Some(cpu) = nuttx_cpu_config_for(descriptor, nros_root) {

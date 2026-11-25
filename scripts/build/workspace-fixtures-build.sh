@@ -81,6 +81,15 @@ repo_root="$(cd "$script_dir/../.." && pwd)"
 source "$repo_root/scripts/build/build-root.sh"
 source "$repo_root/scripts/build/cargo.sh"
 
+# Issue 2840 (c2) — ONE class root for the lane. Every cargo image whose
+# configuration matches another's (RFC-0100 D13's content-keyed class) shares
+# one cargo build dir with it ACROSS leaves; artifacts stay in each leaf's own
+# target dir, so no resolver moves. Derived from `nros_build_root`, never
+# inherited, so a linked worktree cannot land in its parent's classes (issue
+# 1280). The premise is `just check shared-class-premise`.
+NROS_BUILD_CLASS_ROOT="$(nros_build_root)/fixture-classes"
+export NROS_BUILD_CLASS_ROOT
+
 # shellcheck source=scripts/build/leaf-cache.sh
 source "$repo_root/scripts/build/leaf-cache.sh"
 # shellcheck source=scripts/lib/fixture-road.sh
