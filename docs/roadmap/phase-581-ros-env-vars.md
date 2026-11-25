@@ -187,7 +187,7 @@ board and RMW packages are self-contained.
   hook's message naming the new symbol; a FreeRTOS fixture build with
   `NROS_DOMAIN_ID` exported is refused naming `[system] domain_id`; a linux
   image built with `NROS_LOCATOR` exported builds, and runs with it.
-- **Fallout:** [issue 2938](../issues/2938-zephyr-fixture-locator-define-rename.md).
+- **Fallout:** [issue 2938](../issues/archived/2938-zephyr-fixture-locator-define-rename.md).
   The Zephyr fixture leaves' signature recorded the locator's value, not the
   renamed define, so persistent build dirs re-configured without it and every
   native_sim router cell dialled the wrong port.

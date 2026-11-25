@@ -1,12 +1,13 @@
 ---
 id: 2938
 title: "Renaming the Zephyr locator define moved no leaf signature, so persistent build dirs re-configured without it and every native_sim cell dialled the wrong router"
-status: open
+status: resolved
 type: bug
 severity: high
 area: [zephyr, fixtures, build]
 related: [phase-581, 2906]
 found: 2026-11-24
+resolved: 2026-11-26
 ---
 
 ## What happened
@@ -64,3 +65,26 @@ the next rename of either must move the signature with it.
 
 - The release run-matrix after the fix merges: the five cells above pass.
 - Their guests print `locator tcp/127.0.0.1:<allocated port> (baked)`.
+
+## Resolved (2026-11-26)
+
+The fix merged in PR #4790. Both release run-matrix runs since then pass all
+five cells in tier 2 (1-wise):
+
+| Run | main | `entry_matrix` | `realtime_sched_tasks` | `sched_dims_applied` | `zephyr_ctf_markers` | `multihost` |
+| --- | --- | --- | --- | --- | --- | --- |
+| 45533259451 | 939ac840b2 | PASS | PASS | PASS | PASS | PASS |
+| 45596628888 | cffdca5c9b | PASS | PASS | PASS | PASS | PASS |
+
+Run 45596628888's tier 2 nightly (pairwise) passes `entry_matrix`,
+`zephyr_ctf_markers` and `multihost` too.
+
+- **The second acceptance line** (each guest prints
+  `locator tcp/127.0.0.1:<allocated port> (baked)`) is not in these logs.
+  The harness prints a guest's console only for a failing test. The cells
+  that dial the allocated router passing is the same evidence: on the
+  pre-fix run every one of them failed to open a session.
+- **What this run still fails is other work.** Run 45596628888's tier 2 is
+  red in `sched_dims_applied_e2e`'s per-RTOS census tests and in
+  `multihost_partition_bake multihost_bake_emits_only_the_hosts_node`. None
+  of those dial a router through the renamed define.
