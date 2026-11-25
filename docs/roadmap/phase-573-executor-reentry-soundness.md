@@ -1,7 +1,7 @@
 # Phase 573 — a callback that calls back into its executor is sound
 
-**Status (2026-11-22). OPEN: W1, W2, W2b, W5a, W5b, W5c, W5d and W5e are done; W3 and W4 are open.** Fixes
-[issue 2675](../issues/2675-callback-reentry-aliases-executor.md) by amending
+**Status (2026-11-25). OPEN: W1, W2, W2b, W3, W4 and W5a-W5e are done, which resolves issue 2675; W6 is open.** Fixes
+[issue 2675](../issues/archived/2675-callback-reentry-aliases-executor.md) by amending
 [RFC-0108](../design/0108-executor-preemption-levels.md) ("Re-entry from a
 callback"). Ahead of [phase-572](archived/phase-572-rust-component-graph-query.md),
 whose W2 waits on it. Owner: nros 241 for W2b, W3 and W4; nros 133 for
@@ -202,7 +202,7 @@ runs: [issue 2728](../issues/archived/2728-no-lane-runs-addresssanitizer.md).
 
 ### W4 — The multi-level and RTIC case
 
-- **Status:** OPEN
+- **Status:** DONE (2026-11-25)
 
 A callback that re-enters, for example with a timer reset, while a
 higher-priority level preempts it. The shared and band passes, and the RTIC
@@ -211,6 +211,22 @@ property. 142's W10 adds the same shape on its backend.
 
 Acceptance: the W2 harness runs that case through `spin_band_once` with two
 bands.
+
+As built: `executor::tests::reentry_bands`, which `miri-executor-reentry`
+runs because its filter matches the module name. Two band workers share one
+executor with a lock that opens windows. The less urgent band's timer is in
+its callback window when the urgent band's worker runs a pass on another
+thread. The urgent timer resets the timer the other band is still
+dispatching, and then the preempted callback resets itself. Both writes take
+the lock and derive the executor from the raw pointer, as a C callback's
+`rcl_timer_reset` does. The case passes under Miri with Tree Borrows. Its
+sensitivity was measured and reverted: without the re-derive after each
+callback in the ready-entry loop of `pass`, Miri reports a write through a
+disabled tag in the urgent band's pass. Removing the timer sweep's re-derive
+changes nothing here, because band timers dispatch through the ready-entry
+loop. The RTIC SRP backend (142's W10) is not on main yet. It keeps this
+property only if it dispatches through the same band pass, so its review
+should check that.
 
 ### W5b — A C entity's fini releases its executor entry
 
@@ -288,3 +304,19 @@ job:
 Red at the commit before W5a's fix, with a probe of the old shape: a
 heap-use-after-free in the wake callback. Green on main. It costs 28 s from
 an empty target dir. The measurements are in the issue.
+
+### W6 — Without `alloc`, the owned session is carved from the executor's backing
+
+- **Status:** OPEN
+
+[Issue 2845](../issues/2845-owned-session-from-executor-backing.md). W3 left
+an inline owned session that `session_handle` still shares when there is no
+`alloc`, and the owner's next write disables that pointer. Carve the session
+from the caller-supplied backing, as the arena is, so its tag is the
+backing's and not the executor's. A C executor, whose session is borrowed
+from `rclc_support_t`, must not pay for the slot.
+
+Acceptance: `a_session_pointer_survives_its_owner_spinning` passes under Miri
+without `alloc`; every derived backing size (the C and C++ sizes headers,
+`NROS_EXECUTOR_BACKING_U64S`, the Zephyr arena pairing) moves with
+`ExecutorSizing::u64_len`, and a C executor's does not.
