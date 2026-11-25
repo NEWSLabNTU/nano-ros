@@ -72,7 +72,8 @@ Nucleo image: Rust with `param_services` had a 192 KiB heap before and after
   2026-11-21 (its SDK sits outside the SDK store and read as unpinned; fixed
   in #4782), so the next nightly with that fix is the lane's own
   confirmation.
-- **Point 3, open: the small-SRAM sweep below.**
+- **Point 3, open: the small-SRAM sweep below.** Its first run is recorded
+  under "Sweep result" at the end.
 
 ### The small-SRAM images
 
@@ -89,7 +90,7 @@ SRAM is read from each board's Zephyr devicetree (Zephyr 3.7,
 
 The 2772 overflow came on the user's road (`nros new` + `nros build`), so
 the sweep covers every use-case template on both small boards:
-`talker`, `listener`, `service` and `action`, each in `rust`, `c` and
+`talker`, `listener`, `server` and `action-server`, each in `rust`, `c` and
 `cpp`, on zenoh. That is 24 images. It also covers the one in-tree bringup
 image on a small board, `examples/zephyr/c/talker`'s `[image.nucleo_serial]`.
 The Pico W has no twin and no bench (`runs = "none"`), so a link check is
@@ -101,12 +102,12 @@ the only evidence it can get today.
 source ./activate.sh
 out=build/sram-sweep; mkdir -p "$out"; : > "$out/results.tsv"
 for board in nucleo-f767zi-zephyr rpi-pico-w-zephyr; do
-  for uc in talker listener service action; do
+  for uc in talker listener server action-server; do
     for lang in rust c cpp; do
       name="sram_${uc}_${lang}_${board//-/_}"
       rm -rf "$out/$name"
       ( cd "$out" && nros new "$name" --board "$board" --lang "$lang" \
-          --rmw zenoh --use-case "$uc" ) > "$out/$name.log" 2>&1 || {
+          --rmw zenoh --template "$uc" ) > "$out/$name.log" 2>&1 || {
         printf '%s\t%s\t%s\tNEW-FAILED\n' "$board" "$uc" "$lang" >> "$out/results.tsv"; continue; }
       rc=0; ( cd "$out/$name" && nros build ) >> "$out/$name.log" 2>&1 || rc=$?
       over="$(grep -o "region .RAM. overflowed by [0-9]* bytes" "$out/$name.log" | head -1)"
@@ -127,3 +128,27 @@ that does not, record its log tail here: the overflow in bytes, and whether
 failure). A row that overflows is this issue's class again, and its fix is
 the image's default, never a per-project knob.
 
+### Sweep result (2026-11-25, main e5dcabd3ca, nros 241)
+
+The recipe above, run with `--template` (an earlier copy said `--use-case`,
+which `nros new` does not take).
+
+- **`nucleo-f767zi-zephyr`: all 12 rows `rc=0`, no RAM overflow.** The
+  bringup image `nucleo_serial` builds too (`rc=0`).
+- **`rpi-pico-w-zephyr`: all 12 rows refused at build (`rc=101`)**, before
+  any link, each with the same message from `nros-zpico-build`:
+  "NROS_ZENOH_MAX_QUERYABLES=1 is below this image's DERIVED floor of 11".
+
+That refusal is a third symptom of this issue's class: a board default that
+answers for every image alike. The Pico's board package pinned
+`max_queryables = 1`, written when its only image was a C talker with no
+node interfaces. Every template now serves the stock node interfaces (six
+parameter services per node, plus the transient-local publishers' cache
+queryables), so no template could build there.
+
+Ruling (2026-11-25): the board states what fits; the templates keep the
+stock interfaces. The fix drops the board's queryable cap, so the table
+derives from each image's declarations
+(`CONFIG_NROS_MAX_QUERYABLES` = -1), as on the Nucleo. Whether each Pico
+row then fits 264 KiB is the sweep's next answer, recorded here with each
+row's RAM use.
