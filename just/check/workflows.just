@@ -1048,6 +1048,17 @@ workflow-setup-spelling:
 hook-repo-side-effects:
     @bash scripts/check-hook-repo-side-effects.sh
 
+# Issue 2958 -- the pre-push hook refuses a push whose working tree differs
+# from the commit it publishes (`scripts/lib/prepush-tree.sh`), because the
+# fast gates judge the tree and CI checks out the commit. Ten cases in a
+# throwaway repository: an unstaged edit, a staged-only edit, an untracked
+# file, an unstaged deletion and `git mv` over an unstaged edit (PR #4821's
+# incident) are refused; a clean tree, an ignored file, a push of a commit
+# other than HEAD, a tag push and an empty push are not.
+[private]
+prepush-tree:
+    @bash scripts/check/check-prepush-tree.sh
+
 # Issue 1758 -- a live-peer board job builds once per value of a narrowing key
 # it repeats. Both board jobs exported each `KEY=value` line in turn, so a
 # repeated key kept only its last value, and the producer's `|`-join was a
