@@ -5224,12 +5224,12 @@ pub unsafe extern "C" fn rclc_executor_spin_some(
     {
         let rust_exec = get_executor(executor);
 
-        // Convert timeout from nanoseconds to milliseconds (i32) for nros-node
-        let timeout_ms: u64 = if timeout_ns > 0 {
-            (timeout_ns / 1_000_000).max(1)
-        } else {
-            0
-        };
+        // Issue 2965 -- the caller's budget as it is, in nanoseconds. This
+        // truncated it to whole milliseconds and floored it at 1, so a
+        // 100 us `spin_some` could park ten times as long and a 1.5 ms one
+        // two thirds as long; the executor's park rounds the bound up to the
+        // port's own granularity, which is the only rounding it needs.
+        let timeout = core::time::Duration::from_nanos(timeout_ns);
 
         // spin_once drives I/O internally and handles trigger evaluation,
         // LET semantics, and dispatch. Guard against reentrancy so
@@ -5239,12 +5239,7 @@ pub unsafe extern "C" fn rclc_executor_spin_some(
         unsafe { in_dispatch.write(true) };
         // SAFETY: `rust_exec` holds the executor's lock and its pointer is
         // the live executor; no reference to it is held across the call.
-        let result = unsafe {
-            CExecutor::spin_once_raw(
-                rust_exec.as_ptr(),
-                core::time::Duration::from_millis(timeout_ms),
-            )
-        };
+        let result = unsafe { CExecutor::spin_once_raw(rust_exec.as_ptr(), timeout) };
         // SAFETY: as above.
         unsafe { in_dispatch.write(false) };
 
