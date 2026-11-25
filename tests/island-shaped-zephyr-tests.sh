@@ -12,7 +12,8 @@
 #   Z  `nros build island_bringup:zephyr` builds and links the image
 #   K  check-knob-delivery over the LIVE build dir
 #   S  the committed snapshot equals one cut from the live build dir, or this
-#      fails and prints the command that regenerates it
+#      fails and prints the command that regenerates it; on a pass it prints
+#      the `Island-Snapshot: checked <digest>` trailer (issue 2957)
 #
 # --regen rewrites the snapshot from the live build dir instead of S.
 #
@@ -93,4 +94,10 @@ step "S: the committed snapshot matches the live build dir"
 python3 "$SNAP" diff "$bdir" "$FIXTURE" ||
     fail "the snapshot the merge queue checks is stale"
 
+# Issue 2957 -- the trailer `check island-snapshot-inputs` accepts from a
+# branch that edits a configure input and leaves the snapshot as it was. The
+# digest is over the inputs this run configured, so a later edit voids it.
+digest="$(python3 "$SNAP" digest)" || fail "could not hash the snapshot's inputs"
 printf '\nisland-shaped-zephyr: every step held.\n'
+printf 'A branch that edits a configure input without regenerating the snapshot\n'
+printf 'can state this check on one of its commits:\n    Island-Snapshot: checked %s\n' "$digest"
