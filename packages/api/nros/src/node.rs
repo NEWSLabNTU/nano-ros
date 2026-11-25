@@ -3554,7 +3554,55 @@ pub fn record_node_metadata_seeded_watching_prose<C: Component>(
         };
         slot.fetch_max(len, Ordering::Relaxed);
     });
+    // Issue 2964 -- the parameter watch, the harness's half of what
+    // `metadata_mode::listen_for_parameter_declarations` does for C/C++: the
+    // sidecar may say its `parameters` list is whole, unless a node opted into
+    // undeclared parameters, or the code declared through an imperative route
+    // (`Node::declare_parameter::<T>` and kin), whose rows reach no recorder of
+    // this harness. A launch seed is not a declaration (issue 2969): the
+    // seeds go into a store that already exists and are never rows here.
+    // Without `param-store` no observer is needed: every route that could make
+    // the list short (`allow_undeclared_parameters`, `use_undeclared_parameters`,
+    // the imperative `declare_parameter`) exists only under nros-node's
+    // `param-store`, and a component that calls one enables it, which feature
+    // unification carries into the harness.
+    #[cfg(all(feature = "probe-param-watch", feature = "param-store"))]
+    static UNSTATED: core::sync::atomic::AtomicBool = core::sync::atomic::AtomicBool::new(false);
+    #[cfg(all(feature = "probe-param-watch", feature = "param-store"))]
+    {
+        use nros_node::executor::registration_observer as obs;
+        UNSTATED.store(false, Ordering::Relaxed);
+        obs::set_undeclared_parameters_observer(|_| UNSTATED.store(true, Ordering::Relaxed));
+        obs::set_parameter_declare_observer(|_| UNSTATED.store(true, Ordering::Relaxed));
+    }
     let result = register_node_seeded::<C>(recorder, executor, seeds);
+    #[cfg(feature = "probe-param-watch")]
+    {
+        recorder.arm_parameter_declarations();
+        // A refused row fails the registration, so a failed one is no proof.
+        if result.is_err() {
+            recorder.break_parameter_declarations();
+        }
+        #[cfg(feature = "param-store")]
+        {
+            use nros_node::executor::registration_observer as obs;
+            obs::clear_undeclared_parameters_observer();
+            obs::clear_parameter_declare_observer();
+            if UNSTATED.load(Ordering::Relaxed) {
+                recorder.break_parameter_declarations();
+            }
+        }
+        // With `metadata-mode` also compiled in, opening a node re-installs
+        // that module's observers over the ones above, and every route records
+        // there: its watch, and its count against these rows, decide.
+        #[cfg(feature = "metadata-mode")]
+        {
+            let (watched, count) = crate::metadata_mode::parameter_declarations_seen();
+            if watched == Some(false) || count > recorder.parameter_count() {
+                recorder.break_parameter_declarations();
+            }
+        }
+    }
     clear_descriptor_text_observer();
     recorder.arm_descriptor_text();
     recorder.observe_descriptor_text(false, DESCRIPTION.load(Ordering::Relaxed));

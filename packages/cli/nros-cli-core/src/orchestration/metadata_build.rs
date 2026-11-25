@@ -359,7 +359,7 @@ pub fn render_harness_cargo_toml(o: &MetadataBuildOptions) -> Result<String> {
          name = \"{bin}\"\n\
          path = \"src/main.rs\"\n\n\
          [dependencies]\n\
-         nros = {{ path = {nros:?}, features = [\"alloc\", \"log\", \"rmw-cffi\", \"probe-descriptor-text\"] }}\n\
+         nros = {{ path = {nros:?}, features = [\"alloc\", \"log\", \"rmw-cffi\", \"probe-descriptor-text\", \"probe-param-watch\"] }}\n\
          # A component registers into a REAL executor (its\n\
          # `register` gets the same `nros::Node` a program does), so the probe\n\
          # opens one on the `metadata` backend, which records and transmits\n\
@@ -1799,7 +1799,7 @@ some later noise
         let toml = render_harness_cargo_toml(&opts()).unwrap();
         assert!(
             toml.contains(
-                "nros = { path = \"/nano-ros/packages/api/nros\", features = [\"alloc\", \"log\", \"rmw-cffi\", \"probe-descriptor-text\"] }"
+                "nros = { path = \"/nano-ros/packages/api/nros\", features = [\"alloc\", \"log\", \"rmw-cffi\", \"probe-descriptor-text\", \"probe-param-watch\"] }"
             )
         );
         assert!(
