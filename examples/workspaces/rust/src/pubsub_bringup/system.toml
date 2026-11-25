@@ -269,6 +269,29 @@ sntp_resync_interval_ms = 500
 server = "127.0.0.1:12397"
 timeout_ms = 400
 
+# Issue 2846 -- the re-sync thread on a real 32-bit target, for its
+# stack-floor walk and its thread-analyzer peak (`config/stack-floors.toml`,
+# role SNTP_RESYNC). The server is a HOSTNAME so the thread runs Zephyr's DNS
+# resolver too, the deeper path. The locator, server and DNS server
+# (`boards/mps2_an385/prj-zenoh.conf`) are QEMU's user-mode gateway, the host's
+# address from the guest.
+[image.zephyr_cortex_m_talker_clock_sntp_resync]
+board = "mps2-an385-zephyr"
+# The stack-floor key the drift check finds this image by (bringup@image).
+stack_floor_image = "pubsub_bringup@zephyr_cortex_m_talker_clock_sntp_resync"
+launch = "talker.launch.xml"
+os_config = ["prj-zenoh.conf"]
+locator = "tcp/10.0.2.2:10600"
+
+[image.zephyr_cortex_m_talker_clock_sntp_resync.knobs.clock]
+source = "sntp,platform"
+sntp_attempts = 3
+sntp_resync_interval_ms = 500
+
+[image.zephyr_cortex_m_talker_clock_sntp_resync.knobs.sntp]
+server = "ntp.nros.test:12399"
+timeout_ms = 400
+
 [image.zephyr_talker_clock_sntp_once]
 board = "zephyr"
 launch = "talker.launch.xml"

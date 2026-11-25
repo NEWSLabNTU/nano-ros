@@ -194,6 +194,11 @@ const CELLS_GENERATED: &[Cell] = &[
     // the server's time within one interval. The `zephyr_talker_clock_sntp_resync`
     // image; `tests/zephyr_clock_resolve.rs` runs it.
     cell(ZephyrNativeSim, Rust, Zenoh, Pubsub, Example, Runtime).with(&[Config::ClockSntpResync]),
+    // issue 2846 -- the re-sync talker on a real 32-bit Zephyr target, built so
+    // the stack-floor walk covers its re-sync thread (role SNTP_RESYNC, the
+    // `zephyr_cortex_m_talker_clock_sntp_resync` image). Its run-time peak was taken
+    // by hand; the twin cannot measure that thread yet.
+    cell(ZephyrQemuCortexM, Rust, Zenoh, Pubsub, Example, BuildOnly("issue 2963 -- the stack-floor twin measures only the main thread")).with(&[Config::ClockSntpResync]),
     // phase-582 W3 -- the negative case: the interval at its default 0, one
     // exchange at boot, so the step never reaches the stamps. The
     // `zephyr_talker_clock_sntp_once` image.
