@@ -102,3 +102,14 @@ then the threadx cyclonedds row.
 
 Follow-up, not measured: the cargo road keeps a shared tree. If take then
 `nros build` relinks a Rust workspace image, it needs the same split.
+
+Follow-up, landed (census review): the retarget refused nothing. A plan
+whose configure or build command spelled the image's tree any other way
+than `cmake_build_dir` (absolute, a trailing slash) kept building into
+`build/<coord>/cmake` while the take recorded the census tree, which is
+this issue again with no message. `retarget_to_census_tree` now returns an
+error naming the step, the plan and both dirs when a command present on
+the plan names the image's tree in no argument. Test:
+`the_census_retarget_moves_an_exact_spelling_and_refuses_any_other` (the
+exact spelling moves both commands; an absolute `-B` and a trailing-slash
+`--build` are each refused).
