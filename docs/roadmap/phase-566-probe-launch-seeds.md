@@ -1,7 +1,7 @@
 # Phase 566 -- the metadata probe runs a node with its launch values
 
-**Status (2026-11-18). W1-W3 landed for C and C++; W4 (the Rust harness)
-is open.** Closed the second half of [issue 2640](../issues/archived/2640-metadata-probe-no-launch-values.md).
+**Status (2026-11-25). W1-W3 landed for C and C++ (2026-11-18); W4, the
+Rust harness, is in review.** Closed the second half of [issue 2640](../issues/archived/2640-metadata-probe-no-launch-values.md).
 The first half, a probe parameter store that cannot fill, is a separate fix
 and is not designed here.
 
@@ -116,11 +116,11 @@ consumer joins on. That is out of scope, and the refusal names it.
 Keys that EXIST in one instance and are absent in another count as a
 difference: absence means the declaration's default, which is a value.
 
-**Rust components.** D2 does NOT apply to Rust components before W4. Until
-the cargo harness (`metadata_build.rs`) takes seeds, a Rust component is
-probed unseeded exactly as today, whatever its instances say: no refusal, no
-note, no `probe` object, and its key's seeds field is `-` (D4). W4 applies D1
-and D2 to Rust unchanged, fallback included.
+**Rust components.** Before W4 D2 did not apply to Rust components: the
+cargo harness (`metadata_build.rs`) took no seeds, so a Rust component was
+probed unseeded whatever its instances said, with no `probe` object and the
+seeds field `-` (D4). W4 applies D1 and D2 to Rust unchanged, fallback
+included (see "As landed (W4)").
 
 ### D3 -- how the values reach the node
 
@@ -206,7 +206,7 @@ What the bump does to the model road's contract join (issue 1594,
       refuse when the unseeded probe fails.
 - [x] W3: `probe_plan` carries the seeds (D3); `probe_inputs_key` gains the
       seed-set digest (`sha256`); the sidecar writes `probe`; schema 6 (D4).
-- [ ] W4: the Rust harness takes the same seeds, and D2 applies to Rust.
+- [x] W4: the Rust harness takes the same seeds, and D2 applies to Rust.
 
 ### As landed (W1-W3, 2026-11-18)
 
@@ -233,6 +233,39 @@ What the bump does to the model road's contract join (issue 1594,
   and the C++ one recorded no timer; seeded, both record their launch periods
   (20 and 25 ms) and all 41 parameters.
 
+### As landed (W4, 2026-11-25)
+
+- `seeding_of` no longer skips Rust: a Rust component gets the same
+  `Seeding` from the same models, so its key gains the seed digest (D4) and
+  every reader that recomputes it (the sizing join, `configure`'s staleness
+  line) agrees with the refresh without a change of its own.
+- The Rust arm of `refresh_source_metadata` keys on `component_probe_key`,
+  stamps the sidecar with `stamp_probe` (so it writes `probe`), prints the
+  D2 note, and on a failure of disagreeing instances names them (D2's refusal
+  text): a regular package still fails the sync, a deploy-bound one degrades
+  with it recorded in its marker, as before W4.
+- The harness (`render_harness_main`) bakes the values as the literal
+  `&[(&str, &str)]` a Rust entry bakes and calls
+  `nros::__macro::record_node_metadata_seeded_watching_prose`. `ctx.param()`
+  reads them in `register()`, the way a Rust component reads launch values.
+- **The store, by the board's rule only.** The seeds go into the parameter
+  store only if one exists before `register`, which is the board entry's own
+  condition (`ExecutorSink::create_node`, through the one
+  `seed_launch_params_on`). The probe never makes a store for them, unlike
+  the C++ probe: a Rust typed `declare_parameter::<T>` REFUSES a name the store
+  already holds (issue 2969), so a store made for the seeds would fail the
+  probe of a component whose image boots. When 2969 lets a typed declaration
+  adopt a seed, the probe can seed a store of its own.
+- Tests: `packages/rmw/metadata/tests/probe_launch_seeds.rs` (seeded, a
+  `ctx.param`-sized timer is recorded at 20 ms and a typed declaration of the
+  same name is not refused; unseeded, neither), `metadata_refresh`'s
+  `a_rust_component_is_seeded_by_the_c_and_cpp_rule` (Seeded / None /
+  Disagree, the key and the harness's values), and `metadata_build`'s
+  `harness_main_bakes_the_launch_seeds`. Each fails with its half removed.
+- Not done: a Rust component in `fixtures/probe_seeds_ws` (an end-to-end sync).
+  That fixture's launch file is being changed by draft PR #4827; the Rust
+  package joins it after that lands.
+
 ## Test
 
 - A fixture component that declares `ctrl_period` WITHOUT a default and
@@ -252,8 +285,7 @@ What the bump does to the model road's contract join (issue 1594,
 - Editing only the param file restales the sidecar (the key changes), and the
   next sync re-probes. `fresh_probe_inventory` skips the stale one meanwhile.
 - A version-5 sidecar is read as stale, never trusted.
-- A Rust component with disagreeing instances is probed as today, key field
-  `-`, no `probe` object (before W4).
+- A Rust component is seeded, keyed and refused by the same rule (W4).
 
 ## Not done here
 

@@ -63,7 +63,7 @@ reason = "zenoh-pico over RPMsg, a link with two endpoints, on which a peer sess
 
 [feature.census-param-store-test]
 class = "harness"
-reason = "gives nros-rmw-metadata's tests a parameter store for the imperative-declaration census test, without unifying `nros/param-store` into every workspace build (issue 2670)"
+reason = "gives nros-rmw-metadata's tests a parameter store for the imperative-declaration census and probe launch-seed tests, without unifying `nros/param-store` into every workspace build (issue 2670)"
 
 [feature.trigger-test]
 class = "harness"
@@ -260,7 +260,7 @@ targets = ["rclrs_talker_port", "context_create_executor"]
 runner = "required-features-tests"
 crate = "nros-rmw-metadata"
 features = ["census-param-store-test"]
-targets = ["imperative_param_census"]
+targets = ["imperative_param_census", "probe_launch_seeds"]
 
 # Issue 0779 — the FILE-CFG half: crate-level `#![cfg(feature = "lending")]`,
 # which cargo BUILDS with the feature off, so nextest ran zero tests and called

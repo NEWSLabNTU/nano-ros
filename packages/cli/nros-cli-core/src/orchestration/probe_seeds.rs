@@ -1,4 +1,4 @@
-//! Issue 2640 (phase-566) -- the launch values a C/C++ metadata probe
+//! Issue 2640 (phase-566) -- the launch values a metadata probe
 //! constructs a component with.
 //!
 //! The probe runs a component's constructor on the host to count what it
@@ -26,8 +26,8 @@
 //! `qos_overrides.*` keys are not seeds: they are a QoS table, not declared
 //! parameters, and the census records the QoS the code asks for.
 //!
-//! Rust components are probed by the cargo harness, which takes no seeds yet
-//! (phase-566 W4): the caller asks this only for a C/C++ component.
+//! The Rust cargo harness takes the same seeds (phase-566 W4): one rule for
+//! every probe, whichever language built the component.
 
 use std::{
     collections::BTreeMap,
@@ -57,6 +57,10 @@ struct Instance {
     /// The node's launch values, `qos_overrides.*` removed, sorted by name.
     params: Vec<(String, String)>,
 }
+
+/// `(pkg, exec, fqn, params)` of one instance, for [`SeedModels::for_test`].
+#[cfg(test)]
+pub(crate) type TestInstance<'a> = (&'a str, &'a str, &'a str, &'a [(&'a str, &'a str)]);
 
 /// Every node instance of every model the sync resolved, read once per pass.
 #[derive(Clone, Debug, Default)]
@@ -186,6 +190,32 @@ impl SeedModels {
             }
         }
         out
+    }
+
+    /// Models holding one instance per `(pkg, exec, fqn, params)`, all from
+    /// one source: for a caller's test of what it does with a seeding.
+    #[cfg(test)]
+    pub(crate) fn for_test(instances: &[TestInstance<'_>]) -> Self {
+        Self {
+            sources: vec![SeedSource {
+                path: "build/nros/models/b/system_model.yaml".into(),
+                sha256: "00".into(),
+            }],
+            instances: instances
+                .iter()
+                .map(|(pkg, exec, fqn, params)| Instance {
+                    pkg: (*pkg).into(),
+                    exec: Some((*exec).into()),
+                    plugin: None,
+                    fqn: (*fqn).into(),
+                    source: 0,
+                    params: params
+                        .iter()
+                        .map(|(k, v)| ((*k).into(), (*v).into()))
+                        .collect(),
+                })
+                .collect(),
+        }
     }
 
     /// D2 for the component `package` registers as `executable` (class

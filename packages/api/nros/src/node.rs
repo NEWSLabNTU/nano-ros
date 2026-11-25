@@ -596,6 +596,15 @@ fn frame_mut(
 #[cfg(feature = "rmw-cffi")]
 pub(crate) struct RecordSink<'r> {
     pub(crate) recorder: &'r mut dyn NodeRuntime,
+    // phase-566 W4.
+    /// The launch values the probe seeds the component's first node with,
+    /// under a board entry's rule (`ExecutorSink`). Empty when no launch
+    /// names it.
+    #[cfg_attr(not(feature = "param-store"), allow(dead_code))]
+    pub(crate) launch_params: LaunchParams<'r>,
+    /// Whether that first node was built (and seeded) yet.
+    #[cfg_attr(not(feature = "param-store"), allow(dead_code))]
+    pub(crate) seeded: bool,
 }
 
 #[cfg(feature = "rmw-cffi")]
@@ -607,12 +616,29 @@ impl FrameSink for RecordSink<'_> {
         options: NodeOptions<'_>,
     ) -> NodeResult<nros_node::executor::NodeId> {
         self.recorder.create_node(id, options)?;
-        executor
+        let node_id = executor
             .node_builder(options.name)
             .namespace(options.namespace)
             .domain_id(options.domain_id)
             .build()
-            .map_err(|_| NodeDeclError::Runtime)
+            .map_err(|_| NodeDeclError::Runtime)?;
+        // phase-566 W4 -- the launch values go on the component's launch
+        // node, the first one it builds, before it declares anything, under
+        // the board's rule exactly (`ExecutorSink::create_node`): only into a
+        // store that already exists. The probe never makes one here. A store
+        // made for the seeds would hold every launch name before the code
+        // declares it, and the typed `declare_parameter::<T>` refuses a name
+        // the store already holds (`AlreadyDeclared`, issue 2969), so the probe would
+        // fail where an image with no `[param_services]` boots.
+        // `ctx.param` carries the values either way.
+        #[cfg(feature = "param-store")]
+        if !self.seeded {
+            self.seeded = true;
+            if executor.params().is_some() {
+                crate::node_runtime::seed_launch_params_on(executor, node_id, self.launch_params)?;
+            }
+        }
+        Ok(node_id)
     }
 
     fn create_entity(
@@ -3426,9 +3452,28 @@ pub fn register_node<C: Component>(
     recorder: &mut dyn NodeRuntime,
     executor: &mut crate::Executor<'static>,
 ) -> NodeResult<()> {
-    let mut sink = RecordSink { recorder };
+    register_node_seeded::<C>(recorder, executor, &[])
+}
+
+// phase-566 W4.
+/// [`register_node`] with the launch values `seeds` (`(name, baked text)`
+/// pairs): `ctx.param()` reads them, and the component's first node holds
+/// them before it declares anything when the executor already has a
+/// parameter store, as on a board.
+#[cfg(feature = "rmw-cffi")]
+pub(crate) fn register_node_seeded<C: Component>(
+    recorder: &mut dyn NodeRuntime,
+    executor: &mut crate::Executor<'static>,
+    seeds: &[(&str, &str)],
+) -> NodeResult<()> {
+    let mut sink = RecordSink {
+        recorder,
+        launch_params: LaunchParams::Pairs(seeds),
+        seeded: false,
+    };
     let mut frame = ComponentFrame::new(&mut sink);
     let mut context = NodeContext::new(C::NAME, executor, &mut frame);
+    context.set_launch_params(LaunchParams::Pairs(seeds));
     C::register(&mut context)
 }
 
@@ -3443,7 +3488,11 @@ pub fn __record_with_context<T>(
     executor: &mut crate::Executor<'static>,
     f: impl FnOnce(&mut NodeContext<'_>) -> T,
 ) -> T {
-    let mut sink = RecordSink { recorder };
+    let mut sink = RecordSink {
+        recorder,
+        launch_params: LaunchParams::EMPTY,
+        seeded: false,
+    };
     let mut frame = ComponentFrame::new(&mut sink);
     let mut context = NodeContext::new(component_name, executor, &mut frame);
     f(&mut context)
@@ -3474,6 +3523,20 @@ pub fn record_node_metadata_watching_prose<C: Component>(
     recorder: &mut MetadataRecorder,
     executor: &mut crate::Executor<'static>,
 ) -> NodeResult<()> {
+    record_node_metadata_seeded_watching_prose::<C>(recorder, executor, &[])
+}
+
+// phase-566 W4.
+/// [`record_node_metadata_watching_prose`], with the component constructed on
+/// its launch values: `seeds` is `(name, baked text)` pairs, the text a
+/// board's entry bakes (`launch_param_text`). The Rust probe's harness calls
+/// this, so a declaration with no default reads its launch value, not `T()`.
+#[cfg(all(feature = "rmw-cffi", feature = "probe-descriptor-text"))]
+pub fn record_node_metadata_seeded_watching_prose<C: Component>(
+    recorder: &mut MetadataRecorder,
+    executor: &mut crate::Executor<'static>,
+    seeds: &[(&str, &str)],
+) -> NodeResult<()> {
     use core::sync::atomic::{AtomicUsize, Ordering};
     use nros_params::descriptor_text_observer::{
         DescriptorText, clear_descriptor_text_observer, set_descriptor_text_observer,
@@ -3491,7 +3554,7 @@ pub fn record_node_metadata_watching_prose<C: Component>(
         };
         slot.fetch_max(len, Ordering::Relaxed);
     });
-    let result = register_node::<C>(recorder, executor);
+    let result = register_node_seeded::<C>(recorder, executor, seeds);
     clear_descriptor_text_observer();
     recorder.arm_descriptor_text();
     recorder.observe_descriptor_text(false, DESCRIPTION.load(Ordering::Relaxed));
