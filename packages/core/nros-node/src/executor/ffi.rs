@@ -622,6 +622,9 @@ pub trait ExecutorFfi<'s>: sealed::Sealed + Sized {
     /// The FFI entry point; see `Executor::exchange_timer_period_us` in `spin.rs`.
     fn exchange_timer_period_us(&mut self, id: HandleId, new_period_us: u64) -> Option<u64>;
 
+    /// The FFI entry point; see `Executor::entry_busy_elsewhere` in `spin.rs`.
+    fn entry_busy_elsewhere(&self, entry_index: usize) -> bool;
+
     /// The FFI entry point; see `Executor::action_client_core_mut` in `spin.rs`.
     #[doc(hidden)]
     unsafe fn action_client_core_mut(
@@ -1627,6 +1630,11 @@ impl<'s> ExecutorFfi<'s> for Executor<'s> {
     #[inline]
     fn exchange_timer_period_us(&mut self, id: HandleId, new_period_us: u64) -> Option<u64> {
         Executor::exchange_timer_period_us(self, id, new_period_us)
+    }
+
+    #[inline]
+    fn entry_busy_elsewhere(&self, entry_index: usize) -> bool {
+        Executor::entry_busy_elsewhere(self, entry_index)
     }
 
     #[doc(hidden)]
