@@ -179,5 +179,12 @@ dropped, holds for the talkers only. The derived queryable table is not what
 overflows: the talker carries the same stock interfaces (eleven queryables)
 at 67 %, while the listener, which adds one subscription and no queryable,
 needs about 94 KB more (275,168 B against 181,528 B). Where that 94 KB goes
-is the next measurement. The Rust compile error is separate from the RAM
-question; it is recorded here once reproduced.
+is the next measurement.
+
+The Rust rows' compile error is a separate bug,
+PR #4847:
+the `zephyr` crate enables `portable-atomic`'s `critical-section` while
+nano-ros libraries set the single-core cfg, and portable-atomic refuses
+both. With that fixed and a queryable cap of 8 stated per image, nros 118
+linked the three talkers on this board: Rust 72.9 %, C++ 67.2 %, C 67.5 %
+of RAM.
