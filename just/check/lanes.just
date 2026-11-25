@@ -2602,7 +2602,7 @@ cpp-runtime:
     # bug report. Three checks: the per-example edit count still matches
     # `edits.json` (either direction fails), every ported file COMPILES and
     # LINKS against `libnros_cpp.a` + the stub backend, and every one BOOTS:
-    # init, session, entity creation and its spin, still alive at 3 s (124) or
+    # init, session, entity creation and its spin, still alive at 3 s (143, or 137) or
     # finished on its own (0). A failed create aborts (134), which is the
     # regression the run exists to catch. The message headers are the codegen
     # SHAPE with stub FFI bodies (`rclcpp-examples/msgs/`).
