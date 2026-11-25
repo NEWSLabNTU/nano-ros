@@ -1,0 +1,23 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>nros_board_linux_aarch64_musl</name>
+  <version>0.0.0</version>
+  <description>
+    An aarch64 embedded Linux SoC with a musl userland, for nano-ros: the host
+    board's runtime (`nros-board-linux`) cross-built as a static image.
+
+    This directory holds the board DESCRIPTOR only, as `packages/boards/linux`
+    does; the Rust crate is `nros-board-linux`. The export below makes the
+    provider discoverable, and the sibling `nros-board.toml` says what it
+    lowers to.
+  </description>
+  <maintainer email="dev@example.com">Developer</maintainer>
+  <license>Apache-2.0</license>
+
+  <export>
+    <build_type>nros_cargo</build_type>
+    <!-- Must equal the descriptor's names, canonical first
+         (`check-provider-announcements.py`). -->
+    <nano_ros_provides kind="board" name="linux-aarch64-musl"/>
+  </export>
+</package>

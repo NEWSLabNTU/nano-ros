@@ -43,6 +43,36 @@
       "page": "book/src/reference/board-support-levels.md#linux"
     },
     {
+      "key": "nros-board-linux@linux-aarch64-musl",
+      "crate": "nros-board-linux",
+      "matrix_platform": null,
+      "status": "Not supported",
+      "built": false,
+      "infra": false,
+      "runs": "none",
+      "emulator": "qemu-user:aarch64",
+      "hardware": null,
+      "cadence": null,
+      "nightly_token": null,
+      "nightly_job": null,
+      "probe_tracks": [],
+      "roads": [],
+      "last_run": null,
+      "stale_from": null,
+      "breadth": "witness \u2014 no matrix cells",
+      "rmws": {
+        "runtime": [],
+        "build_only": []
+      },
+      "external": null,
+      "board_keys": [
+        "linux-aarch64-musl"
+      ],
+      "book_run": null,
+      "book_flash": null,
+      "page": "book/src/reference/board-support-levels.md#linux-aarch64-musl"
+    },
+    {
       "key": "nros-board-zephyr@ZephyrNativeSim",
       "crate": "nros-board-zephyr",
       "matrix_platform": "ZephyrNativeSim",
@@ -916,6 +946,34 @@
     {
       "key": "linux@-",
       "crate": "linux",
+      "matrix_platform": null,
+      "status": "Infrastructure",
+      "built": false,
+      "infra": true,
+      "runs": null,
+      "emulator": null,
+      "hardware": null,
+      "cadence": null,
+      "nightly_token": null,
+      "nightly_job": null,
+      "probe_tracks": [],
+      "roads": [],
+      "last_run": null,
+      "stale_from": null,
+      "breadth": "\u2014",
+      "rmws": {
+        "runtime": [],
+        "build_only": []
+      },
+      "external": null,
+      "board_keys": [],
+      "book_run": null,
+      "book_flash": null,
+      "page": null
+    },
+    {
+      "key": "linux-aarch64-musl@-",
+      "crate": "linux-aarch64-musl",
       "matrix_platform": null,
       "status": "Infrastructure",
       "built": false,

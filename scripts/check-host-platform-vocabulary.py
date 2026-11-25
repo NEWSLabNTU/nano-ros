@@ -155,6 +155,25 @@ def descriptors():
     return file_kinds.files_of_kind("board-descriptor", repo=ROOT)
 
 
+def cross_triple(board):
+    """The target triple a `[[board]]` cross-builds for, or None.
+
+    Issue 2852: a Linux board that states a triple (its `cargo_config`'s
+    `[build] target`, or a sole `[target.<triple>]` table, as the CLI's
+    `target_from_cargo_config` reads it) is a CROSS board, not the host."""
+    if board.get("target"):
+        return board["target"]
+    try:
+        cfg = tomllib.loads(board.get("cargo_config") or "")
+    except tomllib.TOMLDecodeError:
+        return None
+    t = (cfg.get("build") or {}).get("target")
+    if t:
+        return t
+    tables = list((cfg.get("target") or {}).keys())
+    return tables[0] if len(tables) == 1 else None
+
+
 def check_descriptors():
     problems, hosts = [], []
     for rel in descriptors():
@@ -167,7 +186,8 @@ def check_descriptors():
             continue
         doc = tomllib.loads(text)
         for b in doc.get("board", []):
-            if b.get("platform") == "posix" and b.get("entry_kind") == "hosted-main":
+            if (b.get("platform") == "posix" and b.get("entry_kind") == "hosted-main"
+                    and cross_triple(b) is None):
                 hosts.append((rel, b.get("names", [])))
     if len(hosts) != 1:
         problems.append(("(catalog)", f"expected ONE host board descriptor, found {hosts}"))
@@ -593,6 +613,17 @@ def self_test():
         got = descriptor_problems(list(names))
         if got != exp:
             fails.append(f"descriptor {names}: expected {exp}, got {got}")
+    # Issue 2852: a triple makes a Linux board a cross board, never the host.
+    for board, exp in [
+        ({"names": ["linux"]}, None),
+        ({"cargo_config": '[build]\ntarget = "aarch64-unknown-linux-musl"\n'},
+         "aarch64-unknown-linux-musl"),
+        ({"cargo_config": '[target.aarch64-unknown-linux-musl]\nlinker = "rust-lld"\n'},
+         "aarch64-unknown-linux-musl"),
+        ({"cargo_config": '[target.a]\n[target.b]\n'}, None),
+    ]:
+        if cross_triple(board) != exp:
+            fails.append(f"cross_triple {board}: expected {exp}, got {cross_triple(board)}")
     for body, exp in [
         ('[image.n]\nboard = "linux"\n', []),
         ('[image.native]\nboard = "linux"\n', []),  # an image ID: check 8, not 3

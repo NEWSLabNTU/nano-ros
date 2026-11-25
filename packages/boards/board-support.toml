@@ -138,6 +138,18 @@ maintainers = []
 #   implementation because `board_path_for` mapped both keys to the same ZST.
 notes = "The reference platform: the densest Runtime coverage of any target, all three RMWs. One board crate covers both the Linux host and the POSIX family driver."
 
+# Issue 2852 (phase-589 W5) — the Linux cross board: `nros-board-linux`
+# cross-built for an aarch64 SoC's musl userland, static. Its descriptor lives
+# in `packages/boards/linux-aarch64-musl`. No evidence is held yet: the
+# QEMU user-mode stage (`[board.run]`) and a device run are what move `runs`.
+[[board]]
+crate = "nros-board-linux"
+board_keys = ["linux-aarch64-musl"]
+runs = "none"
+breadth = "witness"
+maintainers = []
+notes = "An embedded Linux SoC with a musl userland: the host board's runtime, cross-built as a static aarch64 image that needs nothing installed on the device."
+
 [[board]]
 crate = "nros-board-zephyr"
 matrix_platform = "ZephyrNativeSim"
@@ -657,6 +669,12 @@ crate = "linux"
 infra = true
 maintainers = []
 notes = "nros-board.toml descriptor directory, not a crate (renamed from `posix` by phase-337 W8.d). phase-321 W2 moves these out of packages/boards/."
+
+[[board]]
+crate = "linux-aarch64-musl"
+infra = true
+maintainers = []
+notes = "nros-board.toml descriptor directory, not a crate: the musl Linux cross board, whose crate is nros-board-linux (its evidence row is above)."
 
 [[board]]
 crate = "zephyr"

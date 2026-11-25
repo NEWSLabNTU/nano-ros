@@ -21,6 +21,17 @@ if(DEFINED _NROS_PLATFORM_POSIX_INCLUDED)
 endif()
 set(_NROS_PLATFORM_POSIX_INCLUDED TRUE)
 
+# Issue 2852 — a Linux CROSS board (`linux-aarch64-musl`) names a board module
+# of its own, which says how this road builds for it. The host board names
+# none, so OPTIONAL: no module found is the host build, unchanged.
+if(NOT "${NROS_BOARD}" STREQUAL "")
+    include("${CMAKE_CURRENT_LIST_DIR}/../NanoRosBoardModule.cmake")
+    nros_board_module_path(_nros_posix_board_module nano-ros-posix OPTIONAL)
+    if(_nros_posix_board_module)
+        include("${_nros_posix_board_module}")
+    endif()
+endif()
+
 include("${CMAKE_CURRENT_LIST_DIR}/../NanoRosLink.cmake")
 
 # Build the canonical libnros_platform_posix.a from its standalone

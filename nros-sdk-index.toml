@@ -482,6 +482,40 @@ dist.macos-arm64 = { url = "https://github.com/NEWSLabNTU/nano-ros-sdk/releases/
 # issue 0374, and it is now gone by construction rather than by seeding a
 # prebuilt asset nobody would have to download either.
 
+# Issue 2852 (phase-589 W5) — the C cross compiler of the musl Linux cross
+# boards (`linux-aarch64-musl`). One upstream tarball per host carries clang,
+# musl's headers and libc for every target, and the Linux kernel headers
+# (`nros-board-linux` compiles `<linux/can.h>`), so no per-target toolchain
+# is provisioned.
+#
+# Layout. The tarball is rooted at `zig-<host>-<version>/` with the program
+# beside its `lib/`, which it finds from its own resolved path, so it unpacks
+# whole into the prefix and `bin/zig` links to it. `-nros1` is that layout plus
+# three entry points, `bin/zig-cc`, `bin/zig-c++` and `bin/zig-ar`, each
+# `exec zig <cc|c++|ar> "$@"` and nothing else. A board names its compiler
+# by one word (`CC_<triple> = "zig-cc"`) because a two-word `CC` ("zig cc")
+# loses its second word: `nros_cc_flags::track_header_deps` pins the compiler
+# PATH to bypass cc-rs's sccache fallback (issue 1580), and cc-rs's pinned
+# compiler takes no arguments. zig has no argv[0] dispatch (measured), so the
+# entry points are the only one-word spelling. They rewrite no flags. They are
+# in `scripts/sdk-path-tools.txt`, so a bare name reaches them.
+#
+# cc-rs passes `--target=aarch64-unknown-linux-musl`, which zig 0.17.1 refuses
+# (`UnknownOperatingSystem`); it takes `aarch64-linux-musl` and keeps the LAST
+# `--target=`, and cc-rs appends `CFLAGS_<triple>` after its own, so the
+# board's `CFLAGS_<triple>` carries zig's spelling. Measured 2026-11-25.
+[tool.zig]
+version = "0.17.1-nros1"
+need = "opt-in"
+upstream = "0.17.1" # ziglang.org release (SSOT for the URLs below)
+smoke = [
+    { run = "bin/zig version", expect = "0.17.1" },
+    { run = "bin/zig-cc --version", expect = "clang version" },
+]
+dist.linux-x86_64 = { url = "https://ziglang.org/download/0.17.1/zig-x86_64-linux-0.17.1.tar.xz", sha256 = "3581863e3cbcfd0fce0efc682ce7e9e93da96668a977791d356a26d2a7e9b17a", install = "mkdir -p {prefix}/bin && tar -xJf {archive} -C {prefix} --strip-components=1 zig-x86_64-linux-0.17.1 && ln -sf ../zig {prefix}/bin/zig && printf '%s\\n' '#!/bin/sh' 'exec \"$(dirname \"$0\")/zig\" cc \"$@\"' > {prefix}/bin/zig-cc && chmod +x {prefix}/bin/zig-cc && printf '%s\\n' '#!/bin/sh' 'exec \"$(dirname \"$0\")/zig\" c++ \"$@\"' > {prefix}/bin/zig-c++ && chmod +x {prefix}/bin/zig-c++ && printf '%s\\n' '#!/bin/sh' 'exec \"$(dirname \"$0\")/zig\" ar \"$@\"' > {prefix}/bin/zig-ar && chmod +x {prefix}/bin/zig-ar", floor = { none = "statically linked: no PT_INTERP, no DT_NEEDED (measure-dist-floor.py)" } }
+dist.linux-arm64 = { url = "https://ziglang.org/download/0.17.1/zig-aarch64-linux-0.17.1.tar.xz", sha256 = "a1546d5646eb184437918d6635ca6b762a0e889eac09cef720ee7a1ed3fe7795", install = "mkdir -p {prefix}/bin && tar -xJf {archive} -C {prefix} --strip-components=1 zig-aarch64-linux-0.17.1 && ln -sf ../zig {prefix}/bin/zig && printf '%s\\n' '#!/bin/sh' 'exec \"$(dirname \"$0\")/zig\" cc \"$@\"' > {prefix}/bin/zig-cc && chmod +x {prefix}/bin/zig-cc && printf '%s\\n' '#!/bin/sh' 'exec \"$(dirname \"$0\")/zig\" c++ \"$@\"' > {prefix}/bin/zig-c++ && chmod +x {prefix}/bin/zig-c++ && printf '%s\\n' '#!/bin/sh' 'exec \"$(dirname \"$0\")/zig\" ar \"$@\"' > {prefix}/bin/zig-ar && chmod +x {prefix}/bin/zig-ar", floor = { none = "statically linked: no PT_INTERP, no DT_NEEDED (measure-dist-floor.py)" } }
+dist.macos-arm64 = { url = "https://ziglang.org/download/0.17.1/zig-aarch64-macos-0.17.1.tar.xz", sha256 = "75f1bc7a1e9852f17ec9a0c1895f767c4ec56d46bc8a834920eece1d0359dd8d", install = "mkdir -p {prefix}/bin && tar -xJf {archive} -C {prefix} --strip-components=1 zig-aarch64-macos-0.17.1 && ln -sf ../zig {prefix}/bin/zig && printf '%s\\n' '#!/bin/sh' 'exec \"$(dirname \"$0\")/zig\" cc \"$@\"' > {prefix}/bin/zig-cc && chmod +x {prefix}/bin/zig-cc && printf '%s\\n' '#!/bin/sh' 'exec \"$(dirname \"$0\")/zig\" c++ \"$@\"' > {prefix}/bin/zig-c++ && chmod +x {prefix}/bin/zig-c++ && printf '%s\\n' '#!/bin/sh' 'exec \"$(dirname \"$0\")/zig\" ar \"$@\"' > {prefix}/bin/zig-ar && chmod +x {prefix}/bin/zig-ar", floor = { macos = "15.0" } }
+
 # sccache — shared compiler cache (issue #74). The justfile already wires
 # `RUSTC_WRAPPER := sccache` (and the zephyr fixture build uses it as a CMake
 # COMPILER_LAUNCHER) when it is on PATH, so provisioning it halves clean / CI
@@ -1382,6 +1416,14 @@ packages = []
 arch = "x86_64"
 platform = "posix"
 packages = [] # host daemon comes from the RMW axis (default rmw.zenoh)
+
+# Issue 2852 (phase-589 W5) — a Linux CROSS board: the host board's runtime
+# (`nros-board-linux`, platform posix), built for an aarch64 SoC's musl
+# userland, static. Its C compiler is zig.
+[board.linux-aarch64-musl]
+arch = "aarch64"
+platform = "posix"
+packages = ["zig"]
 
 # phase-437 W5 (RFC-0093 §4) — ONE key where W2 marked a mirrored PAIR.
 # `qemu-arm-baremetal` (the examples dir) and `mps2-an385` (the board crate)
@@ -2492,6 +2534,12 @@ triple = "thumbv7em-none-eabihf"
 # so it was declared nowhere and provisioned only by `scripts/zephyr/setup.sh`.
 [rust.target.x86_64-none]
 triple = "x86_64-unknown-none"
+
+# Issue 2852 — the musl Linux cross board (`linux-aarch64-musl`). A tier-2
+# rustup target with self-contained crt objects and musl's `libc.a`, linked
+# by `rust-lld`.
+[rust.target.aarch64-linux-musl]
+triple = "aarch64-unknown-linux-musl"
 
 [rust.target.thumbv7m]
 triple = "thumbv7m-none-eabi"

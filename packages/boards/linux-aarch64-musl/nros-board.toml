@@ -1,0 +1,91 @@
+# Board profile descriptor for an aarch64 embedded Linux SoC with a musl
+# userland (issue 2852, phase-589 W5).
+#
+# A Linux CROSS board: the host board's runtime (`nros-board-linux`, the posix
+# platform, a hosted `main`) built for another target. It is not the host. The
+# host board is the one Linux board that states NO target triple
+# (`nros_orchestration_ir::HOST_BOARD_KEYS`); this one states
+# `aarch64-unknown-linux-musl`, so it is a cross board
+# (`LINUX_CROSS_BOARD_KEYS`).
+#
+# The image is a static ELF (`+crt-static`) that needs nothing on the device:
+# no glibc, no ROS 2, no package manager. That is the camera SoC of phase-589's
+# proof of concept (2x Cortex-A55, Linux 5.10, musl 1.2.3, BusyBox), and the
+# original Jetson Nano of W10, whose L4T glibc is too old for anything else.
+#
+# The C compiler is zig (`[tool.zig]` in the SDK index), named by bare name
+# through the dist's one-word entry points (`zig-cc`, `zig-c++`, `zig-ar`; the
+# index says why a two-word `CC` cannot work).
+# cc-rs hands it `--target=aarch64-unknown-linux-musl`, which zig refuses; it
+# keeps the LAST `--target=`, and cc-rs appends `CFLAGS_<triple>` after its own
+# flags, so this file's `CFLAGS_<triple>` carries zig's spelling. zig's default
+# `-fsanitize=undefined` in an unoptimised build references a runtime the link
+# does not carry, so it is turned off.
+
+[[board]]
+names = ["linux-aarch64-musl"]
+platform = "posix"
+toolchain = "stable"
+entry_kind = "hosted-main"
+# The CMake road's module, `cmake/board/nano-ros-board-linux-aarch64-musl.cmake`:
+# it refuses C and C++ for now, rather than building a host program.
+cmake_module = "linux-aarch64-musl"
+# The device's kernel owns the network stack, as on the host board.
+supported_netstacks = []
+cargo_config = '''
+[build]
+target = "aarch64-unknown-linux-musl"
+
+[target.aarch64-unknown-linux-musl]
+linker = "rust-lld"
+rustflags = ["-C", "target-feature=+crt-static"]
+
+[env]
+CC_aarch64_unknown_linux_musl = "zig-cc"
+CXX_aarch64_unknown_linux_musl = "zig-c++"
+AR_aarch64_unknown_linux_musl = "zig-ar"
+CFLAGS_aarch64_unknown_linux_musl = "--target=aarch64-linux-musl -fno-sanitize=all"
+CXXFLAGS_aarch64_unknown_linux_musl = "--target=aarch64-linux-musl -fno-sanitize=all"
+'''
+
+[board.entry]
+# The host board's runtime, cross-built.
+type = "::nros_board_linux::LinuxBoard"
+
+# The device's kernel owns its network, as the host's does on `linux`.
+[board.net]
+stack = "host"
+links = ["tcp", "udp", "serial", "can", "isotp"]
+
+# RFC-0118 D4b — on this machine, the image runs under QEMU's user mode: the
+# program's own user space, with the host kernel answering its system calls.
+# It is no evidence about the device's kernel (its timers, scheduling and
+# preemption are measured on the device). Deploying to a device is the image's
+# `[image.<id>.run] command`, since the device's address is the user's.
+[board.run]
+emulator = "qemu-user:aarch64"
+
+[board.console]
+kind = "stdio"
+
+[board.capabilities]
+heap = true
+atomics = true
+threads = true
+
+# The same port as the host board, so the same plan: Linux's SCHED_FIFO range
+# is fixed by POSIX, and `nros-board-linux` places zenoh-pico's transport at 90.
+# `reserved.foreign` is empty on the host by measurement (the boot thread
+# census); on a device it is re-measured with the census the image prints.
+[board.priority_plan]
+sched_task_key = "posix"
+direction = "bigger-is-urgent"
+range = [1, 99]
+reserved.transport = [90, 99]
+pool.app = [1, 89]
+reserved.foreign = []
+
+# The host board's arenas: the same runtime, and the same threads that log.
+[knobs.log]
+dynamic_loggers = 32
+early_records = 32

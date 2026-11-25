@@ -1,0 +1,1 @@
+A new board, `linux-aarch64-musl`, builds a static image for an aarch64 embedded Linux system with a musl userland: `nros setup linux-aarch64-musl` installs the Rust target and the zig C compiler, `nros build` needs no wrapper script or environment variables, and `nros run` runs the image under QEMU user mode (QEMU 7.2 or newer). C and C++ nodes are not supported on it yet.

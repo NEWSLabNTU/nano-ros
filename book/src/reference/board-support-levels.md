@@ -22,6 +22,7 @@ Pick a board for its evidence: what runs it, how often, what its tests cover and
 | Board | Status | Runs on |
 |---|---|---|
 | [`nros-board-linux` (Linux)](#linux) | Verified on host (daily) | host executable |
+| [`nros-board-linux` (linux-aarch64-musl)](#linux-aarch64-musl) | Not supported | `qemu-user:aarch64` (twin) |
 | [`nros-board-zephyr` (ZephyrNativeSim)](#zephyr-native-sim) | Verified on host (daily) | host executable |
 | [`nros-board-mps3-an536-freertos`](#mps3-an536-freertos) | Builds | `qemu:mps3-an536` (twin) |
 | [`nros-board-mps2-an385-freertos` (FreertosMps2)](#mps2-an385-freertos) | Verified in emulator (daily) | `qemu:mps2-an385` |
@@ -58,6 +59,26 @@ Pick a board for its evidence: what runs it, how often, what its tests cover and
 | Book probe tracks | `linux` (weekly), `linux-rust` (weekly), `linux-c` (weekly), `platform-linux`, `custom-rmw` |
 
 The reference platform: the densest Runtime coverage of any target, all three RMWs. One board crate covers both the Linux host and the POSIX family driver.
+
+[Back to the board list](#boards)
+
+<a id="linux-aarch64-musl"></a>
+
+### nros-board-linux (linux-aarch64-musl)
+
+**Status:** Not supported
+
+| | |
+|---|---|
+| Package | `nros-board-linux` |
+| Test-matrix platform | — |
+| Runs on | `qemu-user:aarch64` (twin) |
+| Cadence | — |
+| Breadth | witness — no matrix cells |
+| Book | — |
+| Book probe tracks | — |
+
+An embedded Linux SoC with a musl userland: the host board's runtime, cross-built as a static aarch64 image that needs nothing installed on the device.
 
 [Back to the board list](#boards)
 
@@ -417,4 +438,4 @@ PX4's own SITL board, `px4_sitl_default`, built from PX4-Autopilot with the nano
 
 Packages under `packages/boards/` that are not boards: shared traits, family drivers, ABI mirrors, PACs and descriptor directories.
 
-`nros-board-common`, `nros-board-cffi`, `nros-board-freertos`, `nros-board-nuttx`, `nros-board-threadx`, `nros-board-threadx-port-riscv64`, `mps2-an385-pac`, `linux`, `zephyr`, `nros-board-qemu-cortex-a53`
+`nros-board-common`, `nros-board-cffi`, `nros-board-freertos`, `nros-board-nuttx`, `nros-board-threadx`, `nros-board-threadx-port-riscv64`, `mps2-an385-pac`, `linux`, `linux-aarch64-musl`, `zephyr`, `nros-board-qemu-cortex-a53`
