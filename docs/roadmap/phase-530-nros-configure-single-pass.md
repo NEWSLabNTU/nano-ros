@@ -1136,6 +1136,29 @@ did (phase-484 W8). Each step is its own change.
 - Steps 2 and 3 wait on releases, so the phase can close with them still
   open, provided W9 names the release each one waits for.
 
+### W10 — The census host build has its own tree (issue 2960)
+
+- **Status:** OPEN (the fix is in review; DONE once it merges)
+
+User ruling 2026-11-25 (RFC-0120 D1 amended). W2's census host build went into
+the image's own `build/<coord>/cmake`, configured under
+`NROS_LEAF_CENSUS_HOST`, which makes it a different program. Each `nros build`
+of the image (a native fixture row) flipped the tree back and relinked the
+binary the census had recorded. On runner 118 the bytes differed, and four
+threadx-linux cyclonedds cross rows refused their census as stale (run-matrix
+45422927491, release blocker B32).
+
+- `take` builds into `build/nros/census-image/<coord>`
+  (`census_image_build_dir`, one helper for the build, the binary lookup and
+  the R42 host-build record); the image's tree is the user's and the fixtures'.
+- A host-build record that still names `build/<coord>/cmake` is treated as no
+  record, so the census is re-taken instead of rebuilt in place.
+- `nros build` and `take` arm their plans through one helper,
+  `arm_for_real_build` (the stack walk and the stack-floor `-D`s).
+- Follow-up, unmeasured: the cargo road keeps its shared tree. Measure take
+  then `nros build` on a Rust workspace image; if it relinks, it needs the
+  same tree split.
+
 ## Order
 
 1. W0 decides W6's shape, so it comes first.
@@ -1178,6 +1201,7 @@ Each issue has a `**Home:**` line pointing here.
 | [#2279](../issues/archived/2279-configure-refusal-names-configure.md) | W1 | The unset-`AMENT_PREFIX_PATH` refusal says "run the setup step … then `nros configure`": no command for the setup step, and it names configure even when `nros run` or `nros build` failed. |
 | [#2361](../issues/archived/2361-stale-sidecars-drop-out-of-configure-deps.md) | — | A configure that finds the probe sidecars stale drops them as inputs, so a later `nros configure` never re-runs. This is the single-pass configure's freshness edge. |
 | [#2378](../issues/archived/2378-census-host-concurrent-take-race.md) | W2 | Fixture rows of one leaf take its census at the same time and clobber the shared `census-host` dir, so a stale census stops the configure (tier 2 on 2026-11-09). |
+| [#2960](../issues/archived/2960-census-host-build-shares-image-build-tree.md) | W10 | The census host build shared the image's `build/<coord>/cmake` while configured as a different program, so each `nros build` of the image relinked the census binary and cross configures read the census stale (release blocker B32). |
 | [#2390](../issues/archived/2390-zephyr-west-leaves-skip-census-prepass.md) | W2 | The fixture census pre-pass lists no Zephyr `west` leaf, then turns configure's own census take off, so every Zephyr C/C++ leaf counted by its census refuses at configure on a fresh tree (tier 2 run 42677993077). |
 | [#2395](../issues/archived/2395-zephyr-hook-configures-flat-workspace-package.md) | W4 | The Zephyr hook ran `nros configure` on a flat workspace's bringup package, which cannot see its siblings, so three generated west fixtures refused at configure (tier 2 run 42697365095). |
 | [#2396](../issues/archived/2396-census-step-refuses-contract-less-cross-image.md) | W6 | **Resolved** 2026-11-10: the census build step refused a cross image whose model folds in no contract, so a freshly scaffolded C/C++ FreeRTOS talker could not build; the step now finds nothing to take, as `take --image` and the configure's check did. |

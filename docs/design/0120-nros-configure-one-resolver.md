@@ -125,6 +125,18 @@ Rules:
   by spawning `nros build <native image>` (`entity_census.rs:546-560`, reached
   from `build.rs:907-922`). That is layer 0 calling layer 2. Phase-530 W2
   replaces it with a direct host-tool build of the native image.
+- **The census host build has a build tree of its own** (user ruling
+  2026-11-25, issue 2960). Under `NROS_LEAF_CENSUS_HOST` the configure is a
+  different program from the image a person builds (the CAN mock, no resolved
+  seed, no census step), so it never shares that image's
+  `build/<coord>/cmake`: a workspace image's census builds into
+  `build/nros/census-image/<coord>`. Before this, the census was built "the
+  same way, into the same directory", and each build flipped the tree to the
+  other program. The census then recorded a binary the next `nros build`
+  replaced, and a cross configure read it stale (release blocker B32). One
+  configuration per build tree, the rule issue 0616 states for cargo target
+  dirs. The owned-entry road (`build/nros/census-host/<bringup>/<image>`) and
+  the leaf road (`<leaf>/build/census-host`) already had their own trees.
 - **A provisioned input is not a host-build product.** Layer 0 may read an
   input that is built once and shared by every image, such as a NuttX kernel
   export's `scripts/Make.defs` (built once per arch), the same way it reads
@@ -523,3 +535,7 @@ configure, is answered by D2: the stamp records it.)
   app that names a project is a hooked road; one that names none stays a
   guest road (RFC-0126 Q1, Q7). The D5 NuttX row itself is amended by
   phase-550 W6.
+- 2026-11-25 -- D1: the census host build of a workspace image has its own
+  build tree, `build/nros/census-image/<coord>` (user ruling, issue 2960,
+  release blocker B32). The census and `nros build` are different programs
+  under one directory otherwise. Reviewed by the census owner (nros 241).
