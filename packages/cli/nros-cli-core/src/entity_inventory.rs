@@ -7603,7 +7603,12 @@ mod tests {
         let d = none.with_declared_managed_nodes(Some(2));
         assert!(d.lifecycle);
         assert_eq!(d.lifecycle_machines(), 2);
-        assert_eq!(d.queryables(1), 2 * LIFECYCLE_SERVICE_QUERYABLES);
+        assert_eq!(d.servers(1), 2 * LIFECYCLE_SERVICE_QUERYABLES);
+        // phase-554 W4: on zenoh a machine's five servers share one queryable.
+        assert_eq!(
+            d.queryables(1),
+            2 * nros_sizing_descriptor::infra::ZENOH_LIFECYCLE_QUERYABLES
+        );
         let marked = InfraServices {
             managed_nodes: 3,
             lifecycle: true,
