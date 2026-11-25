@@ -9,9 +9,11 @@
 //! - every interrupt is served: the callback count keeps up with the
 //!   interrupt count (a guard is a level, so a late wake would fold several
 //!   interrupts into one callback);
-//! - callbacks run within [`BOUND_US`] of their interrupt (83 to 97 us at a
-//!   fixed `-icount shift=5` on a quiet host), with the idle-clock allowance
-//!   described on [`ON_TIME_SHARE`].
+//! - on native_sim, callbacks run within [`BOUND_US`] of their interrupt, with
+//!   the allowance described on [`ON_TIME_SHARE`]. On the QEMU boards every
+//!   sample is taken across an idle `wfi`, where the guest's clock is the
+//!   host's, so there each callback must run before [`CAP_US`] and no earlier
+//!   than its interrupt ([`Latency::CapOnly`] says why).
 //!
 //! Mutations, both red: the thread `trigger()` in the handler trips FreeRTOS's
 //! `configASSERT` (`port.c`, a critical section entered from an interrupt),
@@ -38,15 +40,13 @@ use std::time::Duration;
 /// bound, measured at 83 to 97 us on a quiet host.
 const BOUND_US: u64 = 500;
 
-/// The executor parks in `wfi` between interrupts, and QEMU's `-icount
-/// sleep=on` (which the network needs) runs an idle guest's clock at wall
-/// speed, so a loaded host delays the timer's interrupt itself and the
-/// latency read off the timer carries that delay (1.4 ms seen once under a
-/// full gate). That is the emulator's, not the wake path's: this share of
-/// samples must meet [`BOUND_US`], and every one must stay under
-/// [`CAP_US`], half the 20 ms period, so a late wake is never read as an
-/// early one. Do not loosen [`BOUND_US`] to absorb this, or tighten these
-/// to make the bound look stricter.
+/// The share of samples a [`Latency::Bounded`] image (native_sim) must keep
+/// within [`BOUND_US`]; every sample must also stay under [`CAP_US`], half
+/// the 20 ms period, so a late wake is never read as an early one. The QEMU
+/// images were held to this too, until it measured the host instead of the
+/// wake path: [`Latency::CapOnly`] has the numbers. Do not loosen
+/// [`BOUND_US`] to absorb host delay, or tighten these to make the bound look
+/// stricter.
 const ON_TIME_SHARE: f64 = 0.95;
 const CAP_US: u64 = 10_000;
 
@@ -135,7 +135,7 @@ fn run_and_check(binary: &std::path::Path, port: u16, port_name: &str, finish: &
     let output = qemu.collect_until(finish, Duration::from_secs(120));
     qemu.kill();
 
-    check_isr_wake_output(&output, port_name, Latency::Bounded);
+    check_isr_wake_output(&output, port_name, Latency::CapOnly);
     output
 }
 
@@ -204,7 +204,7 @@ fn a_timer_interrupt_wakes_the_parked_executor_on_threadx_riscv64() {
         .unwrap_or_else(|e| panic!("start QEMU for the ThreadX interrupt-wake image: {e:?}"));
     let output = qemu.collect_until(ISR_WAKE_DONE, Duration::from_secs(120));
     qemu.kill();
-    check_isr_wake_output(&output, "ThreadX", Latency::Bounded);
+    check_isr_wake_output(&output, "ThreadX", Latency::CapOnly);
 }
 
 /// Issue 2745 -- the HOSTED ThreadX twin. This port's interrupt is its timer
@@ -372,15 +372,41 @@ enum Latency {
     /// [`ON_TIME_SHARE`] of the samples within [`BOUND_US`], and every one
     /// under [`CAP_US`].
     Bounded,
-    /// Every sample under [`CAP_US`] only. PER-PLATFORM, BECAUSE OF QEMU'S
-    /// `-icount shift=auto` (issue 2748): the networked launchers must keep it,
-    /// and it raises the shift mid-run, so guest time per instruction doubles
-    /// and a fixed wake path measures 39, 78, 159, 317, then 645 us in ONE
-    /// run on NuttX. A microsecond bound there tracks QEMU's shift, not the
-    /// wake path. The FreeRTOS, bare-metal and ThreadX paths are short enough
-    /// to stay under [`BOUND_US`] at the shifts seen; NuttX's is not. Do not
-    /// "tighten" a `CapOnly` image back to `Bounded` without a clock that does
-    /// not scale with the shift. The teeth stay: the served and refused
+    /// Every sample under [`CAP_US`] and none early. Used for EVERY QEMU
+    /// image, because on QEMU a microsecond bound across an idle stretch
+    /// measures the host, not the wake path. There are two mechanisms, each
+    /// measured:
+    ///
+    /// - `-icount shift=auto` (issue 2748, NuttX). The networked launchers
+    ///   keep it, and QEMU raises the shift mid-run, so guest time per
+    ///   instruction doubles and one fixed wake path read 39, 78, 159, 317,
+    ///   then 645 us in ONE run.
+    /// - Host idle-wake latency, even at a FIXED shift (the mps2 images, at
+    ///   `shift=5`). Every sample here spans a `wfi`, and with `sleep=on`
+    ///   (the network needs it) an idle guest's clock runs at wall speed. The
+    ///   interrupt is then as late as the host is slow to wake QEMU's timer
+    ///   thread. With nothing overlapping in the run, the bare-metal image
+    ///   put 19 and 18 of 50 samples over [`BOUND_US`] (up to 876 us) on a
+    ///   near-idle 48-thread runner (tier2-nightly, 2026-11-25), and at most 2
+    ///   of 50 on the same build at load 48 of 24 cores. The RTIC levels cell
+    ///   saw the same thing: 52 % on time against 93 to 99 %. A quiet host
+    ///   wakes slower than a busy one, so no on-time share is a property of
+    ///   the image. The other two QEMU images show the same tail over their
+    ///   own fast paths (five runs each, load ~25 of 24 cores, 2026-11-25):
+    ///   FreeRTOS mps2 at 83 us every run's minimum and 572 us to 3.1 ms
+    ///   its maximum; ThreadX riscv64 at 6 to 14 us and 390 us to 1.3 ms.
+    ///
+    /// What still proves an interrupt wake: the image has nothing else that
+    /// can end the park. Its only fallback is the 1 s `spin_once` budget, and
+    /// a park the interrupt failed to end folds the interrupts into one
+    /// callback, which `fires <= callbacks + 1` refuses. [`CAP_US`] (10 ms)
+    /// sits below the 20 ms period and so far below that 1 s fallback, and a
+    /// late wake cannot read as an early one. Mutation, measured in issue
+    /// 2696 on FreeRTOS: a handler that skips the port's give served 50
+    /// callbacks for 2462 interrupts, worst 19.7 ms. Both checks refuse it
+    /// (`isr_wake_check::a_lost_wake_is_refused_by_count_and_cap`). Do not
+    /// "tighten" a `CapOnly` image back to `Bounded` without a guest clock
+    /// that stops when the host does. The teeth stay: the served and refused
     /// counts, the lower bounds, and the cap.
     CapOnly,
     /// HOSTED: every sample before the next interrupt only, the period the
@@ -471,4 +497,72 @@ fn check_isr_wake_output(output: &str, port_name: &str, latency: Latency) {
         over_cap.is_empty(),
         "callbacks later than {cap} us after their interrupt: {over_cap:?}"
     );
+}
+
+/// The bounds [`check_isr_wake_output`] holds an image to, over synthetic
+/// consoles: what [`Latency::CapOnly`] still refuses, and what it no longer
+/// does.
+mod isr_wake_check {
+    use super::{Latency, check_isr_wake_output};
+
+    /// A console of `samples` (us after their interrupt) and the image's
+    /// final `fires callbacks refused` counts.
+    fn console(samples: &[i64], fires: u64, callbacks: u64) -> String {
+        let mut c = String::new();
+        for us in samples {
+            c.push_str(&format!("ISR_WAKE {us}\n"));
+        }
+        c.push_str(&format!("ISR_WAKE_DONE {fires} {callbacks} 0\n"));
+        c
+    }
+
+    fn refused(c: &str, latency: Latency) -> String {
+        let c = c.to_string();
+        let err = std::panic::catch_unwind(move || check_isr_wake_output(&c, "test", latency))
+            .expect_err("the check must refuse this console");
+        err.downcast_ref::<String>()
+            .cloned()
+            .or_else(|| err.downcast_ref::<&str>().map(|s| s.to_string()))
+            .unwrap_or_default()
+    }
+
+    /// Tier2-nightly 2026-11-25, bare-metal mps2: 19 of 50 over 500 us on a
+    /// near-idle runner. The host's, not the wake path's, so a QEMU image
+    /// passes it and native_sim's bound would not.
+    const QUIET_RUNNER: [i64; 50] = [
+        343, 876, 511, 448, 231, 509, 578, 571, 441, 244, 812, 471, 573, 256, 617, 654, 540, 256,
+        502, 322, 473, 322, 251, 328, 335, 444, 506, 575, 444, 442, 658, 358, 792, 441, 329, 560,
+        260, 803, 444, 272, 280, 212, 627, 446, 464, 658, 474, 444, 430, 481,
+    ];
+
+    #[test]
+    fn idle_wake_jitter_passes_cap_only_and_fails_the_bound() {
+        let c = console(&QUIET_RUNNER, 50, 50);
+        check_isr_wake_output(&c, "test", Latency::CapOnly);
+        let err = refused(&c, Latency::Bounded);
+        assert!(err.contains("only 31 of 50"), "{err}");
+    }
+
+    /// Issue 2696's mutation: a handler that skips the port's give. The
+    /// park ends only on its 1 s budget, so 2462 interrupts fold into 50
+    /// callbacks, each read up to a period (19.7 ms) after the last fire.
+    #[test]
+    fn a_lost_wake_is_refused_by_count_and_cap() {
+        let samples: Vec<i64> = (0..50).map(|i| 5_000 + i * 300).collect();
+        let err = refused(&console(&samples, 2462, 50), Latency::CapOnly);
+        assert!(err.contains("served by only 50 callbacks"), "{err}");
+        // Even with every interrupt served, a wake that lands a whole
+        // fallback later than its interrupt is past the cap.
+        let late = vec![19_700i64; 50];
+        let err = refused(&console(&late, 50, 50), Latency::CapOnly);
+        assert!(err.contains("later than 10000 us"), "{err}");
+    }
+
+    #[test]
+    fn an_early_wake_is_refused_on_cap_only() {
+        let mut samples = vec![300i64; 50];
+        samples[7] = -5;
+        let err = refused(&console(&samples, 50, 50), Latency::CapOnly);
+        assert!(err.contains("BEFORE their interrupt"), "{err}");
+    }
 }
