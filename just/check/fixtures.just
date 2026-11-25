@@ -224,6 +224,13 @@ unwind-table:
 workspace-fixture-units:
     @python3 scripts/build/workspace-fixture-units.py --self-test
 
+# The batch form of the workspace-fixture signature (one shared tool and
+# per-dir manifest pass for many rows) gives each row the bytes its one-row
+# form gives it. Buildless, so the fast line.
+[private]
+workspace-fixture-signature-batch:
+    @bash scripts/build/workspace-fixture-signature.sh --self-test
+
 # issue 2481 — every `[[workspace_fixture]]` (platform, lang) is reached by a
 # recipe's `workspace-fixtures-build.sh <platform> [lang]` call. A language
 # filter left the bare-metal C/C++ rows built by no lane. Buildless.

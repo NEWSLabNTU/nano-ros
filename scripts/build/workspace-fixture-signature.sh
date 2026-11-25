@@ -1,8 +1,17 @@
 #!/usr/bin/env bash
 # Print the build-input signature for one workspace fixture manifest record.
+#
+#   workspace-fixture-signature.sh <manifest-record>
+#   workspace-fixture-signature.sh --batch < records   # "<id>\t<signature>" per line
+#   workspace-fixture-signature.sh --self-test         # batch == one-record, per record
+#
+# Issue B39 -- `--batch` hashes the same bytes per record as the one-record
+# form, so a signature is identical either way; it only computes what records
+# SHARE once: the tool fingerprints (one `nros` run each) and each workspace
+# dir's source manifest. An audit that checks every in-lane row
+# (`rmw_coordinate_truth`, tier2-nightly: 401 rows over ~90 dirs) ran this
+# script once per row, ~0.2 s each, serially, past its test's 60 s.
 set -euo pipefail
-
-record="${1:?usage: workspace-fixture-signature.sh <manifest-record>}"
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "$script_dir/../.." && pwd)"
@@ -11,21 +20,16 @@ repo_root="$(cd "$script_dir/../.." && pwd)"
 source "$script_dir/source-manifest.sh"
 # shellcheck source=scripts/build/codegen-fingerprint.sh
 source "$script_dir/codegen-fingerprint.sh"
+# shellcheck source=scripts/lib/grep-q.sh
+source "$repo_root/scripts/lib/grep-q.sh"
 
-IFS=$'\x1f' read -r id _lang dir bringup _entry _build_subdir _target_dir _codegen_out _defs <<< "$record"
-[ -n "$id" ] && [ -n "$dir" ] || {
-    echo "workspace fixture record is missing id/dir" >&2
-    exit 2
-}
+# The shared parts, each written once into "$work" (bytes with NULs, so files,
+# not shell variables), in the order the stream puts them.
+work="$(mktemp -d)"
+trap 'rm -rf "$work"' EXIT
 
-workspace="$repo_root/$dir"
-[ -d "$workspace" ] || {
-    echo "workspace fixture '$id' dir does not exist: $dir" >&2
-    exit 2
-}
-
-{
-    printf 'nros-workspace-fixture-v4\0%s\0' "$record"
+tools_bytes() {
+    {
     # #182 — the fixture is a function of the CODEGEN TOOL, not just the
     # workspace sources: `nros dev codegen entry` emits the entry TU, `nros ws
     # sync`/`generate-*` shape the msg crates. A signature blind to the tool
@@ -70,6 +74,11 @@ workspace="$repo_root/$dir"
         printf 'tool:nros-planning-absent\0'
     fi
 
+    } > "$work/tools"
+}
+
+resolver_bytes() {
+    {
     # phase-318 W1.b — the RESOLVER, for records that actually run it.
     #
     # `nros configure` shells out to `nros-launch-resolve` and the SystemModel it
@@ -77,17 +86,114 @@ workspace="$repo_root/$dir"
     # #182 one layer down. Scoped to records with a bringup: a resolver rebuild
     # then invalidates the fixtures that consume a resolved model and nothing
     # else, which is much narrower than hashing it into everything.
-    if [ -n "${bringup:-}" ]; then
+    if true; then
         printf 'tool:resolve\0%s\0' "$(bash "$repo_root/scripts/build/resolve-fingerprint.sh" 2>/dev/null || echo resolver-error)"
     fi
 
-    # phase-360 W3 — ONE spelling, in `source-manifest.sh`, shared with the
-    # compile-check lane. Enumerating through the git index is what makes an
-    # extension filter redundant: gitignored build trees (`_deps`, `install`,
-    # `log`) can never leak in, which is the false-staleness phase-300 W2.1
-    # fixed by moving off a find-based walk. The allowlist that used to sit here
-    # dropped 92 `.conf`, 6 `.msg` and 6 `.x` across these rows — Zephyr Kconfig
-    # overlays, codegen input and `memory.x` linker layout, all build inputs.
-    rel_ws="${workspace#$repo_root/}"
-    nros_source_manifest "$repo_root" "$rel_ws"
-} | sha256sum | awk '{print $1}'
+    } > "$work/resolve"
+}
+
+# manifest_bytes <rel_dir>: the dir's source manifest, cached per dir.
+manifest_bytes() {
+    local rel_ws="$1" key
+    key="$(printf '%s' "$rel_ws" | sha256sum | awk '{print $1}')"
+    if [ ! -f "$work/m-$key" ]; then
+        nros_source_manifest "$repo_root" "$rel_ws" > "$work/m-$key"
+    fi
+    printf '%s' "$work/m-$key"
+}
+
+# signature_of <record>: the one-record signature, from the cached parts.
+signature_of() {
+    local record="$1" id _lang dir bringup _rest workspace mf
+    IFS=$'\x1f' read -r id _lang dir bringup _rest <<< "$record"
+    [ -n "$id" ] && [ -n "$dir" ] || {
+        echo "workspace fixture record is missing id/dir" >&2
+        return 2
+    }
+    workspace="$repo_root/$dir"
+    [ -d "$workspace" ] || {
+        echo "workspace fixture '$id' dir does not exist: $dir" >&2
+        return 2
+    }
+    [ -f "$work/tools" ] || tools_bytes
+    if [ -n "${bringup:-}" ] && [ ! -f "$work/resolve" ]; then
+        resolver_bytes
+    fi
+    mf="$(manifest_bytes "${workspace#$repo_root/}")"
+    {
+    printf 'nros-workspace-fixture-v4\0%s\0' "$record"
+        cat "$work/tools"
+        if [ -n "${bringup:-}" ]; then
+            cat "$work/resolve"
+        fi
+        cat "$mf"
+    } | sha256sum | awk '{print $1}'
+}
+
+# --self-test: the batch form must give each record the bytes the one-record
+# form gives it, run in its own process with nothing shared. Records come from
+# the manifest: two that share a dir (the per-dir cache is reused), one from
+# another dir, and that one with its bringup blanked (no resolver block; every
+# manifest row has a bringup today). Negative controls: the four signatures
+# differ, and a record whose dir is missing fails the batch without dropping
+# the records around it.
+self_test() {
+    local all a1 a2 b nob bad recs fails=0 i id single batch_out rc
+    all="$(python3 "$repo_root/scripts/build/fixtures-manifest.py" list-workspaces --for-probe)"
+    a1="$(head -n1 <<< "$all")"
+    local dir_a
+    dir_a="$(printf '%s' "$a1" | cut -d$'\x1f' -f3)"
+    a2="$(awk -F'\x1f' -v d="$dir_a" -v r="$a1" '$3==d && $0!=r && !n++' <<< "$all")"
+    b="$(awk -F'\x1f' -v d="$dir_a" '$3!=d && $4!="" && !n++' <<< "$all")"
+    nob="$(printf '%s' "$b" | awk -F'\x1f' -v OFS=$'\x1f' '{$1=$1"-nobringup"; $4=""; print}')"
+    bad="$(printf '%s' "$b" | awk -F'\x1f' -v OFS=$'\x1f' '{$1="selftest-missing"; $3="no/such/dir"; print}')"
+    for r in "$a1" "$a2" "$b"; do
+        [ -n "$r" ] || { echo "self-test: the manifest lacks two rows in one dir and one in another" >&2; return 1; }
+    done
+    recs=("$a1" "$a2" "$b" "$nob")
+
+    rc=0
+    batch_out="$(printf '%s\n' "${recs[0]}" "${recs[1]}" "$bad" "${recs[2]}" "${recs[3]}" \
+        | bash "$0" --batch 2>/dev/null)" || rc=$?
+    if [ "$rc" -ne 2 ]; then
+        echo "FAIL: a batch with a missing-dir record exits 2 (got $rc)" >&2; fails=$((fails + 1))
+    fi
+    # nros_grep_q exits 2 itself on a tool error, so the branch is match/miss.
+    if nros_grep_q '^selftest-missing' <<< "$batch_out"; then
+        echo "FAIL: a failed record prints no signature" >&2; fails=$((fails + 1))
+    fi
+    for i in "${!recs[@]}"; do
+        id="${recs[$i]%%$'\x1f'*}"
+        single="$(bash "$0" "${recs[$i]}")"
+        if ! nros_grep_q -x -F -- "$id"$'\t'"$single" <<< "$batch_out"; then
+            echo "FAIL: batch and single differ for $id" >&2; fails=$((fails + 1))
+        fi
+    done
+    if [ "$(printf '%s\n' "$batch_out" | cut -f2 | sort -u | wc -l)" -ne ${#recs[@]} ]; then
+        echo "FAIL: distinct records give distinct signatures" >&2; fails=$((fails + 1))
+    fi
+    echo "workspace-fixture-signature self-test: $(( ${#recs[@]} + 3 )) checks, $fails failed"
+    [ "$fails" -eq 0 ]
+}
+
+if [ "${1:-}" = "--self-test" ]; then
+    self_test
+    exit $?
+fi
+
+if [ "${1:-}" = "--batch" ]; then
+    rc=0
+    while IFS= read -r record; do
+        [ -n "$record" ] || continue
+        if sig="$(signature_of "$record")"; then
+            printf '%s\t%s\n' "${record%%$'\x1f'*}" "$sig"
+        else
+            rc=2
+        fi
+    done
+    exit "$rc"
+fi
+
+record="${1:?usage: workspace-fixture-signature.sh <manifest-record> | --batch | --self-test}"
+signature_of "$record"

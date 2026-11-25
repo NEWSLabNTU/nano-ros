@@ -398,7 +398,9 @@ fn row_binary(fixture_id: &str, root: &Path) -> Option<PathBuf> {
     None
 }
 
-/// The row's built binary, if [`row_binary`] can locate it.
+/// The row's built binary, if [`row_binary`] can locate it. Whether that
+/// build is this checkout's is [`current_builds`]'s question, asked of every
+/// located row at once.
 ///
 /// issue 1620 — also counts the rows this run's lane PROMISED
 /// (coordinate-scoped, in lane, no light-tier opt-out) into `promised`, so an
@@ -425,19 +427,38 @@ fn built_row_binary(
         return None;
     }
     let root = nros_tests::project_root().join(&row.artifact_root);
-    let bin = root
-        .is_dir()
-        .then(|| row_binary(&row.id, &root))
-        .flatten()?;
-    // ... and a row inside it is audited only if its build is THIS checkout's:
-    // the resolvers' own `.inputsig` check, which locating by path skipped. A
-    // stale row is a red naming the row, never a silent drop; one with no
-    // stamp was not built here and counts as not located.
-    match nros_tests::fixtures::workspace_row_build_is_current(&row.id) {
-        Ok(true) => Some(bin),
-        Ok(false) => None,
-        Err(e) => panic!("rmw-coordinate-truth: {e}"),
-    }
+    root.is_dir().then(|| row_binary(&row.id, &root)).flatten()
+}
+
+/// The located rows whose build is THIS checkout's: the resolvers' own
+/// `.inputsig` check, which locating by path skipped (issue 2940). A stale row
+/// is a red naming the row, never a silent drop; one with no stamp was not
+/// built here and counts as not located.
+///
+/// One batched signature run for every row (release blocker B39): checked one
+/// row at a time, ~0.2 s of bash each, the tier2-nightly lane's ~400 rows
+/// spent this test's whole 60 s before a symbol was read.
+fn current_builds(
+    located: Vec<(&nros_tests::fixtures::lane::Row, PathBuf)>,
+) -> Vec<(&nros_tests::fixtures::lane::Row, PathBuf)> {
+    let ids: Vec<&str> = located.iter().map(|(row, _)| row.id.as_str()).collect();
+    let started = std::time::Instant::now();
+    let verdicts = nros_tests::fixtures::workspace_rows_build_are_current(&ids)
+        .unwrap_or_else(|e| panic!("rmw-coordinate-truth: {e}"));
+    eprintln!(
+        "rmw-coordinate-truth: checked {} located build(s) against this checkout in {:.1?}",
+        ids.len(),
+        started.elapsed()
+    );
+    located
+        .into_iter()
+        .zip(verdicts)
+        .filter_map(|(located, verdict)| match verdict {
+            Ok(true) => Some(located),
+            Ok(false) => None,
+            Err(e) => panic!("rmw-coordinate-truth: {e}"),
+        })
+        .collect()
 }
 
 /// Issue 1875 -- can this ELF run as a process on THIS machine? Compares the
@@ -529,6 +550,7 @@ fn a_rows_rmw_is_the_backend_its_artifact_linked() {
             located.push((row, bin));
         }
     }
+    let located = current_builds(located);
     let locate_took = locate_started.elapsed();
     // Timed per row and printed on every run, pass or fail (issue 1984), so a
     // slow host says where the time went. Not BOUNDED: issue 2122 -- there is no
@@ -924,18 +946,24 @@ fn a_rows_entry_registers_its_nodes_at_runtime() {
             continue;
         }
         if let Some(bin) = built_row_binary(row, &mut promised) {
+            targets.push((row, bin));
+        }
+    }
+    let targets: Vec<_> = current_builds(targets)
+        .into_iter()
+        .filter(|(_, bin)| {
             // Issue 1875 -- an image for another machine is not a host process.
             // A host that registers `qemu-arm` in binfmt_misc STARTS an ARM
             // firmware under user-mode QEMU, where it dies before its session,
             // so every cross row read as "did not reach node registration".
             // Its own QEMU cell boots it; this test asks the host-runnable ones.
-            if !runs_on_this_host(&bin) {
+            let host = runs_on_this_host(bin);
+            if !host {
                 cross += 1;
-                continue;
             }
-            targets.push((row, bin));
-        }
-    }
+            host
+        })
+        .collect();
     let located = targets.len();
     // Issue 1933 — every row's baked locator, read once, here, on the test
     // thread: an `unmet!` names its row instead of failing a pool worker.
