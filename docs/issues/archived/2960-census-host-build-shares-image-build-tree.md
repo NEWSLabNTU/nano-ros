@@ -100,5 +100,20 @@ filter removed it runs the recorded step).
 Measured end to end on host 142 (see the PR): take, then the native row build,
 then the threadx cyclonedds row.
 
+Follow-up, release blocker B35 (found on a build tree from before the fix):
+an old census was NOT re-taken. It recorded the image's shared binary,
+`build/<coord>/cmake/<entry>`, and while nothing had rebuilt that tree it
+hashed equal and read fresh, so `take --image` (the fixture prepass, `nros
+build`) skipped it. The image's own row build then moved the bytes, the census
+went stale, and the cross configure and the in-build step refused it: the
+host-build record that could have re-taken it is ignored on purpose (above),
+so nothing would. Every persistent runner tree had such censuses. Fix:
+`census_freshness` reads a census whose `binary` input is in that layout as
+stale whatever its bytes (`binary_in_shared_tree_layout`), so the take that
+runs first re-takes it into `build/nros/census-image/<coord>`. The owned and
+leaf roads' census binaries never match. Tests: the old layout reads stale
+with its bytes unchanged and a current-layout census reads fresh
+(mutation-checked); one case per road for the predicate.
+
 Follow-up, not measured: the cargo road keeps a shared tree. If take then
 `nros build` relinks a Rust workspace image, it needs the same split.

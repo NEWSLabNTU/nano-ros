@@ -2591,6 +2591,26 @@ pub(crate) fn census_freshness(path: &Path, ws: &Path) -> Freshness {
         ));
     }
 
+    // Issue 2960 (release blocker B35) -- a census taken before the census
+    // host build had its own tree recorded the image's SHARED binary,
+    // `build/<coord>/cmake/...`. While nothing rebuilt that tree it hashed
+    // equal and read fresh, so `take --image` (the fixture prepass, `nros
+    // build`) skipped it; the next build of the image's own row then moved the
+    // bytes, and every cross configure behind it refused a census nothing
+    // would re-take (the host-build record it carries is ignored on purpose).
+    // Such a census is stale by LAYOUT, whatever the bytes say, so the take
+    // that runs first re-takes it into `build/nros/census-image/<coord>`.
+    if let Some(old) = inputs
+        .iter()
+        .find(|i| i.role == "binary" && binary_in_shared_tree_layout(&i.path, ws))
+    {
+        return Freshness::Stale(format!(
+            "binary `{}` is the image's own build tree: this census was taken before the census \
+             host build had a tree of its own, so it is re-taken there",
+            old.path
+        ));
+    }
+
     let stale = crate::orchestration::metadata_refresh::stale_recorded_inputs(ws, &inputs);
     if stale.is_empty() {
         return Freshness::Fresh;
@@ -2978,6 +2998,31 @@ fn run_in_census_mode(
 /// A SEARCH and not a guess: the refusal below names every path tried, because
 /// "no such binary" with no list is the diagnostic that sends a person reading
 /// cmake.
+/// Issue 2960 (B35) -- is a census's recorded `binary` inside an image's
+/// SHARED tree, `build/<coord>/cmake/...`, where every workspace census put it
+/// before [`census_image_build_dir`]? `path` is as the census records it,
+/// relative to `ws` (an absolute path under `ws` is read the same way).
+///
+/// The other two census roads never match: an OWNED entry builds under
+/// `build/nros/census-host/<bringup>/<image>` and a LEAF under
+/// `build/census-host`, so `nros` and `census-host` are never a coordinate
+/// here, and a coordinate is one path segment.
+pub(crate) fn binary_in_shared_tree_layout(path: &str, ws: &Path) -> bool {
+    let p = Path::new(path);
+    let rel = p.strip_prefix(ws).unwrap_or(p);
+    let mut parts = rel.components().map(|c| c.as_os_str().to_string_lossy());
+    let (Some(build), Some(coord), Some(cmake), Some(_)) =
+        (parts.next(), parts.next(), parts.next(), parts.next())
+    else {
+        return false;
+    };
+    build == "build"
+        && cmake == "cmake"
+        && coord != "nros"
+        && coord != "census-host"
+        && census_image_build_dir(&format!("build/{coord}/cmake")).is_some()
+}
+
 /// Issue 2960 -- does this host-build record rebuild an image's SHARED tree
 /// (`build/<coord>/cmake`, the shape every record had before the census tree
 /// moved to [`census_image_build_dir`])?
@@ -4816,6 +4861,84 @@ executable=prog_b=/b/b
         );
         std::fs::write(&census_bin, "a census build of changed code").unwrap();
         assert!(matches!(census_freshness(&census, ws), Freshness::Stale(_)));
+    }
+
+    /// Issue 2960 (release blocker B35) -- a census taken before the census
+    /// host build had its own tree recorded the image's shared binary. With
+    /// those bytes unchanged it must still read STALE, because `take --image`
+    /// (the fixture prepass, `nros build`) re-takes exactly when
+    /// `census_freshness` is not fresh; if it read fresh, the image's next row
+    /// build would make it stale with nothing left to re-take it. The control:
+    /// a census in the current layout with an unchanged binary stays FRESH, so
+    /// a take is not repeated on every run.
+    #[test]
+    fn a_census_recording_the_shared_tree_is_stale_by_layout_and_a_current_one_is_not() {
+        use crate::orchestration::metadata_refresh as mr;
+        let coord = "posix-zenoh-linux-b-linux";
+        let ws = tempfile::tempdir().expect("tempdir");
+        let ws = ws.path();
+        let dir = ws.join("build/nros/models/bringup");
+        std::fs::create_dir_all(&dir).unwrap();
+        let census = census_path_for_model(&dir.join("m.yaml"));
+        let write_census = |rel: &str| {
+            let bin = ws.join(rel);
+            std::fs::create_dir_all(bin.parent().unwrap()).unwrap();
+            std::fs::write(&bin, "the binary the take ran").unwrap();
+            let doc = serde_json::json!({
+                "schema": CENSUS_SCHEMA,
+                "entry": "linux_entry",
+                "provenance": { "tool": "x", "inputs": [
+                    { "role": "binary", "path": rel, "digest": file_digest(&bin).unwrap() }
+                ]},
+                "census": { "version": mr::RECORDER_SCHEMA_VERSION, "nodes": [] },
+            });
+            std::fs::write(&census, doc.to_string()).unwrap();
+        };
+
+        // The old layout, bytes unchanged: stale, naming why.
+        let old = format!("build/{coord}/{}/linux_entry", "cmake");
+        write_census(&old);
+        match census_freshness(&census, ws) {
+            Freshness::Stale(why) => assert!(why.contains(&old), "{why}"),
+            _ => panic!("an old-layout census must read stale"),
+        }
+
+        // The current layout, bytes unchanged: fresh, so no re-take.
+        write_census(&format!("build/nros/census-image/{coord}/linux_entry"));
+        assert!(matches!(census_freshness(&census, ws), Freshness::Fresh));
+    }
+
+    /// Issue 2960 (B35) -- only the workspace road's old shared tree matches;
+    /// the owned and leaf roads' census binaries never do, whatever their
+    /// subdirectories are called.
+    #[test]
+    fn only_the_old_shared_tree_layout_matches() {
+        let ws = Path::new("/w");
+        let coord = "posix-zenoh-linux-b-linux";
+        let shared = format!("build/{coord}/{}", "cmake");
+        for yes in [
+            format!("{shared}/linux_entry"),
+            format!("{shared}/src/linux_entry/linux_entry"),
+            format!("/w/{shared}/linux_entry"),
+        ] {
+            assert!(binary_in_shared_tree_layout(&yes, ws), "{yes}");
+        }
+        for no in [
+            // The workspace road's census tree.
+            format!("build/nros/census-image/{coord}/linux_entry"),
+            // An OWNED entry's census tree, even with a `cmake` level.
+            format!("build/nros/census-host/b/linux/{}/linux_entry", "cmake"),
+            format!("build/nros/{}/linux_entry", "cmake"),
+            // A standalone LEAF's census tree, even with a `cmake` level.
+            "build/census-host/c_talker".to_string(),
+            format!("build/census-host/{}/c_talker", "cmake"),
+            // The tree itself, another root, another checkout.
+            shared.clone(),
+            format!("out/{coord}/{}/linux_entry", "cmake"),
+            format!("/elsewhere/{shared}/linux_entry"),
+        ] {
+            assert!(!binary_in_shared_tree_layout(&no, ws), "{no}");
+        }
     }
 
     /// Issue 2960 -- a record from before the census tree moved rebuilds the
