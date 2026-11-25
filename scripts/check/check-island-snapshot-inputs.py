@@ -21,7 +21,10 @@ origin/main to HEAD) and REFUSES it when:
     the digest of the listed files at HEAD.
 
 `just check island-shaped-zephyr` prints that trailer after it configured the
-image live and found the snapshot equal. The digest covers the inputs it
+image live and found the snapshot equal. An author with no west workspace
+dispatches .github/workflows/island-snapshot-check.yml on the branch, which
+runs the same check on a self-hosted runner and puts the trailer in its job
+summary (user ruling 2026-11-25: on demand only, never on every PR). The digest covers the inputs it
 configured, so an input edited after the check moves the digest and the
 trailer no longer counts.
 
@@ -33,6 +36,7 @@ A merge-queue, push, schedule or dispatch run judges no branch (the events
 and the base are changelog-audit.py's, one spelling) and passes.
 
   check-island-snapshot-inputs.py [--base <ref>]
+  check-island-snapshot-inputs.py --dispatch-window   (island-snapshot-check.yml's first job)
   check-island-snapshot-inputs.py --self-test
 """
 import importlib.util
@@ -108,12 +112,20 @@ def judge(cwd, base, head="HEAD"):
                          FIX.TRAILER, ", ".join(stated), head, want))
     lines += [
         "",
-        "On a host with a Zephyr 3.7 west workspace (just setup zephyr), run",
-        "    just check island-shaped-zephyr",
-        "If it reports the snapshot stale, run `just check island-shaped-zephyr-regen` and",
-        "commit the snapshot. If it passes, it prints a trailer; add it to a commit on",
-        "this branch (git commit --fixup=reword:<sha>):",
-        "    %s: checked %s" % (FIX.TRAILER, want),
+        "Check the snapshot live. Either:",
+        "  - dispatch the on-demand check on this branch (no west workspace needed; it",
+        "    runs on a self-hosted runner, ~132 s, and refuses inside a runner quiet window):",
+        "        gh workflow run island-snapshot-check.yml --ref <this branch>",
+        "    then open the run (gh run list --workflow island-snapshot-check.yml) and copy",
+        "    the `%s: checked <digest>` line from its job summary; or" % FIX.TRAILER,
+        "  - on a host with a Zephyr 3.7 west workspace (just setup zephyr), run",
+        "        just check island-shaped-zephyr",
+        "    which prints the same line on a pass.",
+        "Paste that line into a commit message on this branch, e.g.",
+        "    git commit --fixup=reword:<sha>   (then autosquash)",
+        "If the check reports the snapshot stale instead, run",
+        "    just check island-shaped-zephyr-regen",
+        "on a host with a west workspace and commit the snapshot.",
         "",
         "Why (issue 2957): the merge queue has no west workspace, so a stale snapshot",
         "merges green and the next nightly turns red.",
@@ -211,15 +223,53 @@ def self_test():
         finally:
             os.environ.clear()
             os.environ.update(saved)
+    import datetime as dt
+    lfd = _load("lane_fix_dispatch", "scripts/ci/lane-fix-dispatch.py")
+    start, end = lfd.quiet_window()
+    day = dt.datetime(2026, 11, 25, tzinfo=dt.timezone.utc)
+    for hour, quiet, want in ((start, "", 1), (end, "", 0), (end, "true", 1), (end, "false", 0)):
+        got = dispatch_window(day.replace(hour=hour % 24), quiet)
+        if got != want:
+            print("self-test: dispatch window at %02d:00Z, NROS_RUNNER_QUIET=%r: got %d, want %d"
+                  % (hour % 24, quiet, got, want))
+            failures += 1
     if FIX.main(["knob-delivery-fixture.py", "--self-test"]) != 0:
         failures += 1
     print("%s self-test: %s" % (NAME, "FAILED (%d)" % failures if failures else "ok"))
     return 1 if failures else 0
 
 
+def dispatch_window(now=None, quiet=None):
+    """0 when the on-demand live check (.github/workflows/island-snapshot-check.yml)
+    may take a self-hosted runner now, else 1 with the reason. Refused inside
+    the lanes' cron quiet window (lane-fix-dispatch.py derives it from the lane
+    workflows) and while $NROS_RUNNER_QUIET is `true` (the repository variable
+    the release owner sets for an announced quiet window)."""
+    import datetime as dt
+    lfd = _load("lane_fix_dispatch", "scripts/ci/lane-fix-dispatch.py")
+    now = now or dt.datetime.now(dt.timezone.utc)
+    quiet = os.environ.get("NROS_RUNNER_QUIET", "") if quiet is None else quiet
+    start, end = lfd.quiet_window()
+    if quiet.strip().lower() == "true":
+        print("island-snapshot-check: REFUSED -- the release owner has declared a runner quiet "
+              "window (repository variable NROS_RUNNER_QUIET=true). Dispatch again when it ends.",
+              file=sys.stderr)
+        return 1
+    if lfd.in_window(now, (start, end)):
+        print("island-snapshot-check: REFUSED -- %s is inside the lanes' quiet window "
+              "%02d:00-%02d:00Z, when their crons own the self-hosted runners. Dispatch again "
+              "after %02d:00Z." % (now.strftime("%H:%MZ"), start, end, end), file=sys.stderr)
+        return 1
+    print("island-snapshot-check: %s is outside the quiet window %02d:00-%02d:00Z and no release "
+          "window is declared" % (now.strftime("%H:%MZ"), start, end))
+    return 0
+
+
 def main(argv):
     if argv == ["--self-test"]:
         return self_test()
+    if argv == ["--dispatch-window"]:
+        return dispatch_window()
     if argv and argv[0] != "--base":
         print(__doc__.strip().splitlines()[-2:], file=sys.stderr)
         return 2

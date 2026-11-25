@@ -144,6 +144,26 @@ is the smallest set that is right by construction.
    trailer. The gate passes on merge_group, push, schedule and dispatch, using
    changelog-audit.py's event and base logic.
 
+3. **On-demand live check** (user ruling 2026-11-25, via the manager): the
+   workflow `island-snapshot-check.yml` is `workflow_dispatch` only. Anyone
+   can dispatch it on a branch:
+   `gh workflow run island-snapshot-check.yml --ref <branch>`.
+   - It runs `just check island-shaped-zephyr` on a self-hosted runner that
+     keeps a Zephyr 3.7 workspace (about 132 s for the check).
+   - On a pass, it puts the `Island-Snapshot: checked <digest>` line in its
+     job summary. The author pastes that line into a commit on the branch, so
+     no local west workspace is needed.
+   - It never runs on pull_request, push or a cron. A live check on every PR
+     would overturn the 2026-11-13 ruling.
+   - A hosted first job refuses before any self-hosted runner is taken, in two
+     cases. One is the lanes' cron quiet window (03:00-07:00Z today, derived
+     by `lane-fix-dispatch.py`). The other is while the release owner has set
+     the repository variable `NROS_RUNNER_QUIET` to `true` for an announced
+     window.
+   - The gate's refusal text names both routes: dispatch, or a local run.
+     It no longer prints the digest itself, so the line has to come from a
+     live run.
+
 Known gap: a change to the CLI alone that moves a resolved knob without
 moving a derived count is still nightly-only. The CLI binary is on the edge,
 but it is build output, so the list carries no CLI source. Adding the CLI's
