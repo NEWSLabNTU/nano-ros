@@ -73,7 +73,7 @@ cmake-reconfigure-remedy:
 # an incremental build (issue 1018's edge). A real configure of a language-less
 # project against a stub resolver: no compiler, no cargo, no CLI build.
 cmake-log-level-export:
-    @bash packages/testing/nros-tests/tests/cmake_log_level_export.sh
+    @bash scripts/check/check-cmake-log-level-export.sh
 
 # Issue 0726 — `find_program(VAR ...)` is a NO-OP when VAR is already defined,
 # so the "initialise then search" spelling never searches. All three sites in
