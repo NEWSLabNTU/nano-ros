@@ -298,13 +298,25 @@ pub fn refresh_stale_sidecars(
         // sync. `decl.deploy_bound` only selects that best-effort branch — a
         // REGULAR workspace package that fails to probe is a bug and still
         // hard-fails.
-        if let Some(blocker) = probe_blocker(&decl.package_root, Some(host.as_str())) {
+        // Issue 2972 -- ONE decision per component, which the configure
+        // stamp's freshness check asks too (`plan_component`).
+        let seeding = seeding_of(&seed_models, decl);
+        let plan = plan_component(
+            decl,
+            nano_ros,
+            &host,
+            &probe_root,
+            tables_needed.as_deref(),
+            &seeding,
+        );
+        if let ComponentPlan::Unsupported(why) = &plan {
             // Issue 0286 — the probe cannot produce a runnable binary for this
-            // component. Degrade to the sidecar-less bake (SystemModel bound)
-            // instead of failing the whole build, which is what used to take
-            // the nuttx fixture lane — and therefore `just ci` — down.
+            // component (or cannot take its declaration). Degrade to the
+            // sidecar-less bake (SystemModel bound) instead of failing the
+            // whole build, which is what used to take the nuttx fixture lane
+            // — and therefore `just ci` — down.
             report.unsupported.push(format!(
-                "{}::{} ({blocker})",
+                "{}::{} ({why})",
                 decl.config.package, decl.config.component
             ));
             continue;
@@ -314,16 +326,9 @@ pub fn refresh_stale_sidecars(
             // batch below, so the workspace builds the runtime (and the ~1.2 GB
             // of nested sizes-probe cargo builds) once rather than once per
             // component.
-            let seeding = seeding_of(&seed_models, decl);
             let node = (decl.config.package.clone(), decl.config.component.clone());
             cpp_seeding.insert(node, seeding.clone());
-            match cpp_probe_options(
-                decl,
-                nano_ros,
-                &probe_root,
-                &seeding,
-                tables_needed.as_deref(),
-            ) {
+            match plan {
                 // issue 0641 — a C/C++ probe that FAILED at this exact source is
                 // not re-attempted until something changes. The Rust branch
                 // below has had this since #0288; the batch path never did, so
@@ -333,9 +338,7 @@ pub fn refresh_stale_sidecars(
                 // configure: 17 components, 1.2 s of cmake per sync, no
                 // possible progress. `nros sync` is run 22 times by
                 // `regenerate-bindings.sh` at the head of every fixture build.
-                Ok(Some(opts))
-                    if is_known_unprobeable_now(&opts.output_path, decl, nano_ros, &seeding) =>
-                {
+                ComponentPlan::CppKnownFailure(opts) => {
                     // issue 1469 — carry the RECORDED CAUSE up, not just the
                     // fact of the skip. "probe failed at this source last sync;
                     // unchanged" named the node and nothing else, and because
@@ -361,77 +364,63 @@ pub fn refresh_stale_sidecars(
                         );
                     }
                 }
-                Ok(Some(opts)) => {
+                ComponentPlan::CppProbe(opts) => {
                     cpp_members.push(opts.clone());
                     cpp_batch.push(opts);
                 }
                 // Already current — no probe needed, but still a MEMBER of the
                 // probe project (issue 2238): its configure writes the
                 // aggregate every member's row must stay in.
-                Ok(None) => {
+                ComponentPlan::CppFresh => {
                     if let Ok(opts) = cpp_probe_member(decl, nano_ros, &probe_root, &seeding) {
                         cpp_members.push(opts);
                     }
                     report.fresh.push(decl.source_metadata_path())
                 }
-                Err(why) => report.unsupported.push(format!(
-                    "{}::{} ({why})",
-                    decl.config.package, decl.config.component
-                )),
+                // The Rust plans and `Unsupported` (handled above) never reach
+                // a C/C++ component.
+                _ => {}
             }
             continue;
         }
         let sidecar = decl.source_metadata_path();
-        // Issue 1578 — ONE key for every freshness decision below: the
-        // component's sources, the CLI, and the nano-ros crates the probe
-        // compiles. `None` (no nano-ros path, or no closure list) is never
-        // fresh, so the probe re-runs rather than trusting a smaller key.
-        let key = probe_inputs_key(&decl.package_root, nano_ros);
-        if key
-            .as_deref()
-            .is_some_and(|k| sidecar_is_fresh(&sidecar, k))
-        {
-            clear_unprobeable(&sidecar);
-            report.fresh.push(sidecar);
-            continue;
-        }
-        // #0288 negative cache — a deploy-bound example whose probe failed at
-        // THIS source last sync is not re-attempted (a full failing build) until
-        // its sources change and the digest differs.
-        if decl.deploy_bound
-            && key
-                .as_deref()
-                .is_some_and(|k| is_known_unprobeable(&sidecar, k, nano_ros))
-        {
-            // issue 1469, same class as the C/C++ branch above: the skip is
-            // absorbing, so the marker's recorded cause is the only place the
-            // reason survives.
-            let why = match recorded_unprobeable_reason(&sidecar) {
-                Some(line) => format!("; last error: {line}"),
-                None => String::new(),
-            };
-            report.degraded.push(format!(
-                "{}::{} (deploy-bound: probe failed at this source last sync; unchanged{why})",
-                decl.config.package, decl.config.component
-            ));
-            if verbose {
-                println!(
-                    "sync: metadata {}::{} — skipped; recorded failure in {}",
-                    decl.config.package,
-                    decl.config.component,
-                    unprobeable_marker(&sidecar).display()
-                );
+        let key = match plan {
+            ComponentPlan::RustFresh => {
+                clear_unprobeable(&sidecar);
+                report.fresh.push(sidecar);
+                continue;
             }
-            continue;
-        }
+            // #0288 negative cache — a deploy-bound example whose probe failed
+            // at THIS source last sync is not re-attempted (a full failing
+            // build) until its sources change and the digest differs.
+            ComponentPlan::RustKnownFailure => {
+                // issue 1469, same class as the C/C++ branch above: the skip is
+                // absorbing, so the marker's recorded cause is the only place the
+                // reason survives.
+                let why = match recorded_unprobeable_reason(&sidecar) {
+                    Some(line) => format!("; last error: {line}"),
+                    None => String::new(),
+                };
+                report.degraded.push(format!(
+                    "{}::{} (deploy-bound: probe failed at this source last sync; unchanged{why})",
+                    decl.config.package, decl.config.component
+                ));
+                if verbose {
+                    println!(
+                        "sync: metadata {}::{} — skipped; recorded failure in {}",
+                        decl.config.package,
+                        decl.config.component,
+                        unprobeable_marker(&sidecar).display()
+                    );
+                }
+                continue;
+            }
+            ComponentPlan::RustProbe { key } => key,
+            // The C/C++ plans continued above.
+            _ => continue,
+        };
+        // `RustProbe` is planned only with a nano-ros path.
         let Some(nano_ros) = nano_ros else {
-            // No harness is buildable. Not an error — a sidecar-less bake
-            // falls back to the SystemModel bound — but never silently
-            // pretend the sidecar is current.
-            report.unsupported.push(format!(
-                "{}::{} (no nano-ros path)",
-                decl.config.package, decl.config.component
-            ));
             continue;
         };
         if verbose {
@@ -2150,9 +2139,34 @@ pub(crate) fn stale_sidecar_components(root: &Path, nano_ros: Option<&Path>) -> 
     let mut out = Vec::new();
     // Issue 2640 -- the refresh's key includes the launch values.
     let seed_models = SeedModels::load(root, None);
+    // Issue 2972 -- resolved once, as the refresh does.
+    let host = host_triple();
+    let probe_root = root.join("build").join("nros-metadata");
     for decl in &declarations {
         let sidecar = decl.source_metadata_path();
         let Ok(raw) = std::fs::read_to_string(&sidecar) else {
+            // Issue 2972 -- a sidecar the probe SHOULD have written and that is
+            // not there is stale, never skipped: skipping it called the
+            // configure current, nothing re-ran the probe, and the build sized
+            // the image from nothing (measured: a Pico listener 94,832 B over
+            // RAM). A component the probe cannot cover keeps no sidecar on
+            // purpose, and is not stale on that account.
+            if plan_component(
+                decl,
+                nano_ros,
+                &host,
+                &probe_root,
+                tables_needed.as_deref(),
+                &seeding_of(&seed_models, decl),
+            )
+            .writes_sidecar()
+            {
+                out.push(format!(
+                    "metadata sidecar `{}` is missing (deleted, or never written), so its \
+                     component's probe must run before anything reads it",
+                    sidecar.display()
+                ));
+            }
             continue;
         };
         let unkeyed = serde_json::from_str::<SourceMetadata>(&raw)
@@ -2195,6 +2209,96 @@ pub(crate) fn stale_sidecar_components(root: &Path, nano_ros: Option<&Path>) -> 
         }
     }
     out
+}
+
+/// Issue 2972 -- what the refresh does with one component, decided ONCE.
+///
+/// [`refresh_stale_sidecars`] acts on it, and the configure stamp's freshness
+/// check ([`stale_sidecar_components`]) asks it whether a MISSING sidecar is
+/// one the refresh would write. They used to decide separately, and the
+/// stamp's half skipped a sidecar it could not read, so a deleted one left the
+/// configure current and the image was sized from nothing.
+enum ComponentPlan {
+    /// No probe covers it (a host blocker, a C/C++ declaration the probe
+    /// refuses, no nano-ros path): it keeps no sidecar, on purpose.
+    Unsupported(String),
+    /// Its sidecar is current. Read from the SIDECAR ITSELF (its provenance
+    /// digest), so a missing sidecar is never fresh; if either arm ever reads a
+    /// separate stamp instead, a deleted sidecar reads current again (issue
+    /// 2972).
+    CppFresh,
+    RustFresh,
+    /// Its probe failed at this exact source; not retried until it changes.
+    CppKnownFailure(crate::orchestration::metadata_probe_cmake::CmakeProbeOptions),
+    RustKnownFailure,
+    /// The refresh probes it and writes its sidecar.
+    CppProbe(crate::orchestration::metadata_probe_cmake::CmakeProbeOptions),
+    RustProbe {
+        key: Option<String>,
+    },
+}
+
+impl ComponentPlan {
+    /// Whether the refresh writes this component's sidecar on this pass.
+    fn writes_sidecar(&self) -> bool {
+        matches!(self, Self::CppProbe(_) | Self::RustProbe { .. })
+    }
+}
+
+/// The refresh's decision for `decl`. Order is the refresh's: a host blocker
+/// first; a C/C++ component by `cpp_probe_options` (fresh, a refusal, or a
+/// probe, unless a failure is recorded at this source); a Rust component by
+/// its key (fresh, then a deploy-bound failure recorded at this source), and
+/// only then the nano-ros path.
+fn plan_component(
+    decl: &ComponentDeclaration,
+    nano_ros: Option<&Path>,
+    host: &str,
+    probe_root: &Path,
+    tables_needed: Option<&[String]>,
+    seeding: &Seeding,
+) -> ComponentPlan {
+    if let Some(blocker) = probe_blocker(&decl.package_root, Some(host)) {
+        return ComponentPlan::Unsupported(blocker.to_string());
+    }
+    if decl.config.language != ComponentLanguage::Rust {
+        return match cpp_probe_options(decl, nano_ros, probe_root, seeding, tables_needed) {
+            Ok(Some(opts))
+                if is_known_unprobeable_now(&opts.output_path, decl, nano_ros, seeding) =>
+            {
+                ComponentPlan::CppKnownFailure(opts)
+            }
+            Ok(Some(opts)) => ComponentPlan::CppProbe(opts),
+            Ok(None) => ComponentPlan::CppFresh,
+            Err(why) => ComponentPlan::Unsupported(why),
+        };
+    }
+    let sidecar = decl.source_metadata_path();
+    // Issue 1578 — ONE key for every freshness decision below: the
+    // component's sources, the CLI, and the nano-ros crates the probe
+    // compiles. `None` (no nano-ros path, or no closure list) is never
+    // fresh, so the probe re-runs rather than trusting a smaller key.
+    let key = probe_inputs_key(&decl.package_root, nano_ros);
+    if key
+        .as_deref()
+        .is_some_and(|k| sidecar_is_fresh(&sidecar, k))
+    {
+        return ComponentPlan::RustFresh;
+    }
+    if decl.deploy_bound
+        && key
+            .as_deref()
+            .is_some_and(|k| is_known_unprobeable(&sidecar, k, nano_ros))
+    {
+        return ComponentPlan::RustKnownFailure;
+    }
+    if nano_ros.is_none() {
+        // No harness is buildable. Not an error — a sidecar-less bake falls
+        // back to the SystemModel bound — but never silently pretend the
+        // sidecar is current.
+        return ComponentPlan::Unsupported("no nano-ros path".to_string());
+    }
+    ComponentPlan::RustProbe { key }
 }
 
 /// Newest mtime under a package root — diagnostics only (`nros ws status`).
@@ -3164,6 +3268,73 @@ mod tests {
 
     /// A fake nano-ros root: a closure list naming `packages/core/probed`, and
     /// that crate plus one the list does NOT name.
+    /// Issue 2972 -- the plan the refresh acts on and the configure stamp
+    /// asks of a MISSING sidecar, per arm. A deleted C/C++ sidecar is
+    /// probed; a failure recorded at THIS source holds the probe off; a marker
+    /// from an older source does not.
+    #[test]
+    fn a_missing_cpp_sidecar_plans_a_probe_unless_a_current_failure_is_recorded() {
+        let root = fake_nano_ros("plan-cpp-root");
+        let dir = tmp("plan-cpp-pkg");
+        std::fs::write(dir.join("src/lib.rs"), "// the component\n").unwrap();
+        let decl = probeable_decl(&dir, ComponentLanguage::C);
+        let sidecar = decl.source_metadata_path();
+        let probe_root = dir.join("probe");
+        let host = host_triple();
+        let plan = || plan_component(&decl, Some(&root), &host, &probe_root, None, &Seeding::None);
+        assert!(!sidecar.exists());
+        assert!(
+            matches!(plan(), ComponentPlan::CppProbe(_)),
+            "no sidecar: the refresh probes it"
+        );
+        assert!(plan().writes_sidecar());
+
+        let key = component_probe_key(&dir, Some(&root), &Seeding::None).expect("keyed");
+        std::fs::create_dir_all(sidecar.parent().unwrap()).unwrap();
+        mark_unprobeable_with_reason(&sidecar, &key, Some(&root), None);
+        assert!(
+            matches!(plan(), ComponentPlan::CppKnownFailure(_)),
+            "a failure recorded at this source holds the probe off"
+        );
+        assert!(!plan().writes_sidecar());
+
+        mark_unprobeable_with_reason(&sidecar, "fnv1a64:an-older-source", Some(&root), None);
+        assert!(
+            plan().writes_sidecar(),
+            "a marker from an older source is re-probed, so the sidecar is expected"
+        );
+    }
+
+    /// The Rust arm: the negative cache holds only for a deploy-bound component,
+    /// and only at the source it recorded.
+    #[test]
+    fn a_missing_rust_sidecar_plans_a_probe_unless_a_current_failure_is_recorded() {
+        let root = fake_nano_ros("plan-rust-root");
+        let dir = tmp("plan-rust-pkg");
+        std::fs::write(dir.join("src/lib.rs"), "// the component\n").unwrap();
+        let mut decl = probeable_decl(&dir, ComponentLanguage::Rust);
+        decl.deploy_bound = true;
+        let sidecar = decl.source_metadata_path();
+        let host = host_triple();
+        let probe_root = dir.join("probe");
+        let plan = || plan_component(&decl, Some(&root), &host, &probe_root, None, &Seeding::None);
+        assert!(matches!(plan(), ComponentPlan::RustProbe { .. }));
+
+        let key = probe_inputs_key(&dir, Some(&root)).expect("keyed");
+        std::fs::create_dir_all(sidecar.parent().unwrap()).unwrap();
+        mark_unprobeable_with_reason(&sidecar, &key, Some(&root), None);
+        assert!(matches!(plan(), ComponentPlan::RustKnownFailure));
+        assert!(!plan().writes_sidecar());
+
+        mark_unprobeable_with_reason(&sidecar, "fnv1a64:an-older-source", Some(&root), None);
+        assert!(plan().writes_sidecar());
+        // And with no nano-ros path there is nothing to probe with.
+        assert!(matches!(
+            plan_component(&decl, None, &host, &probe_root, None, &Seeding::None),
+            ComponentPlan::Unsupported(_)
+        ));
+    }
+
     fn fake_nano_ros(name: &str) -> PathBuf {
         let root = tmp(name);
         let list = root.join(PROBE_SOURCE_DIRS);

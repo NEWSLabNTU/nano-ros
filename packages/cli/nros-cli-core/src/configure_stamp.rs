@@ -2244,6 +2244,41 @@ mod tests {
         }
     }
 
+    /// Issue 2972 -- a DELETED sidecar stales the stamp. The check skipped a
+    /// sidecar it could not read, so the configure stayed current, nothing
+    /// re-ran the probe, and the build sized the image from nothing.
+    #[test]
+    fn stale_when_a_metadata_sidecar_is_deleted() {
+        let (p, sidecar, root) = sidecar_fixture("sidecar-deleted", None);
+        record(&p, "img", &stamp_for(&p)).unwrap();
+        assert_eq!(sidecar_currency(&p, &root), Currency::Current);
+        std::fs::remove_file(&sidecar).unwrap();
+        match sidecar_currency(&p, &root) {
+            Currency::Stale(why) => assert!(why.contains("is missing"), "{why}"),
+            Currency::Current => panic!("a deleted sidecar left the configure current"),
+        }
+    }
+
+    /// Issue 2972 -- a failure marker left from an OLDER source does not hide a
+    /// deleted sidecar: the refresh would re-probe it, so the stamp must not
+    /// read current. (`metadata_refresh`'s plan tests hold the arms where a
+    /// current marker does hold the probe off.)
+    #[test]
+    fn a_stale_failure_marker_does_not_hide_a_deleted_sidecar() {
+        let (p, sidecar, root) = sidecar_fixture("sidecar-old-marker", None);
+        record(&p, "img", &stamp_for(&p)).unwrap();
+        std::fs::remove_file(&sidecar).unwrap();
+        std::fs::write(
+            format!("{}.unprobeable", sidecar.display()),
+            format!("fnv1a64:an-older-source\nroot: {}\n", root.display()),
+        )
+        .unwrap();
+        match sidecar_currency(&p, &root) {
+            Currency::Stale(why) => assert!(why.contains("is missing"), "{why}"),
+            Currency::Current => panic!("an old marker hid a deleted sidecar"),
+        }
+    }
+
     /// A rebuilt CLI moves the `NROS_CLI_PLANNING_STAMP` part of
     /// the probe key, so the resolve refuses the sidecar. The stamp compared
     /// only the source part and said "up to date". The CLI part cannot move
