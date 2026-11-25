@@ -36,6 +36,15 @@ sched-dim-arms
 # carries both is unverified, and a guess there ejects every queue batch.
 board-transport-variants
 
+# probe-size-neutral-features (issue 2840) builds `nros` 16 times, with and
+# without each size-neutral feature over eight feature sets, on the host and
+# on thumbv7m: 74 s warm and several minutes cold on host 118, too long for
+# every pull request, for a list that changes rarely. Like
+# board-transport-variants it needs the thumbv7m target, which the PR image
+# is not verified to carry. It passes in a pristine worktree, because it
+# builds everything it reads; the cost is what keeps it off the PR lanes.
+probe-size-neutral-features
+
 # excluded-crate-tests COMPILES three workspace-excluded crates and runs their
 # tests — the ones `cargo test --workspace` cannot reach because they are not
 # members (issue 1472; 36 tests, all passing, one crate named nowhere else in

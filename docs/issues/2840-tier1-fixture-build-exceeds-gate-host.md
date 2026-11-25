@@ -405,3 +405,62 @@ accumulating on a runner but does not lower a single build's peak.
 If the peak is still over about 100 GB, the next mitigations, in this doc's
 order: prune the Corrosion and probe trees (`nros_prune_cargo_intermediates`,
 issue 2702), then split the lane.
+
+## Re-measure with #4819, and the probe's profile-mode twins (2026-11-25)
+
+**#4819 measured: no change, as its own numbers predict.** nros 142 re-ran
+`just build-test-fixtures lane=tier1` at `939ac840b2`, which includes
+`ac6969502a`. It used a clean detached worktree and the same df/du sampler as
+the 11-24 baseline. The worktree peak went from 182.1 GiB to 182.2 GiB; the
+filesystem delta was +177.3 GiB, against +181.2. #4819 removes only the
+ACROSS-run key splits: orchestration variables that differ per lane, base
+commit or runner, 22 of 271 keys on the runner's persistent tree. A single
+clean run in a fresh worktree has none of them. Its saving lands on trees
+that build repeatedly, like the runner's fixture tree, and this measurement
+cannot show it.
+
+**What the probe tree is made of in one run.** On host 142 (aarch64),
+`build/sizes-probe/rustc-1.99.0-*` held 200 keys and 34.6 GiB, all written
+by this run, with a median of 176 MiB per key.
+
+- The host half (build scripts and proc-macros) is 22.0 GiB (64 %), and the
+  target half 8.9 GiB (26 %).
+- The 200 keys give **63** distinct size answers. The answer is the 18
+  `__NROS_SIZE_*` markers in `libnros.rlib`.
+- **The descriptor's splits are real.** Without `NROS_SIZING_DESCRIPTOR` the
+  keys fall into 65 groups, but within the biggest group 28 of 33 keys give
+  different answers (`EXECUTOR_SIZE` 0x1e398 against 0x16ef0, for example).
+  The descriptor sizes the executor's pools, so it stays in the key.
+- **`profile-mode` splits nothing.** Without it the keys fall into 111
+  groups. 89 keys carry it, each with exactly one plain twin. All 89 pairs
+  give identical markers. Those keys hold 15.3 GiB, 44 % of the tree, and
+  every one of them is a duplicate.
+
+**Fix:** `nros-sizes-build` drops `profile-mode` from the probe's key and
+from its nested build (`SIZE_NEUTRAL_FEATURES`). The list is backed by a
+measurement that runs as a gate, `just check probe-size-neutral-features`
+(build tier). It builds `nros` with and without each listed feature and
+compares the markers through the probe's own reader. It covers the seven
+base feature sets that held a twin, on the host triple, plus one thumbv7m
+set. Negative control: listing `lifecycle-services`, `rosout`, `sim-time` or
+`param-store` fails it. The gate takes 74 s and 1.4 GiB on host 118.
+Expected effect on the 142 run: 200 to 111 keys, about 34.6 to 19.3 GiB.
+
+**Considered and rejected, measured:**
+
+- *Keying the descriptor by the fields its readers use* (nros, nros-node,
+  nros-params, rmw-cffi, xrce-cffi, zenoh) would merge about 5 of 33 keys in
+  a group: 63 answers against 65 groups. It is not worth a derivation that
+  has to track six readers.
+- *Keying only the `NROS_*` names a compile can read*, instead of every name
+  except the harvested orchestration ones. It would drop host-local names
+  like the gate runner's `NROS_PEER_CMD_FILE`, which is in no tracked file.
+  That saves nothing: such a name is constant per host and probe trees are
+  per host, so it splits no key. It also flips the failure mode: a read the
+  harvest misses (a vendored `build.rs`, a computed name) becomes a stale
+  answer instead of an extra directory.
+
+The same sweep showed that a few other features (`param-services`,
+`metadata-mode`, the `nros-rmw/*-dispatch` pair, `safety-e2e`) change no
+marker on these sets either. None of them produced a twin in the measured
+tree, so they stay keyed until a measurement shows they cost a directory.

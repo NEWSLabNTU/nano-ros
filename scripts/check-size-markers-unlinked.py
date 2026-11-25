@@ -88,6 +88,9 @@ ENABLE_ALLOWED = {
     "packages/tooling/nros-sizes-build/src/lib.rs",
     # A probe-marked test build (sets NROS_SIZES_PROBE_BUILD=1).
     "packages/tooling/nros-sizes-build/tests/bitcode_probe.rs",
+    # Issue 2840's equality gate: probe-marked builds of the probed crate
+    # (sets NROS_SIZES_PROBE_BUILD=1), read for their markers; links nothing.
+    "packages/tooling/nros-sizes-build/examples/probe-size-neutral-features.rs",
     # Describes issue 0593's history in its docstring; enables nothing.
     "scripts/check-feature-contract.py",
     # This gate.
