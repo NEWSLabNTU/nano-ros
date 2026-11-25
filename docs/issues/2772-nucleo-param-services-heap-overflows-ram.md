@@ -249,3 +249,34 @@ parameters), and the other roles wrote no contract, so their declarations
 were unknown. Every role's whole surface was already stated per language
 for `nros new --to`, so the fix is that every role writes its contract,
 `params: {}` included.
+
+### Pico with every template's contract (2026-11-25, nros 118)
+
+This branch at 0bb7113d8b, so every role writes its contract
+(`params: {}` included), on a fresh `nros new --template <t>` plus
+`nros build`, zenoh. The Rust rows also carry PR #4847's portable-atomic fix,
+applied uncommitted, because without it no Rust image compiles for this
+board. The C row is this branch alone. Zephyr is v3.7.2 with SDK 0.16.9
+(the rows above were v3.7.0 with 0.16.8). RAM is the link summary's "used",
+of 270,336 B.
+
+| Template | Lang | RAM | Executor storage | `BUILTIN_INBOX` |
+| --- | --- | --- | --- | --- |
+| listener | rust | 194,392 B (71.91 %) | 15,648 | 624 |
+| server | rust | 196,264 B (72.60 %) | 17,696 | 624 |
+| action-server | rust | 211,200 B (78.12 %) | 23,584 | none (see below) |
+| listener | c | 182,888 B (67.65 %) | 21,424 | 624 |
+
+**All four fit.**
+- The executor storage and the shim inbox are back to the talker's size.
+  The listener's backing fell from 102,296 B to 15,648 B, and its
+  `BUILTIN_INBOX` from 6,264 B to 624 B. Both came from the same cause: a
+  role with no contract.
+- The action-server links no `BUILTIN_INBOX`. Its services are served
+  through `USER_SERVICE_INBOX` (4,176 B) and `ACTION_INBOX` (768 B).
+- A C image has no `EXECUTOR_BACKING` symbol. Its executor storage is
+  `__nros_executor_storage`, sized by `NROS_CPP_EXECUTOR_STORAGE_SIZE`.
+
+So the board's default fits every template once each role states its
+declarations, which is the 2026-11-25 ruling's premise. The Rust rows still
+need PR #4847 to compile for this board at all.
