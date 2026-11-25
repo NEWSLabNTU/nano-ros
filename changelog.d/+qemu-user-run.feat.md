@@ -1,0 +1,1 @@
+A board can run a cross-built Linux image under QEMU user mode: `[board.run] emulator = "qemu-user:<arch>"` makes `nros run` start it as `qemu-<arch> <image>`, using the host's `qemu-<arch>` or `qemu-<arch>-static` (the distro's `qemu-user-static` package). Such a run tests the program itself; its timers and scheduling are the host kernel's, not the device's.

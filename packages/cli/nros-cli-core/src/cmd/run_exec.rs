@@ -277,6 +277,20 @@ pub fn attach_host_peer(plan: &mut RunPlan, rmw: Option<&str>, peer: &DeclaredPe
     plan.provenance.insert(HOST_PEER_KEY.into(), note);
 }
 
+/// Whether the image's process runs in this machine's network: a host process,
+/// or a Linux image under QEMU's user mode, whose sockets are the host
+/// kernel's (RFC-0118 D4b). Such an image dials `127.0.0.1` and reads its
+/// locator at run time, exactly as a host process does.
+#[must_use]
+pub fn shares_host_network(plan: &RunPlan) -> bool {
+    plan.target.host
+        || plan
+            .target
+            .emulator
+            .as_deref()
+            .is_some_and(|e| e.starts_with("qemu-user:"))
+}
+
 /// Fill in what the plan needs before it is printed or executed, so the plan
 /// `--dry-run` shows is the plan that runs: the link's RMW and the host peer
 /// it declares, a host image's default link when that peer is a zenoh router,
@@ -286,7 +300,7 @@ pub fn decorate(plan: &mut RunPlan, rmw: Option<&str>, peer: &DeclaredPeer, exec
         Some(_) => {}
         // A host image of an RMW that dials a zenoh router reads its locator
         // at run time and dials the zenoh default when none is set.
-        None if plan.target.host && matches!(peer, Ok((HostPeer::ZenohRouter, _))) => {
+        None if shares_host_network(plan) && matches!(peer, Ok((HostPeer::ZenohRouter, _))) => {
             let locator = std::env::var("NROS_LOCATOR")
                 .ok()
                 .filter(|l| !l.is_empty())
@@ -326,7 +340,7 @@ pub fn decorate(plan: &mut RunPlan, rmw: Option<&str>, peer: &DeclaredPeer, exec
 /// `run`, or the RMW needs nothing on the host.
 #[must_use]
 pub fn missing_link_note(plan: &RunPlan, rmw: Option<&str>, peer: &DeclaredPeer) -> Option<String> {
-    if plan.link.is_some() || plan.target.host || plan.verb != Verb::Run {
+    if plan.link.is_some() || shares_host_network(plan) || plan.verb != Verb::Run {
         return None;
     }
     let what = match peer {
@@ -1587,6 +1601,24 @@ mod tests {
         );
         assert!(RouterMode::parse("router=tcp/x:1").is_err());
         assert!(RouterMode::parse("bogus").is_err());
+    }
+
+    #[test]
+    fn a_qemu_user_image_shares_the_host_network() {
+        let plan = |target: &str| {
+            RunPlan::from_json(&format!(
+                r#"{{"image":"i","verb":"run","runner":{{"package":"p","name":"n"}},
+                "target":{target},"console":{{"kind":"stdio"}},"artifacts":{{"elf":"/b/x"}}}}"#
+            ))
+            .unwrap()
+        };
+        assert!(shares_host_network(&plan(r#"{"host":true}"#)));
+        assert!(shares_host_network(&plan(
+            r#"{"emulator":"qemu-user:aarch64"}"#
+        )));
+        assert!(!shares_host_network(&plan(
+            r#"{"emulator":"qemu:mps2-an385"}"#
+        )));
     }
 
     #[test]

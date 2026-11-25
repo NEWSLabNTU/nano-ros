@@ -4,8 +4,8 @@ title: "Target execution model: run, flash and monitor as separate verbs over on
 status: Draft
 area: platform-board-rtos
 since: 2026-11
-last-reviewed: 2026-11-16
-implements-tracked-by: [phase-528, phase-529, phase-533]
+last-reviewed: 2026-11-25
+implements-tracked-by: [phase-528, phase-529, phase-533, phase-589]
 amends: [0097, 0114, 0116]
 supersedes: []
 superseded-by: null
@@ -286,6 +286,61 @@ params = ["bp.pl011_uart1.out_file=trace.log"]    # read only on an fvp: board
   make `nros run` and `west build -t run` boot different models, which is the
   split this design exists to prevent.
 
+### D4b — A Linux image runs under QEMU user mode
+
+*Amendment, 2026-11-25 (issue 2852, phase-589 W5, approved by the user).*
+A hosted Linux image cross-built for another architecture (the musl
+`linux-aarch64-musl` board) is neither a host process nor a machine to boot.
+It is a Linux program for another CPU. QEMU's user mode runs exactly that:
+`qemu-aarch64 <elf>` translates the program's instructions and hands its
+system calls to the host kernel. A new emulator kind names it:
+
+```toml
+# nros-board.toml
+[board.run]
+emulator = "qemu-user:aarch64"   # `qemu-<arch>`; the machine word is QEMU's user-mode arch
+```
+
+- **The runner.** `nros_runner_qemu_user` runs `qemu-<arch> <elf> <args>`. It
+  is the native runner's shape, with the program under the emulator: the
+  image's stdout and stderr are its console, the plan's passthrough is its argv,
+  and a killed verb takes it down. A runner package's name cannot hold `-`,
+  so the kind's runner is `nros_runner_<kind>` with `-` written `_`.
+- **The tool.** The host's own `qemu-<arch>` or `qemu-<arch>-static` (the
+  distro's `qemu-user` or `qemu-user-static`), found on `PATH` when the plan is
+  made and named absolutely in its `tools`. The SDK's QEMU dist is built
+  `--target-list=arm-softmmu,riscv64-softmmu` and holds no user-mode binary.
+  Adding `aarch64-linux-user` to its target list is a dist re-cut, which is a
+  follow-up, not this amendment. A plan with no such program on `PATH`
+  carries none, and the runner refuses, naming the package to install.
+- **QEMU 7.2 or newer.** nano-ros's mutexes are priority-inheriting, which
+  musl and glibc lock with `FUTEX_LOCK_PI`. QEMU's user mode answers that with
+  `ENOSYS` before 7.2 (absent from `linux-user/syscall.c` in 7.1, present in
+  7.2), so an image fails at its first lock with no session. Measured on 6.2,
+  Ubuntu 22.04's `qemu-user-static`; on 11.0, built from the SDK's QEMU fork,
+  the same image publishes. The runner reads `--version` and refuses an older
+  one, naming why.
+- **The host's network.** The image's sockets are the host kernel's, so it
+  dials `127.0.0.1` and reads its locator at run time, as a host process
+  does: `nros run` starts the router it needs and hands the image its
+  locator, exactly as for `host = true`.
+- **Static images only.** User mode resolves an image's dynamic loader and
+  libraries from the HOST's root unless it is given a sysroot (`-L`). A static
+  image (`+crt-static`, the musl board's default) needs none. A dynamically
+  linked image (a vendor SDK node, phase-589 W8) needs the board's sysroot,
+  which this amendment does not add.
+- **What it is evidence for.** The program's own user space: that the ELF is
+  the right architecture and ABI, that it loads and runs, and what it does on
+  the network. Every system call is answered by the HOST's kernel, so it is
+  no evidence about the target's kernel: its timers, scheduler and preemption
+  (issue 2854) are measured on the device, never here.
+- **The device.** Copying an image to a board and starting it over ssh needs
+  the device's address and credentials, which belong to the user, not the
+  board, so no board table states them. An image states it with the existing
+  image rung, `[image.<id>.run] command` (D5). A template is one command and
+  runs no shell, so the two steps live in the user's own script, for example
+  `command = "./deploy-to-camera.sh {elf}"`.
+
 ### D5 — The customisation ladder
 
 Highest precedence first:
@@ -422,6 +477,11 @@ hang. Steps are a list, not a state machine. A bench that needs board states
   `[board.run.fvp] params`, and an image states `[image.<id>.run.fvp] params`
   and a `nic` the FVP lowers to its host bridge. They bind at configure,
   through Zephyr's `ARMFVP_EXTRA_FLAGS`, the one carrier both run roads read.
+- 2026-11-25 -- issue 2852 (phase-589 W5): D4b. A new emulator kind,
+  `qemu-user:<arch>`, runs a cross-built hosted Linux image under QEMU user
+  mode through `nros_runner_qemu_user`, with the host's `qemu-<arch>`. It is
+  evidence for the program's user space, never for the target's kernel. A
+  device deploy stays an image's `[image.<id>.run] command`.
 - 2026-11-13 -- phase-555 W2 review: `area` set to `platform-board-rtos`
   (the facts it owns are the board descriptor's `[board.run]`,
   `[board.flash]` and `[board.console]` tables and the bench file).

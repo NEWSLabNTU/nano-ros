@@ -609,7 +609,9 @@ fn resolve_run(i: Inputs<'_>) -> Result<RunPlan, ResolveError> {
         (false, Some(k)) if is_west(&i) && WEST_EMULATORS.contains(&k) => {
             runner("nros_runner_west", "west")
         }
-        (false, Some(k)) => runner(&format!("nros_runner_{k}"), k),
+        // A package name holds no `-`, so `qemu-user` is `nros_runner_qemu_user`
+        // (RFC-0118 D4b).
+        (false, Some(k)) => runner(&format!("nros_runner_{}", k.replace('-', "_")), k),
         (false, None) => unreachable!("a target was set above"),
     });
     prov.set("runner", rung);
@@ -1451,6 +1453,12 @@ pub fn attach_tools(
         }
         return notes;
     }
+    if plan.runner.name == "qemu-user" {
+        if let Some(note) = attach_qemu_user(plan, std::env::var_os("PATH").as_deref()) {
+            notes.push(note);
+        }
+        return notes;
+    }
     if plan.runner.name != "qemu" {
         return notes;
     }
@@ -1481,6 +1489,51 @@ pub fn attach_tools(
             .insert(format!("tools.{}", line.exe), METHOD.to_string());
     }
     notes
+}
+
+/// The QEMU user-mode program a `qemu-user:<arch>` plan runs under (RFC-0118
+/// D4b, issue 2852), named in `tools` as `qemu-user`. The SDK's QEMU holds no
+/// user-mode binary, so it is the host's own: `qemu-<arch>` (the distro's
+/// `qemu-user`) or `qemu-<arch>-static` (`qemu-user-static`), from `PATH`,
+/// resolved here so the plan names it absolutely. `path` is the `PATH` to
+/// search. Returns why none was found; the plan then carries none, and the
+/// runner refuses.
+fn attach_qemu_user(plan: &mut RunPlan, path: Option<&std::ffi::OsStr>) -> Option<String> {
+    let arch = plan
+        .target
+        .emulator
+        .as_deref()
+        .and_then(|e| e.split_once(':'))
+        .map(|(_, a)| a.to_string())?;
+    let names = qemu_user_programs(&arch);
+    // An empty entry (or an unset PATH) searches nothing, never the cwd.
+    let found = names.iter().find_map(|n| {
+        path.into_iter()
+            .flat_map(std::env::split_paths)
+            .filter(|d| d.is_absolute())
+            .map(|d| d.join(n))
+            .find(|c| c.is_file())
+    });
+    match found {
+        Some(p) => {
+            plan.tools.insert("qemu-user".into(), p);
+            plan.provenance
+                .insert("tools.qemu-user".into(), METHOD.to_string());
+            None
+        }
+        None => Some(format!(
+            "QEMU user mode for `{arch}` is not installed: none of {} is on PATH. The SDK's \
+             QEMU is system emulation only; install the distro's `qemu-user-static` (or \
+             `qemu-user`) package.",
+            names.join(", ")
+        )),
+    }
+}
+
+/// The program names QEMU user mode for `arch` goes by, in preference order.
+#[must_use]
+pub fn qemu_user_programs(arch: &str) -> [String; 2] {
+    [format!("qemu-{arch}"), format!("qemu-{arch}-static")]
 }
 
 /// The program an image's build produces, from the build's own output: the
@@ -2155,6 +2208,41 @@ mod tests {
         assert_eq!(p.args["machine"], "virt,gic-version=3");
         assert_eq!(p.args["smp"], "cpus=2");
         assert_eq!(p.args["nic"], "user,model=e1000");
+    }
+
+    /// RFC-0118 D4b: a `qemu-user:<arch>` plan names the host's QEMU user-mode
+    /// program as its `qemu-user` tool, preferring `qemu-<arch>` over the
+    /// `-static` build, and names the package to install when neither is on
+    /// `PATH`.
+    #[test]
+    fn a_qemu_user_plan_names_the_hosts_user_mode_qemu() {
+        let dir = crate::test_support::scratch_dir("qemu_user_tool");
+        let plan = || {
+            RunPlan::from_json(
+                r#"{"image":"i","verb":"run","runner":{"package":"nros_runner_qemu_user","name":"qemu-user"},
+                "target":{"emulator":"qemu-user:aarch64"},"console":{"kind":"stdio"},
+                "artifacts":{"elf":"/b/talker"}}"#,
+            )
+            .unwrap()
+        };
+        let mut p = plan();
+        let why = attach_qemu_user(&mut p, Some(dir.as_os_str())).unwrap();
+        assert!(
+            why.contains("qemu-aarch64") && why.contains("qemu-user-static"),
+            "{why}"
+        );
+        assert!(!p.tools.contains_key("qemu-user"));
+
+        std::fs::write(dir.join("qemu-aarch64-static"), "").unwrap();
+        let mut p = plan();
+        assert_eq!(attach_qemu_user(&mut p, Some(dir.as_os_str())), None);
+        assert_eq!(p.tools["qemu-user"], dir.join("qemu-aarch64-static"));
+        assert_eq!(p.provenance["tools.qemu-user"], METHOD);
+
+        std::fs::write(dir.join("qemu-aarch64"), "").unwrap();
+        let mut p = plan();
+        assert_eq!(attach_qemu_user(&mut p, Some(dir.as_os_str())), None);
+        assert_eq!(p.tools["qemu-user"], dir.join("qemu-aarch64"));
     }
 
     /// The verb picks the target: the Nucleo's `run` is its Renode twin through

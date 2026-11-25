@@ -1,0 +1,23 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>nros_runner_qemu_user</name>
+  <version>0.0.0</version>
+  <description>
+    The `qemu-user` runner (RFC-0118 D4b). Runs a cross-built hosted Linux image
+    under QEMU's user mode: `qemu-&lt;arch&gt; &lt;elf&gt;`, the board's
+    `[board.run] emulator = "qemu-user:&lt;arch&gt;"`. Its system calls are answered
+    by the host's kernel, so a run is evidence for the image's user space, not
+    for the target's kernel.
+
+    A runner package of the same shape as a user's: the announcement below is
+    what the provider scan reads, `nros-runner.toml` is read only when this
+    provider is the one selected, and the executable speaks RFC-0119 D6.
+  </description>
+  <maintainer email="jerry73204@gmail.com">Lin Hsiang-Jui</maintainer>
+  <license>Apache-2.0</license>
+
+  <export>
+    <build_type>nros_cargo</build_type>
+    <nano_ros_provides kind="runner" name="qemu-user"/>
+  </export>
+</package>

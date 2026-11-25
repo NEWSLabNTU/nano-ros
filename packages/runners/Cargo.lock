@@ -79,6 +79,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "nros_runner_qemu_user"
+version = "0.0.0"
+dependencies = [
+ "nros-extension",
+ "nros-runner-lifetime",
+]
+
+[[package]]
 name = "nros_runner_renode"
 version = "0.0.0"
 dependencies = [
