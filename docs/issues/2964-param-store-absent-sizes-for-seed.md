@@ -188,7 +188,41 @@ Tests:
 - `a_shared_runtime_image_whose_watch_broke_keeps_the_default`
   (nros-cli-core).
 
-Not measured yet: a Pico image with no contract, built on this branch.
+### Measured: a Pico listener with no contract (2026-11-25, nros 118)
+
+The build: this branch at a6e7f4a672, on rpi-pico-w-zephyr (Zephyr v3.7.2,
+SDK 0.16.9), zenoh. Applied uncommitted on top:
+- PR #4847's portable-atomic fix, without which no Rust image compiles for
+  this board;
+- PR #4843's board change (no queryable cap).
+
+At this head, `nros new --template listener` writes no
+`system.contract.yaml`, so both images are the "no contract" case this issue
+is about. RAM is of 270,336 B.
+
+| Lang | Result | Parameter store |
+| --- | --- | --- |
+| C | 182,880 B (67.65 %), `__nros_executor_storage` 21,424, `BUILTIN_INBOX` 624 | derived from the observed record: `MAX_PARAMETERS=1` (the seeded `use_sim_time`), `MAX_NAME_BYTES=12`, `MAX_STRING_VALUE_BYTES=0` |
+| Rust | RAM overflowed by 16,344 B | default bounds; `--explain-sizing` names why |
+
+- **C: the fix works on this road.** The record was watched whole, so the
+  store is the seeded one, at the same size as with a `params: {}` contract
+  (PR #4843's C listener: 182,888 B).
+  - Without this branch, the same C listener with the cap dropped overflowed
+    by 4,832 B: nros 241's sweep at 61476d0bb2, on Zephyr v3.7.0.
+- **Rust: the known gap above.** The Rust source-metadata harness does not
+  arm the watch, so the record is no evidence and the store keeps its
+  default.
+  - The overflow matches the no-contract Rust listener before this branch
+    (16,344 B), as it should.
+  - The new explain line names the cause: "nothing stated this image's
+    parameters ... so the parameter store keeps its default bounds".
+  - With a contract (PR #4843), the same Rust listener links at 194,392 B
+    (71.91 %).
+- **Arming the Rust harness's watch** would close the Rust row by
+  observation too. The place to do it is
+  `record_node_metadata_seeded_watching_prose`, which the harness calls once
+  phase-566 W4 lands (PR #4861).
 
 ## The second gap: the zenoh builtin inbox (same cause)
 
