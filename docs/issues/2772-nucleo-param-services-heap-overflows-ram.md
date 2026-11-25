@@ -242,3 +242,10 @@ Even at one parameter the backing stays about 25 KB above the talker's,
 because the name and string bounds keep their 64 and 256 B defaults. A
 smaller second gap: the zenoh shim's `BUILTIN_INBOX` is 6,264 B in every
 non-talker row against 624 B in the talker.
+
+Why the talker alone was sized: `nros new --template talker` wrote a
+`system.contract.yaml` with `params: {}` (a declaration of zero
+parameters), and the other roles wrote no contract, so their declarations
+were unknown. Every role's whole surface was already stated per language
+for `nros new --to`, so the fix is that every role writes its contract,
+`params: {}` included.
