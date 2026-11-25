@@ -524,23 +524,8 @@ pub fn ensure(index: &SdkIndex, host: &str, dry_run: bool) -> Result<Outcome> {
             std::fs::create_dir_all(&dir).wrap_err_with(|| format!("create {}", dir.display()))?;
             let init = dir.join(format!("rustup-init-{version}"));
             let init_s = init.to_string_lossy().into_owned();
-            sh(
-                &[
-                    "curl",
-                    "-L",
-                    "--fail",
-                    "--silent",
-                    "--show-error",
-                    "--proto",
-                    "=https",
-                    "--tlsv1.2",
-                    "-o",
-                    &init_s,
-                    &url,
-                ],
-                None,
-            )
-            .wrap_err_with(|| format!("download {url}"))?;
+            super::sdk_store::download_with(&url, &init, &["--proto", "=https", "--tlsv1.2"])
+                .wrap_err_with(|| format!("download {url}"))?;
             verify_sha256(&init, &sha256)?;
             #[cfg(unix)]
             {

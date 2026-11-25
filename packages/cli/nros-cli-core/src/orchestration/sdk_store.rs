@@ -2657,11 +2657,34 @@ fn transient_failure(output: &str) -> Option<Transient> {
     ];
     if SERVER.iter().any(|m| output.contains(m)) {
         Some(Transient::ServerOutage)
-    } else if NETWORK.iter().any(|m| output.contains(m)) {
+    } else if NETWORK.iter().any(|m| output.contains(m)) || curl_network_exit(output) {
         Some(Transient::Network)
     } else {
         None
     }
+}
+
+/// curl's exit codes for a transfer the NETWORK broke, which a retry can fix
+/// (issue 2966). Matching curl's message text alone missed two of them: a
+/// release nightly lost three jobs to `curl: (56) Connection died, tried 5
+/// times before giving up` (HTTP/2's wording, not the HTTP/1 `Recv failure`
+/// the list knew), and `curl: (18) transfer closed with N bytes remaining`
+/// was never in it. The code is curl's stable contract; the text is not.
+///
+/// 5/6 resolve, 7 connect, 16 HTTP/2 framing, 18 partial file, 28 timeout,
+/// 35 TLS handshake, 52 empty reply, 55 send, 56 receive, 92 HTTP/2 stream.
+/// Not 22 (an HTTP status, classified by its number above) and not 33 (the
+/// server cannot resume; [`download`] restarts that one itself).
+const CURL_NETWORK_EXITS: &[u32] = &[5, 6, 7, 16, 18, 28, 35, 52, 55, 56, 92];
+
+/// Whether `output` carries a `curl: (N)` line whose `N` is a network exit.
+fn curl_network_exit(output: &str) -> bool {
+    output.match_indices("curl: (").any(|(i, m)| {
+        let rest = &output[i + m.len()..];
+        rest.split_once(')')
+            .and_then(|(n, _)| n.parse::<u32>().ok())
+            .is_some_and(|n| CURL_NETWORK_EXITS.contains(&n))
+    })
 }
 
 /// Run a network fetch, retrying it while it fails transiently. A network
@@ -2743,33 +2766,59 @@ fn run_fetch(args: &[&str], mut c: std::process::Command) -> Result<()> {
 /// [`super::step_log::watch_download`] prints a byte-count line once the fetch
 /// has run long enough to need one. `cmd/setup.rs::fetch_index` is not this: it
 /// fetches a small TOML with fail-fast timeouts, and stays silent on purpose.
+///
+/// A transient failure is retried by [`run_fetch`], and each retry RESUMES the
+/// partial file (`-C -`) rather than starting over (issue 2966): a 1.4 GB
+/// asset cut off at 90% costs the last 10% again, not the whole thing. A
+/// partial left by an EARLIER run is removed first, because nothing says it
+/// came from this URL. A server that cannot resume (curl exit 33, or an HTTP
+/// 416) gets one fresh download. Callers verify the sha256 after, as before:
+/// a resume that spliced two different files is a checksum failure, never an
+/// install.
 pub(crate) fn download(url: &str, dest: &Path) -> Result<()> {
+    download_with(url, dest, &[])
+}
+
+/// [`download`] with extra curl arguments (`--proto =https` for a URL this
+/// build chose, as `rustup-init`'s is).
+pub(crate) fn download_with(url: &str, dest: &Path, extra: &[&str]) -> Result<()> {
     let what = url
         .rsplit('/')
         .next()
         .filter(|s| !s.is_empty())
         .unwrap_or(url);
-    super::step_log::watch_download(
-        dest,
-        what,
-        super::step_log::ProgressPolicy::DEFAULT,
-        std::time::Duration::from_secs(1),
-        || {
-            sh(
-                &[
-                    "curl",
-                    "-L",
-                    "--fail",
-                    "--silent",
-                    "--show-error",
-                    "-o",
-                    &dest.to_string_lossy(),
-                    url,
-                ],
-                None,
-            )
-        },
-    )
+    let _ = std::fs::remove_file(dest);
+    let fetch = |resume: bool| {
+        let dest_s = dest.to_string_lossy();
+        let mut args = vec!["curl", "-L", "--fail", "--silent", "--show-error"];
+        if resume {
+            args.extend(["-C", "-"]);
+        }
+        args.extend_from_slice(extra);
+        args.extend(["-o", &dest_s, url]);
+        super::step_log::watch_download(
+            dest,
+            what,
+            super::step_log::ProgressPolicy::DEFAULT,
+            std::time::Duration::from_secs(1),
+            || sh(&args, None),
+        )
+    };
+    match fetch(true) {
+        Err(e) if resume_refused(&e) => {
+            let _ = std::fs::remove_file(dest);
+            fetch(false)
+        }
+        r => r,
+    }
+}
+
+/// Whether a resumed download failed because the server cannot resume:
+/// curl's exit 33 (it ignored the Range) or HTTP 416 (nothing past the
+/// partial's end).
+fn resume_refused(e: &eyre::Report) -> bool {
+    let msg = format!("{e:#}");
+    msg.contains("exit status: 33") || msg.contains("returned error: 416")
 }
 
 /// The workspace's pinned Rust channel, read from `rust-toolchain.toml`.
@@ -3213,6 +3262,158 @@ mod fetch_retry_tests {
         );
         assert_eq!(hits.load(std::sync::atomic::Ordering::SeqCst), 6, "{err}");
         assert!(err.contains("an outage at the host"), "{err}");
+    }
+
+    /// Issue 2966 — a server that sends the headers and PART of the body, then
+    /// drops the connection: with a reset (`rst`, curl exit 56) or a clean
+    /// close (curl exit 18). From the second connection on it serves a Range
+    /// as 206, unless `ranges` is false, when it always sends the whole body
+    /// as 200. Returns its URL, the body, and the requests and Range headers
+    /// it saw.
+    #[allow(clippy::type_complexity)]
+    fn serve_dropping(
+        rst: bool,
+        ranges: bool,
+    ) -> (
+        String,
+        Vec<u8>,
+        std::sync::Arc<std::sync::Mutex<Vec<Option<usize>>>>,
+    ) {
+        use std::io::{Read, Write};
+        let body: Vec<u8> = (0..200_000u32).map(|i| (i % 251) as u8).collect();
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}/dist.tar.zst", listener.local_addr().unwrap());
+        let seen = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let log = seen.clone();
+        let served = body.clone();
+        std::thread::spawn(move || {
+            for stream in listener.incoming() {
+                let Ok(mut stream) = stream else { break };
+                // PEEK, so the request stays unread: on Linux, closing a
+                // socket with unread input sends a RST (curl's exit 56).
+                let mut buf = [0u8; 4096];
+                let n = stream.peek(&mut buf).unwrap_or(0);
+                let req = String::from_utf8_lossy(&buf[..n]).to_ascii_lowercase();
+                let range = req
+                    .lines()
+                    .find_map(|l| l.strip_prefix("range: bytes="))
+                    .and_then(|r| r.split('-').next()?.trim().parse::<usize>().ok());
+                let first = {
+                    let mut l = log.lock().unwrap();
+                    l.push(range);
+                    l.len() == 1
+                };
+                let len = served.len();
+                if first {
+                    let _ = write!(
+                        stream,
+                        "HTTP/1.1 200 OK\r\nContent-Length: {len}\r\nConnection: close\r\n\r\n"
+                    );
+                    let _ = stream.write_all(&served[..70_000]);
+                    let _ = stream.flush();
+                    if !rst {
+                        // Consume the request, so close() is a clean FIN
+                        // short of Content-Length: curl's exit 18.
+                        let _ = stream.read(&mut buf);
+                    }
+                    continue;
+                }
+                let _ = stream.read(&mut buf);
+                match range {
+                    Some(from) if ranges => {
+                        let _ = write!(
+                            stream,
+                            "HTTP/1.1 206 Partial Content\r\nContent-Range: bytes {from}-{}/{len}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                            len - 1,
+                            len - from
+                        );
+                        let _ = stream.write_all(&served[from..]);
+                    }
+                    _ => {
+                        let _ = write!(
+                            stream,
+                            "HTTP/1.1 200 OK\r\nContent-Length: {len}\r\nConnection: close\r\n\r\n"
+                        );
+                        let _ = stream.write_all(&served);
+                    }
+                }
+            }
+        });
+        (url, body, seen)
+    }
+
+    /// A connection reset mid-body (curl 56) is retried, and the retry RESUMES
+    /// from the bytes already on disk instead of starting over.
+    #[test]
+    fn a_download_reset_mid_stream_resumes_where_it_stopped() {
+        let (url, body, seen) = serve_dropping(true, true);
+        let dir = crate::test_support::scratch_path("download_reset_resumes");
+        std::fs::create_dir_all(&dir).unwrap();
+        let dest = dir.join("dist.tar.zst");
+        download(&url, &dest).unwrap();
+        assert_eq!(std::fs::read(&dest).unwrap(), body);
+        assert_eq!(*seen.lock().unwrap(), vec![None, Some(70_000)]);
+    }
+
+    /// A clean close short of Content-Length (curl 18) is the same case.
+    #[test]
+    fn a_download_closed_short_resumes_where_it_stopped() {
+        let (url, body, seen) = serve_dropping(false, true);
+        let dir = crate::test_support::scratch_path("download_short_resumes");
+        std::fs::create_dir_all(&dir).unwrap();
+        let dest = dir.join("dist.tar.zst");
+        download(&url, &dest).unwrap();
+        assert_eq!(std::fs::read(&dest).unwrap(), body);
+        assert_eq!(*seen.lock().unwrap(), vec![None, Some(70_000)]);
+    }
+
+    /// A server that ignores the Range (curl 33) gets one fresh download, not
+    /// a failure and not a spliced file.
+    #[test]
+    fn a_server_that_cannot_resume_gets_a_fresh_download() {
+        let (url, body, seen) = serve_dropping(false, false);
+        let dir = crate::test_support::scratch_path("download_no_ranges");
+        std::fs::create_dir_all(&dir).unwrap();
+        let dest = dir.join("dist.tar.zst");
+        download(&url, &dest).unwrap();
+        assert_eq!(std::fs::read(&dest).unwrap(), body);
+        assert_eq!(*seen.lock().unwrap(), vec![None, Some(70_000), None]);
+    }
+
+    /// A partial left by an earlier run is not resumed: nothing says it came
+    /// from this URL.
+    #[test]
+    fn a_partial_from_an_earlier_run_is_not_resumed() {
+        let (url, body, seen) = serve_dropping(false, true);
+        let dir = crate::test_support::scratch_path("download_stale_partial");
+        std::fs::create_dir_all(&dir).unwrap();
+        let dest = dir.join("dist.tar.zst");
+        std::fs::write(&dest, b"bytes from some other file").unwrap();
+        download(&url, &dest).unwrap();
+        assert_eq!(std::fs::read(&dest).unwrap(), body);
+        assert_eq!(seen.lock().unwrap()[0], None);
+    }
+
+    /// The release nightly's failure (issue 2966): HTTP/2's wording of a
+    /// receive failure matched no message in the list, so it was not retried.
+    #[test]
+    fn a_curl_network_exit_is_transient_whatever_its_wording() {
+        for line in [
+            "curl: (56) Connection died, tried 5 times before giving up",
+            "curl: (18) transfer closed with 130000 bytes remaining to read",
+            "curl: (92) HTTP/2 stream 1 was not closed cleanly: INTERNAL_ERROR (err 2)",
+            "curl: (16) Error in the HTTP2 framing layer",
+            "curl: (28) Failed to connect after 10000 ms",
+        ] {
+            assert_eq!(transient_failure(line), Some(Transient::Network), "{line}");
+        }
+        for line in [
+            "curl: (22) The requested URL returned error: 404",
+            "curl: (33) HTTP server doesn't seem to support byte ranges. Cannot resume.",
+            "curl: (3) URL using bad/illegal format or missing URL",
+        ] {
+            assert_eq!(transient_failure(line), None, "{line}");
+        }
     }
 
     #[test]
