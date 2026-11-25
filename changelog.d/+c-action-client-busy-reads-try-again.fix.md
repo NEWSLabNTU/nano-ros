@@ -1,0 +1,1 @@
+In C, an `rclc_action_*` client call made from another thread while that client's callback is running now returns `RCLC_RET_TRY_AGAIN` instead of `RCL_RET_NOT_INIT`, so the caller can retry once the callback returns.

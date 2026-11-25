@@ -35,3 +35,27 @@ thread B while thread A's executor pass runs a callback:
 A cross-thread test in each case: B's call during A's callback returns a code
 that says busy (or succeeds after the window), and B is never told
 `REENTRANT` for a callback it is not in.
+
+## Status (2026-11-25)
+**Finding 1 is fixed.** The executor reports whether an entry's callback is
+running on another thread (`entry_busy_elsewhere`, `spin.rs`), and every
+`rclc_action_*` client call that used to answer `RCL_RET_NOT_INIT` for that
+case now answers `RCLC_RET_TRY_AGAIN`. `RCL_RET_NOT_INIT` is kept for a handle
+that names no live client. Test:
+`p9b_windows::an_entry_running_in_another_threads_window_reads_busy_not_missing`.
+
+**Finding 2 stays open, deliberately.** It cannot happen in C today: nros-c has
+no API that installs an executor lock (only `nros_cpp_executor_set_lock` and the
+Rust `levels.rs` do), so a C `rclc_executor_t` always has one thread, and the
+flag that thread reads is its own. A locked, per-thread read was written and
+then dropped. With no live caller it could only be tested through a Rust-side
+test seam, and a guard nothing reaches drifts. The C acceptance test cannot be
+written either, for the same reason.
+
+**Follow-up, tied to a C lock-install API:** when C gains a way to install a
+lock (so a second thread can call into a spinning executor), the same change
+must make `refuse_in_dispatch` (`nros-c/src/executor.rs`) read `in_dispatch`
+under that lock. Owned passes hold the recursive lock across callbacks, so the
+callback's own thread re-enters it and reads `true` (refused), and any other
+thread waits for the pass to end and reads `false`. That change needs the
+cross-thread acceptance test above, in C.

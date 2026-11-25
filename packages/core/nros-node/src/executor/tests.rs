@@ -18591,6 +18591,71 @@ mod p9b_windows {
         drop(executor);
     }
 
+    /// Issue 2855 -- while an entry's callback runs in one thread's window,
+    /// another thread's by-index lookup of it gets `None`, and
+    /// `entry_busy_elsewhere` says that is "busy, try again", not "no such
+    /// entry". The same handle is not busy outside the window, and a handle
+    /// that names nothing is never busy.
+    #[test]
+    fn an_entry_running_in_another_threads_window_reads_busy_not_missing() {
+        let mut executor = executor_with_clock(MockSession::new());
+        install_lock(&mut executor);
+        let shared = Shared(&mut executor);
+        let seen = Arc::new(Mutex::new(None::<(bool, bool)>));
+        let s = seen.clone();
+        let id =
+            std::boxed::Box::leak(std::boxed::Box::new(std::sync::OnceLock::<HandleId>::new()));
+        let idr: &'static std::sync::OnceLock<HandleId> = id;
+        let t = ranked_timer(&mut executor, "busy", 0, move |_| {
+            if s.lock().unwrap().is_some() {
+                return;
+            }
+            let raw = idr.get().unwrap().to_raw();
+            // Inside the window: another thread asks about this very timer.
+            let other = std::thread::scope(|sc| {
+                sc.spawn(|| {
+                    // SAFETY: the lock is taken before the executor is read.
+                    let _g = unsafe { ExecGuard::acquire(shared.ptr()) };
+                    unsafe { &*shared.ptr() }.entry_busy_elsewhere(raw)
+                })
+                .join()
+                .unwrap()
+            });
+            // The callback's own thread is not "elsewhere".
+            // SAFETY: as above; the lock is recursive on this thread.
+            let _g = unsafe { ExecGuard::acquire(shared.ptr()) };
+            let own = unsafe { &*shared.ptr() }.entry_busy_elsewhere(raw);
+            *s.lock().unwrap() = Some((other, own));
+        });
+        id.set(t).unwrap();
+        for _ in 0..200 {
+            shared.spin_shared();
+            if seen.lock().unwrap().is_some() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_micros(500));
+        }
+        let (other, own) = seen.lock().unwrap().expect("the timer ran");
+        assert!(
+            other,
+            "another thread, during the callback: busy (try again)"
+        );
+        assert!(!own, "the callback's own thread: not busy elsewhere");
+        // SAFETY: no pass runs now; the lock is taken first.
+        let _g = unsafe { ExecGuard::acquire(shared.ptr()) };
+        let exec = unsafe { &*shared.ptr() };
+        assert!(
+            !exec.entry_busy_elsewhere(t.to_raw()),
+            "outside any window: not busy"
+        );
+        assert!(
+            !exec.entry_busy_elsewhere(usize::MAX >> 1),
+            "a handle that names no entry is never busy"
+        );
+        drop(_g);
+        drop(executor);
+    }
+
     /// Item 2, test 2 -- two bands over one executor: each worker runs only
     /// its own band's callbacks, and the urgent band's worker runs while a
     /// less urgent callback is in its window, without taking that band's work.

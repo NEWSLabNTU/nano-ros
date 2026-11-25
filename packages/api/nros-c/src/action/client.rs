@@ -59,7 +59,11 @@ impl ActionClientInternal {
     /// The ActionClientCore in the executor arena, with the executor's lock
     /// held for as long as the returned value lives.
     ///
-    /// Returns `None` if not yet registered with the executor.
+    /// `Err(RCL_RET_NOT_INIT)` if not registered with the executor;
+    /// `Err(RCLC_RET_TRY_AGAIN)` while the client's callback runs on another
+    /// thread, which a retry after it returns gets past.
+    // Issue 2855: this used to answer NOT_INIT, which an rclc caller does not
+    // retry.
     ///
     /// Phase-573 W3 -- through `get_executor_from_ptr`, the one derive. This
     /// cast the pointer itself, so a call from another thread reached the
@@ -69,17 +73,34 @@ impl ActionClientInternal {
     /// `executor_ptr` must point to a valid `CExecutor`.
     unsafe fn arena_core_mut(
         &mut self,
-    ) -> Option<crate::executor::CLocked<'static, nros_node::ActionClientCore>> {
+    ) -> Result<crate::executor::CLocked<'static, nros_node::ActionClientCore>, rcl_ret_t> {
         if self.arena_entry_index < 0 || self.executor_ptr.is_null() {
-            return None;
+            return Err(RCL_RET_NOT_INIT);
         }
         // SAFETY: the caller's contract; the lock is taken first.
         let mut exec = unsafe { crate::executor::get_executor_from_ptr(self.executor_ptr) };
-        let core = unsafe { exec.action_client_core_mut(self.arena_entry_index as usize) }?
-            as *mut nros_node::ActionClientCore;
+        let index = self.arena_entry_index as usize;
+        let Some(core) = (unsafe { exec.action_client_core_mut(index) }) else {
+            return Err(busy_or_not_init(&exec, index));
+        };
+        let core = core as *mut nros_node::ActionClientCore;
         // SAFETY: `core` lives in the arena `exec` locks, and the lock travels
         // with it.
-        Some(unsafe { crate::executor::CLocked::new(core, Some(exec)) })
+        Ok(unsafe { crate::executor::CLocked::new(core, Some(exec)) })
+    }
+}
+
+/// What a C action-client call answers when the executor has no core for
+/// its entry: `RCLC_RET_TRY_AGAIN` while the entry's callback runs on another
+/// thread (the entry is live and usable once that callback returns),
+/// `RCL_RET_NOT_INIT` for a handle that names no live client.
+// Issue 2855.
+#[cfg(feature = "rmw-cffi")]
+fn busy_or_not_init(exec: &crate::executor::CExecRef<'_>, index: usize) -> rcl_ret_t {
+    if exec.entry_busy_elsewhere(index) {
+        RCLC_RET_TRY_AGAIN
+    } else {
+        RCL_RET_NOT_INIT
     }
 }
 
@@ -455,9 +476,10 @@ pub unsafe extern "C" fn rclc_action_client_wait_for_action_server(
         loop {
             {
                 let mut exec = crate::executor::get_executor(exec_t);
-                let core = match exec.action_client_core_mut(internal.arena_entry_index as usize) {
+                let index = internal.arena_entry_index as usize;
+                let core = match exec.action_client_core_mut(index) {
                     Some(c) => c,
-                    None => return RCL_RET_NOT_INIT,
+                    None => return busy_or_not_init(&exec, index),
                 };
                 // issue 1686 — one classification for every wait loop.
                 match nros_node::executor::ServerVisibility::of(core.server_readiness()) {
@@ -680,8 +702,8 @@ pub unsafe extern "C" fn rclc_action_cancel_goal(
     let goal_id = nros_node::GoalUuid { uuid: uuid.uuid };
 
     let mut core = match unsafe { internal.arena_core_mut() } {
-        Some(c) => c,
-        None => return RCL_RET_NOT_INIT,
+        Ok(c) => c,
+        Err(ret) => return ret,
     };
     match core.send_cancel_request(&goal_id) {
         Ok(()) => RCL_RET_OK,
@@ -845,8 +867,9 @@ pub unsafe extern "C" fn rclc_action_try_recv_feedback(
     const FB_USER_BUF: usize = 512;
     let mut fb_buf = [0u8; FB_USER_BUF];
     let taken = {
-        let Some(mut core) = (unsafe { client._internal.arena_core_mut() }) else {
-            return RCL_RET_NOT_INIT;
+        let mut core = match unsafe { client._internal.arena_core_mut() } {
+            Ok(c) => c,
+            Err(ret) => return ret,
         };
         core.try_recv_feedback_raw().map(|got| {
             got.map(|(goal_id, len)| {
@@ -913,8 +936,8 @@ pub unsafe extern "C" fn rclc_action_send_goal_async(
     let goal_fields = strip_cdr_header(goal_data);
 
     let mut core = match unsafe { internal.arena_core_mut() } {
-        Some(c) => c,
-        None => return RCL_RET_NOT_INIT,
+        Ok(c) => c,
+        Err(ret) => return ret,
     };
 
     // Non-blocking: uses zpico_get_start internally (not zpico_get).
@@ -956,8 +979,8 @@ pub unsafe extern "C" fn rclc_action_get_result_async(
     let goal_id = nros_node::GoalUuid { uuid: uuid.uuid };
 
     let mut core = match unsafe { internal.arena_core_mut() } {
-        Some(c) => c,
-        None => return RCL_RET_NOT_INIT,
+        Ok(c) => c,
+        Err(ret) => return ret,
     };
 
     // Non-blocking: uses zpico_get_start internally.
@@ -1032,8 +1055,8 @@ pub unsafe extern "C" fn rclc_action_client_poll(client: *mut rcl_action_client_
             // SAFETY: `client` is valid (the caller's contract); the `&mut`
             // to `_internal` lives only for the lookup.
             match unsafe { (*client)._internal.arena_core_mut() } {
-                Some(mut $core) => $body,
-                None => return RCL_RET_NOT_INIT,
+                Ok(mut $core) => $body,
+                Err(ret) => return ret,
             }
         };
     }

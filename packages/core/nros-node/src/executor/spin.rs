@@ -8991,6 +8991,17 @@ impl<'s> Executor<'s> {
             .filter(|&slot| !self.running_elsewhere(slot))
     }
 
+    /// Whether the by-index accessors answer `None` for `entry_index` only
+    /// because its callback is running in another thread's window -- a live
+    /// entry the caller may use once that callback returns, as opposed to a
+    /// stale or foreign handle. The FFI answers "try again" for it, never
+    /// "not initialised".
+    // Issue 2855.
+    pub(crate) fn entry_busy_elsewhere(&self, entry_index: usize) -> bool {
+        self.resolve_handle(HandleId::from_raw(entry_index))
+            .is_some_and(|slot| self.running_elsewhere(slot))
+    }
+
     /// phase-476 W0 — [`resolve_handle`](Self::resolve_handle) as an index that
     /// is OUT OF RANGE for a stale handle, so an existing `entries.get(..)`
     /// chain answers `None` for it with no further change.
