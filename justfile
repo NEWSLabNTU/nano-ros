@@ -1243,8 +1243,19 @@ test-ignored package="":
         NEXTEST_PROFILE=ignored cargo nextest run "${cargo_nextest_args[@]}" \
             --workspace --exclude nros-tests --run-ignored ignored-only || rc=$?
         echo "--- packages/cli sub-workspace ---"
+        # Issue 2975 (release blocker B42) -- the same rule as `[profile.ignored]` above, for the
+        # sub-workspace, whose nextest config has no such profile: drop the
+        # ignored tests ANOTHER lane owns, because this lane does not claim
+        # what they need. Each names its owner:
+        #   colcon_flag_parity (3 tests)
+        #       need colcon and the ros2_rust_examples submodule --
+        #       `just check cli-tests`, which runs them where both are
+        #       present (phase-526 W3). The runner image provides no colcon
+        #       (`[lane.runner]` claims none), so here they failed by
+        #       construction: tier2-nightly 45684820840, job 139498579863.
+        cli_ignored_owned_elsewhere='binary(colcon_flag_parity)'
         cargo nextest run --manifest-path packages/cli/Cargo.toml --workspace \
-            --run-ignored ignored-only || rc=$?
+            --run-ignored ignored-only -E "not ($cli_ignored_owned_elsewhere)" || rc=$?
         # issue 1507 — a test FILE behind `#![cfg(feature = …)]` that workspace
         # feature unification never enables compiles to nothing, so the run
         # above reports it as absent rather than skipped. `bare_metal_link`'s two
