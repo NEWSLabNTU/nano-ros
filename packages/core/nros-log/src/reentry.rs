@@ -22,7 +22,7 @@
 //! task's depth. That is what bounds it, and on one CPU the task cannot run
 //! meanwhile, so the two never race on the slot.
 
-use core::sync::atomic::{AtomicUsize, Ordering};
+use portable_atomic::{AtomicUsize, Ordering};
 
 use crate::REENTRANT_DEPTH;
 
@@ -133,7 +133,7 @@ pub(crate) fn give_back(spent: Spent) {
 
 #[cfg(any(nros_log_task_identity, test))]
 mod task {
-    use core::sync::atomic::{AtomicUsize, Ordering};
+    use portable_atomic::{AtomicUsize, Ordering};
 
     use super::{Entered, Spent};
     use crate::REENTRANT_DEPTH;
