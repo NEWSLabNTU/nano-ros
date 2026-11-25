@@ -276,6 +276,23 @@ fi
 # The whole recipe, not a curated subset: a gate list spelled out here would
 # drift from `check-fast` silently, which is the #282->#326 shape this repo
 # keeps paying for.
+#
+# Issue 2958 -- `check fast` reads the WORKING TREE, and the push publishes the
+# COMMIT. Anything that differs between the two (an edit `git mv` left
+# unstaged, a new file never added, a deletion never staged) passes here and
+# fails on CI, which checks out the commit: PR #4821 archived an issue whose
+# `status: resolved` edit was never staged, green here and red there. So when
+# the pushed branch IS `HEAD`, the gates' subject must equal what is pushed,
+# or the push is refused before they run. Read-only: a diff and a file list.
+# Sourced from the pushed checkout, which may predate the helper: absent
+# means "not checked", never "die".
+if [ "${NROS_SKIP_PREPUSH_CHECKS:-}" != "1" ] && [ -r "$repo_root/scripts/lib/prepush-tree.sh" ]; then
+    # shellcheck source=scripts/lib/prepush-tree.sh
+    . "$repo_root/scripts/lib/prepush-tree.sh"
+    if ! nros_prepush_tree_matches "$repo_root" < "$hook_stdin"; then
+        exit 1
+    fi
+fi
 if [ "${NROS_SKIP_PREPUSH_CHECKS:-}" = "1" ]; then
     echo "pre-push: fast gates SKIPPED (NROS_SKIP_PREPUSH_CHECKS=1)." >&2
 elif ! command -v just >/dev/null 2>&1; then

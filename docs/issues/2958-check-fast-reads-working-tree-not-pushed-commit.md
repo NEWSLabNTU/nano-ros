@@ -122,3 +122,32 @@ Cheapest first; the first alone covers every case above.
 
 Whichever is chosen, `check-hook-repo-side-effects` must still pass: the
 check reads git state only and writes nothing.
+
+## Done: the hook refuses a tree that differs from the push (2026-11-25)
+
+Proposal (1) is built. When a pushed branch's local sha is `HEAD`, the
+pre-push hook (`scripts/lib/prepush-tree.sh`, before `check fast`) compares
+the working tree with it. Tracked differences come from
+`git diff --name-status --ignore-submodules=dirty HEAD`: staged or not,
+including a moved pin. Untracked files come from
+`git ls-files --others --exclude-standard`. On any difference it refuses,
+names the paths, and gives `git stash push -u` or
+`NROS_SKIP_PREPUSH_CHECKS=1` as the ways forward.
+
+It runs only when the fast gates would run. A push of another ref, a tag, or
+nothing is not judged, since the working tree is not its subject. It is
+read-only, and `check-hook-repo-side-effects` still passes.
+
+`just check prepush-tree` holds ten cases in a throwaway repository.
+
+- **Refused:** an unstaged edit, a staged-only edit, an untracked file, an
+  unstaged deletion, and `git mv` over an unstaged edit (PR #4821's
+  incident).
+- **Passed:** a clean tree, an ignored file, a push of a non-HEAD commit, a
+  tag push, and an empty push.
+
+Disabling the refusal fails three of those cases.
+
+Still open: the hook is opt-in (`just setup-hooks`) and absent on host 142.
+Installing it there, or turning the provisioning NOTE into a FAIL, is the
+host owner's decision and is not part of this change.
