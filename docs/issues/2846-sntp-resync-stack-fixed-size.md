@@ -90,9 +90,11 @@ Items 1–3 are done for the 32-bit board:
 - **Knob help** now gives both numbers. The default stays 8,192 B: it is
   what the 64-bit figure needs, and 64-bit is not measured in-tree yet.
 
-Nothing re-measures the run-time peak yet. The twin measures only a
-template image's main thread, so this row was taken by hand:
-[issue 2963](2963-stack-floor-twin-measures-only-main-thread.md).
+The row was first taken by hand. The twin lane now re-measures it
+([issue 2963](archived/2963-stack-floor-twin-measures-only-main-thread.md)):
+`just zephyr stack-floor-twin --only
+pubsub_bringup@zephyr_cortex_m_talker_clock_sntp_resync` starts the router
+and the SNTP and DNS stand-ins itself, and read 1,160 B in two runs.
 
 ## Still open: 64-bit
 

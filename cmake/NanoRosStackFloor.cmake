@@ -818,7 +818,11 @@ function(nros_stack_floor_zephyr_check)
         list(APPEND _cmd
             --role "SNTP_RESYNC=nros_zephyr_sntp_resync_loop"
             --check-stack "SNTP_RESYNC=${CONFIG_NROS_CLOCK_SNTP_RESYNC_STACK_BYTES}"
-            --role-knob "SNTP_RESYNC=[image.<id>.knobs.clock] sntp_resync_stack_bytes = {bytes}")
+            --role-knob "SNTP_RESYNC=[image.<id>.knobs.clock] sntp_resync_stack_bytes = {bytes}"
+            # The thread's name (zephyr/nros_platform_zephyr_shims.c's
+            # K_THREAD_DEFINE), so the twin lane reads its analyzer line
+            # (issue 2963).
+            --role-thread "SNTP_RESYNC=nros_sntp_resync_tid")
         message(STATUS "nano-ros: stack floor also checks SNTP_RESYNC from "
             "nros_zephyr_sntp_resync_loop against "
             "CONFIG_NROS_CLOCK_SNTP_RESYNC_STACK_BYTES=${CONFIG_NROS_CLOCK_SNTP_RESYNC_STACK_BYTES}")

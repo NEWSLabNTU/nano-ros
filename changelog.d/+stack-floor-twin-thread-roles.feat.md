@@ -1,0 +1,1 @@
+The stack-floor twin lane (`just zephyr stack-floor-twin`) now re-measures a role that runs on a thread of its own, such as Zephyr's SNTP re-sync thread, and an in-tree workspace image as well as a `nros new` template. A row names the host services its image needs (`twin_peers`, an SNTP or DNS stand-in), and the lane starts them for the run.
