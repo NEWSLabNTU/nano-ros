@@ -79,7 +79,7 @@ read as zero.
 | workspace cargo image (`nros build`) | yes | `contract_inventory`, then `from_model_with(recorded)` | yes, when the record is `Some` |
 | cmake workspace (model road) | yes | `nros dev image entity-inventory --model`, then `from_model_with`; `NROS_PARAM_DECLARATION_STATUS` in the fragment | yes, when the record is `Some` |
 | Zephyr west entry (C/C++) | yes | `nros build`'s composed inventory, then `from_model_with` | yes, when the record is `Some` |
-| multi-entry shared runtime, cmake fragment | yes | `for_shared_runtime`, then `union_over_images` | yes, already |
+| multi-entry shared runtime, cmake fragment | yes | `for_shared_runtime`, then `union_over_images` | yes, when the record is `Some` and watched whole (it read any silent record as zero before) |
 | `--from-model` sizing descriptor | yes | `from_model_with(recorded)` | yes, when the record is `Some` |
 | cargo single-package leaf | yes, but unguarded | `from_model_with(model, recorded_params_for_leaf)` | **no, until its reader checks freshness**: `recorded_params_for_leaf` parses every `metadata/*.json` with no provenance check, so a stale `[]` reads as zero |
 | standalone cmake leaf (`--from-leaf`) | no | always `Absent` | no: keeps the default |
@@ -168,8 +168,11 @@ sidecar keeps the default.
   - the Rust source-metadata harness, which records into its own recorder
     and does not arm the watch yet, so a Rust component's sidecar states no
     watch.
-  The multi-entry fragment's `for_shared_runtime` keeps its own, older rule,
-  which does not ask for the watch; tightening it is left for its owner.
+  The multi-entry fragment's `for_shared_runtime` now asks the same
+  question through the same check: it read any silent record as zero, which
+  is the unsafe case for a node that allows undeclared parameters. A shared
+  runtime with such an image beside a declaring one refuses the union, so
+  the store keeps its default.
 - **Say why.** `--explain-sizing` (and the one-line summary) now names a
   built store whose parameter count nothing stated, with the reason and the
   `params: {}` remedy.
@@ -181,6 +184,8 @@ Tests:
 - the recorder's three watch states (nros `node_metadata`);
 - `imperative_param_census`: every route reported gives `true`, and
   `allow_undeclared_parameters(true)` turns it `false`;
-- `a_built_store_with_no_stated_count_is_named` (nros-sizing-descriptor).
+- `a_built_store_with_no_stated_count_is_named` (nros-sizing-descriptor);
+- `a_shared_runtime_image_whose_watch_broke_keeps_the_default`
+  (nros-cli-core).
 
 Not measured yet: a Pico image with no contract, built on this branch.

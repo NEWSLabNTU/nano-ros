@@ -3454,17 +3454,13 @@ impl ParamDeclarations {
     pub fn for_shared_runtime(
         model: &ros_launch_manifest_model::SystemModel,
         recorded: Option<&RecordedParams>,
+        whole: bool,
     ) -> Self {
-        let own = Self::from_model_with(model, recorded);
-        match (&own, recorded) {
-            (ParamDeclarations::Absent, Some(rec)) if !rec.is_empty() => {
-                ParamDeclarations::Declared {
-                    nodes: rec.keys().cloned().collect(),
-                    params: Vec::new(),
-                }
-            }
-            _ => own,
-        }
+        // Issue 2964 -- the single-image rule: a silent record is a zero only
+        // when every node's sidecar watched its declarations whole. Before,
+        // this read any silent record as zero, which is the unsafe case for a
+        // node that allows undeclared parameters.
+        Self::from_model_observed(model, recorded, whole)
     }
 
     // Issue 2964.
@@ -3844,6 +3840,13 @@ impl EntityInventory {
     /// never sized below what the code declares.
     pub fn recorded_params(&self) -> Option<&RecordedParams> {
         self.recorded_params.as_ref()
+    }
+
+    /// Issue 2964 -- whether [`Self::recorded_params`] is every launched
+    /// node's WHOLE declaration set (each sidecar said
+    /// `parameter_declarations_watched: true`).
+    pub fn recorded_params_whole(&self) -> bool {
+        self.recorded_params_whole
     }
 
     // Issue 2964.
@@ -10346,11 +10349,11 @@ mod from_model_tests {
         let union = ParamDeclarations::union_over_images(&[
             (
                 "mixed_params".into(),
-                ParamDeclarations::for_shared_runtime(&declaring, Some(&rec_declaring)),
+                ParamDeclarations::for_shared_runtime(&declaring, Some(&rec_declaring), true),
             ),
             (
                 "listener".into(),
-                ParamDeclarations::for_shared_runtime(&silent, Some(&rec_silent)),
+                ParamDeclarations::for_shared_runtime(&silent, Some(&rec_silent), true),
             ),
         ]);
         let ParamDeclarations::Declared { nodes, params } = union else {
@@ -10378,11 +10381,11 @@ mod from_model_tests {
         let unwatched = ParamDeclarations::union_over_images(&[
             (
                 "mixed_params".into(),
-                ParamDeclarations::for_shared_runtime(&declaring, Some(&rec_declaring)),
+                ParamDeclarations::for_shared_runtime(&declaring, Some(&rec_declaring), true),
             ),
             (
                 "listener".into(),
-                ParamDeclarations::for_shared_runtime(&silent, None),
+                ParamDeclarations::for_shared_runtime(&silent, None, true),
             ),
         ]);
         assert!(
@@ -10392,17 +10395,48 @@ mod from_model_tests {
         let all_silent = ParamDeclarations::union_over_images(&[
             (
                 "a".into(),
-                ParamDeclarations::for_shared_runtime(&silent, Some(&rec_silent)),
+                ParamDeclarations::for_shared_runtime(&silent, Some(&rec_silent), true),
             ),
             (
                 "b".into(),
-                ParamDeclarations::for_shared_runtime(&silent, Some(&rec_silent)),
+                ParamDeclarations::for_shared_runtime(&silent, Some(&rec_silent), true),
             ),
         ]);
         assert_eq!(all_silent, ParamDeclarations::Absent);
         assert_eq!(
             ParamDeclarations::from_model_with(&silent, Some(&rec_silent)),
             ParamDeclarations::Absent
+        );
+    }
+
+    /// Issue 2964 -- in a shared runtime too, a silent record is a zero only
+    /// when its watch held. An image with a node that allows undeclared
+    /// parameters (its sidecar says `parameter_declarations_watched: false`)
+    /// stays unknown, so beside a declaring image the union refuses and the
+    /// store keeps its default, as for an image nobody watched.
+    #[test]
+    fn a_shared_runtime_image_whose_watch_broke_keeps_the_default() {
+        let declaring = param_model(&["/mixed"], &[]);
+        let silent = param_model(&["/a"], &[]);
+        let rec_declaring = recorded(&[("/mixed", &[("gain", ParamType::Double)])]);
+        let rec_silent = recorded(&[("/a", &[])]);
+        assert_eq!(
+            ParamDeclarations::for_shared_runtime(&silent, Some(&rec_silent), false),
+            ParamDeclarations::Absent
+        );
+        let union = ParamDeclarations::union_over_images(&[
+            (
+                "mixed_params".into(),
+                ParamDeclarations::for_shared_runtime(&declaring, Some(&rec_declaring), true),
+            ),
+            (
+                "listener".into(),
+                ParamDeclarations::for_shared_runtime(&silent, Some(&rec_silent), false),
+            ),
+        ]);
+        assert!(
+            matches!(&union, ParamDeclarations::Refused { reason } if reason.contains("listener")),
+            "{union:?}"
         );
     }
 
