@@ -1525,7 +1525,7 @@ int8_t nros_platform_wake_park_until_us(void* w, uint64_t deadline_us) {
     return -1;
 }
 
-/* The finest park the function above can actually express, in microseconds.
+/* The finest park this port can actually express, in microseconds.
  *
  * The kernel rounds a `K_USEC` request up to whole ticks, so the tick period
  * is the real floor — NOT the millisecond the ABI signature suggests, and not
@@ -1533,8 +1533,18 @@ int8_t nros_platform_wake_park_until_us(void* w, uint64_t deadline_us) {
  * high on ThreadX and wrong low on POSIX). Rounded up, so a tick rate that
  * does not divide a second is never reported finer than it is. */
 uint64_t nros_platform_wake_park_granularity_us(void) {
-    return (uint64_t)((1000000 + CONFIG_SYS_CLOCK_TICKS_PER_SEC - 1) /
-                      CONFIG_SYS_CLOCK_TICKS_PER_SEC);
+    uint64_t tick_us = (uint64_t)((1000000 + CONFIG_SYS_CLOCK_TICKS_PER_SEC - 1) /
+                                  CONFIG_SYS_CLOCK_TICKS_PER_SEC);
+#ifdef NROS_ZEPHYR_HANDLE_PARK
+    /* Issue 2967 -- a handle park waits in `zsock_poll`, which takes whole
+     * milliseconds, so on a tick finer than 1 ms the executor would size a
+     * park (say 700 us) the poll cannot keep and wait 1 ms instead. Report
+     * the coarser of the two whenever a handle park is possible. */
+    if (tick_us < 1000) {
+        return 1000;
+    }
+#endif
+    return tick_us;
 }
 
 /* phase-521 W4 (RFC-0113 D3/D4) — the park over the wake object AND the RMW

@@ -67,6 +67,9 @@ extern int nros_cpp_executor_open_over_session(void* session_handle, const char*
 extern int nros_cpp_executor_set_active_groups(void* executor, const char* const* groups, size_t n);
 
 extern int nros_cpp_spin_once(void* handle, int32_t timeout_ms);
+/* Issue 2967 -- the entry budget, and the wait-paced cadence in microseconds. */
+extern int32_t nros_cpp_entry_spin_budget_ms(void* handle);
+extern int nros_cpp_executor_set_spin_nominal_wait_paced_us(void* handle, uint64_t us);
 
 /* issue 0636 option 3 — the sched task spin loop's scheduled gap.
  *
@@ -197,9 +200,6 @@ typedef struct {
 static int nuttx_spawn_next_sched_task(void* session_handle, uint8_t domain_id,
                                  const nros_sched_task_spec_t* remaining, size_t n_remaining,
                                  unsigned char* storage, size_t storage_stride);
-
-/* Minimum spin delay: 1 ms. */
-#define SPIN_PERIOD_FLOOR_MS 1u
 
 /* Clamp a raw sched task priority (int64 from the sched task spec) to the SCHED_FIFO range
  * NuttX accepts, so pthread_attr_setschedparam / pthread_setschedparam never
@@ -554,10 +554,13 @@ static void* nuttx_sched_task_thread(void* arg) {
      * yields the CPU cooperatively (on NuttX `zpico_spin_once` paces with
      * z_sleep_ms; the preemptive scheduler releases the CPU to the zenoh-pico
      * read/lease tasks). Mirrors the Rust nuttx run_sched_tasks sched task loop. */
-    uint32_t period_ms = (uint32_t)(ctx->spin_period_us / 1000u);
-    if (period_ms < SPIN_PERIOD_FLOOR_MS) {
-        period_ms = SPIN_PERIOD_FLOOR_MS;
-    }
+    /* Issue 2967 -- the period is the release grid's cadence, declared in
+     * microseconds; each park is bounded by the entry budget and ends at the
+     * next deadline or an arrival. Passing the period truncated to whole
+     * milliseconds made a 33,333 us cadence a 33,000 us grid. */
+    (void)nros_cpp_executor_set_spin_nominal_wait_paced_us(ctx->executor_storage,
+                                                           ctx->spin_period_us);
+    int32_t budget_ms = nros_cpp_entry_spin_budget_ms(ctx->executor_storage);
     /* issue 0636 option 3 — every iteration reaches a scheduling point. The
      * executor's own wait is skipped whenever a wake already fired, so under
      * sustained traffic this loop would otherwise never block, and under
@@ -569,7 +572,7 @@ static void* nuttx_sched_task_thread(void* arg) {
     int declared_prio = nuttx_clamp_priority(ctx->priority);
     for (;;) {
         uint64_t iter_start_ns = nros_platform_clock_ns();
-        nros_cpp_spin_once(ctx->executor_storage, (int32_t)period_ms);
+        nros_cpp_spin_once(ctx->executor_storage, budget_ms);
         gap_state = nros_sched_task_spin_gap_step(gap_state, iter_start_ns, nros_platform_clock_ns(),
                                             ctx->spin_period_us);
         nros_nuttx_report_sporadic_throttle(ctx->name, declared_prio, &throttle_reported);
@@ -927,10 +930,12 @@ int32_t nros_board_nuttx_run_sched_tasks_in(const char* locator, uint8_t domain_
      * timeout) so the boot session's zenoh handshake is driven from the spin
      * path and the CPU yields cooperatively (mirrors the Rust nuttx run_sched_tasks
      * boot loop). */
-    uint32_t period_ms = (uint32_t)(boot->spin_period_us / 1000u);
-    if (period_ms < SPIN_PERIOD_FLOOR_MS) {
-        period_ms = SPIN_PERIOD_FLOOR_MS;
-    }
+    /* Issue 2967 -- the period is the release grid's cadence, declared in
+     * microseconds; each park is bounded by the entry budget and ends at the
+     * next deadline or an arrival. Passing the period truncated to whole
+     * milliseconds made a 33,333 us cadence a 33,000 us grid. */
+    (void)nros_cpp_executor_set_spin_nominal_wait_paced_us(boot_storage, boot->spin_period_us);
+    int32_t budget_ms = nros_cpp_entry_spin_budget_ms(boot_storage);
     /* issue 0636 option 3 — every iteration reaches a scheduling point. The
      * executor's own wait is skipped whenever a wake already fired, so under
      * sustained traffic this loop would otherwise never block, and under
@@ -939,7 +944,7 @@ int32_t nros_board_nuttx_run_sched_tasks_in(const char* locator, uint8_t domain_
     uint64_t gap_state = 0;
     for (;;) {
         uint64_t iter_start_ns = nros_platform_clock_ns();
-        nros_cpp_spin_once(boot_storage, (int32_t)period_ms);
+        nros_cpp_spin_once(boot_storage, budget_ms);
         gap_state = nros_sched_task_spin_gap_step(gap_state, iter_start_ns, nros_platform_clock_ns(),
                                             boot->spin_period_us);
     }
@@ -1169,16 +1174,16 @@ static void* nuttx_level_thread(void* arg) {
     }
     nuttx_spawn_next_level(ctx->scheduler, ctx->rest, ctx->n_rest, ctx->rest_task_memory);
 
-    uint32_t period_ms = (uint32_t)(ctx->spin_period_us / 1000u);
-    if (period_ms < SPIN_PERIOD_FLOOR_MS) {
-        period_ms = SPIN_PERIOD_FLOOR_MS;
-    }
+    /* Issue 2967 -- a level's pass keeps no release grid: its park ends at
+     * its band's next deadline or an arrival, bounded by the entry budget
+     * (Linux's shape), not by the period truncated to milliseconds. */
+    int32_t budget_ms = nros_cpp_entry_spin_budget_ms(owner);
     uint64_t gap_state = 0;
     int throttle_reported = 0;
     int declared_prio = nuttx_clamp_priority(ctx->priority);
     for (;;) {
         uint64_t iter_start_ns = nros_platform_clock_ns();
-        nros_cpp_level_spin_once(ctx->scheduler, ctx->level, (int32_t)period_ms);
+        nros_cpp_level_spin_once(ctx->scheduler, ctx->level, budget_ms);
         gap_state = nros_sched_task_spin_gap_step(gap_state, iter_start_ns, nros_platform_clock_ns(),
                                             ctx->spin_period_us);
         nros_nuttx_report_sporadic_throttle(ctx->name, declared_prio, &throttle_reported);
@@ -1386,14 +1391,16 @@ int32_t nros_board_nuttx_run_levels_in(const char* locator, uint8_t domain_id,
     nuttx_spawn_next_level(scheduler, &sched_tasks[0], n_sched_tasks - 1u, task_memory);
     printf("nros: multi-level run — %u level(s) over one executor\n", (unsigned)n_sched_tasks);
 
-    uint32_t period_ms = (uint32_t)(boot->spin_period_us / 1000u);
-    if (period_ms < SPIN_PERIOD_FLOOR_MS) {
-        period_ms = SPIN_PERIOD_FLOOR_MS;
-    }
+    /* Issue 2967 -- the period is the release grid's cadence, declared in
+     * microseconds; each park is bounded by the entry budget and ends at the
+     * next deadline or an arrival. Passing the period truncated to whole
+     * milliseconds made a 33,333 us cadence a 33,000 us grid. */
+    (void)nros_cpp_executor_set_spin_nominal_wait_paced_us(boot_storage, boot->spin_period_us);
+    int32_t budget_ms = nros_cpp_entry_spin_budget_ms(boot_storage);
     uint64_t gap_state = 0;
     for (;;) {
         uint64_t iter_start_ns = nros_platform_clock_ns();
-        nros_cpp_spin_once(boot_storage, (int32_t)period_ms);
+        nros_cpp_spin_once(boot_storage, budget_ms);
         gap_state = nros_sched_task_spin_gap_step(gap_state, iter_start_ns, nros_platform_clock_ns(),
                                             boot->spin_period_us);
     }

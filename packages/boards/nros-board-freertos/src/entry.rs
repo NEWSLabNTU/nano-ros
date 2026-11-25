@@ -914,7 +914,12 @@ where
             sched_task.name
         ));
     }
-    let period = core::time::Duration::from_millis((sched_task.spin_period_us / 1000).max(1));
+    // Issue 2967 -- the park ends at the band's next deadline or an arrival,
+    // so it is bounded by the entry budget, not the period (Linux's
+    // phase-521 W6 shape). The period truncated to whole milliseconds was a
+    // second, coarser bound.
+    // SAFETY: on this level's own task, after its setup.
+    let period = unsafe { core.entry_spin_budget() };
     // issue 0636 option 3 — every iteration reaches a scheduling point. A
     // task that never blocks never lets a lower-priority level run. Costs
     // nothing while the passes do block.
@@ -1180,7 +1185,13 @@ where
     B::println(format_args!(
         "Multi-sched-task setup complete — entering boot-sched-task spin loop."
     ));
-    let period = core::time::Duration::from_millis((boot_sched_task.spin_period_us / 1000).max(1));
+    // Issue 2967 -- the boot level's pass judges release jitter against a
+    // grid: declare its period in microseconds, then bound each park by the
+    // entry budget, as the spawned levels do.
+    // SAFETY: on the boot level's own task, after every level's setup.
+    unsafe { core.set_boot_cadence_us(boot_sched_task.spin_period_us) };
+    // SAFETY: as above.
+    let period = unsafe { core.entry_spin_budget() };
     // issue 0636 option 3 — every iteration reaches a scheduling point. A
     // task that never blocks never lets a lower-priority level run. Costs
     // nothing while the passes do block.

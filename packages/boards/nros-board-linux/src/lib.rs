@@ -1128,6 +1128,12 @@ impl LinuxBoard {
                 // phase-521 W6 -- as the levels: park until the next deadline
                 // or an arrival. A termination signal posts the executor's
                 // wake object, which ends this park.
+                // Issue 2967 -- the boot level's pass judges release jitter
+                // against a grid. With no cadence declared the grid's period
+                // was this budget, up to a minute; declared, it is the boot
+                // sched task's period, as on every RTOS.
+                // SAFETY: the boot level's thread, no runtime borrow live.
+                unsafe { core.set_boot_cadence_us(boot_sched_task.spin_period_us) };
                 // SAFETY: the boot level's thread, no runtime borrow live.
                 let budget = unsafe { core.entry_spin_budget() };
                 let mut gap =
