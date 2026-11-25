@@ -117,9 +117,21 @@ Reading a record as zero is safe only where none of these applies:
    the default.
 3. Items 3 to 5 are probe properties. Item 4 needs its own answer: a
    record from a probe without `param-store` is no evidence of zero, so it
-   must not reach "observed none". Items 3 and 5 are a residual risk. How
-   a declaration past the store's bound fails at runtime, named or silent,
-   is checked and written here before the code relies on it.
+   must not reach "observed none". Items 3 and 5 are a residual risk,
+   bounded by how a declaration past the store fails at runtime, which is
+   named in every language (checked 2026-11-25):
+   - the runtime logs the node, the parameter, the store's capacity and the
+     knob that sizes it (`Executor::report_parameter_refused`, nros-node);
+   - Rust's declare returns `NodeError::ParameterRejected`, whose text names
+     `max_parameters` and the contract's `params:`;
+   - C returns `RCLC_RET_FULL` (`nros-c` `parameter.rs`);
+   - C++ returns `NROS_CPP_RET_FULL` and the node's error becomes
+     `PARAM_STORE_FULL_WHAT` (`params_shim.rs`, `rclcpp.hpp`).
+   Tests: nros-node's store-full cases (`store_full_probe_4018`) and the
+   C++ `param_store_full_runtime.cpp` fixture. So a smaller store turns an
+   unobserved declaration into a named, logged refusal at boot, not a
+   silent one. The code adds a case for the derived seed-only store: a
+   second declaration is refused with the same report.
 4. The cargo leaf reader checks sidecar freshness the way the workspace
    reader does. Until it does, that road keeps the default.
 5. The roads that observe nothing keep `Absent`, and `--explain-sizing`
