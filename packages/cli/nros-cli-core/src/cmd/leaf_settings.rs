@@ -1608,9 +1608,13 @@ pub fn write_shared(
                     ("cargo_config", img.cargo_config.as_deref().unwrap_or("")),
                     ("target", img.target.as_deref().unwrap_or("")),
                 ];
-                let class =
-                    crate::builder::shared_target::apply(&tdir, &env, &mut path_env, &extra)
-                        .map_err(|e| eyre!("`{}`'s shared build class: {e}", img.image_id))?;
+                let class = crate::builder::shared_target::apply(
+                    &crate::builder::shared_target::class_base(&tdir, &getenv),
+                    &env,
+                    &mut path_env,
+                    &extra,
+                )
+                .map_err(|e| eyre!("`{}`'s shared build class: {e}", img.image_id))?;
                 // phase-489 W6 — the class copy is ONE file for every image of
                 // the class, so its path must be ONE string. As a
                 // `relative = true` row it is resolved against THIS leaf's
@@ -1625,6 +1629,11 @@ pub fn write_shared(
                     path_env.retain(|k, _| k != desc_key);
                     env.insert(desc_key.to_string(), copy.display().to_string());
                 }
+                crate::builder::shared_target::absolute_rows_under_class_root(
+                    &mut env,
+                    &mut path_env,
+                    &getenv,
+                );
                 Some(class)
             }
             None => None,

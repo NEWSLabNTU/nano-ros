@@ -304,3 +304,77 @@ must come first:
 **Ruling (2026-11-25):** (c2), behind the two-leaf proof and a premise gate,
 after the re-measure of the tier-1 peak with the probe-key fix in. (c1) only
 if the proof fails.
+
+## (c2) built and proven (2026-11-25)
+
+Host 118, `main` at `5058187aec`. Three leaves of one build class
+(`int32-sink`, `int32-source`, `rosout-talker`; the lane's own `nros build`
+command per row) were built into one class build dir.
+
+**The premise holds.** Every shared nros crate gets one unit identity in every
+leaf: `nros_core` is `530686a2…` and `97c3f434…` (target and host) in each
+leaf's own dir, and those are the units the shared dir holds. A path package
+outside the cargo root is hashed by its absolute path, and every leaf reaches
+the nros crates outside its root. Crates whose FEATURES differ inside one class
+(`nros_log` with and without `platform-clock`, and the crates above it) get
+separate units side by side, which is correct: the class key hashes the
+environment, not the feature set. Same-name member packages (`talker_pkg` x5)
+never collide, because a generated entry reaches them outside its root too.
+The one root-relative unit is the ROOT package, and every lane root depends on
+a package of its own leaf (a generated entry on its members, a single-package
+root on its `generated/<pkg>_nros_derived`). The two `linux_entry` roots
+measured distinct (`7c2039fd…`, `9823b5c3…`).
+
+**Two inputs named the leaf, and both made sharing worthless.** A forced shared
+build dir recompiled 128 of 129 units on a no-change rebuild:
+
+- Issue 2322's `--remap-path-prefix=<workspace>=.` is a rustflag. Cargo keeps
+  rustflags out of `-C metadata` (so every leaf wrote the same file names) and
+  checks them in every fingerprint (so every unit read dirty).
+- The workspace road writes `NROS_SIZING_DESCRIPTOR` and `NROS_BOARD_TOML` as
+  `relative = true` rows, so their text carries the leaf
+  (`…/<leaf>/build/posix-zenoh/../../…`) and every build script watching them
+  re-ran: 8 of 9 units recompiled. phase-489 W6 had made the descriptor row
+  absolute on the single-package road for the same reason; the board row and
+  the workspace road were never covered.
+
+**What landed (lane only).** `NROS_BUILD_CLASS_ROOT`, exported by
+`workspace-fixtures-build.sh` as `$(nros_build_root)/fixture-classes`, holds
+every class dir instead of each leaf's `--target-dir`. Artifacts stay in each
+leaf's target dir, so no resolver moves. Under it:
+
+- an in-repo workspace remaps the CHECKOUT root, and the flag joins the class
+  key. Issue 2322's purpose is that a copied-out project builds byte-identical
+  from any directory (ruling 2026-11-19); an in-repo leaf never could, since
+  it reaches the nros crates by absolute path ("an in-tree workspace still
+  reproduces only at the same path"). So nothing it promised is lost. A
+  workspace outside the checkout, and every build without a class root
+  (users), keep the per-workspace remap. No test greps a remapped path;
+- every path-valued settings row is absolute (`absolute_rows_under_class_root`).
+  Without a class root the rows stay relative, so a user's leaf survives a
+  moved checkout.
+
+`just check shared-class-premise` checks the premise over the 70 rust
+`[[workspace_fixture]]` leaves: every path dependency that leaves its leaf is
+spelled as its real path and lies in no other lane leaf, and no two roots can
+write one root unit.
+
+**Measured** (warm `sccache`, the lane's `nros-relwithdebinfo` profile):
+
+| Build | Units compiled | Wall | Class dirs on disk |
+| --- | --- | --- | --- |
+| int32-sink, first of the class | 129 | 18.0 s | 532 MB |
+| int32-source, next | 9 | 13.2 s | 598 MB |
+| rosout-talker, next | 10 | 3.9 s | 655 MB |
+| int32-sink again, no change | 0 | 0.5 s | 655 MB |
+| int32-source again, no change | 0 | 0.5 s | 655 MB |
+| the three in parallel, shared (cold class) | 129 + 10 + 9 | 33.4 s | 655 MB |
+| the three in parallel, unshared (cold, today) | 129 + 129 + 127 | 20.5 s | 1.6 GB |
+
+Disk for the class drops 59 %. **Wall rises 63 % when a class's leaves run in
+parallel**: cargo locks a build dir for a whole invocation, so they queue
+(3–5 `Blocking waiting` lines each). The lane builds rows of DIFFERENT classes
+side by side, so the queue costs only within a class. Ordering the fan-out
+so that one row per class builds first, and the rest of each class trails
+behind other classes' rows, would keep the queue off the lane's critical
+path. That is the next step if the lane's wall time moves.

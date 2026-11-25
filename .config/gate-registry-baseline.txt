@@ -298,6 +298,7 @@ sdk-store-not-enumerated
 serdes-descriptors
 set-e-bare-assignment
 shared-cargo-dir-witness
+shared-class-premise
 single-rust-staticlib
 site-config
 sizes-header-mirrors
