@@ -213,9 +213,32 @@ its failed link's `zephyr_pre0.map`:
 | Zephyr `system_heap` | 16,384 | 16,384 |
 | zenoh shim `BUILTIN_INBOX` | 624 | 6,264 |
 
-The gap is the executor backing: one subscription adds 87,608 B, five
-times the overflow. That is the subscription's receive region, sized
-`(depth + 1)` times the per-subscription buffer at the default depth. The
-heap and the stacks are the same in both images. So the lever is the
-subscription's depth or buffer, not the queryable table, the heap or the
-stacks.
+The gap is the executor backing, 87,608 B more in the listener, five times
+the overflow. The heap and the stacks are the same in both images.
+
+### What the backing holds: the parameter store (2026-11-25, nros 118)
+
+It is NOT the subscription's receive region. A `system.contract.yaml`
+stating `KEEP_LAST(1)` for the listener's topic joins (the descriptor
+states `depth = 1`), and the overflow stays 16,344 B; a 1,024-byte
+subscription buffer on top changes nothing either.
+
+It is the parameter store, carved from the same backing. The talker
+template's code declares a parameter, so its store bounds are derived (one
+parameter, a 12-byte name, no strings). The listener, server and
+action-server declare none: their parameter status is `absent`, which by
+design is not "zero parameters", so every bound falls to the crate default
+(32 parameters, 64-byte names, 256-byte strings, 8 store slots). They
+still serve the parameter services, so that store is built. Stating
+`[image.<id>.knobs.params] max_parameters = 1` alone, with no contract:
+
+| Template | Default store | `max_parameters = 1` | Backing, default to 1 |
+| --- | --- | --- | --- |
+| listener | over by 16,344 B | 224,632 B (83.1 %) | 102,296 to 40,248 B |
+| server | over by 18,216 B | 226,504 B (83.8 %) | 104,344 to 42,296 B |
+| action-server | over by 33,152 B | 241,440 B (89.3 %) | 110,232 to 48,184 B |
+
+Even at one parameter the backing stays about 25 KB above the talker's,
+because the name and string bounds keep their 64 and 256 B defaults. A
+smaller second gap: the zenoh shim's `BUILTIN_INBOX` is 6,264 B in every
+non-talker row against 624 B in the talker.
