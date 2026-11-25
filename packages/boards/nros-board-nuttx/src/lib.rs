@@ -1217,7 +1217,16 @@ where
     // nothing, unlike the sporadic server kept off this sched task above.
     apply_sched_task_priority(boot_sched_task);
     // SAFETY: this is the boot level's thread.
-    nuttx_spin_sched_task_forever(boot_sched_task, |t| unsafe { core.spin_boot_once(t) });
+    // Issue 2967 -- the boot level's pass judges release jitter against a
+    // grid: declare its period in microseconds; the entry budget bounds each
+    // park.
+    // SAFETY: on the boot level's own thread, after every level's setup.
+    unsafe { core.set_boot_cadence_us(boot_sched_task.spin_period_us) };
+    // SAFETY: as above.
+    let budget = unsafe { core.entry_spin_budget() };
+    nuttx_spin_sched_task_forever(boot_sched_task, budget, |t| unsafe {
+        core.spin_boot_once(t)
+    });
 }
 
 // issue 2016 — the POSIX port's recursive priority-inheriting mutex, the level
@@ -1409,16 +1418,23 @@ where
         println!("nros: a level did not start: failing the boot");
         sys::exit_process(1);
     }
+    // Issue 2967 -- bounded by the entry budget, as on Linux (phase-521 W6):
+    // the park ends at the band's next deadline or an arrival.
+    // SAFETY: on this level's own thread, after its setup.
+    let budget = unsafe { core.entry_spin_budget() };
     // SAFETY: `worker` is this thread's, from `open_level`.
-    nuttx_spin_sched_task_forever(sched_task, |t| unsafe { core.spin_level_once(worker, t) });
+    nuttx_spin_sched_task_forever(sched_task, budget, |t| unsafe {
+        core.spin_level_once(worker, t)
+    });
     core::ptr::null_mut()
 }
 
-/// Drive a level's passes (`pass`, one of `LevelCore`'s) at its sched task's
-/// declared period, forever.
+/// Drive a level's passes (`pass`, one of `LevelCore`'s) forever, each park
+/// bounded by `budget` (the entry spin budget, issue 2967).
 #[cfg(target_os = "nuttx")]
 fn nuttx_spin_sched_task_forever(
     sched_task: &nros_platform::SchedTaskSpec<'_>,
+    budget: core::time::Duration,
     mut pass: impl FnMut(core::time::Duration) -> ::nros::SpinOnceResult,
 ) -> ! {
     // issue 0572 — which wait the executor's spin will take. The primary
@@ -1443,7 +1459,6 @@ fn nuttx_spin_sched_task_forever(
         wake_bytes
     );
 
-    let period_ms = ((sched_task.spin_period_us / 1000).max(1)) as u32;
     // issue 0572 — a per-sched-task heartbeat carrying the counts `spin_once` used to
     // discard. A sched task that dispatches NOTHING and a sched task that is not running at
     // all look identical from outside the guest (a silent topic), and that
@@ -1506,7 +1521,7 @@ fn nuttx_spin_sched_task_forever(
     let mut throttle_reported: i32 = 0;
     loop {
         let iter = gap.mark();
-        let r = pass(core::time::Duration::from_millis(period_ms as u64));
+        let r = pass(budget);
         if sched_task.priority > 0 {
             // SAFETY: `name_buf` is NUL-terminated and outlives the call;
             // `throttle_reported` is this loop's.

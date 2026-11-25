@@ -231,6 +231,30 @@ impl LevelCore {
         unsafe { self.with_runtime(|rt| rt.entry_spin_budget()) }
     }
 
+    // Issue 2967.
+    /// Declare the boot level's cadence, its sched task's `spin_period_us`, as
+    /// the period of the release grid its [`Self::spin_boot_once`] loop runs
+    /// on (`Executor::set_spin_nominal_wait_paced_us`).
+    ///
+    /// The boot level spins the executor's own pass, which judges release
+    /// jitter against a grid. With no cadence declared that grid's period is
+    /// the timeout, and the timeout is now [`Self::entry_spin_budget`], which
+    /// is not a cadence. Declared, the grid is the period in microseconds and
+    /// the budget stays a bound on each wait. A spawned level's pass keeps no
+    /// grid and needs none.
+    ///
+    /// # Safety
+    /// As [`Self::with_runtime`].
+    pub unsafe fn set_boot_cadence_us(&self, spin_period_us: u64) {
+        // SAFETY: the caller's contract.
+        unsafe {
+            self.with_runtime(|rt| {
+                rt.executor_mut()
+                    .set_spin_nominal_wait_paced_us(spin_period_us)
+            })
+        }
+    }
+
     /// Wake every level's worker and the boot level, for a
     /// runner that is stopping them: a level parked on the long budget would
     /// otherwise see its stop flag only at its next deadline. Lock-free.

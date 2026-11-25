@@ -644,12 +644,16 @@ where
         ));
         B::exit_failure();
     }
-    let period_ms = (sched_task.spin_period_us / 1000).max(1);
     B::println(format_args!(
-        "nros: sched task `{}` setup complete — spinning at {} ms",
-        sched_task.name, period_ms
+        "nros: sched task `{}` setup complete — period {} us",
+        sched_task.name, sched_task.spin_period_us
     ));
-    let period = core::time::Duration::from_millis(period_ms);
+    // Issue 2967 -- the park ends at the band's next deadline or an arrival,
+    // so it is bounded by the entry budget, not the period (Linux's
+    // phase-521 W6 shape). The period truncated to whole milliseconds was a
+    // second, coarser bound.
+    // SAFETY: on this level's own task, after its setup.
+    let period = unsafe { core.entry_spin_budget() };
     // issue 0636 option 3 — every iteration reaches a scheduling point.
     let mut gap = ::nros_platform::SchedTaskSpinGap::new(sched_task.spin_period_us);
     loop {
@@ -838,7 +842,13 @@ where
     B::println(format_args!(
         "Multi-sched-task setup complete — entering boot-sched-task spin loop."
     ));
-    let period = core::time::Duration::from_millis((boot_sched_task.spin_period_us / 1000).max(1));
+    // Issue 2967 -- the boot level's pass judges release jitter against a
+    // grid: declare its period in microseconds, then bound each park by the
+    // entry budget, as the spawned levels do.
+    // SAFETY: on the boot level's own task, after every level's setup.
+    unsafe { core.set_boot_cadence_us(boot_sched_task.spin_period_us) };
+    // SAFETY: as above.
+    let period = unsafe { core.entry_spin_budget() };
     let mut gap = ::nros_platform::SchedTaskSpinGap::new(boot_sched_task.spin_period_us);
     let deadline = SpinDeadline::from_ms(spin_ms);
     loop {

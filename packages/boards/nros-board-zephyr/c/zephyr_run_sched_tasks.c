@@ -244,6 +244,9 @@ static void zephyr_install_park(void* executor, const char* sched_task_name) {
 }
 
 extern int nros_cpp_spin_once(void* handle, int32_t timeout_ms);
+/* Issue 2967 -- the entry budget, and the wait-paced cadence in microseconds. */
+extern int32_t nros_cpp_entry_spin_budget_ms(void* handle);
+extern int nros_cpp_executor_set_spin_nominal_wait_paced_us(void* handle, uint64_t us);
 
 /* phase-509 P7/P9 (RFC-0108 D8) -- each row of the runner's table is one
  * level (a derived level, or an authored sched task, which is one band), placed by
@@ -471,9 +474,6 @@ typedef int (*zephyr_pool_create_fn)(void* (*entry)(void*), void* arg, int32_t p
                                      int* pin_rc);
 static zephyr_pool_create_fn zephyr_pool_create;
 
-/* Minimum spin delay: 1 ms. */
-#define SPIN_PERIOD_FLOOR_MS 1u
-
 /* zephyr_sched_task — body of each non-boot sched task.
  *
  * Opens a borrowed executor over the shared session, gates it to the sched task's
@@ -568,15 +568,15 @@ static void* zephyr_sched_task(void* arg) {
     /* The worker's loop: each pass parks on the level's own wake object (the
      * lock released) until its band's next timer, an arrival in its band, or
      * the period, then runs its band's ready callbacks. */
-    uint32_t period_ms = (uint32_t)(ctx->spin_period_us / 1000u);
-    if (period_ms < SPIN_PERIOD_FLOOR_MS) {
-        period_ms = SPIN_PERIOD_FLOOR_MS;
-    }
+    /* Issue 2967 -- a level's pass keeps no release grid: its park ends at
+     * its band's next deadline or an arrival, bounded by the entry budget
+     * (Linux's shape), not by the period truncated to milliseconds. */
+    int32_t budget_ms = nros_cpp_entry_spin_budget_ms(owner);
     /* issue 0636 option 3 — every iteration reaches a scheduling point. */
     uint64_t gap_state = 0;
     for (;;) {
         uint64_t iter_start_ns = nros_platform_clock_ns();
-        nros_cpp_level_spin_once(ctx->scheduler, ctx->level, (int32_t)period_ms);
+        nros_cpp_level_spin_once(ctx->scheduler, ctx->level, budget_ms);
         gap_state = nros_sched_task_spin_gap_step(gap_state, iter_start_ns, nros_platform_clock_ns(),
                                             ctx->spin_period_us);
     }
@@ -1171,10 +1171,12 @@ static int32_t zephyr_run_sched_tasks(const char* locator, uint8_t domain_id, co
      * timeout) so the boot session's zenoh handshake is driven from the spin
      * path and the CPU yields cooperatively (mirrors the Rust zephyr
      * run_sched_tasks boot loop). */
-    uint32_t period_ms = (uint32_t)(boot->spin_period_us / 1000u);
-    if (period_ms < SPIN_PERIOD_FLOOR_MS) {
-        period_ms = SPIN_PERIOD_FLOOR_MS;
-    }
+    /* Issue 2967 -- the period is the release grid's cadence, declared in
+     * microseconds; each park is bounded by the entry budget and ends at the
+     * next deadline or an arrival. Passing the period truncated to whole
+     * milliseconds made a 33,333 us cadence a 33,000 us grid. */
+    (void)nros_cpp_executor_set_spin_nominal_wait_paced_us(boot_storage, boot->spin_period_us);
+    int32_t budget_ms = nros_cpp_entry_spin_budget_ms(boot_storage);
     /* issue 0636 option 3 — every iteration reaches a scheduling point. The
      * executor's own wait is skipped whenever a wake already fired, so under
      * sustained traffic this loop would otherwise never block, and under
@@ -1183,7 +1185,7 @@ static int32_t zephyr_run_sched_tasks(const char* locator, uint8_t domain_id, co
     uint64_t gap_state = 0;
     for (;;) {
         uint64_t iter_start_ns = nros_platform_clock_ns();
-        nros_cpp_spin_once(boot_storage, (int32_t)period_ms);
+        nros_cpp_spin_once(boot_storage, budget_ms);
         gap_state = nros_sched_task_spin_gap_step(gap_state, iter_start_ns, nros_platform_clock_ns(),
                                             boot->spin_period_us);
     }
