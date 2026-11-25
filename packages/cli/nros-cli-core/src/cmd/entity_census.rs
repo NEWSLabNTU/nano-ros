@@ -797,8 +797,7 @@ fn take_census(args: TakeArgs) -> Result<()> {
             crate::builder::preflight::report(&missing)
         );
     }
-    let build_dir = root.join("build");
-    let plans = crate::cmd::build::plan_builds(&crate::cmd::configure::build_args(
+    let mut plans = crate::cmd::build::plan_builds(&crate::cmd::configure::build_args(
         &root,
         &native_q,
         &None,
@@ -806,11 +805,26 @@ fn take_census(args: TakeArgs) -> Result<()> {
         args.offline,
     ))
     .wrap_err_with(|| format!("planning the host image `{native_q}` the census is taken with"))?;
+    // Issue 2960 -- the stack-floor facts, through the same helper `nros
+    // build` arms its plans with, so the census build is configured like the
+    // image a person builds.
+    crate::cmd::build::arm_for_real_build(&mut plans, Some(&nano_ros_root), &root);
     // Issue 2386 -- the host image's own configure locates its answer through
     // its configure stamp, which a never-built workspace does not have yet:
-    // record it from the plan just made, as its configure would.
+    // record it from the plan just made, as its configure would. Recorded
+    // BEFORE the plans are moved to the census tree below: the stamp is the
+    // image's, and `nros build` reads it for `build/<coord>/cmake`.
     crate::cmd::configure::record_planned(&root, &native_q, &plans)
         .wrap_err_with(|| format!("recording the configure stamp of `{native_q}`"))?;
+    // Issue 2960 (user ruling 2026-11-25, RFC-0120 D1 amended) -- the census
+    // host build gets its OWN build tree. Under `NROS_LEAF_CENSUS_HOST` the
+    // configure is a different program (the CAN mock, no resolved seed, no
+    // census step), so building it into `build/<coord>/cmake` flipped that
+    // tree between two programs: the next `nros build` relinked the binary
+    // this census recorded, with different bytes on a runner, and the census
+    // read stale.
+    let build_dir =
+        retarget_to_census_tree(&root, &mut plans).unwrap_or_else(|| root.join("build"));
     for p in &plans {
         crate::cmd::build::build_host_image(p, &[(LEAF_CENSUS_HOST_ENV, "1")]).wrap_err_with(
             || format!("building the host image `{native_q}`; no census can be taken without it"),
@@ -1280,7 +1294,12 @@ fn take_model_in_build_with(
         Freshness::Missing(why) => ("missing", why),
     };
     let (what, why) = why;
-    let Some(rec) = read_host_build_record(&census) else {
+    // Issue 2960 -- a record from before the census tree moved names the
+    // image's own `build/<coord>/cmake`: re-running it would flip that tree to
+    // the census variant again. It is no record at all, so this census is
+    // re-taken (`take --image`, which `nros build` and the fixture prepass run
+    // first) rather than rebuilt in place.
+    let Some(rec) = read_host_build_record(&census).filter(|r| !record_names_shared_tree(r)) else {
         // Issue 2431 -- the configure's `check` lands a missing or stale
         // census as a WARNING when `[census] on_missing` / `on_stale` says
         // `warn`; the build step re-asked the question and refused it. Here
@@ -2959,6 +2978,69 @@ fn run_in_census_mode(
 /// A SEARCH and not a guess: the refusal below names every path tried, because
 /// "no such binary" with no list is the diagnostic that sends a person reading
 /// cmake.
+/// Issue 2960 -- does this host-build record rebuild an image's SHARED tree
+/// (`build/<coord>/cmake`, the shape every record had before the census tree
+/// moved to [`census_image_build_dir`])?
+fn record_names_shared_tree(rec: &HostBuildRecord) -> bool {
+    rec.steps
+        .iter()
+        .flat_map(|s| s.args.iter())
+        .any(|a| census_image_build_dir(a).is_some())
+}
+
+/// Issue 2960 -- where a WORKSPACE image's census host build goes:
+/// `build/nros/census-image/<coord>`, beside (never inside) the
+/// `build/<coord>/cmake` tree that `nros build <bringup>:linux`, `nros run`
+/// and the native fixture rows build into and read.
+///
+/// The census build is a different program from that image (it is configured
+/// under `NROS_LEAF_CENSUS_HOST`), so it needs a tree of its own: one
+/// configuration per build directory, the rule issue 0616 states for cargo
+/// target dirs. The other two census roads already have one, and this name is
+/// chosen not to share their namespace:
+/// - an OWNED entry: `build/nros/census-host/<bringup>/<image>`
+///   (`take_owned_census`), keyed by bringup name, which a coordinate could
+///   collide with;
+/// - a standalone LEAF: `<leaf>/build/census-host`.
+///
+/// `cmake_build_dir` is the plan's own `build/<coord>/cmake`; `None` for any
+/// other shape (the cargo road plans no cmake dir and keeps its tree).
+pub(crate) fn census_image_build_dir(cmake_build_dir: &str) -> Option<String> {
+    let coord = cmake_build_dir
+        .strip_prefix("build/")?
+        .strip_suffix("/cmake")?;
+    (!coord.is_empty()).then(|| format!("build/nros/census-image/{coord}"))
+}
+
+/// Move every CMake plan's configure (`-B`) and build (`--build`) from the
+/// image's tree to its census tree ([`census_image_build_dir`]), and return
+/// the census tree of the (one) image, absolute. `None` when no plan has a
+/// cmake build dir, so the caller keeps the workspace `build/` root.
+fn retarget_to_census_tree(
+    root: &Path,
+    plans: &mut [crate::cmd::build::ResolvedBuild],
+) -> Option<PathBuf> {
+    let mut census = None;
+    for p in plans.iter_mut() {
+        let Some(from) = p.cmake_build_dir.clone() else {
+            continue;
+        };
+        let Some(to) = census_image_build_dir(&from) else {
+            continue;
+        };
+        for h in [&mut p.configure, &mut p.handoff].into_iter().flatten() {
+            for a in h.args.iter_mut() {
+                if a.as_os_str() == std::ffi::OsStr::new(&from) {
+                    *a = to.clone().into();
+                }
+            }
+        }
+        census.get_or_insert_with(|| root.join(&to));
+        p.cmake_build_dir = Some(to);
+    }
+    census
+}
+
 fn locate_entry_binary(build: &Path, entry: &str) -> Result<PathBuf> {
     let mut candidates = vec![
         build.join("src").join(entry).join(entry),
@@ -4672,6 +4754,116 @@ executable=prog_b=/b/b
         });
         std::fs::write(census_path_for_model(&model), doc.to_string()).unwrap();
         model
+    }
+
+    /// Issue 2960 -- a workspace image's census tree is its own, beside the
+    /// image's `build/<coord>/cmake` and outside the owned road's
+    /// `build/nros/census-host/<bringup>/<image>`; nothing else maps.
+    #[test]
+    fn a_census_host_build_gets_its_own_tree_per_coordinate() {
+        // Spelled from a coordinate, as `cmake_build_dir_for` does.
+        let coord = "posix-zenoh-linux-service_bringup-linux_service_server";
+        let image_tree = format!("build/{coord}/cmake");
+        assert_eq!(
+            census_image_build_dir(&image_tree),
+            Some(format!("build/nros/census-image/{coord}"))
+        );
+        // Nothing else maps: no coordinate, another road's dir, another root,
+        // or a census tree itself.
+        for other in [
+            format!("build/{}", "cmake"),
+            format!("build/{coord}/{}", "cargo"),
+            format!("out/{coord}/{}", "cmake"),
+            format!("build/nros/census-image/{coord}"),
+        ] {
+            assert_eq!(census_image_build_dir(&other), None, "{other}");
+        }
+    }
+
+    /// Issue 2960 -- the census hashes the binary it RAN, in its own tree, so
+    /// a rebuild of the image's shared tree (the native fixture row, `nros
+    /// build <bringup>:linux`) leaves it fresh, and a change to the census
+    /// build's own binary makes it stale.
+    #[test]
+    fn a_rebuilt_shared_tree_leaves_the_census_fresh_and_a_census_tree_change_does_not() {
+        use crate::orchestration::metadata_refresh as mr;
+        let ws = tempfile::tempdir().expect("tempdir");
+        let ws = ws.path();
+        let census_bin = ws.join("build/nros/census-image/c/linux_entry");
+        let shared_bin = ws.join("build/c/cmake/linux_entry");
+        for b in [&census_bin, &shared_bin] {
+            std::fs::create_dir_all(b.parent().unwrap()).unwrap();
+            std::fs::write(b, "census variant").unwrap();
+        }
+        let dir = ws.join("build/nros/models/bringup");
+        std::fs::create_dir_all(&dir).unwrap();
+        let census = census_path_for_model(&dir.join("m.yaml"));
+        let doc = serde_json::json!({
+            "schema": CENSUS_SCHEMA,
+            "entry": "linux_entry",
+            "provenance": { "tool": "x", "inputs": [
+                { "role": "binary", "path": "build/nros/census-image/c/linux_entry",
+                  "digest": file_digest(&census_bin).unwrap() }
+            ]},
+            "census": { "version": mr::RECORDER_SCHEMA_VERSION, "nodes": [] },
+        });
+        std::fs::write(&census, doc.to_string()).unwrap();
+        assert!(matches!(census_freshness(&census, ws), Freshness::Fresh));
+        std::fs::write(&shared_bin, "the image as nros build makes it").unwrap();
+        assert!(
+            matches!(census_freshness(&census, ws), Freshness::Fresh),
+            "a rebuild of the shared tree must not touch the census"
+        );
+        std::fs::write(&census_bin, "a census build of changed code").unwrap();
+        assert!(matches!(census_freshness(&census, ws), Freshness::Stale(_)));
+    }
+
+    /// Issue 2960 -- a record from before the census tree moved rebuilds the
+    /// image's shared tree. It is treated as no record: a stale census then
+    /// refuses naming the take (which rebuilds into the census tree), and the
+    /// shared tree is never rebuilt as the census variant.
+    #[test]
+    fn a_record_that_names_the_shared_tree_is_not_rerun() {
+        let coord = "posix-zenoh-linux-b-linux";
+        let ws = tempfile::tempdir().expect("tempdir");
+        let model = model_census_fixture(ws.path());
+        let census = census_path_for_model(&model);
+        let shared = HostBuildRecord {
+            workspace: ws.path().to_path_buf(),
+            build_dir: ws.path().join("build"),
+            entry: "linux_entry".into(),
+            steps: vec![HostBuildStep {
+                // A step that would fail loudly if it ran.
+                program: "false".into(),
+                args: vec!["--build".into(), format!("build/{coord}/cmake").into()],
+                cwd: Some(ws.path().to_path_buf()),
+                env: vec![],
+            }],
+        };
+        assert!(record_names_shared_tree(&shared));
+        let ours = HostBuildRecord {
+            steps: vec![HostBuildStep {
+                args: vec![
+                    "--build".into(),
+                    format!("build/nros/census-image/{coord}").into(),
+                ],
+                ..shared.steps[0].clone()
+            }],
+            ..shared.clone()
+        };
+        assert!(!record_names_shared_tree(&ours));
+        write_host_build_record(&census, &shared).unwrap();
+        std::fs::write(
+            ws.path().join("src/comp/node.cpp"),
+            "// PUB /a\n// PUB /b\n",
+        )
+        .unwrap();
+        let err = format!(
+            "{:#}",
+            take_model_in_build_with(&model, ws.path(), 5, false, true, &Default::default())
+                .unwrap_err()
+        );
+        assert!(err.contains("nros configure --census"), "{err}");
     }
 
     /// Ruling R42 -- where a workspace take records the host sibling's build

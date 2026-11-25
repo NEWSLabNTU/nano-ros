@@ -4258,18 +4258,14 @@ pub fn run(args: Args) -> Result<()> {
     }
     if let Some(tool) = args.check {
         retarget_to_check(&mut plans, tool)?;
+        // Issue 2400 W2b / issue 2461 — the image's stack-floor key and raise
+        // opt-in reach every cmake configure, freshly each time.
+        crate::cmd::stack_floor_raise::arm_cmake(&mut plans);
     } else {
-        // Issue 2400 W5 — a type-check links nothing, so only a real build is
-        // armed for the post-cargo stack walk.
         let nros_root =
             crate::orchestration::nano_ros_root::resolve(args.nano_ros_path.clone(), &root);
-        crate::cmd::stack_floor::arm(&mut plans, nros_root.as_deref(), Some(&root), &|k| {
-            std::env::var_os(k)
-        });
+        arm_for_real_build(&mut plans, nros_root.as_deref(), &root);
     }
-    // Issue 2400 W2b / issue 2461 — the image's stack-floor key and raise
-    // opt-in reach every cmake configure, freshly each time.
-    crate::cmd::stack_floor_raise::arm_cmake(&mut plans);
     pin_this_project(&args)?;
     if !args.dry_run {
         let drifts = drift_before_build(&plans, args.nano_ros_path.clone())?;
@@ -5013,6 +5009,35 @@ fn perform_plan(
 /// 5 would run, and nothing else. The workspace census builds its host sibling
 /// this way: layer 0 may build a host image by calling the host tool, and
 /// never runs `nros build` (which is layer 2). `env` is added to each step.
+/// Issue 2960 -- every change a REAL build makes to its plans after planning
+/// them, in one place, so that everything else that builds an image into the
+/// same build dir builds it the same way.
+///
+/// The census `take` builds a workspace's host image into the directory
+/// `nros build <bringup>:linux` and the native fixture rows build into. It
+/// planned that image with `plan_builds` and built it without these two
+/// steps, so the next `nros build` found a different cmake cache (the
+/// stack-floor `-D`s) and a different cargo environment (the stack walk's
+/// RUSTFLAGS/CFLAGS), re-ran the configure and RELINKED the binary the census
+/// had just recorded. A cross configure checking that census while a
+/// parallel fixture stage relinked it read a half-written file and refused it
+/// as stale (run-matrix 45422927491, release blocker B32).
+///
+/// - Issue 2400 W5: arm the post-build stack walk (a type-check links nothing,
+///   so `--check` does not come here).
+/// - Issue 2400 W2b / issue 2461: give every cmake configure the image's
+///   stack-floor key and raise opt-in, freshly each time.
+pub(crate) fn arm_for_real_build(
+    plans: &mut [ResolvedBuild],
+    nros_root: Option<&std::path::Path>,
+    workspace_root: &std::path::Path,
+) {
+    crate::cmd::stack_floor::arm(plans, nros_root, Some(workspace_root), &|k| {
+        std::env::var_os(k)
+    });
+    crate::cmd::stack_floor_raise::arm_cmake(plans);
+}
+
 pub(crate) fn build_host_image(p: &ResolvedBuild, env: &[(&str, &str)]) -> Result<()> {
     let mut p = p.clone();
     for h in [&mut p.kernel, &mut p.configure, &mut p.handoff]
