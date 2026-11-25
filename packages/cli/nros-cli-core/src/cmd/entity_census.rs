@@ -4835,7 +4835,7 @@ executable=prog_b=/b/b
             steps: vec![HostBuildStep {
                 // A step that would fail loudly if it ran.
                 program: "false".into(),
-                args: vec!["--build".into(), format!("build/{coord}/cmake").into()],
+                args: vec!["--build".into(), format!("build/{coord}/cmake")],
                 cwd: Some(ws.path().to_path_buf()),
                 env: vec![],
             }],
@@ -4843,10 +4843,7 @@ executable=prog_b=/b/b
         assert!(record_names_shared_tree(&shared));
         let ours = HostBuildRecord {
             steps: vec![HostBuildStep {
-                args: vec![
-                    "--build".into(),
-                    format!("build/nros/census-image/{coord}").into(),
-                ],
+                args: vec!["--build".into(), format!("build/nros/census-image/{coord}")],
                 ..shared.steps[0].clone()
             }],
             ..shared.clone()
