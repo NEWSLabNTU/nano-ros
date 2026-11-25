@@ -156,6 +156,28 @@ states what fits; the templates keep the stock interfaces. The fix drops
 the board's queryable cap, so the table derives from each image's
 declarations (`CONFIG_NROS_MAX_QUERYABLES` = -1), as on the Nucleo, and
 drops the single-package scaffolder's Pico opt-out, so both roads write the
-same image. Whether each Pico
-row then fits 264 KiB is the sweep's next answer, recorded here with each
-row's RAM use.
+same image.
+
+### Pico sweep with the cap dropped (2026-11-25, 61476d0bb2, nros 241)
+
+264 KiB = 270,336 B of SRAM. RAM is the linker's `RAM:` line.
+
+| Template | Lang | Result | RAM |
+| --- | --- | --- | --- |
+| talker | c | builds | 181,528 B (67.15 %) |
+| talker | cpp | builds | 180,736 B (66.86 %) |
+| listener | c | RAM overflow | over by 4,832 B |
+| listener | cpp | RAM overflow | over by 296 B |
+| server | c | RAM overflow | over by 6,160 B |
+| server | cpp | RAM overflow | over by 4,928 B |
+| action-server | c | RAM overflow | over by 18,992 B |
+| action-server | cpp | RAM overflow | over by 17,608 B |
+| all four | rust | `portable-atomic` fails to compile | (no link) |
+
+So the ruling's premise, that the stock interfaces fit once the cap is
+dropped, holds for the talkers only. The derived queryable table is not what
+overflows: the talker carries the same stock interfaces (eleven queryables)
+at 67 %, while the listener, which adds one subscription and no queryable,
+needs about 94 KB more (275,168 B against 181,528 B). Where that 94 KB goes
+is the next measurement. The Rust compile error is separate from the RAM
+question; it is recorded here once reproduced.
