@@ -12,6 +12,7 @@ status word.
 | Board package | Status | Runs on | Evidence |
 |---|---|---|---|
 | `nros-board-linux` (Linux) | Verified on host (daily) | host executable | [evidence](board-support-levels.md#linux) |
+| `nros-board-linux` (linux-aarch64-musl) | Not supported | `qemu-user:aarch64` (twin) | [evidence](board-support-levels.md#linux-aarch64-musl) |
 | `nros-board-zephyr` (ZephyrNativeSim) | Verified on host (daily) | host executable | [evidence](board-support-levels.md#zephyr-native-sim) |
 | `nros-board-mps3-an536-freertos` | Builds | `qemu:mps3-an536` (twin) | [evidence](board-support-levels.md#mps3-an536-freertos) |
 | `nros-board-mps2-an385-freertos` (FreertosMps2) | Verified in emulator (daily) | `qemu:mps2-an385` | [evidence](board-support-levels.md#mps2-an385-freertos) |

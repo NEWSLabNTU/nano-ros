@@ -610,6 +610,9 @@ pub const BOARD_KEYS: &[(&str, BoardFamily)] = &[
     // `posix` is the PLATFORM and no board's name. `board_key_table.rs` holds
     // this row, `HOST_BOARD_KEYS`, `BOARD_PATHS` and the descriptor together.
     ("linux", BoardFamily::Linux),
+    // Issue 2852 — a Linux cross board: the same runtime, cross-built
+    // (`nros_orchestration_ir::LINUX_CROSS_BOARD_KEYS`).
+    ("linux-aarch64-musl", BoardFamily::Linux),
     // ONE key for the zephyr descriptor. `native_sim/native/64` was a second
     // from phase-445 W5 until issue 1519, because bringups authored it as an
     // image board; that is Zephyr's id, which `nros build` now refuses on an
@@ -935,10 +938,11 @@ mod tests {
         // Phase-524 W3: plus `nucleo-f767zi-zephyr` and `rpi-pico-w-zephyr`.
         // Phase-553 W4: plus the four bare-metal descriptor names and the
         // bare `mps2-an385` Rust key. Issue 2631: plus `s32z270-rtu0-zephyr`.
-        // Issue 2632: plus `s32z270-freertos-rtd`.
+        // Issue 2632: plus `s32z270-freertos-rtd`. Issue 2852: plus the Linux
+        // cross board `linux-aarch64-musl`.
         assert_eq!(
             BOARD_KEYS.len(),
-            29,
+            30,
             "a key was added or removed without a row"
         );
     }

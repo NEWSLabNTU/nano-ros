@@ -285,6 +285,21 @@ pub fn is_host_board_key(key: &str) -> bool {
     HOST_BOARD_KEYS.contains(&key)
 }
 
+// Issue 2852 (phase-589 W5): the host-board invariant is "posix, hosted, and
+// no target triple"; a cross triple makes a Linux board a cross board.
+/// The Linux boards that are NOT the host: the same runtime
+/// (`nros-board-linux`, the posix platform, a hosted `main`) cross-built for
+/// another target, such as `linux-aarch64-musl`. Each is one descriptor whose
+/// `[[board]]` states a target triple. They are never [`is_host_board_key`]:
+/// their image is not a host process.
+pub const LINUX_CROSS_BOARD_KEYS: &[&str] = &["linux-aarch64-musl"];
+
+/// Whether `key` selects a board whose runtime is `nros-board-linux`: the
+/// host board or a Linux cross board.
+pub fn is_linux_board_key(key: &str) -> bool {
+    is_host_board_key(key) || LINUX_CROSS_BOARD_KEYS.contains(&key)
+}
+
 // RFC-0111 D2.
 /// The framework a board boots when its descriptor lists none.
 pub const DEFAULT_FRAMEWORK: &str = "owned-spin";
@@ -587,6 +602,8 @@ pub fn image_framework(
 pub const BOARD_PATHS: &[(&str, &str, bool)] = &[
     // The host board's descriptor `names`, exactly: see [`HOST_BOARD_KEYS`].
     ("linux", "::nros_board_linux::LinuxBoard", true),
+    // The Linux cross boards: see [`LINUX_CROSS_BOARD_KEYS`].
+    ("linux-aarch64-musl", "::nros_board_linux::LinuxBoard", true),
     (
         "freertos",
         "::nros_board_mps2_an385_freertos::Mps2An385",

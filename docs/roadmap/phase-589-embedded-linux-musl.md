@@ -87,7 +87,9 @@ Each piece of hand wiring is a work item below.
 ### W5 — An in-tree musl board
 
 - **Owner:** nros 175 (taken 2026-11-25).
-- **Status:** OPEN (issue 2852; in progress, PR to follow).
+- **Status:** OPEN (issue 2852). The board builds and runs under QEMU user
+  mode (2026-11-25); its stack statement and the device run are open (the
+  issue's acceptance table).
 - **What:** an aarch64 hosted musl board, its target in the SDK index and the
   toolchain, a provisioned C cross compiler with the flags cc-rs needs, the
   stack it states, and a `[board.run]` that deploys to and starts on a device.

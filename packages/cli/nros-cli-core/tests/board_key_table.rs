@@ -774,13 +774,31 @@ fn the_host_board_keys_are_one_set_everywhere() {
     use nros_cli_core::orchestration::board_descriptor::BoardCatalog;
 
     let catalog = BoardCatalog::load_with_extra(&repo_root(), &[]).expect("in-tree board catalog");
-    let host: Vec<_> = catalog
+    // Issue 2852 — the HOST board is the Linux-family descriptor with no target
+    // triple. One that states a triple is a Linux CROSS board
+    // (`LINUX_CROSS_BOARD_KEYS`): the same runtime, built for another target,
+    // and never the host. Each table below holds the host names plus, where
+    // the table is about the runtime rather than the host, the cross names.
+    let (host, cross): (Vec<_>, Vec<_>) = catalog
         .descriptors()
         .iter()
         .filter(|d| d.platform.board_family() == Some(BoardFamily::Linux))
-        .collect();
+        .partition(|d| d.target.is_none());
     assert_eq!(host.len(), 1, "exactly one host board descriptor");
     let descriptor: BTreeSet<&str> = host[0].names.iter().map(String::as_str).collect();
+    let cross_names: BTreeSet<&str> = cross
+        .iter()
+        .flat_map(|d| d.names.iter().map(String::as_str))
+        .collect();
+    assert_eq!(
+        cross_names,
+        nros_orchestration_ir::LINUX_CROSS_BOARD_KEYS
+            .iter()
+            .copied()
+            .collect::<BTreeSet<_>>(),
+        "LINUX_CROSS_BOARD_KEYS vs the Linux descriptors that state a target triple"
+    );
+    let linux: BTreeSet<&str> = descriptor.union(&cross_names).copied().collect();
     assert_eq!(
         descriptor,
         BTreeSet::from(["linux"]),
@@ -824,19 +842,19 @@ fn the_host_board_keys_are_one_set_everywhere() {
         "HOST_BOARD_KEYS vs the descriptor's names"
     );
     assert_eq!(
-        family, descriptor,
-        "BOARD_KEYS' Linux rows vs the descriptor's names"
+        family, linux,
+        "BOARD_KEYS' Linux rows vs the Linux descriptors' names (host and cross)"
     );
     assert_eq!(
-        zst, descriptor,
-        "BOARD_PATHS' LinuxBoard rows vs the descriptor's names"
+        zst, linux,
+        "BOARD_PATHS' LinuxBoard rows vs the Linux descriptors' names (host and cross)"
     );
     assert_eq!(
-        sizing, descriptor,
-        "board_honors_entry_sizing vs the descriptor's names"
+        sizing, linux,
+        "board_honors_entry_sizing vs the Linux descriptors' names (host and cross)"
     );
     assert_eq!(
-        sdk, descriptor,
+        sdk, linux,
         "nros-sdk-index.toml's posix-platform [board.*] keys vs the descriptor's names \
          (what `nros setup <board>` resolves)"
     );

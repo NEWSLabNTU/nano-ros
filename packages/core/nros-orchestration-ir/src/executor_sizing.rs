@@ -206,15 +206,16 @@ pub fn derive_max_callbacks(counted: usize) -> usize {
 /// the entry bake emits (`BoardEntry::run_with_deploy_sized` →
 /// `Executor::open_sized`).
 ///
-/// Only the hosted boards override it; every firmware board takes the default
-/// trait body, which drops the sizing and opens at the build-time `MAX_CBS`.
+/// Only the hosted boards override it (`nros-board-linux`, on the host board
+/// and the Linux cross boards); every firmware board takes the default trait
+/// body, which drops the sizing and opens at the build-time `MAX_CBS`.
 /// The bakes use this to decide whether a derived sizing actually fixes an
 /// over-capacity model or whether the user must raise `NROS_EXECUTOR_MAX_CBS`.
 /// `None` (the macro's explicit `board = <Zst>` form, where no deploy key was
 /// read) is "unknown" — reported as not honoring is a false alarm, so callers
 /// skip the check instead.
 pub fn board_honors_entry_sizing(deploy_key: &str) -> bool {
-    crate::is_host_board_key(deploy_key)
+    crate::is_linux_board_key(deploy_key)
 }
 
 #[cfg(test)]
