@@ -1,15 +1,17 @@
 ---
 id: 2959
 title: "The baremetal mps2 latency cells went red in the nros12 release tier 2 from the run's own QEMU guests and host load, not from the code"
-status: open
+status: resolved
+resolved: 2026-11-26
+resolved_in: "#4835 (the isolation); this change records the acceptance"
 type: bug
 severity: high
 area: [ci, testing, qemu]
-related: [issue-2540, issue-2706]
+related: [issue-2540, issue-2706, phase-591]
 found: 2026-11-24
 ---
 
-**Home:** [phase-590](../roadmap/phase-590-nros12-release-plan.md), release
+**Home:** [phase-590](../../roadmap/phase-590-nros12-release-plan.md), release
 blocker B31.
 
 ## What happened
@@ -96,3 +98,22 @@ rest:
 
 Tier 2 green on main in the re-cut's evidence run, with both cells run
 under the new isolation.
+
+## Resolved (2026-11-26): acceptance met
+
+The release dispatch at `01388e07a3` (run 45684820840) ran both cells under
+the #4835 isolation on the 118 runner, and they passed in both of its tier-2
+jobs:
+
+| Cell | tier 2 (job 139454519217) | tier-2 nightly (job 139498579863) |
+| --- | --- | --- |
+| `emulator::test_qemu_rtic_levels_preempt_and_wake_on_time` | PASS 9.6 s | PASS 9.7 s |
+| `isr_wake_rtos::a_timer_interrupt_wakes_the_parked_executor_on_baremetal_mps2` | PASS 2.3 s | PASS 2.3 s |
+
+Tier 2's verdict job reads "cells ran and passed". The nightly's red that run
+was B42 (issue 2975, `test-ignored`), not these cells.
+
+The later reds on these cells in the tier-2 nightly of 2026-11-25 12:50Z were
+release blocker B38: wfi wake latency on an idle host, a different cause. B38
+merged as #4866. The two rules above (read host load first; quiet hosts for
+release evidence) stay in force.
