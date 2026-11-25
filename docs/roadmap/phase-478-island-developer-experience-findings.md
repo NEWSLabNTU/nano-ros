@@ -812,20 +812,20 @@ AN536) stay green.
 | the probe seeds launch values (C++ `declare_parameter` defaults kept, P3) | fixed on main, `a7574ca6eb` | issue 2640 ([phase-566](phase-566-probe-launch-seeds.md)); T4 |
 | Zephyr root adds packages in `<depend>` order (the Autoware add-once guards) | fixed; the island dropped the guards | issue 2756 |
 | owned west entry: deploy, workspace modules, nested bringup census, `os_config` base | fixed; used on `nano-ros-next` | issues 2861, 2862, 2864 |
-| owned west entry: `NROS_INTERFACE_SEARCH_PATH` (`asi_tests/asi_*_zephyr/CMakeLists.txt:39-40`) | fixed in nano-ros (2876 resolved); the island drops its lines next | issue 2876, I36 |
+| owned west entry: `NROS_INTERFACE_SEARCH_PATH` (`asi_tests/asi_*_zephyr/CMakeLists.txt:39-40`) | done: fixed in nano-ros (2876 resolved); the island dropped its lines | issue 2876, I36 |
 | owned entry that never starts nano-ros on the host gets a census (`can_output_test_bringup` `[census] on_missing = "warn"`) | fixed, PR #4671; the island states `runs_nano_ros = false` on `nano-ros-next` `56b9971` | 2871 (archived), I45 (done) |
 | owned entry census adds the entry's workspace `<depend>`s (FreeRTOS `asi_unit_test` / `asi_dds_loopback_test` `add_subdirectory(asi_common)` fallback) | fixed 2026-11-25: the census adds the probe's closure; island fallback removal pending (T4) | issue 2899, I50 |
 | owned census goes stale when the entry's CMakeLists changes (a stale census masked issue 2899 locally) | fixed 2026-11-25 | issue 2900, I51 |
 | the probe seeds the parameters instances agree on when they disagree on others (controller's 148 `declare_parameter` defaults, P3) | open | issue 2901, I52 |
 | `nros run` `--forbid`, `--settle`, `--zephyr-workspace` | fixed; used on `nano-ros-next` | issue 2863 |
-| the Zephyr workspace ladder skips the project's west workspace (`run-zephyr-fvp-ci.sh:202-213`, `--zephyr-workspace` on every call) | fixed in nano-ros (2877 resolved); the island drops its flag next | issue 2877, I37 |
-| the island's last Zephyr patch, an out-of-tree tracing backend (`patches/zephyr/0003-*`, `scripts/apply-zephyr-patches.sh`) | declined in 2766, NOT FILED as its own question | issue 2878, I38 |
+| the Zephyr workspace ladder skips the project's west workspace (`run-zephyr-fvp-ci.sh:202-213`, `--zephyr-workspace` on every call) | done: fixed in nano-ros (2877 resolved); the island dropped its flag | issue 2877, I37 |
+| the island's last Zephyr patch, an out-of-tree tracing backend (`patches/zephyr/0003-*`, `scripts/apply-zephyr-patches.sh`) | done: ruled in 2878 (resolved); the island dropped its patch | issue 2878, I38 |
 | S32Z network: board network file, VLAN, second interface (`network_config.cpp`, the last `PLATFORM_*` reader; the DHCP sleep in `board_network_hook.cpp`) | fixed in nano-ros for one interface with its VLAN (2879 resolved; a second interface is an open decision); the island names the file next | issue 2879, I39 |
 | S32Z Zephyr module pins (`actuation_module/west.yml`: `cmsis`, `hal_nxp`, `zephyr-lang-rust` by hand) | fixed in nano-ros (2880 resolved); the island imports the fragment next | issue 2880, I40 |
-| compile-time log floor (`common/logger/logger.hpp`, `CONFIG_LOG_LEVEL`, P4) | NOT FILED | issue 2881, I41 |
-| a release past nros11 (branch `nano-ros` on `0.6.0-nros11`; everything else on `nano-ros-next` with a source CLI) | NOT FILED | issue 2882, I42; planned by [phase-590](phase-590-nros12-release-plan.md) |
-| `halt` after `platform` on a "none" port is unreachable (island writes `sntp` alone, P5) | NOT FILED | issue 2883, tracked by [phase-582](phase-582-wall-clock-source.md) |
-| SNTP re-sync paced on guest time (`sntp_resync_interval_ms = 0` on every image, P5) | NOT FILED | issue 2884, tracked by [phase-582](phase-582-wall-clock-source.md) |
+| compile-time log floor (`common/logger/logger.hpp`, `CONFIG_LOG_LEVEL`, P4) | done: fixed in nano-ros (2881 resolved); the island dropped its gating | issue 2881, I41 |
+| a release past nros11 (branch `nano-ros` on `0.6.0-nros11`; everything else on `nano-ros-next` with a source CLI) | filed | issue 2882, I42; planned by [phase-590](phase-590-nros12-release-plan.md) |
+| `halt` after `platform` on a "none" port is unreachable (island writes `sntp` alone, P5) | 2883 resolved | issue 2883, tracked by [phase-582](phase-582-wall-clock-source.md) |
+| SNTP re-sync paced on guest time (`sntp_resync_interval_ms = 0` on every image, P5) | filed | issue 2884, tracked by [phase-582](phase-582-wall-clock-source.md) |
 | SNTP re-sync thread stack fixed at 2048 B (7024 B measured on the FVP) | filed with its fix, in review (PR #4632; the issue file lands with it) | [phase-582](phase-582-wall-clock-source.md) W3; I44 needs it |
 | `board` clock re-asked on an interval | open follow-up; the island does not need it today | issue 2866 ([phase-582](phase-582-wall-clock-source.md)) |
 | FreeRTOS wall clock resolves after the network (`fallback_settle_ms = 6000` on an536, s32z2) | fixed, PR #4639; resolved and archived | issue 2865 ([phase-582](phase-582-wall-clock-source.md)); I49 |
@@ -846,8 +846,10 @@ AN536) stay green.
   generated carriers held to one search path); the island deletes the three
   `set(NROS_INTERFACE_SEARCH_PATH ...)` lines.
 - **Status:** the nano-ros half is done: `nros build` passes the search path
-  on the owned entry's west line (issue 2876, resolved). The island's
-  deletion waits on its pin.
+  on the owned entry's west line (issue 2876, resolved). Done on the
+  island: its three `asi_tests` Zephyr CMakeLists set no search path (ASI `nano-ros-next` at f60f0c5 (pin 55d9a6d761, CI run 45337319462)).
+  The one `set()` left, in `test/zephyr_app`, is deliberate: it puts that
+  app's own `src/` first.
 
 ### I37 -- the Zephyr ladder finds the project's west workspace
 
@@ -858,7 +860,8 @@ AN536) stay green.
   with no `--zephyr-workspace`.
 - **Status:** the nano-ros half is done: the ladder takes the project's west
   workspace below `$NROS_ZEPHYR_WORKSPACE` and above the store, and says so
-  (issue 2877, resolved). The island's deletion waits on its pin.
+  (issue 2877, resolved). Done on the island: its FVP lane passes no
+  `--zephyr-workspace` (ASI `nano-ros-next` at f60f0c5 (pin 55d9a6d761, CI run 45337319462)).
 
 ### I38 -- a ruling on the out-of-tree tracing backend patch
 
@@ -870,8 +873,8 @@ AN536) stay green.
 - **Status:** done on the nano-ros side: ruled the first answer. Both patch
   sets (3.7 and 4.4) add `CONFIG_TRACING_BACKEND_CUSTOM(_NAME)`, and
   `just zephyr test-tracing-custom-backend` shows an image's own backend
-  receive the CTF stream on both lines (issue 2878, resolved). The island's
-  deletion waits on its pin.
+  receive the CTF stream on both lines (issue 2878, resolved). Done on the
+  island: `patches/` and `scripts/apply-zephyr-patches.sh` are gone (ASI `nano-ros-next` at f60f0c5 (pin 55d9a6d761, CI run 45337319462)).
 
 ### I39 -- the S32Z network from a board network file
 
@@ -912,7 +915,9 @@ AN536) stay green.
   evaluated); the island's `log_*` shim loses its `CONFIG_LOG_LEVEL` gating.
 - **Status:** the nano-ros half is done: `RCLCPP_LOG_MIN_SEVERITY` and its C
   twin `RCLC_LOG_MIN_SEVERITY`, set by a compile definition (issue 2881,
-  resolved). The island's deletion waits on its pin.
+  resolved). Done on the island: its `log_*` macros sit on
+  `RCLC_LOG_MIN_SEVERITY`, which `asi_common` sets from the image's
+  `log.max_level`; the `CONFIG_LOG_LEVEL` gating is gone (ASI `nano-ros-next` at f60f0c5 (pin 55d9a6d761, CI run 45337319462)).
 
 ### I42 -- a release past nros11
 
@@ -1220,10 +1225,10 @@ island switch.
       pin, refusing what the launcher refuses (issue 2770).
 - [x] I35: `nros doctor` reports a toolchain pin that disagrees with
       `west.yml`'s nano-ros revision (issue 2771).
-- [ ] I36: an owned west entry configures with the workspace's `src/` on
+- [x] I36: an owned west entry configures with the workspace's `src/` on
       `NROS_INTERFACE_SEARCH_PATH`; the island's three hand-set lines go
       (issue 2876).
-- [ ] I37: the Zephyr workspace ladder takes the project's own west
+- [x] I37: the Zephyr workspace ladder takes the project's own west
       workspace above the store's and says so; the island's FVP lane names
       no `--zephyr-workspace` (issue 2877).
 - [x] I38: the out-of-tree tracing backend patch ruled and built or
@@ -1233,7 +1238,7 @@ island switch.
       island's `network_config.cpp` and `PLATFORM_*` defines go (issue 2879).
 - [ ] I40: `s32z270-rtu0-zephyr` ships a checked `west-downstream.yml`; the
       island imports it (issue 2880).
-- [ ] I41: `RCLCPP_LOG_MIN_SEVERITY` compiles out the levels below it, with
+- [x] I41: `RCLCPP_LOG_MIN_SEVERITY` compiles out the levels below it, with
       their arguments; the island's `CONFIG_LOG_LEVEL` gating goes (issue
       2881).
 - [ ] I42: a release past nros11 is published; the island's default branch
