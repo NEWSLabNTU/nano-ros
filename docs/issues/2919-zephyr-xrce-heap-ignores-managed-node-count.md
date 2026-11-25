@@ -137,6 +137,10 @@ machine count. This addresses the first.
 - The one-machine heap bases still price the old buffers (about 39 KB over).
   Re-measuring them is [issue 2953](2953-lifecycle-heap-arms-priced-old-buffers.md).
 
-Left for acceptance: features' `zephyr_mps2_c_lifecycle_pair_xrce` still
-boots, and its heap peak drops by about 2 x 39 KB from 251,120.
+Acceptance, measured on the board (2026-11-25): features'
+`zephyr_mps2_c_lifecycle_pair_xrce` on mps2/an385 under QEMU, with the heap
+derived (280,784 B), boots both managed nodes to Active and publishes. Its last
+line is `nros: heap peak 172688 of 280784 bytes`: 251,120 - 2 x 39,216, the
+drop predicted. The old flat 196,608 B arm would also hold that peak, with
+about 24 KB spare; that arm was not run.
 
