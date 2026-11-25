@@ -476,8 +476,9 @@ fn with_model(
     // Attached whether or not the model describes wiring: the two answers are
     // independent, and a model with no topics can still declare parameters.
     // Issue 2768 -- floored by the code's declarations the probe recorded.
-    let params =
-        crate::entity_inventory::ParamDeclarations::from_model_with(model, inv.recorded_params());
+    // Issue 2964 -- and an image watched whole that declares nothing
+    // declares zero.
+    let params = inv.observed_param_declarations(model);
     inv.set_param_declarations(params);
     Ok((inv, wired))
 }

@@ -376,10 +376,9 @@ fn write_from_model(args: &SizingDescriptorArgs, model_path: &std::path::Path) -
     // Issue 2768 -- floored by what the probe recorded of the code's own
     // declarations, which the composition above carries.
     .map(|mut inv| {
-        let params = crate::entity_inventory::ParamDeclarations::from_model_with(
-            &model,
-            inv.recorded_params(),
-        );
+        // Issue 2964 -- and an image watched whole that declares nothing
+        // declares zero.
+        let params = inv.observed_param_declarations(&model);
         inv.set_param_declarations(params);
         inv
     });

@@ -1202,6 +1202,11 @@ pub struct ProbeRow {
     /// probe watched, as `(name, type)`, in sidecar order. Reads are left out:
     /// a read claims no store slot.
     pub parameters: Vec<(String, ros_launch_manifest_model::ParamType)>,
+    /// Issue 2964 -- the sidecar's `parameter_declarations_watched`: `true`
+    /// only when [`Self::parameters`] is the component's whole declaration
+    /// set. `None` (a sidecar from before schema v7, or a producer that did
+    /// not watch) is no evidence that an empty list means zero.
+    pub parameters_watched: Option<bool>,
 }
 
 /// The workspace's FRESH probe sidecars, one row each, under the freshness rule
@@ -1327,6 +1332,7 @@ pub fn probe_rows_and_stale(ws_root: &Path, nano_ros: Option<&Path>) -> Result<P
                     executable,
                     description_max_len,
                     parameters,
+                    parameters_watched: doc.parameter_declarations_watched,
                     entities: ComponentEntities {
                         pkg,
                         class: component.clone(),
@@ -2224,7 +2230,7 @@ pub fn newest_source_mtime(package_root: &Path) -> Option<SystemTime> {
 /// definition and not "a document with a field I skipped" -- issue 0427's rule
 /// for the resolver pin, applied to the recorder: the producer changed, so the
 /// output would too, for byte-identical inputs.
-pub const RECORDER_SCHEMA_VERSION: u32 = 6;
+pub const RECORDER_SCHEMA_VERSION: u32 = 7;
 
 /// One input a derived artifact recorded, as it was recorded.
 ///

@@ -72,13 +72,23 @@ use alloc::{format, string::String as StdString, vec::Vec as StdVec};
 ///   both out, and a consumer must refuse to derive either knob from that
 ///   sidecar rather than read it as "no text".
 ///
+/// Version 7 is additive again:
+///
+/// * top-level `"parameter_declarations_watched": true | false` -- whether
+///   the `parameters` list is the node's WHOLE declaration set. `true` only
+///   when every declaration route the image links was observed, the recorder
+///   took every row, and no node opted into undeclared parameters. `false`
+///   when the probe watched and one of those failed. **An absent key means
+///   nobody watched**: a consumer may read an empty `parameters` list as "this
+///   node declares none" only beside `true`.
+///
 /// Serialised in exactly one place (this module), as the census layer rule
 /// requires: the adapters that feed the recorder contain no JSON.
 ///
 /// A key or version change re-blesses the golden sidecar the CLI parses
 /// strictly: see `the_golden_probe_sidecar_is_what_the_recorder_writes`.
 // Issue 2689.
-pub const SOURCE_METADATA_SCHEMA_VERSION: u32 = 6;
+pub const SOURCE_METADATA_SCHEMA_VERSION: u32 = 7;
 
 /// The BUFFERED registration row a subscription claimed, as the
 /// registration funnel observed it.
@@ -809,6 +819,12 @@ pub struct MetadataRecorder<
     description_max_len: Option<usize>,
     /// The same for `additional_constraints`, which has its own knob.
     constraints_max_len: Option<usize>,
+    // Issue 2964.
+    /// Whether `parameters` is the whole declaration set. `None` when nothing
+    /// watched; `Some(false)` when the watch was broken (a refused row, or a
+    /// node that opted into undeclared parameters). Serialised only when
+    /// `Some` (schema v7).
+    parameter_declarations_watched: Option<bool>,
 }
 
 impl<const MAX_NODES: usize, const MAX_ENTITIES: usize, const MAX_CALLBACKS: usize> Default
@@ -830,7 +846,31 @@ impl<const MAX_NODES: usize, const MAX_ENTITIES: usize, const MAX_CALLBACKS: usi
             callback_effects: Rows::new(),
             description_max_len: None,
             constraints_max_len: None,
+            parameter_declarations_watched: None,
         }
+    }
+
+    // Issue 2964.
+    /// Start watching parameter declarations: from now on the sidecar states
+    /// whether its `parameters` list is complete. Idempotent; a broken watch
+    /// stays broken.
+    pub fn arm_parameter_declarations(&mut self) {
+        self.parameter_declarations_watched.get_or_insert(true);
+    }
+
+    /// The `parameters` list can no longer be the whole declaration set: a
+    /// row was refused, or a node opted into undeclared parameters. Ignored
+    /// unless the watch is armed, since an unwatched recorder says nothing.
+    pub fn break_parameter_declarations(&mut self) {
+        if let Some(watched) = self.parameter_declarations_watched.as_mut() {
+            *watched = false;
+        }
+    }
+
+    /// `Some(true)` when the recorded parameters are the whole declaration
+    /// set, `Some(false)` when the watch broke, `None` when nothing watched.
+    pub fn parameter_declarations_watched(&self) -> Option<bool> {
+        self.parameter_declarations_watched
     }
 
     /// Start watching descriptor prose: from now on the sidecar states the
@@ -986,6 +1026,9 @@ impl<const MAX_NODES: usize, const MAX_ENTITIES: usize, const MAX_CALLBACKS: usi
         }
         if let Some(len) = self.constraints_max_len {
             write!(out, "\"parameter_constraints_max_len\":{len},")?;
+        }
+        if let Some(watched) = self.parameter_declarations_watched {
+            write!(out, "\"parameter_declarations_watched\":{watched},")?;
         }
         self.write_trace_json(export, out)?;
         write!(out, "}}")
@@ -2074,6 +2117,38 @@ fn parse_interface(type_name: &str, fallback_kind: &'static str) -> ParsedInterf
 
 #[cfg(test)]
 mod tests {
+    // Issue 2964.
+    /// The declaration watch has three states, as descriptor prose does: not
+    /// watched (no key), watched whole (`true`), and watched but broken
+    /// (`false`). A broken watch stays broken, and an unwatched recorder
+    /// ignores a break, so it never claims a watch it did not arm.
+    #[cfg(feature = "alloc")]
+    #[test]
+    fn the_declaration_watch_is_stated_only_when_armed_and_stays_broken() {
+        let export = super::SourceMetadataExport::new("p", "c");
+        let mut r: super::MetadataRecorder = super::MetadataRecorder::new();
+        r.break_parameter_declarations();
+        assert_eq!(r.parameter_declarations_watched(), None);
+        let json = r.to_source_metadata_json(&export).unwrap();
+        assert!(!json.contains("parameter_declarations_watched"), "{json}");
+
+        r.arm_parameter_declarations();
+        let json = r.to_source_metadata_json(&export).unwrap();
+        assert!(
+            json.contains("\"parameter_declarations_watched\":true,"),
+            "{json}"
+        );
+
+        r.break_parameter_declarations();
+        r.arm_parameter_declarations();
+        assert_eq!(r.parameter_declarations_watched(), Some(false));
+        let json = r.to_source_metadata_json(&export).unwrap();
+        assert!(
+            json.contains("\"parameter_declarations_watched\":false,"),
+            "{json}"
+        );
+    }
+
     /// Issue 0699 — a source path longer than the buffer must RECORD, not fail.
     ///
     /// `nros sync` died with `Metadata(NameTooLong)` purely because the user's
@@ -2809,6 +2884,8 @@ mod tests {
         recorder.arm_descriptor_text();
         recorder.observe_descriptor_text(false, 42);
         recorder.observe_descriptor_text(true, 7);
+        // v7 (issue 2964): the probe watched every declaration route.
+        recorder.arm_parameter_declarations();
 
         let json = recorder
             .to_source_metadata_json(
@@ -2852,6 +2929,7 @@ mod tests {
             "\"service_clients\":[{",
             "\"parameter_description_max_len\":42,",
             "\"parameter_constraints_max_len\":7,",
+            "\"parameter_declarations_watched\":true,",
         ] {
             assert!(
                 json.contains(row),
