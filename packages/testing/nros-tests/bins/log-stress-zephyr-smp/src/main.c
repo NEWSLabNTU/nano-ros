@@ -28,7 +28,7 @@
 
 #include <rclc/log.h>
 
-#define LOGGERS 16
+#define LOGGERS 32
 #define RECORDS 200
 #define ISR_RECORDS 100
 #define LOGGER_STACK 4096

@@ -141,6 +141,11 @@ fn main() {
     if clock {
         println!("cargo::rustc-cfg=nros_log_clock");
     }
+    let task_identity = task_identity(build.as_ref());
+    println!("cargo::rustc-check-cfg=cfg(nros_log_task_identity)");
+    if task_identity {
+        println!("cargo::rustc-cfg=nros_log_task_identity");
+    }
 
     let mut contents = String::new();
     // phase-479 W5, issue 1037.
@@ -304,6 +309,26 @@ fn refusal(f: &Family, selected: &[(usize, &str)]) -> Option<String> {
 
 /// Whether `nros_platform_clock_ns` is linked: the platform's `clock` FACT,
 /// or the `platform-clock` feature that pulls a port in. See the module docs.
+/// Issue 2762 -- whether the linked port answers `nros_platform_current_task_id`,
+/// decided as [`clock`] is: the `platform-task-identity` feature or the
+/// platform's `[capabilities] task_identity` fact, and the two may not
+/// contradict.
+fn task_identity(build: Option<&BuildRungs>) -> bool {
+    let feature = env::var_os("CARGO_FEATURE_PLATFORM_TASK_IDENTITY").is_some();
+    let fact = build.and_then(|r| r.capability("task_identity"));
+    match (feature, fact) {
+        (true, Some(false)) => panic!(
+            "\n\nnros-log: the `platform-task-identity` feature is on, and platform `{}` \
+             declares `[capabilities] task_identity = false`. One of them is wrong: the feature \
+             promises `nros_platform_current_task_id` at link time and the descriptor says the \
+             port has none.\n",
+            build.map(|r| r.platform.as_str()).unwrap_or("?")
+        ),
+        (true, _) | (false, Some(true)) => true,
+        (false, _) => false,
+    }
+}
+
 fn clock(build: Option<&BuildRungs>) -> bool {
     let feature = env::var_os("CARGO_FEATURE_PLATFORM_CLOCK").is_some();
     let fact = build.and_then(|r| r.capability("clock"));

@@ -35,6 +35,7 @@ compile = { opt_level = "s", warnings = false, cflags = ["-ffunction-sections", 
 [capabilities]
 ip_stack = true    # posix sockets, named in [build]
 clock = true       # issue 1037 — exports nros_platform_clock_ns (src/platform.c)
+task_identity = true  # issue 2762 — exports nros_platform_current_task_id (the posix src/platform.c)
 
 [arch.cortex-a7]
 target_match = "armv7a"

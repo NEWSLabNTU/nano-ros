@@ -46,6 +46,7 @@ required_env = [
 # phase-400 W3 / RFC-0086 — software-stack FACTS (open vocabulary).
 [capabilities]
 clock = true       # issue 1037 — exports nros_platform_clock_ns (src/platform.c)
+task_identity = true  # issue 2762 — exports nros_platform_current_task_id (src/platform.c)
 
 [arch.riscv64gc]
 target_match = "riscv64"
