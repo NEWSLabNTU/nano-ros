@@ -81,7 +81,7 @@ EXECUTOR_CASTS = {
     ("nros-cpp/src/lib.rs", "nros_app_register_backends"): "boot, before a second thread exists",
     ("nros-cpp/src/lib.rs", "nros_cpp_context_is_live"): "reads the tag only",
     ("nros-cpp/src/lib.rs", "nros_cpp_fini"): "drops the context in place at fini",
-    ("nros-cpp/src/lib.rs", "nros_cpp_spin_once"): "tag check, then the lock through a raw read",
+    ("nros-cpp/src/lib.rs", "spin_once_for"): "tag check, then the lock through a raw read",
     ("nros-cpp/src/lib.rs", "nros_cpp_spin_some"): "tag check, then the lock through a raw read",
     ("nros-cpp/src/lib.rs", "nros_cpp_entry_spin_budget_ms"): "tag check, then a lock-free read",
     ("nros-cpp/src/lib.rs", "open_over_session"): "writes a sched task's context at open",
@@ -130,7 +130,7 @@ FLAG_ACCESS = {
     ("nros-c/src/executor.rs", "host_executor_init"): "init writes it false",
     ("nros-c/src/executor.rs", "rclc_executor_spin_some"): "the spin sets and clears it",
     ("nros-cpp/src/lib.rs", "in_dispatch_ptr"): "the flag's one place",
-    ("nros-cpp/src/lib.rs", "nros_cpp_spin_once"): "its RawDispatchGuard's flag",
+    ("nros-cpp/src/lib.rs", "spin_once_for"): "its RawDispatchGuard's flag",
     ("nros-cpp/src/lib.rs", "nros_cpp_spin_some"): "its RawDispatchGuard's flag",
 }
 

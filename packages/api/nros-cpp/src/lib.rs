@@ -4209,6 +4209,23 @@ pub unsafe extern "C" fn nros_cpp_spin_once(
     handle: *mut c_void,
     timeout_ms: i32,
 ) -> nros_cpp_ret_t {
+    // SAFETY: the caller's contract is `spin_once_for`'s.
+    unsafe {
+        spin_once_for(
+            handle,
+            core::time::Duration::from_millis(timeout_ms.max(0) as u64),
+        )
+    }
+}
+
+/// [`nros_cpp_spin_once`] with its budget as a [`core::time::Duration`], so a
+/// caller that holds a finer deadline (`nros_cpp_spin_until_clock`) does not
+/// round it to the millisecond the C ABI speaks (issue 2965).
+///
+/// # Safety
+/// As [`nros_cpp_spin_once`].
+#[cfg(feature = "rmw-cffi")]
+unsafe fn spin_once_for(handle: *mut c_void, timeout: core::time::Duration) -> nros_cpp_ret_t {
     // Issue 1556 (c) -- an application census writes and exits at its first
     // blocking call, instead of blocking.
     crate::census_finish_application_if_armed();
@@ -4222,7 +4239,6 @@ pub unsafe extern "C" fn nros_cpp_spin_once(
     if unsafe { core::ptr::read(core::ptr::addr_of!((*ctx).tag)) } != CPP_CONTEXT_TAG {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     }
-    let ms = timeout_ms.max(0) as u64;
     // phase-509 P9b item 2 (RFC-0108 "As built in P9b") -- the pass runs
     // over raw pointers, with no `&mut CppContext` or `&mut Executor` live
     // across it: with a lock that has a thread identity installed, the pass
@@ -4262,7 +4278,7 @@ pub unsafe extern "C" fn nros_cpp_spin_once(
     //
     // SAFETY: the calling thread holds the lock once (`_lock`); no reference
     // to the executor or the context is live across the pass.
-    let _ = unsafe { CppExecutor::spin_once_shared(exec, core::time::Duration::from_millis(ms)) };
+    let _ = unsafe { CppExecutor::spin_once_shared(exec, timeout) };
     NROS_CPP_RET_OK
 }
 
@@ -4457,15 +4473,19 @@ pub unsafe extern "C" fn nros_cpp_spin_until_clock(
         if now >= deadline_ns {
             return NROS_CPP_RET_OK;
         }
-        // Never wait longer than the time left (rounded UP to a millisecond,
-        // so a sub-millisecond remainder does not busy-spin).
-        let left_ms = (deadline_ns - now + 999_999) / 1_000_000;
-        let wait_ms = if poll_ms <= 0 || left_ms < i64::from(poll_ms) {
-            left_ms.clamp(1, i64::from(i32::MAX)) as i32
+        // Never wait longer than the time left. Issue 2965 -- in nanoseconds,
+        // not rounded up to a millisecond: the executor's park rounds the
+        // bound up to the port's own granularity, so a sub-millisecond
+        // remainder neither busy-spins nor overshoots by most of a
+        // millisecond.
+        let left = core::time::Duration::from_nanos((deadline_ns - now) as u64);
+        let wait = if poll_ms <= 0 {
+            left
         } else {
-            poll_ms
+            left.min(core::time::Duration::from_millis(poll_ms as u64))
         };
-        let last = unsafe { nros_cpp_spin_once(handle, wait_ms) };
+        // SAFETY: the caller's contract.
+        let last = unsafe { spin_once_for(handle, wait) };
         if last != NROS_CPP_RET_OK {
             return last;
         }
