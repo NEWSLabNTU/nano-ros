@@ -2800,6 +2800,103 @@ pub fn workspace_row_build_is_current(fixture_id: &str) -> TestResult<bool> {
     }
 }
 
+/// [`workspace_row_build_is_current`] for many rows at once: one
+/// `workspace-fixture-signature.sh --batch` run, which computes what the rows
+/// share (the tool fingerprints, each workspace dir's source manifest) once
+/// and prints the same signature per row as the one-row form.
+///
+/// Release blocker B39: an audit over every in-lane row called the one-row
+/// form per row, a bash run of ~0.2 s each. The tier2-nightly lane audits
+/// ~400 rows, so `rmw_coordinate_truth` spent its 60 s computing signatures.
+/// Measured over all 513 workspace rows: 102.7 s one at a time, 4.0 s
+/// batched, identical output.
+///
+/// Per id, in order: `Ok(true)` fresh, `Ok(false)` no stamp (never built
+/// here), `Err` names a STALE row.
+pub fn workspace_rows_build_are_current(fixture_ids: &[&str]) -> TestResult<Vec<TestResult<bool>>> {
+    // Only rows with a stamp need a signature.
+    let mut stamps: Vec<Option<(PathBuf, String)>> = Vec::with_capacity(fixture_ids.len());
+    let mut wanted: Vec<String> = Vec::new();
+    for id in fixture_ids {
+        let stamp = crate::fixtures::groups::workspace_artifact_dir(id)?
+            .join(workspace_fixture_stamp_name(id));
+        match fs::read_to_string(&stamp) {
+            Ok(actual) => {
+                wanted.push(current_workspace_fixture_record(id)?);
+                stamps.push(Some((stamp, actual)));
+            }
+            Err(_) => stamps.push(None),
+        }
+    }
+    let signatures = workspace_fixture_signatures(&wanted)?;
+    Ok(fixture_ids
+        .iter()
+        .zip(stamps)
+        .map(|(id, stamp)| {
+            let Some((stamp, actual)) = stamp else {
+                return Ok(false);
+            };
+            let expected = signatures.get(*id).ok_or_else(|| {
+                TestError::BuildFailed(format!("no workspace fixture signature for {id}"))
+            })?;
+            if actual.trim_end() == expected {
+                Ok(true)
+            } else {
+                Err(TestError::BuildFailed(format!(
+                    "Workspace fixture {id} is stale: {} records a build of other \
+                     inputs than this checkout's. Rebuild it (`just linux \
+                     build-workspace-fixtures`, or the lane's own build).",
+                    stamp.display()
+                )))
+            }
+        })
+        .collect())
+}
+
+/// `id -> signature` for each manifest record, from one `--batch` run.
+fn workspace_fixture_signatures(
+    records: &[String],
+) -> TestResult<std::collections::HashMap<String, String>> {
+    use std::io::Write as _;
+    if records.is_empty() {
+        return Ok(std::collections::HashMap::new());
+    }
+    let root = project_root();
+    let mut child = Command::new("bash")
+        .arg(root.join("scripts/build/workspace-fixture-signature.sh"))
+        .arg("--batch")
+        .current_dir(&root)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|e| {
+            TestError::BuildFailed(format!("Failed to run workspace fixture signature: {e}"))
+        })?;
+    {
+        let mut stdin = child.stdin.take().expect("piped stdin");
+        for r in records {
+            writeln!(stdin, "{r}").map_err(|e| {
+                TestError::BuildFailed(format!("Failed to feed workspace fixture records: {e}"))
+            })?;
+        }
+    }
+    let output = child.wait_with_output().map_err(|e| {
+        TestError::BuildFailed(format!("Failed to run workspace fixture signature: {e}"))
+    })?;
+    if !output.status.success() {
+        return Err(TestError::BuildFailed(format!(
+            "Failed to compute workspace fixture signatures:\n{}",
+            String::from_utf8_lossy(&output.stderr)
+        )));
+    }
+    Ok(String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .filter_map(|l| l.split_once('\t'))
+        .map(|(id, sig)| (id.to_owned(), sig.to_owned()))
+        .collect())
+}
+
 fn require_prebuilt_workspace_binary(
     fixture_id: &str,
     binary_path: &Path,

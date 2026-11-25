@@ -276,20 +276,14 @@ while IFS= read -r line; do
 done < <(python3 scripts/build/fixtures-manifest.py list-workspaces --for-probe "${scope_args[@]}")
 wait $! || { echo "check-fixtures-stale.sh: \`fixtures-manifest.py list-workspaces\` failed (issue 2424)" >&2; exit 1; }
 
+# B39 -- one probe over every row: the rows' shared signature inputs are
+# computed once, not once per row.
 workspace_stale=()
-if [ ${#workspace_records[@]} -eq 0 ]; then
-    :
-elif command -v parallel >/dev/null 2>&1; then
+if [ ${#workspace_records[@]} -gt 0 ]; then
     printf '%s\n' "${workspace_records[@]}" \
-        | parallel --halt now,fail=1 --jobs "$(nproc)" \
-        bash scripts/test/workspace-fixture-stale.sh {} >"$PROBE_OUT" 2>>"$PROBE_ERR" \
+        | bash scripts/test/workspace-fixture-stale.sh >"$PROBE_OUT" 2>>"$PROBE_ERR" \
         || probe_crash $?
     mapfile -t workspace_stale < "$PROBE_OUT"
-else
-    for line in "${workspace_records[@]}"; do
-        out="$(bash scripts/test/workspace-fixture-stale.sh "$line")"
-        [ -n "$out" ] && workspace_stale+=("$out")
-    done
 fi
 if [ ${#workspace_stale[@]} -gt 0 ]; then
     echo "ERROR: ${#workspace_stale[@]} workspace fixture(s) are missing or stale:" >&2

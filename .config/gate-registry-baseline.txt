@@ -339,6 +339,7 @@ workflow-setup-spelling
 workspace-all
 workspace-build-output
 workspace-features
+workspace-fixture-signature-batch
 workspace-fmt
 workspace-generated-ignored
 workspace-order
