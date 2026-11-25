@@ -94,7 +94,7 @@ table.
 
 ## Test
 
-- `packages/testing/nros-tests/tests/cmake_log_level_export.sh`
+- `scripts/check/check-cmake-log-level-export.sh`
   (`just check cmake-log-level-export`), a real configure against a stub
   resolver: the board's level lands in the cache and the definition, and the
   resolver is asked for the board facts' platform and board (T1); editing the

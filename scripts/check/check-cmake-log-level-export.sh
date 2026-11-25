@@ -28,17 +28,21 @@
 # `config::tests::a_board_log_level_resolves_through_the_ladder`'s question;
 # this script pins what the configure hands it and does with the answer.
 # Board facts are pre-seeded in their per-configure memo for the same reason.
-# Buildless: no compiler, no cargo, no fixtures.
+# Buildless: no compiler, no cargo, no fixtures. A check of the cmake module
+# rather than a test of an image, so it lives with the checks: it configures
+# a project of its own, which a test that consumes prebuilt fixtures may not.
 
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd)"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+# shellcheck source=../lib/grep-q.sh
+. "$ROOT/scripts/lib/grep-q.sh"
 mkdir -p "$ROOT/tmp"
 WORK="$(mktemp -d "$ROOT/tmp/cmake-log-level-export.XXXXXX")"
 trap 'rm -rf "$WORK"' EXIT
 
 if ! command -v cmake >/dev/null; then
-    echo "cmake_log_level_export: FAIL -- no cmake on PATH" >&2
+    echo "check-cmake-log-level-export: FAIL -- no cmake on PATH" >&2
     exit 1
 fi
 
@@ -89,7 +93,7 @@ project() {
         if [ -n "$image_env" ]; then
             printf 'set_property(GLOBAL PROPERTY NROS_IMAGE_ENV_CONFIG "%s")\n' "$image_env"
         fi
-        printf 'include("%s/cmake/NanoRosLogLevel.cmake")\n' "$ROOT"
+        printf 'include("%s/cmake/NanoRosLogLevel.cmake")\n' "${MODROOT:-$ROOT}"
         printf 'add_library(NanoRos INTERFACE)\n'
         printf 'nros_log_max_level_export(NanoRos)\n'
         printf 'get_target_property(_d NanoRos INTERFACE_COMPILE_DEFINITIONS)\n'
@@ -104,13 +108,52 @@ configure() {
     local src="$1" build="$2"
     shift 2
     env -u NROS_LOG_MAX_LEVEL NROS_CLI="$STUB" NROS_STUB_LOG="$WORK/calls.log" "$@" \
-        cmake -S "$src" -B "$build" >"$build.log" 2>&1
+        cmake -S "$src" -B "$build" >"$build.log" 2>&1  # copy-out-root-ok: a synthetic project that include()s this checkout's module by absolute path
 }
 
 BOARD="$WORK/board/nros-board.toml"
 mkdir -p "$WORK/board"
 printf '[knobs.log]\nmax_level = "warn"\n' >"$BOARD"
 FACTS="NROS_PLATFORM_NAME=posix;NROS_BOARD_TOML=$BOARD"
+
+# The negative control, on every run: a copy of the module WITHOUT the board
+# descriptor's configure dependency must NOT re-export an edited level on
+# `cmake --build`. If it does, T2 below cannot tell the edge from its absence.
+selftest() {
+    local mut="$WORK/mutant"
+    mkdir -p "$mut"
+    cp -r "$ROOT/cmake" "$mut/cmake"
+    sed -i '/CMAKE_CONFIGURE_DEPENDS "${_board_toml}"/d' "$mut/cmake/NanoRosLogLevel.cmake"
+    local rc=0
+    nros_grep_q 'CMAKE_CONFIGURE_DEPENDS "${_board_toml}"' "$mut/cmake/NanoRosLogLevel.cmake" || rc=$?
+    case $rc in
+        1) ;;
+        0)
+            echo "  FAIL selftest: could not remove the board descriptor's dependency" >&2
+            return 1
+            ;;
+        *)
+            echo "  FAIL selftest: grep could not read the mutated module" >&2
+            return 1
+            ;;
+    esac
+    local board="$WORK/mutant-board/nros-board.toml"
+    mkdir -p "$(dirname "$board")"
+    printf '[knobs.log]\nmax_level = "warn"\n' >"$board"
+    MODROOT="$mut" project "$WORK/st" "NROS_PLATFORM_NAME=posix;NROS_BOARD_TOML=$board"
+    configure "$WORK/st" "$WORK/st/build"
+    sleep 1
+    printf '[knobs.log]\nmax_level = "error"\n' >"$board"
+    env -u NROS_LOG_MAX_LEVEL NROS_CLI="$STUB" NROS_STUB_LOG="$WORK/calls.log" \
+        cmake --build "$WORK/st/build" >"$WORK/st.log" 2>&1
+    if [ "$(cache_level "$WORK/st/build")" != "3" ]; then
+        echo "  FAIL selftest: the module without the dependency still re-exported" >&2
+        return 1
+    fi
+    echo "  ok   selftest: without the dependency the edit is missed"
+}
+echo "selftest (negative control)"
+selftest || fail=1
 
 echo "T1 the board's level is exported"
 project "$WORK/t1" "$FACTS"
@@ -162,7 +205,7 @@ else
 fi
 
 if [ "$fail" -ne 0 ]; then
-    echo "cmake_log_level_export: FAIL" >&2
+    echo "check-cmake-log-level-export: FAIL" >&2
     exit 1
 fi
-echo "cmake_log_level_export: OK (6 cases)"
+echo "check-cmake-log-level-export: OK (6 cases and the negative control)"
