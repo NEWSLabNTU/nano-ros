@@ -834,7 +834,7 @@ fn take_census(args: TakeArgs) -> Result<()> {
     // this census recorded, with different bytes on a runner, and the census
     // read stale.
     let build_dir =
-        retarget_to_census_tree(&root, &mut plans).unwrap_or_else(|| root.join("build"));
+        retarget_to_census_tree(&root, &mut plans)?.unwrap_or_else(|| root.join("build"));
     for p in &plans {
         crate::cmd::build::build_host_image(p, &[(LEAF_CENSUS_HOST_ENV, "1")]).wrap_err_with(
             || format!("building the host image `{native_q}`; no census can be taken without it"),
@@ -3212,10 +3212,16 @@ pub(crate) fn census_image_build_dir(cmake_build_dir: &str) -> Option<String> {
 /// image's tree to its census tree ([`census_image_build_dir`]), and return
 /// the census tree of the (one) image, absolute. `None` when no plan has a
 /// cmake build dir, so the caller keeps the workspace `build/` root.
+///
+/// A command whose arguments do not spell the plan's `cmake_build_dir`
+/// exactly is an ERROR, never a silent no-op: if the census tree were
+/// recorded while the command still built into `build/<coord>/cmake`, the
+/// take would flip the image's tree between two programs again, which is the
+/// defect issue 2960 removed, and nothing would say so.
 fn retarget_to_census_tree(
     root: &Path,
     plans: &mut [crate::cmd::build::ResolvedBuild],
-) -> Option<PathBuf> {
+) -> Result<Option<PathBuf>> {
     let mut census = None;
     for p in plans.iter_mut() {
         let Some(from) = p.cmake_build_dir.clone() else {
@@ -3224,17 +3230,33 @@ fn retarget_to_census_tree(
         let Some(to) = census_image_build_dir(&from) else {
             continue;
         };
-        for h in [&mut p.configure, &mut p.handoff].into_iter().flatten() {
+        for (step, h) in [("configure", &mut p.configure), ("build", &mut p.handoff)] {
+            let Some(h) = h.as_mut() else {
+                continue;
+            };
+            let mut moved = false;
             for a in h.args.iter_mut() {
                 if a.as_os_str() == std::ffi::OsStr::new(&from) {
                     *a = to.clone().into();
+                    moved = true;
                 }
+            }
+            if !moved {
+                // Issue 2960 -- a silent no-op here re-creates the shared tree.
+                bail!(
+                    "the census host build of `{}` cannot be moved to its own tree \
+                     `{to}`: its {step} command does not name the image's build dir `{from}` \
+                     as an argument (args: {:?}), so it would still build into the image's \
+                     tree. The plan and the census retarget disagree on how the dir is spelled.",
+                    p.qualified,
+                    h.args
+                );
             }
         }
         census.get_or_insert_with(|| root.join(&to));
         p.cmake_build_dir = Some(to);
     }
-    census
+    Ok(census)
 }
 
 fn locate_entry_binary(build: &Path, entry: &str) -> Result<PathBuf> {
@@ -5234,6 +5256,81 @@ executable=prog_b=/b/b
             format!("build/nros/census-image/{coord}"),
         ] {
             assert_eq!(census_image_build_dir(&other), None, "{other}");
+        }
+    }
+
+    /// Issue 2960 -- the census retarget moves the configure's `-B` and the
+    /// build's `--build` when they spell the image's tree exactly, and REFUSES
+    /// a command that spells it any other way rather than leaving it building
+    /// into `build/<coord>/cmake` while the census tree is recorded.
+    #[test]
+    fn the_census_retarget_moves_an_exact_spelling_and_refuses_any_other() {
+        use crate::builder::handoff::Handoff;
+        let coord = "posix-zenoh-linux-b-linux";
+        let image_tree = format!("build/{coord}/cmake");
+        let census_tree = format!("build/nros/census-image/{coord}");
+        let plan = |configure_dir: &str, build_dir: &str| crate::cmd::build::ResolvedBuild {
+            launch_exec: None,
+            qualified: "b:linux".to_string(),
+            board: "linux".to_string(),
+            platform: "posix".to_string(),
+            driver: crate::builder::plan::Driver::CMake,
+            handoff: Some(Handoff::new("cmake", ["--build", build_dir])),
+            rmw: Some("zenoh".to_string()),
+            entry_package: Some("linux_entry".to_string()),
+            target: None,
+            profile: None,
+            cmake_build_dir: Some(image_tree.clone()),
+            capabilities: Vec::new(),
+            stack_floor_image: None,
+            stack_floor: None,
+            stack_floor_raise: false,
+            kernel: None,
+            entry_root: None,
+            configure: Some(Handoff::new("cmake", ["-S", "src", "-B", configure_dir])),
+            record: Default::default(),
+            output: None,
+            descriptor: None,
+            run_tables: Default::default(),
+            sizing_descriptor: None,
+            package_depends: None,
+        };
+        let root = Path::new("/w");
+
+        // The exact spelling: both commands and the plan's dir move.
+        let mut plans = vec![plan(&image_tree, &image_tree)];
+        let got = retarget_to_census_tree(root, &mut plans).expect("an exact spelling moves");
+        assert_eq!(got, Some(root.join(&census_tree)));
+        let p = &plans[0];
+        assert_eq!(p.cmake_build_dir.as_deref(), Some(census_tree.as_str()));
+        let args = |h: &Option<Handoff>| -> Vec<String> {
+            h.as_ref()
+                .unwrap()
+                .args
+                .iter()
+                .map(|a| a.to_string_lossy().into_owned())
+                .collect()
+        };
+        assert_eq!(
+            args(&p.configure),
+            ["-S", "src", "-B", census_tree.as_str()]
+        );
+        assert_eq!(args(&p.handoff), ["--build", census_tree.as_str()]);
+
+        // Any other spelling of the image's tree, in either command, is refused.
+        let absolute = format!("/w/{image_tree}");
+        let trailing = format!("{image_tree}/");
+        for (configure_dir, build_dir, step) in [
+            (absolute.as_str(), image_tree.as_str(), "configure"),
+            (image_tree.as_str(), trailing.as_str(), "build"),
+        ] {
+            let mut plans = vec![plan(configure_dir, build_dir)];
+            let err = retarget_to_census_tree(root, &mut plans)
+                .expect_err("a spelling the retarget cannot match must be refused");
+            let msg = err.to_string();
+            assert!(msg.contains("census host build"), "{msg}");
+            assert!(msg.contains(&format!("its {step} command")), "{msg}");
+            assert!(msg.contains(&image_tree), "{msg}");
         }
     }
 
