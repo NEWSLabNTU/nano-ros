@@ -948,14 +948,38 @@ fn xrce_enumerates_a_stock_ros2_node() {
     );
 }
 
+/// Issue 2970 — the XRCE backend's graph re-sync period the graph-probe fixture
+/// is built with: its builtin default (`XRCE_GRAPH_RESYNC_MS` in the backend's
+/// `internal.h`, the `xrce.graph_resync_ms` knob), since the fixture states
+/// none.
+const XRCE_GRAPH_RESYNC_MS: u64 = 5_000;
+
+/// Issue 2970 — how long a departure may take to reach the XRCE graph-change
+/// edge when the participant's last sample is lost.
+///
+/// `2 x XRCE_GRAPH_RESYNC_MS`: the first re-sync after the departure starts a
+/// generation that cannot re-deliver the participant, and the next one sweeps
+/// it. Plus a margin for what the bound leaves out: each re-sync runs on a
+/// `drive_io` tick, so it can be one probe spin (100 ms) late, twice; the
+/// re-create's round trip through the Agent; and the probe's own spin to the
+/// callback. 2 s covers those with room under load. Measured on a host with
+/// the Agent pinned to a contended core: 10/10 fired, the lost-sample cases at
+/// 9.0 to 10.1 s.
+const XRCE_LEAVE_WINDOW_MS: u64 = 2 * XRCE_GRAPH_RESYNC_MS + 2_000;
+
 /// Issue 2106 — XRCE's graph-change edge: the stock talker LEAVING reaches the
 /// guard condition.
 ///
 /// XRCE sees no DDS discovery, so the edge is a CHANGED `ros_discovery_info`
 /// sample: a stock participant that shuts down cleanly destroys its node,
-/// which republishes its entities info without it, and that sample is what
-/// fires the edge here. A participant that dies without that last sample stays
-/// listed — the bound `graph.c` documents.
+/// which republishes its entities info without it, and that sample fires the
+/// edge here, normally within ~100 ms (measured).
+///
+/// That last sample is not guaranteed to arrive: a CPU-starved Agent loses it
+/// (issue 2970, measured). The backend's graph re-sync is what then notices:
+/// every `XRCE_GRAPH_RESYNC_MS` it re-creates its reader, and a participant
+/// the new reader is not re-handed is dropped. So the window is the re-sync's
+/// bound, not a guess: [`XRCE_LEAVE_WINDOW_MS`].
 ///
 /// Interop cell: `native-graph-rust-xrce-r2n` (`interop::CASE_CELLS`).
 #[test]
@@ -977,7 +1001,7 @@ fn xrce_a_peer_leaving_fires_the_graph_change_guard() {
         .env("XRCE_AGENT_ADDR", agent.addr())
         .env("GRAPH_PROBE_EXPECT_NODE", "talker")
         .env("GRAPH_PROBE_WATCH_CHANGE", "1")
-        .env("GRAPH_PROBE_TIMEOUT_MS", "20000")
+        .env("GRAPH_PROBE_TIMEOUT_MS", XRCE_LEAVE_WINDOW_MS.to_string())
         .env("ROS_DOMAIN_ID", domain.to_string());
     let mut probe = ManagedProcess::spawn_image(cmd, "graph-probe-change-xrce")
         .expect("spawn the XRCE graph-change probe");
@@ -996,11 +1020,22 @@ fn xrce_a_peer_leaving_fires_the_graph_change_guard() {
     // talker's own last `ros_discovery_info` sample, which only a clean
     // shutdown publishes (measured: SIGINT and SIGTERM both fire the edge,
     // SIGKILL never does).
+    let sigterm = std::time::Instant::now();
     let clean = talker.terminate();
+    let talker_exit = sigterm.elapsed();
 
     let rest = probe
         .wait_for_all_output(Duration::from_secs(45))
         .expect("the probe must finish after the talker leaves");
+    // The probe exits as soon as its guard callback fires, so this is the
+    // departure's propagation time: talker shutdown, its last
+    // `ros_discovery_info` sample through the Agent's DDS reader, and the
+    // XRCE stream to the probe's next spin.
+    eprintln!(
+        "departure: talker exited {} ms after SIGTERM; probe finished {} ms after SIGTERM",
+        talker_exit.as_millis(),
+        sigterm.elapsed().as_millis()
+    );
     drop(agent);
     let out = format!("{armed}{rest}");
     assert!(

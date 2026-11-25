@@ -1703,6 +1703,9 @@ function(nros_resolve_knobs)
         _nros_resolve_knob(NROS_XRCE_BUFFER_BYTES "${CONFIG_NROS_XRCE_BUFFER_BYTES}")
         _nros_resolve_knob(NROS_XRCE_STREAM_HISTORY
             "${CONFIG_NROS_XRCE_STREAM_HISTORY}")
+        # Issue 2970 -- the graph reader's re-sync period.
+        _nros_resolve_knob(NROS_XRCE_GRAPH_RESYNC_MS
+            "${CONFIG_NROS_XRCE_GRAPH_RESYNC_MS}")
         # phase-454 W6.b — the three per-family receive buffers. Each defaults
         # to the DERIVE sentinel, and the derivation they fall through to is
         # `nros-rmw-xrce-cffi/build.rs` reading the sizing descriptor

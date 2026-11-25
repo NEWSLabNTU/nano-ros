@@ -273,6 +273,10 @@ KNOB_CLASS = {
         "flag",
         "a choice: run unstamped or halt when no wall-clock source answers; the posix and freertos ports' builds read it to define their resolution policy (RFC-0141 D4, phase-582 W1d)",
     ),
+    "NROS_XRCE_GRAPH_RESYNC_MS": (
+        "infra",
+        "issue 2970: how often an XRCE session re-reads the ROS 2 graph; a period, not a size",
+    ),
     "NROS_CLOCK_FALLBACK_SETTLE_MS": (
         "infra",
         "how long each wall-clock source (here `board`) gets to answer; a time, not a size. The posix and freertos ports' builds read it to define their resolution policy (RFC-0141 D2, phase-582 W1d)",

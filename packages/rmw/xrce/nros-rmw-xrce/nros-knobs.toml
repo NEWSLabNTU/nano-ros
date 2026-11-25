@@ -78,6 +78,38 @@ when an image links both an IP transport and a custom one and they need
 different frame budgets.
 '''
 
+# Issue 2970 -- the ros_discovery_info reader's re-sync period.
+[[knob]]
+key = "xrce.graph_resync_ms"
+scope = "image"
+class = "public"
+type = "int"
+prompt = "Graph re-sync period (ms)"
+kconfig_if = "NROS_RMW_XRCE"
+kconfig_attrs = [
+    "default 5000",
+    "range 0 3600000",
+]
+help = '''
+How often an XRCE session re-reads the ROS 2 graph, in milliseconds.
+0 turns the re-sync off. Maps to XRCE_GRAPH_RESYNC_MS.
+
+XRCE carries data samples only, never DDS discovery, so a participant
+that leaves is seen through the last ros_discovery_info sample it
+publishes. When that sample never reaches the session (the Agent
+loses it, or the participant crashes), the re-sync is what notices:
+every period the session re-creates its ros_discovery_info reader,
+and a participant that does not re-announce itself to the new reader
+is dropped from the graph and the graph-change event fires. A
+departure is then seen within 2 x this period, plus the DDS lease
+(20 s by Fast-DDS default) for a crash.
+
+It runs only once the session reads the graph (a node-name query or
+a graph-change registration). Each period costs one reader re-create
+and one re-delivered sample per live DDS participant on the link; an
+image that never reads the graph pays nothing.
+'''
+
 [[knob]]
 key = "xrce.max_service_clients"
 scope = "image"

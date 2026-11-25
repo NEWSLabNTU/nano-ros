@@ -66,6 +66,7 @@
 
 #include <uxr/client/client.h>
 #include <uxr/client/core/session/object_id.h>
+#include <uxr/client/util/time.h>
 #include <ucdr/microcdr.h>
 
 #include <stdio.h>
@@ -622,10 +623,11 @@ void xrce_graph_flush(xrce_session_state_t* st) {
  *  - Only DDS-RMW participants publish `ros_discovery_info`. A zenoh peer
  *    bridged onto the domain does not, so the answer is "nodes of DDS
  *    participants" plus this session's own.
- *  - A participant that LEAVES without destroying its nodes stays listed: the
- *    client never sees DDS discovery loss (no dispose / unregister reaches an
- *    XRCE reader). A graceful exit publishes an empty node list first, and
- *    that removes it here.
+ *  - The client never sees DDS discovery loss (no dispose / unregister reaches
+ *    an XRCE reader). A graceful exit publishes an empty node list first, and
+ *    that removes it here at once; a participant whose last sample never
+ *    arrives (a crash, or a sample the Agent lost) is removed by the re-sync
+ *    below, within its bound (issue 2970).
  *  - The table is capped (`XRCE_GRAPH_MAX_PEERS` participants,
  *    `XRCE_GRAPH_MAX_PEER_NODES` nodes each). A sample past a cap is refused
  *    and `get_node_names` then answers ERROR rather than a silently short
@@ -635,7 +637,12 @@ void xrce_graph_flush(xrce_session_state_t* st) {
  *    the first call legitimately reports this session's nodes alone. Same
  *    warm-up as every other backend's graph. */
 
-#define XRCE_GRAPH_READER_DEPTH 16u
+/* Room for every participant's latched sample at once: a re-created reader
+ * (issue 2970) is handed one per live participant together, and the topic is
+ * keyless, so they share one history. Short of the peer cap, a burst could
+ * push a live participant's sample out before the Agent forwards it, and the
+ * next sweep would drop a peer that never left. */
+#define XRCE_GRAPH_READER_DEPTH (XRCE_GRAPH_MAX_PEERS > 16u ? XRCE_GRAPH_MAX_PEERS : 16u)
 
 /* Our own sample comes back to our own reader (same participant). The prefix
  * is known once a probe has answered; an all-zero prefix means it never did. */
@@ -734,6 +741,7 @@ bool xrce_graph_ingest(xrce_graph* g, const uint8_t* buf, size_t len) {
         cur->names = names;
         cur->names_len = used;
         cur->n_nodes = n_nodes;
+        cur->seen_gen = g->sync_gen; /* issue 2970 */
         if (!same) {
             graph_changed(g);
         }
@@ -754,6 +762,7 @@ bool xrce_graph_ingest(xrce_graph* g, const uint8_t* buf, size_t len) {
     p->names = names;
     p->names_len = used;
     p->n_nodes = n_nodes;
+    p->seen_gen = g->sync_gen; /* issue 2970 */
     *link = p; /* appended: discovery order */
     g->n_peers++;
     graph_changed(g);
@@ -820,6 +829,15 @@ static rmw_ret_t graph_ensure_reader(xrce_session_state_t* st) {
     }
     g->reader_id = dr_oid.id;
     g->reader_active = true;
+    /* Issue 2970 -- kept for the re-sync, which re-creates this reader in
+     * place. The first generation is this create, confirmed above. */
+    g->reader_topic_oid = topic_oid;
+    g->reader_sub_oid = sub_oid;
+    g->reader_oid = dr_oid;
+    g->sync_gen = 1;
+    g->confirmed_gen = 1;
+    g->resync_req = UXR_INVALID_REQUEST_ID;
+    g->resync_at_ms = uxr_millis();
     uxrDeliveryControl delivery = {
         .max_samples = UXR_MAX_SAMPLES_UNLIMITED,
         .max_elapsed_time = UXR_MAX_ELAPSED_TIME_UNLIMITED,
@@ -830,6 +848,135 @@ static rmw_ret_t graph_ensure_reader(xrce_session_state_t* st) {
                                   &delivery);
     xrce_session_flush(st, 0);
     return NROS_RMW_RET_OK;
+}
+
+/* ---- Issue 2970: the re-sync ---------------------------------------------
+ *
+ * WHY. The edge above fires on a participant's LAST sample, the empty node list
+ * a graceful exit publishes. Nothing guarantees that sample reaches this
+ * client: XRCE carries data samples only, never DDS participant or endpoint
+ * removal, so a sample lost on the way (measured: a CPU-starved Agent loses a
+ * departing writer's last sample about half the time), a SIGKILL or a crash
+ * left the participant listed until this session ended.
+ *
+ * HOW. The reader is TRANSIENT_LOCAL, and every live participant's
+ * `ros_discovery_info` writer keeps its current sample (KEEP_LAST 1). So a
+ * freshly created reader is handed one sample per participant that is still
+ * there, and none for one whose writer the Agent's participant has removed.
+ * Every XRCE_GRAPH_RESYNC_MS the reader is re-created in place (UXR_REPLACE on
+ * its own object id) and starts a new generation; each sample stamps its
+ * participant with the generation that delivered it. At the next re-sync, a
+ * participant the confirmed generation never delivered is gone: it is dropped
+ * and the edge fires.
+ *
+ * BOUND. A participant that left at time t is dropped within 2 x
+ * XRCE_GRAPH_RESYNC_MS of t: the first re-sync after t starts a generation
+ * that cannot deliver it, and the one after sweeps it. A crash adds the time
+ * the Agent's DDS participant takes to notice, its lease (20 s by Fast-DDS
+ * default), because until then its writer still answers a new reader. A clean
+ * exit whose last sample does arrive is still seen at once, as before.
+ *
+ * COST, per XRCE_GRAPH_RESYNC_MS, and only once the reader exists (the first
+ * graph query or graph-change registration; an image that never asks pays a
+ * flag test per `drive_io` and nothing on the wire): one CREATE (datareader,
+ * REPLACE) and one READ_DATA from the client, one STATUS back, and one
+ * re-delivered `ros_discovery_info` sample per live DDS participant. On the
+ * Agent, one DataReader deleted and created. No wait: the CREATE's status
+ * arrives through the status callback (`xrce_graph_on_status`), so the spin
+ * that sends it never blocks on the Agent.
+ *
+ * WHAT IT CANNOT DO. A participant whose re-delivery takes longer than a whole
+ * XRCE_GRAPH_RESYNC_MS to reach this client is dropped and then re-added when
+ * its sample arrives, firing the edge twice. A generation the Agent did not
+ * confirm sweeps nothing. */
+
+uint32_t xrce_graph_sweep(xrce_graph* g) {
+    if (g == NULL) {
+        return 0;
+    }
+    uint32_t dropped = 0;
+    xrce_graph_peer** link = &g->peers;
+    while (*link != NULL) {
+        xrce_graph_peer* p = *link;
+        if (p->seen_gen == g->sync_gen) {
+            link = &p->next;
+            continue;
+        }
+        *link = p->next;
+        nros_xrce_free(p->names);
+        nros_xrce_free(p);
+        g->n_peers--;
+        dropped++;
+    }
+    if (dropped > 0) {
+        graph_changed(g);
+    }
+    return dropped;
+}
+
+void xrce_graph_on_status(xrce_session_state_t* st, uint16_t request_id, uint8_t status) {
+    if (st == NULL) {
+        return;
+    }
+    xrce_graph* g = &st->graph;
+    if (g->resync_req == UXR_INVALID_REQUEST_ID || request_id != g->resync_req) {
+        return;
+    }
+    g->resync_req = UXR_INVALID_REQUEST_ID;
+    bool ok = status == UXR_STATUS_OK || status == UXR_STATUS_OK_MATCHED;
+    /* The re-created reader is one more DDS endpoint on this participant, so
+     * it takes a key from the count like every other (issue 1292); a failed
+     * replace leaves the count unknown until the next probe. */
+    uint32_t unused_key = 0;
+    (void)xrce_graph_claim(st, 1, ok, &unused_key);
+    if (ok) {
+        g->confirmed_gen = g->sync_gen;
+    }
+}
+
+void xrce_graph_resync(xrce_session_state_t* st) {
+    if (st == NULL || XRCE_GRAPH_RESYNC_MS == 0u || xrce_session_is_closed(st)) {
+        return;
+    }
+    xrce_graph* g = &st->graph;
+    if (!g->reader_active) {
+        return;
+    }
+    int64_t now = uxr_millis();
+    if (now - g->resync_at_ms < (int64_t)XRCE_GRAPH_RESYNC_MS) {
+        return;
+    }
+    g->resync_at_ms = now;
+    if (g->resync_req != UXR_INVALID_REQUEST_ID) {
+        /* The last re-create got no status in a whole period: its generation
+         * is unconfirmed (no sweep), and whether the Agent built the reader,
+         * and so numbered it, is unknown. */
+        g->resync_req = UXR_INVALID_REQUEST_ID;
+        g->counter_known = false;
+    } else if (g->confirmed_gen == g->sync_gen) {
+        (void)xrce_graph_sweep(g);
+    }
+    g->sync_gen++;
+    uxrQoS_t qos = {UXR_DURABILITY_TRANSIENT_LOCAL, UXR_RELIABILITY_RELIABLE, UXR_HISTORY_KEEP_LAST,
+                    XRCE_GRAPH_READER_DEPTH};
+    uint16_t req =
+        uxr_buffer_create_datareader_bin(&st->session, st->output_reliable, g->reader_oid,
+                                         g->reader_sub_oid, g->reader_topic_oid, qos, UXR_REPLACE);
+    if (req == UXR_INVALID_REQUEST_ID) {
+        /* Not buffered (the stream is full): nothing was asked, so the count
+         * stands. The next period tries again. */
+        return;
+    }
+    g->resync_req = req;
+    uxrDeliveryControl delivery = {
+        .max_samples = UXR_MAX_SAMPLES_UNLIMITED,
+        .max_elapsed_time = UXR_MAX_ELAPSED_TIME_UNLIMITED,
+        .max_bytes_per_second = UXR_MAX_BYTES_PER_SECOND_UNLIMITED,
+        .min_pace_period = 0,
+    };
+    (void)uxr_buffer_request_data(&st->session, st->output_reliable, g->reader_oid,
+                                  st->input_reliable, &delivery);
+    xrce_session_flush(st, 0);
 }
 
 static rmw_ret_t xrce_get_node_names_locked(xrce_session_state_t* st,

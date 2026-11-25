@@ -96,6 +96,14 @@ target_link_libraries(nros_rmw_xrce_node_names PRIVATE nros_rmw_xrce)
 
 add_test(NAME nros_rmw_xrce_node_names COMMAND nros_rmw_xrce_node_names)
 
+# Issue 2970 — the graph re-sync: a participant a re-created reader does not
+# re-deliver is dropped, one it does is kept, and the re-create's status claims
+# its endpoint key. No agent.
+add_executable(nros_rmw_xrce_graph_resync graph_resync.c)
+target_link_libraries(nros_rmw_xrce_graph_resync PRIVATE nros_rmw_xrce)
+
+add_test(NAME nros_rmw_xrce_graph_resync COMMAND nros_rmw_xrce_graph_resync)
+
 # Issue 1292 — the `ros_discovery_info` sample, the endpoint-key counting rule,
 # node/endpoint lifetimes and the probe's nonce check. No agent; the live half
 # is `rust_multi_node_per_node_graph`'s XRCE case.
