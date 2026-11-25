@@ -105,7 +105,16 @@ def sites(text, creator):
     doc-comment mention, which is a gate that agrees with its constant for
     the wrong reason.
     """
-    return len(re.findall(rf"^\s+let [a-z0-9_]+ = {creator}(?:::<|\()", text, re.M))
+    # A site is either bound (`let h = create_lc_srv::<..>(`) or the body of
+    # a closure handed to a writer (issue 2968: `|| create_lc_srv::<..>(` on
+    # one line, or the call alone on the line after `|| {`). The `fn`
+    # definition and doc-comment mentions still never match: neither starts
+    # a line with the bare call.
+    return len(
+        re.findall(
+            rf"^\s+(?:let [a-z0-9_]+ = |\|\|\s*)?{creator}(?:::<|\()", text, re.M
+        )
+    )
 
 
 def action_channels(text):

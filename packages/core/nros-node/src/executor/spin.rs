@@ -15338,12 +15338,9 @@ impl<'s> Executor<'s> {
         if self.lifecycle.len() >= crate::lifecycle_services::MAX_LIFECYCLE_MACHINES {
             return Err(NodeError::NodeTableFull);
         }
-        use crate::{
-            lifecycle::LifecyclePollingNodeCtx,
-            lifecycle_services::{
-                ChangeState, GetAvailableStates, GetAvailableTransitions, GetState,
-                LifecycleRuntimeState, LifecycleServiceServers,
-            },
+        use crate::lifecycle_services::{
+            ChangeState, GetAvailableStates, GetAvailableTransitions, GetState,
+            LifecycleRuntimeState, LifecycleService, LifecycleServiceServers,
         };
         use nros_core::RosService;
 
@@ -15407,6 +15404,20 @@ impl<'s> Executor<'s> {
                 .map_err(NodeError::Transport)
         }
 
+        /// Issue 2968 -- create one server's handle and write it into
+        /// `servers`, out of line: the handle (648 B on the C backend) and
+        /// its `Result` live in THIS frame, one service at a time, instead
+        /// of five slots in the caller's.
+        #[inline(never)]
+        fn put_lc_srv(
+            servers: &mut crate::lifecycle_services::LifecycleServiceServersBuilder,
+            which: crate::lifecycle_services::LifecycleService,
+            create: impl FnOnce() -> Result<session::RmwServiceServer, NodeError>,
+        ) -> Result<(), NodeError> {
+            servers.put(which, create()?);
+            Ok(())
+        }
+
         /// Issue 1587 — the ONE publisher the REP-2002 family claims,
         /// `~/transition_event`. Shaped like `create_lc_srv` beside it both
         /// because the naming rule is the same (node FQN + suffix) and
@@ -15448,72 +15459,103 @@ impl<'s> Executor<'s> {
                 .map_err(NodeError::Transport)
         }
 
-        let cs_handle = create_lc_srv::<ChangeState>(
-            &mut self.session,
-            self.domain_id,
-            &node_fqn,
-            ns,
-            nn,
-            "change_state",
+        // Issues 2070 and 2968 -- the servers' allocation comes first and
+        // each handle is written into it as it is created, so this frame
+        // holds one handle at a time rather than five plus a copy of them.
+        let mut servers = LifecycleServiceServers::try_builder()
+            .ok_or(NodeError::Transport(TransportError::BadAlloc))?;
+        put_lc_srv(&mut servers, LifecycleService::ChangeState, || {
+            create_lc_srv::<ChangeState>(
+                &mut self.session,
+                self.domain_id,
+                &node_fqn,
+                ns,
+                nn,
+                "change_state",
+            )
+        })?;
+        put_lc_srv(&mut servers, LifecycleService::GetState, || {
+            create_lc_srv::<GetState>(
+                &mut self.session,
+                self.domain_id,
+                &node_fqn,
+                ns,
+                nn,
+                "get_state",
+            )
+        })?;
+        put_lc_srv(&mut servers, LifecycleService::GetAvailableStates, || {
+            create_lc_srv::<GetAvailableStates>(
+                &mut self.session,
+                self.domain_id,
+                &node_fqn,
+                ns,
+                nn,
+                "get_available_states",
+            )
+        })?;
+        put_lc_srv(
+            &mut servers,
+            LifecycleService::GetAvailableTransitions,
+            || {
+                create_lc_srv::<GetAvailableTransitions>(
+                    &mut self.session,
+                    self.domain_id,
+                    &node_fqn,
+                    ns,
+                    nn,
+                    "get_available_transitions",
+                )
+            },
         )?;
-        let gs_handle = create_lc_srv::<GetState>(
-            &mut self.session,
-            self.domain_id,
-            &node_fqn,
-            ns,
-            nn,
-            "get_state",
-        )?;
-        let gas_handle = create_lc_srv::<GetAvailableStates>(
-            &mut self.session,
-            self.domain_id,
-            &node_fqn,
-            ns,
-            nn,
-            "get_available_states",
-        )?;
-        let gat_handle = create_lc_srv::<GetAvailableTransitions>(
-            &mut self.session,
-            self.domain_id,
-            &node_fqn,
-            ns,
-            nn,
-            "get_available_transitions",
-        )?;
-        let gtg_handle = create_lc_srv::<GetAvailableTransitions>(
-            &mut self.session,
-            self.domain_id,
-            &node_fqn,
-            ns,
-            nn,
-            "get_transition_graph",
-        )?;
+        put_lc_srv(&mut servers, LifecycleService::TransitionGraph, || {
+            create_lc_srv::<GetAvailableTransitions>(
+                &mut self.session,
+                self.domain_id,
+                &node_fqn,
+                ns,
+                nn,
+                "get_transition_graph",
+            )
+        })?;
+        let servers = servers.finish();
 
         // Issue 1587 — REP-2002's communication interface is the five
-        // services PLUS this. VOLATILE, so it costs a publisher slot and a
-        // liveliness token and NO queryable; see
+        // services PLUS `~/transition_event`. VOLATILE, so it costs a
+        // publisher slot and a liveliness token and NO queryable; see
         // `LIFECYCLE_SERVICE_PUBLISHERS` for the measurement that settled it.
-        let te_handle = create_lc_pub::<nros_lifecycle_msgs::msg::TransitionEvent>(
+        //
+        // Issue 2968 -- out of line, so the publisher handle (~600 B on the
+        // C backend) is a temporary of that frame, not of this one.
+        #[inline(never)]
+        fn lc_state_with_event_pub(
+            servers: alloc::boxed::Box<LifecycleServiceServers>,
+            session: &mut session::ConcreteSession,
+            domain_id: u32,
+            node_fqn: &str,
+            namespace: &str,
+            node_name: &str,
+        ) -> Result<alloc::boxed::Box<LifecycleRuntimeState>, NodeError> {
+            let te_handle = create_lc_pub::<nros_lifecycle_msgs::msg::TransitionEvent>(
+                session,
+                domain_id,
+                node_fqn,
+                namespace,
+                node_name,
+                crate::lifecycle_services::TRANSITION_EVENT_SUFFIX,
+                crate::lifecycle_services::transition_event_qos(),
+            )?;
+            LifecycleRuntimeState::try_new_boxed(servers, te_handle)
+                .ok_or(NodeError::Transport(TransportError::BadAlloc))
+        }
+        let mut state = lc_state_with_event_pub(
+            servers,
             &mut self.session,
             self.domain_id,
             &node_fqn,
             ns,
             nn,
-            crate::lifecycle_services::TRANSITION_EVENT_SUFFIX,
-            crate::lifecycle_services::transition_event_qos(),
         )?;
-
-        // Issue 2070 -- built in their allocation, never on this frame.
-        let servers = LifecycleServiceServers::try_new_boxed([
-            cs_handle, gs_handle, gas_handle, gat_handle, gtg_handle,
-        ])
-        .ok_or(NodeError::Transport(TransportError::BadAlloc))?;
-
-        let mut state = alloc::boxed::Box::new(LifecycleRuntimeState {
-            state_machine: LifecyclePollingNodeCtx::new(),
-            services: servers,
-            transition_event: te_handle,
-        });
         // RFC-0128 D3: the served node's publishers follow this machine from
         // now on. A zero-node image's machine has no node and gates nothing.
         if let Some(r) = served.and_then(|id| self.nodes.get(id.index())) {

@@ -757,49 +757,29 @@ pub struct LifecycleServiceServers {
 }
 
 impl LifecycleServiceServers {
-    /// The five servers, built IN their allocation, from `handles` in this
-    /// order: `change_state`, `get_state`, `get_available_states`,
-    /// `get_available_transitions`, `get_transition_graph`.
+    /// An empty allocation for the five servers, which
+    /// [`LifecycleServiceServersBuilder::put`] fills one handle at a time as
+    /// each service is created.
     ///
-    /// Issue 2070 -- building them by value and then boxing them put all ten
-    /// buffers on the caller's stack: `register_lifecycle_services_named` had
-    /// a 92,160-byte frame on Cortex-M3 (Nav2's `velocity_smoother`, buffers
-    /// sized 9,216 by its parameters), so a lifecycle node needed a 128 KiB
-    /// app stack on FreeRTOS before it declared anything. Here the largest
-    /// stack temporary is a handle.
+    /// Issue 2070 -- building the servers by value and then boxing them put
+    /// all ten buffers on the caller's stack: `register_lifecycle_services_named`
+    /// had a 92,160-byte frame on Cortex-M3 (Nav2's `velocity_smoother`,
+    /// buffers sized 9,216 by its parameters).
+    ///
+    /// Issue 2968 -- taking the five HANDLES as an array still cost 8,120 B
+    /// there: on the C backend a service handle is 648 B, the five were live
+    /// at once, and the array was a second copy of all of them. Allocating
+    /// first and writing each handle as it is created leaves one handle on
+    /// the stack at a time.
     ///
     /// `None` when the allocation fails -- the caller has a refusal to return
-    /// (issue 1551's rule for entity-creation allocations).
-    pub(crate) fn try_new_boxed(
-        handles: [crate::session::RmwServiceServer; 5],
-    ) -> Option<Box<Self>> {
-        /// Safety: `p` is valid for writes and every field of `*p` is written
-        /// exactly once here.
-        unsafe fn init<Svc: nros_core::RosService>(
-            p: *mut LcSrv<Svc>,
-            handle: crate::session::RmwServiceServer,
-        ) {
-            unsafe {
-                core::ptr::addr_of_mut!((*p).handle).write(handle);
-                core::ptr::addr_of_mut!((*p).req_buffer).write_bytes(0, 1);
-                core::ptr::addr_of_mut!((*p).reply_buffer).write_bytes(0, 1);
-                core::ptr::addr_of_mut!((*p)._phantom).write(core::marker::PhantomData);
-            }
-        }
-        let mut uninit = nros_rmw::fallible::try_box_uninit::<Self>()?;
-        let p = uninit.as_mut_ptr();
-        let [cs, gs, gas, gat, gtg] = handles;
-        // Safety: `try_box_uninit` gives a correctly-sized, correctly-aligned
-        // allocation for exactly this type, and the five `init` calls write
-        // every field of every server once before `assume_init` observes it.
-        unsafe {
-            init(core::ptr::addr_of_mut!((*p).change_state), cs);
-            init(core::ptr::addr_of_mut!((*p).get_state), gs);
-            init(core::ptr::addr_of_mut!((*p).get_available_states), gas);
-            init(core::ptr::addr_of_mut!((*p).get_available_transitions), gat);
-            init(core::ptr::addr_of_mut!((*p).get_transition_graph), gtg);
-            Some(uninit.assume_init())
-        }
+    /// (issue 1551's rule for entity-creation allocations), and nothing has
+    /// been created yet that would need undoing.
+    pub(crate) fn try_builder() -> Option<LifecycleServiceServersBuilder> {
+        Some(LifecycleServiceServersBuilder {
+            slot: try_alloc_uninit::<Self>(LifecycleAlloc::Servers)?,
+            written: 0,
+        })
     }
 
     /// Process every lifecycle service server, handling at most one request
@@ -861,6 +841,163 @@ impl LifecycleServiceServers {
 
         Ok(count)
     }
+}
+
+/// Which of the five REP-2002 services a handle serves, in the order the
+/// servers are declared (and `ros2 lifecycle` lists them).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum LifecycleService {
+    ChangeState,
+    GetState,
+    GetAvailableStates,
+    GetAvailableTransitions,
+    /// `~/get_transition_graph`.
+    TransitionGraph,
+}
+
+/// [`LifecycleServiceServers`] under construction, in its own allocation.
+///
+/// Dropping it before [`Self::finish`] drops exactly the servers already
+/// written, so a service that fails to create part-way releases the ones
+/// created before it, as the by-value form did when it returned early.
+pub(crate) struct LifecycleServiceServersBuilder {
+    slot: Box<core::mem::MaybeUninit<LifecycleServiceServers>>,
+    /// Bit `which as u8` is set once that server is initialised.
+    written: u8,
+}
+
+impl LifecycleServiceServersBuilder {
+    const ALL: u8 = 0b1_1111;
+
+    /// Write `handle` into `which`'s server, its buffers zeroed.
+    ///
+    /// # Panics
+    /// If `which` was already written: overwriting would leak the first
+    /// handle's backend entity.
+    pub(crate) fn put(
+        &mut self,
+        which: LifecycleService,
+        handle: crate::session::RmwServiceServer,
+    ) {
+        /// Safety: `p` is valid for writes and every field of `*p` is written
+        /// exactly once here.
+        unsafe fn init<Svc: nros_core::RosService>(
+            p: *mut LcSrv<Svc>,
+            handle: crate::session::RmwServiceServer,
+        ) {
+            unsafe {
+                core::ptr::addr_of_mut!((*p).handle).write(handle);
+                core::ptr::addr_of_mut!((*p).req_buffer).write_bytes(0, 1);
+                core::ptr::addr_of_mut!((*p).reply_buffer).write_bytes(0, 1);
+                core::ptr::addr_of_mut!((*p)._phantom).write(core::marker::PhantomData);
+            }
+        }
+        let bit = 1u8 << (which as u8);
+        assert!(
+            self.written & bit == 0,
+            "lifecycle server {which:?} written twice"
+        );
+        let p = self.slot.as_mut_ptr();
+        // Safety: `slot` is a correctly-sized, correctly-aligned allocation
+        // for exactly this type; `which`'s server has not been written (the
+        // assert above), so this initialises it without overwriting a live
+        // value, and `written` records it for `finish` and `drop`.
+        unsafe {
+            use core::ptr::addr_of_mut;
+            match which {
+                LifecycleService::ChangeState => init(addr_of_mut!((*p).change_state), handle),
+                LifecycleService::GetState => init(addr_of_mut!((*p).get_state), handle),
+                LifecycleService::GetAvailableStates => {
+                    init(addr_of_mut!((*p).get_available_states), handle)
+                }
+                LifecycleService::GetAvailableTransitions => {
+                    init(addr_of_mut!((*p).get_available_transitions), handle)
+                }
+                LifecycleService::TransitionGraph => {
+                    init(addr_of_mut!((*p).get_transition_graph), handle)
+                }
+            }
+        }
+        self.written |= bit;
+    }
+
+    /// The five servers.
+    ///
+    /// # Panics
+    /// If any server was not written.
+    pub(crate) fn finish(self) -> Box<LifecycleServiceServers> {
+        assert!(
+            self.written == Self::ALL,
+            "lifecycle servers finished with {:#07b} of {:#07b} written",
+            self.written,
+            Self::ALL
+        );
+        let this = core::mem::ManuallyDrop::new(self);
+        // Safety: `this` is never dropped, so `slot` is moved out exactly
+        // once; every field was written (the assert above).
+        unsafe { core::ptr::read(&this.slot).assume_init() }
+    }
+}
+
+impl Drop for LifecycleServiceServersBuilder {
+    fn drop(&mut self) {
+        let p = self.slot.as_mut_ptr();
+        // Safety: each field is dropped only if `put` initialised it, and
+        // `finish` never runs this (it forgets `self`).
+        unsafe {
+            use core::ptr::{addr_of_mut, drop_in_place};
+            let w = self.written;
+            if w & (1 << LifecycleService::ChangeState as u8) != 0 {
+                drop_in_place(addr_of_mut!((*p).change_state));
+            }
+            if w & (1 << LifecycleService::GetState as u8) != 0 {
+                drop_in_place(addr_of_mut!((*p).get_state));
+            }
+            if w & (1 << LifecycleService::GetAvailableStates as u8) != 0 {
+                drop_in_place(addr_of_mut!((*p).get_available_states));
+            }
+            if w & (1 << LifecycleService::GetAvailableTransitions as u8) != 0 {
+                drop_in_place(addr_of_mut!((*p).get_available_transitions));
+            }
+            if w & (1 << LifecycleService::TransitionGraph as u8) != 0 {
+                drop_in_place(addr_of_mut!((*p).get_transition_graph));
+            }
+        }
+    }
+}
+
+/// The two allocations registering a lifecycle machine makes, so a test can
+/// fail either one.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum LifecycleAlloc {
+    Servers,
+    RuntimeState,
+}
+
+#[cfg(test)]
+std::thread_local! {
+    static FAIL_LIFECYCLE_ALLOC: core::cell::Cell<Option<LifecycleAlloc>> =
+        const { core::cell::Cell::new(None) };
+}
+
+/// Make the next `site` allocation on this thread fail, as an exhausted heap
+/// would. Per thread because `cargo test` runs tests on parallel threads.
+/// Only the mock-session tests call it, which an `rmw-cffi` build omits.
+#[cfg(all(test, not(feature = "rmw-cffi")))]
+pub(crate) fn fail_next_lifecycle_alloc(site: LifecycleAlloc) {
+    FAIL_LIFECYCLE_ALLOC.with(|c| c.set(Some(site)));
+}
+
+/// `nros_rmw::fallible::try_box_uninit`, which a test can fail per site.
+fn try_alloc_uninit<T>(site: LifecycleAlloc) -> Option<Box<core::mem::MaybeUninit<T>>> {
+    #[cfg(test)]
+    if FAIL_LIFECYCLE_ALLOC.with(|c| c.get() == Some(site)) {
+        FAIL_LIFECYCLE_ALLOC.with(|c| c.set(None));
+        return None;
+    }
+    #[cfg(not(test))]
+    let _ = site;
+    nros_rmw::fallible::try_box_uninit::<T>()
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -943,6 +1080,31 @@ pub(crate) struct LifecycleRuntimeState {
 }
 
 impl LifecycleRuntimeState {
+    /// A fresh `Unconfigured` machine serving `services` and announcing on
+    /// `transition_event`, built in its allocation.
+    ///
+    /// `None` when the allocation fails (issue 2968: this was a `Box::new`,
+    /// which aborts the image on an exhausted heap instead of refusing).
+    /// `services` and `transition_event` are dropped then, which releases
+    /// their backend entities.
+    pub(crate) fn try_new_boxed(
+        services: Box<dyn LifecycleServiceProcessor>,
+        transition_event: crate::session::RmwPublisher,
+    ) -> Option<Box<Self>> {
+        let mut uninit = try_alloc_uninit::<Self>(LifecycleAlloc::RuntimeState)?;
+        let p = uninit.as_mut_ptr();
+        // Safety: a correctly-sized, correctly-aligned allocation for exactly
+        // this type, each of its three fields written once before
+        // `assume_init` observes it.
+        unsafe {
+            use core::ptr::addr_of_mut;
+            addr_of_mut!((*p).state_machine).write(LifecyclePollingNodeCtx::new());
+            addr_of_mut!((*p).services).write(services);
+            addr_of_mut!((*p).transition_event).write(transition_event);
+            Some(uninit.assume_init())
+        }
+    }
+
     /// Pump the five services, then announce whatever transitions ran.
     ///
     /// ONE method rather than two calls at each of `spin_once`'s two lifecycle
@@ -1783,6 +1945,71 @@ mod tests {
                 InternalState::Unconfigured,
                 "fresh state machine starts in Unconfigured"
             );
+        }
+
+        /// Issue 2968 -- an exhausted heap is a refusal the caller can
+        /// report (C and C++ turn it into a return code and a log line),
+        /// never an abort, at both allocations registration makes; and it
+        /// leaves nothing behind, so the same registration succeeds once
+        /// memory is there.
+        #[test]
+        fn an_exhausted_heap_refuses_registration_at_each_allocation() {
+            for site in [LifecycleAlloc::Servers, LifecycleAlloc::RuntimeState] {
+                let session = MockSession::new();
+                let mut executor: Executor = named(session);
+                fail_next_lifecycle_alloc(site);
+                assert!(
+                    matches!(
+                        executor.register_lifecycle_services(),
+                        Err(NodeError::Transport(TransportError::BadAlloc))
+                    ),
+                    "{site:?}: an allocation failure is BadAlloc"
+                );
+                assert!(
+                    executor.lifecycle_state_machine().is_none(),
+                    "{site:?}: a refused registration installs no machine"
+                );
+                executor
+                    .register_lifecycle_services()
+                    .unwrap_or_else(|e| panic!("{site:?}: retry after the refusal: {e:?}"));
+                assert!(executor.lifecycle_state_machine().is_some());
+            }
+        }
+
+        /// The servers' allocation comes before any service is created, so
+        /// running out there creates nothing on the backend.
+        #[test]
+        fn an_exhausted_heap_for_the_servers_creates_no_service() {
+            static CREATES: core::sync::atomic::AtomicUsize =
+                core::sync::atomic::AtomicUsize::new(0);
+            let session =
+                MockSession::with_failing_service_create(TransportError::Unsupported, &CREATES);
+            let mut executor: Executor = named(session);
+            fail_next_lifecycle_alloc(LifecycleAlloc::Servers);
+            assert!(matches!(
+                executor.register_lifecycle_services(),
+                Err(NodeError::Transport(TransportError::BadAlloc))
+            ));
+            assert_eq!(CREATES.load(Ordering::Relaxed), 0);
+        }
+
+        /// A server written twice would leak the first handle; a builder
+        /// finished short would hand out uninitialised servers.
+        #[test]
+        fn the_servers_builder_refuses_a_double_write_and_a_short_finish() {
+            let mut session = MockSession::new();
+            let info = nros_rmw::ServiceInfo::new("/n/get_state", "t", "h");
+            let qos = nros_rmw::QoSProfile::services_default();
+            let first = nros_rmw::Session::create_service(&mut session, &info, qos).unwrap();
+            let second = nros_rmw::Session::create_service(&mut session, &info, qos).unwrap();
+            let mut b = LifecycleServiceServers::try_builder().unwrap();
+            b.put(LifecycleService::GetState, first);
+            let again = std::panic::catch_unwind(core::panic::AssertUnwindSafe(|| {
+                b.put(LifecycleService::GetState, second)
+            }));
+            assert!(again.is_err(), "a second write of one server panics");
+            let short = std::panic::catch_unwind(core::panic::AssertUnwindSafe(|| b.finish()));
+            assert!(short.is_err(), "finishing with one of five servers panics");
         }
 
         #[test]
