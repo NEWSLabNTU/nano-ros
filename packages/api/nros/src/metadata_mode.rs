@@ -595,6 +595,21 @@ pub fn descriptor_text_seen() -> (Option<usize>, Option<usize>) {
     })
 }
 
+// Issue 2964.
+/// The parameter watch as this module's recorder saw it, and how many parameter
+/// rows it holds. In a build with both, opening a node re-installs this
+/// module's observers over the Rust probe harness's, and every declaration
+/// route (the imperative ones included) records here, so this is where the
+/// harness learns whether its own rows were the whole set.
+pub fn parameter_declarations_seen() -> (Option<bool>, usize) {
+    state().with(|st| {
+        (
+            st.recorder.parameter_declarations_watched(),
+            st.recorder.parameter_count(),
+        )
+    })
+}
+
 /// Serialize everything recorded so far, through the one schema emitter.
 pub fn to_json(export: &SourceMetadataExport<'_>) -> Result<String, core::fmt::Error> {
     state().with(|st| st.recorder.to_source_metadata_json(export))

@@ -873,6 +873,14 @@ impl<const MAX_NODES: usize, const MAX_ENTITIES: usize, const MAX_CALLBACKS: usi
         self.parameter_declarations_watched
     }
 
+    /// How many parameter rows are recorded.
+    pub fn parameter_count(&self) -> usize {
+        self.entities()
+            .iter()
+            .filter(|entity| entity.kind == EntityKind::Parameter)
+            .count()
+    }
+
     /// Start watching descriptor prose: from now on the sidecar states the
     /// longest description and constraints text seen, `0` for one never set.
     /// Idempotent; keeps what was seen.
