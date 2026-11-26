@@ -28,7 +28,10 @@ is already a package. What is missing is measured in RFC-0135's Motivation:
 ### W1 — Every board, listed
 
 - **Owner:** unassigned.
-- **Status:** OPEN
+- **Status:** OPEN. Partly landed through phase-569 W5b, #4527 (c80f3de04d,
+  2026-11-21): `nros board list` lists board keys with crate, platform,
+  status and cadence columns. Not on main (audited 2026-11-26): the root
+  column, and a test that the listing's keys equal `BoardCatalog`'s.
 - `nros board list` lists every board key from every root (workspace,
   `$NROS_EXTRA_BOARD_PATH`, in-tree), one row per key, with its package, root,
   platform and support status. This is RFC-0133 D1's shape. Crate-less boards
@@ -121,7 +124,11 @@ is already a package. What is missing is measured in RFC-0135's Motivation:
 ### W8 — First consumer: the out-of-tree TI R5F board package
 
 - **Owner:** nros 118 (phase-575 W2).
-- **Status:** OPEN
+- **Status:** OPEN. The "Until then" column landed in #4186 (a39e750033,
+  2026-11-17): fixture `nros-tests/fixtures/out-of-tree-r5f` and gate
+  `just check out-of-tree-board-images`, extended by #4706 (b683709323).
+  Each row tightens with its item (W2, W3, W5, W6, W7, W10), none of which
+  has landed (audited 2026-11-26).
 - Phase-575 W2's fixture board is built as a board package in RFC-0135's
   shape:
   - a version range;
