@@ -152,7 +152,27 @@ Approved by the user on 2026-11-20 as sent; recorded in RFC-0131 D2 and D3.
 ### W5 — `test-unit`: one invocation or a merged sibling
 
 - **Owner:** nros 142.
-- **Status:** OPEN
+- **Status:** DONE (2026-11-26): (a), unchanged. Measured on host 142
+  (80 CPUs, Linux aarch64) on main `ee6dfe8ff4` plus this phase's docs
+  commits, each run under the host gate lock in one worktree, order
+  a, b, a, then b, a, load1 (1/5/15 min) recorded at each end:
+
+  | run | shape | wall | `test-unit` | load at end |
+  | --- | --- | --- | --- | --- |
+  | a1 | (a), cold tree | 2874 s | 144 s in the lane | 16 / 23 / 35 |
+  | b1 | (b) | 1325 s | 15 s beside it | 27 / 36 / 43 |
+  | a2 | (a) | 1393 s | 83 s in the lane | 21 / 32 / 42 |
+  | b2 | (b) | 1406 s | 15 s beside it | 28 / 36 / 46 |
+  | a3 | (a) | 1355 s | in the lane | 29 / 37 / 47 |
+
+  (b) is `gate-lane.sh ci -E 'not test(=gate::test-unit)'` with `just
+  test-unit` started beside it, timed until both finish. a1 is the first run
+  in the tree and compiles from cold, so it is not compared. Warm, (a) is
+  1393 and 1355 s (mean 1374 s) and (b) 1325 and 1406 s (mean 1366 s): 8 s
+  apart, against 81 s between the two (b) runs. Wall clock does not separate
+  them. (a) is chosen because it is what the lane already runs: `test-unit`
+  stays inside the lane's claims preflight, skip ledger, one junit and
+  `uses:root-target`, and (b) would add a junit merge for no measured gain.
 - Measure both on one host, with the tree and the load stated:
   - (a) `test-unit` as one gate test, its inner nextest's junit attached as
     the testcase's output;
