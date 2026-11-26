@@ -213,8 +213,11 @@ is already a package. What is missing is measured in RFC-0135's Motivation:
 
 ### W13 — The book's board pages
 
-- **Owner:** nros 139.
-- **Status:** OPEN
+- **Owner:** nros 139 AUO book (taken over from nros 139 on 2026-11-26, by
+  the manager's assignment).
+- **Status:** OPEN. Prose drafted ahead of the CLI; each command is fenced
+  with a probe as W2, W6 and W10 land. Builds on #4906's "Add a board"
+  step 4.
 - Write RFC-0135's User flow as the book's getting-started page for board
   packages, and rewrite "Add a board" around RFC-0135 D2. Fence the commands
   with probes once W2, W6 and W10 have landed.
