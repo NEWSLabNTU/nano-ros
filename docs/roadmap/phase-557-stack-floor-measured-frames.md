@@ -1,7 +1,7 @@
 # Phase 557 — Stack floors from measured frames, delivered per build
 
-**Status (2026-11-22). OPEN: W1, W2, W2b, W3, W4, W5, W6, W7 and W8 are
-done, and so is W5b; W7f is dropped at its checkpoints; W3b and W9 are open.** This phase tracks the implementation of
+**Status (2026-11-26). OPEN: W1, W2, W2b, W3, W4, W5, W6, W7, W8 and W10
+are done, and so is W5b; W7f is dropped at its checkpoints; W3b and W9 are open.** This phase tracks the implementation of
 [issue 2400](../issues/2400-stack-floor-from-measured-frames.md): one producer
 per target computes the floor of a thread's stack from the frames that thread
 runs, and every gate reads that producer instead of holding its own number.
@@ -1437,7 +1437,21 @@ does not link. Placement does not change the code the walk reads.
 
 ### W10 — An unmeasured Rust Zephyr image gets its board's measured floor, not a literal
 
-- **Status:** OPEN
+- **Status:** DONE (2026-11-21, #4572 at ee02c58931). This line read OPEN
+  after the merge. Acceptance re-checked on main 2026-11-26:
+  - `nros-stack-floor.py --board-floor` gives nucleo-f767zi-zephyr and
+    mps2-an385-zephyr 33,368 B from their rows (both boards' largest
+    template peak is now 30,328 B, the action server). It gives rpi-pico-w-zephyr
+    32,768 B with basis `fallback`, and the configure WARNS naming it.
+    A measured image (`talker/rust/zenoh@nucleo-f767zi-zephyr`) gets basis
+    `own-row`, and the board floor does not apply to it.
+  - The floor follows the rows: on a scratch copy of the table, raising
+    mps2's action-server peak from 30,328 to 40,000 moved mps2's floor to
+    44,000 B and left nucleo's at 33,368.
+  - `check-zephyr-rust-main-stack` is OK over 6 board packages, its self-test
+    passes, and the producer's self-test passes (307 checks).
+  - Outside `docs/`, `git grep NROS_RUST_MAIN_STACK_FLOOR` finds only a
+    historical mention in `nros-stack-floor.py`'s docstring, with no number.
 
 **Ruling (user, 2026-11-21).** An unmeasured Rust Zephyr image gets a
 PER-BOARD MEASURED floor: the largest measured template peak on that board,
