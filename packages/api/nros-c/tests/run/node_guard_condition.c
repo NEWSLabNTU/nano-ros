@@ -148,8 +148,19 @@ static uint64_t s_period_trigger_ms = 0;
 static uint64_t s_period_cancel_ms = 0;
 static struct rclc_executor_t* s_period_exec = NULL;
 
+static bool s_period_saw_spinning = false;
+
 static void* period_thread(void* unused) {
     (void)unused;
+    /* Issue 2981: wait until the period spin is RUNNING before counting the
+     * 150 ms. A spin clears the cancel flag on entry and raises is_spinning
+     * after that clear, so a cancel sent before entry is lost and an untimed
+     * period spin never returns. Seeing is_spinning first rules that out; the
+     * bounded wait turns a spin that never starts into a CHECK failure, not a hang. */
+    for (int i = 0; i < 5000 && !s_period_saw_spinning; i++) {
+        s_period_saw_spinning = rclc_executor_is_spinning(s_period_exec);
+        if (!s_period_saw_spinning) sleep_ms(1);
+    }
     sleep_ms(150);
     s_period_trigger_ms = now_ms();
     (void)rclc_guard_condition_trigger(&s_guard);
@@ -328,6 +339,7 @@ int main(void) {
               "the period spin returned OK on cancel");
     const uint64_t period_end = now_ms();
     CHECK(pthread_join(th, NULL) == 0, "period thread joined");
+    CHECK(s_period_saw_spinning, "the period spin was observed running before the trigger");
     const uint64_t trigger_latency_ms = s_ctx.last_fire_ms - s_period_trigger_ms;
     const uint64_t cancel_latency_ms = period_end - s_period_cancel_ms;
 
