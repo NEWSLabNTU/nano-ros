@@ -1,0 +1,5 @@
+{
+  "key": "rust:Executor::register_device",
+  "verdict": "extension",
+  "why": "phase 579 W3a (RFC-0139 D3/D4/R6) -- register a device event source into a fixed callback slot before the first spin; returns its HandleId and Completion. The extension hook the device companion package builds on, not a ROS user API."
+}

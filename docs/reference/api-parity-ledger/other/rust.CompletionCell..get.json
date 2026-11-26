@@ -1,0 +1,5 @@
+{
+  "key": "rust:CompletionCell::get",
+  "verdict": "extension",
+  "why": "phase 579 W3a (RFC-0139 D3/D4/R6) -- the stored Completion, if any."
+}

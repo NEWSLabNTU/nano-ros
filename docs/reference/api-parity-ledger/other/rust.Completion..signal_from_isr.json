@@ -1,0 +1,5 @@
+{
+  "key": "rust:Completion::signal_from_isr",
+  "verdict": "extension",
+  "why": "phase 579 W3a (RFC-0139 D3/D4/R6) -- signal a device completion from an interrupt handler (on POSIX, a signal handler) through the interrupt-safe wake; returns whether the executor's wake object took it, as GuardCondition::trigger_from_isr does. rclrs has no interrupt context."
+}

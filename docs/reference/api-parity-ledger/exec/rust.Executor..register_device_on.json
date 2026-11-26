@@ -1,0 +1,5 @@
+{
+  "key": "rust:Executor::register_device_on",
+  "verdict": "extension",
+  "why": "phase 579 W3a (RFC-0139 D3/D4/R6) -- the node-bound form of register_device: the slot takes the node's default sched context."
+}

@@ -1,0 +1,5 @@
+{
+  "key": "rust:CompletionCell::signal",
+  "verdict": "extension",
+  "why": "phase 579 W3a (RFC-0139 D3/D4/R6) -- Completion::signal on the stored handle; false when empty."
+}
