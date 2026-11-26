@@ -114,10 +114,10 @@ already does.
 
 | id | event | arg | emitted |
 | --- | --- | --- | --- |
-| 28 | job released | `job seq` (low 32 bits) | when a scheduled task's job is released: the start of its deadline window |
-| 29 | job complete | `job seq` | when that job's last callback returns |
-| 30 | budget exhausted (throttled) | `job seq` | when the budget server stops the task |
-| 31 | budget replenished | `job seq` | when the server lets it run again |
+| 28 | job released | `task << 24 \| job seq` (seq low 24 bits) | when a scheduled task's job is released: the start of its deadline window |
+| 29 | job complete | `task << 24 \| job seq` | when that job's last callback returns |
+| 30 | budget exhausted (throttled) | `task << 24 \| job seq` | when the budget server stops the task |
+| 31 | budget replenished | `task << 24 \| job seq` | when the server lets it run again |
 
 **New rule, appended to `RULE_IDS`:** `budget-overrun-runtime` (code 18). It
 is reported as a violation, with `measured` the time the job ran and
@@ -125,17 +125,37 @@ is reported as a violation, with `measured` the time the job ran and
 throttled; the violation is the instant a person reads and the log reports.
 Phase-575 W5 owns both emitters; this RFC owns only the ids and their meaning.
 
-**Which task an event belongs to.** Events 28..31 carry no task id. They are
-emitted on the scheduled task's own thread, and the converter (D3) attributes
-an event to the thread that was running at its timestamp. That thread is known
-from the recorder's own context-switch events (Zephyr's thread switches,
-Tonbandgeraet's task switches). This is how the existing `handle` events are
-already disambiguated across several executors, where the same slot index
-recurs in each.
+**Which task an event belongs to.** Events 28..31 carry the scheduled task's
+index (its position in the image's sched task table, so at most 255 tasks) in
+the top 8 bits, and the converter (D3) attributes them by that field, never
+by the thread that happened to be running.
+
+The current thread would be wrong for half of them. 28 and 29 are emitted on
+the task's own thread. But the budget server detects exhaustion (30) while the
+job is still running past its budget, and refills it (31), from a timer or tick
+context: a timer ISR on the bare-metal pattern (`sporadic_timer.rs`), and an
+ISR or the timer daemon task on FreeRTOS. Crediting those to the running
+thread would put them on the wrong track.
+
+The converter binds a task index to a thread the first time that task's 28
+arrives, since a release is emitted on the task's own thread. A 30 or 31
+always follows its job's 28, so it is drawn on the right track even though it
+was emitted elsewhere.
+
+The existing `handle` events are different: they are emitted inside the
+dispatch, on the thread running the callback. So they are still attributed by
+the recorder's context switches (Zephyr's thread switches, Tonbandgeraet's
+task switches), which is how the same slot index is already told apart across
+several executors.
 
 A recorder with no context switches (bare metal) has a single executor, so
-nothing needs attributing. If a later recorder has threads but does not record
-switches, it must add a task id before it is supported, rather than guess.
+the `handle` events need no attributing. If a later recorder has threads but
+does not record switches, it must carry an executor id on those events before
+it is supported, rather than guess.
+
+A deadline miss that a deadline timer detects while the job is still running
+is emitted from the timer's context too. It needs nothing extra, because a
+violation names its entity through its fqn hash (event 22).
 
 **Not in the set, deliberately:**
 - OS-level events (queue operations, ISRs, semaphores). The recorder already
@@ -297,6 +317,11 @@ work item writes their emitters.
   its own rule, `budget-overrun-runtime`; Perfetto; `trace_processor_shell`
   provisioned by the SDK for acceptance). Draft to Stable; work is phase-578
   W11, after phase-575 W5.
+- 2026-11-26 — Refined D1, from phase-575 W5's owner: events 28..31 carry
+  the sched task index in their top 8 bits (seq in the low 24), and the
+  converter attributes them by that field. Exhaustion (30) and refill (31)
+  are detected in a timer or tick context, not on the task's own thread, so
+  attributing by the running thread would credit the wrong task.
 
 ## Related
 
