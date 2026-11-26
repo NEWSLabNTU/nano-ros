@@ -94,7 +94,17 @@ Approved by the user on 2026-11-20 as sent; recorded in RFC-0131 D2 and D3.
 ### W3 — Preconditions
 
 - **Owner:** nros 142.
-- **Status:** OPEN
+- **Status:** DONE (2026-11-20, #4437). Acceptance re-checked 2026-11-26:
+  - a stale CLI stops the lane before nextest starts, naming `cli-fresh`:
+    with an uncommitted edit to `packages/cli/nros-cli/src/main.rs`, `just ci
+    gate` printed `precondition \`check::cli-fresh\` FAILED (rc=1); no gate
+    ran.` after `source-stamp: STALE`, and exited 1;
+  - on a green run the three are in the junit as passes: host 142's full
+    `just ci gate` at #4854's head (2026-11-25) ran them in the wrapper in
+    order and reported `precondition::check::{cli-fresh, cli-noop-build,
+    launch-resolve-fresh}` as PASS, in the same nextest run as the 759 others;
+  - mutation: the harness's own `self::precondition-verdicts` test holds that
+    a missing directory or verdict file is red, not a pass.
 - `gate-lane.sh` runs a lane's preconditions before the claims preflight
   returns, serially and fail-fast, and writes
   `build/gates/preconditions/<name>.verdict`. Which lane runs which
