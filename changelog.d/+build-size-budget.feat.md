@@ -1,0 +1,1 @@
+The size report at the end of `nros build` now gives each figure as a percentage of the board's memory budget when the board definition states one in `[board.memory]`, and warns when the image does not fit.

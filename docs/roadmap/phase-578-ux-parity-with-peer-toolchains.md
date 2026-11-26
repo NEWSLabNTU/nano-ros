@@ -65,9 +65,11 @@ at once (RFC-0135, draft).
   - Measured on `examples/mps2-an385-freertos/c/talker`:
     text 528,444 / data 10,624 / bss 830,672 B, equal to
     `arm-none-eabi-size -B` on the same image.
-  - What is left is the budget's source: no board definition states one
-    until RFC-0135 D8's memory budget lands (phase-577 W6), so a build
-    prints absolute numbers and says so.
+  - The budget is the board's `[board.memory]` (RFC-0135 D8, landed with
+    phase-577 W6): each figure the board states gets a percentage and any
+    overrun, an image over either gets a warning line, and a figure it does
+    not state stays absolute. This is the exact verdict the pre-build check's
+    lower bound defers to.
   - The largest pools are not printed. The sizing descriptor records
     counts, not bytes, so it cannot rank a pool by size; the measured
     per-symbol view is `just mem-report <elf>`.

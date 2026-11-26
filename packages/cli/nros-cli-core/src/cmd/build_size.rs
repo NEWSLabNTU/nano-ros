@@ -14,10 +14,11 @@
 //! sections too (a `.heap` or `.noinit` region) when the link places them, and
 //! anything the program takes at run time beyond that is not here.
 //!
-//! The board's capacity is a percentage's denominator. A board definition
-//! does not state one yet (its memory budget is RFC-0135 D8, phase-577 W6), so
-//! a build prints absolute numbers; [`render`] takes the budget once one
-//! exists. A hosted program (an ELF with an interpreter, such as a POSIX
+//! The board's capacity is a percentage's denominator: its `[board.memory]`
+//! budget (RFC-0135 D8). A board that states no budget, or states one figure
+//! and not the other, gets absolute numbers for what it does not state. This
+//! report is the EXACT verdict against that budget; the pre-build check
+//! compares only a lower bound (the ruling of 2026-11-26). A hosted program (an ELF with an interpreter, such as a POSIX
 //! image or Zephyr's `native_sim`) has no flash or fixed RAM, so it gets no
 //! report.
 
@@ -51,11 +52,20 @@ impl ImageSize {
     }
 }
 
-/// A board's flash and RAM capacity, in bytes.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// A board's flash and RAM capacity, in bytes: its `[board.memory]`. A figure
+/// the board does not state is `None`.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Budget {
-    pub flash: u64,
-    pub ram: u64,
+    pub flash: Option<u64>,
+    pub ram: Option<u64>,
+}
+
+impl Budget {
+    /// Whether the image uses more of either than the board has.
+    #[must_use]
+    pub fn exceeded_by(&self, size: &ImageSize) -> bool {
+        self.flash.is_some_and(|f| size.flash() > f) || self.ram.is_some_and(|r| size.ram() > r)
+    }
 }
 
 /// The sizes of the ELF in `bytes`, or `None` for a hosted program, which has
@@ -131,14 +141,27 @@ fn line(label: &str, used: u64, capacity: Option<u64>) -> String {
 #[must_use]
 pub fn render(qualified: &str, size: &ImageSize, budget: Option<&Budget>) -> String {
     let mut s = format!("nros build: size of `{qualified}`:\n");
-    s.push_str(&line("flash", size.flash(), budget.map(|b| b.flash)));
-    s.push_str(&line("RAM", size.ram(), budget.map(|b| b.ram)));
+    s.push_str(&line("flash", size.flash(), budget.and_then(|b| b.flash)));
+    s.push_str(&line("RAM", size.ram(), budget.and_then(|b| b.ram)));
     s.push_str(&format!(
         "  (text {} + data {} in flash; data {} + bss {} in RAM, at link time)\n",
         size.text, size.data, size.data, size.bss
     ));
-    if budget.is_none() {
-        s.push_str("  the board states no memory budget, so there is no percentage\n");
+    match budget {
+        None
+        | Some(Budget {
+            flash: None,
+            ram: None,
+        }) => {
+            s.push_str("  the board states no memory budget, so there is no percentage\n");
+        }
+        Some(b) if b.exceeded_by(size) => {
+            s.push_str(
+                "  warning: the image does not fit the board's [board.memory] budget; lower \
+                 what it uses, or choose a board with more memory\n",
+            );
+        }
+        Some(_) => {}
     }
     s
 }
@@ -269,8 +292,8 @@ mod tests {
     fn with_a_budget_the_report_gives_percentages() {
         let s = of_elf(&mcu_image()).unwrap().unwrap();
         let b = Budget {
-            flash: 64 * 1024,
-            ram: 16 * 1024,
+            flash: Some(64 * 1024),
+            ram: Some(16 * 1024),
         };
         let r = render("demo:fw", &s, Some(&b));
         // flash 16,524 of 65,536 = 25.2 %; RAM 24,596 of 16,384, over.
@@ -280,6 +303,26 @@ mod tests {
             "{r}"
         );
         assert!(!r.contains("no memory budget"), "{r}");
+        assert!(r.contains("warning: the image does not fit"), "{r}");
+    }
+
+    /// A board that states one figure gets that percentage only, and an image
+    /// within its budget gets no warning.
+    #[test]
+    fn a_partial_budget_gives_the_one_percentage_it_can() {
+        let s = of_elf(&mcu_image()).unwrap().unwrap();
+        let b = Budget {
+            flash: None,
+            ram: Some(64 * 1024),
+        };
+        let r = render("demo:fw", &s, Some(&b));
+        assert!(r.contains("(16524 B)\n"), "flash has no denominator: {r}");
+        assert!(r.contains("(24596 B) of 64.0 KiB (37.5 %)"), "{r}");
+        assert!(!r.contains("warning"), "{r}");
+        assert!(!r.contains("no memory budget"), "{r}");
+        assert!(
+            render("demo:fw", &s, Some(&Budget::default())).contains("states no memory budget")
+        );
     }
 
     #[test]
