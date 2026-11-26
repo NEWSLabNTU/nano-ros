@@ -1,0 +1,1 @@
+The post-link stack-floor check no longer hangs when the build tree holds a symlink back up to a directory that contains it (the checkout a project sits in, say). It used to follow such a link round and round, re-reading everything behind it about forty times, and one build hung for almost eight hours; now each directory is read once and a link back up the tree is not followed.
