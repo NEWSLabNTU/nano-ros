@@ -94,7 +94,7 @@ mod tests {
     }
 
     #[test]
-    fn with_apply_the_key_is_renamed_and_the_build_preflight_passes() {
+    fn with_apply_the_row_moves_to_the_knobs_table_and_the_build_preflight_passes() {
         let td = ws();
         assert!(crate::fix::preflight(td.path()).is_err());
         run(Args {
@@ -102,7 +102,11 @@ mod tests {
             apply: true,
         })
         .unwrap();
-        assert!(system(&td).contains("env = { NROS_ZENOH_MAX_QUERYABLES = \"4\" }"));
+        let text = system(&td);
+        assert!(
+            text.contains("[image.talker.knobs.zenoh]\nmax_queryables = 4"),
+            "{text}"
+        );
         crate::fix::preflight(td.path()).unwrap();
     }
 }

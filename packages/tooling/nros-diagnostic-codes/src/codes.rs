@@ -72,4 +72,36 @@ diagnostics! {
         remedy: "rename the key to the knob's current spelling, which the refusal names; \
                  `nros fix` does it",
     }
+
+    /// An `[image.<id>] env` (or `[image_defaults] env`) row is keyed by a
+    /// knob the registry holds. A knob is stated in the image's knobs table,
+    /// where its type and range are checked; the env row was deprecated in
+    /// release 0.6.0 and is refused since. History: phase-484 W8 (the
+    /// refusal), phase-578 W4 (its location and fix).
+    0012 ImageEnvNamesKnob {
+        title: "an image's env row sets a registry knob",
+        surfaces: [Cli],
+        remedy: "move the row to the image's `[image.<id>.knobs.<group>]` table, which the \
+                 refusal names; `nros fix` does it",
+    }
+
+    /// An image's `board` is `native` or `posix`. Both were deprecated
+    /// aliases of the host board, which has one name, `linux`. History:
+    /// phase-500 W5 (the refusal), phase-578 W4 (its location and fix).
+    0013 RetiredBoardKey {
+        title: "an image names a retired host board key",
+        surfaces: [Cli],
+        remedy: "write `board = \"linux\"`; `nros fix` does it",
+    }
+
+    /// An image's `framework` is one its board cannot boot, or one the board
+    /// decides itself. The board definition is the authority: its
+    /// `frameworks` list, or the entry shape its platform implies. History:
+    /// RFC-0111 (the field), phase-578 W4 (both locations).
+    0014 ImageFrameworkRefused {
+        title: "an image states a framework its board does not boot",
+        surfaces: [Cli],
+        remedy: "choose a framework from the board's `frameworks` list, or remove the line so \
+                 the board's default is used",
+    }
 }

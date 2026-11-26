@@ -376,3 +376,38 @@ fn a_located_refusal_renders_rustc_s_span_block_and_the_fix_line() {
         "{text}"
     );
 }
+
+#[test]
+fn a_secondary_location_renders_as_a_note_with_its_own_span_block() {
+    let at = crate::Location {
+        path: "src/app_bringup/system.toml",
+        line: 5,
+        column: 13,
+        len: 6,
+        text: "framework = \"rtic\"",
+    };
+    let board = crate::Location {
+        path: "boards/acme/nros-board.toml",
+        line: 7,
+        column: 14,
+        len: 15,
+        text: "frameworks = [\"owned-spin\"]",
+    };
+    let detail = "this board does not boot `rtic`";
+    let label = "the board states this";
+    let text = format!(
+        "{}",
+        crate::Diag::BoardUnknown
+            .refuse(&detail)
+            .at(at)
+            .note_at(board, &label)
+    );
+    let want = "error[NROS-0002]: this board does not boot `rtic`\n  \
+                --> src/app_bringup/system.toml:5:13\n   |\n \
+                5 | framework = \"rtic\"\n   |             ^^^^^^\n  \
+                note: the board states this\n  \
+                --> boards/acme/nros-board.toml:7:14\n   |\n \
+                7 | frameworks = [\"owned-spin\"]\n   |              ^^^^^^^^^^^^^^^\n  help: ";
+    assert!(text.starts_with(want), "{text}");
+    assert!(!text.contains("fix: nros fix"), "{text}");
+}

@@ -1117,12 +1117,20 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
         // `framework` against its board, for EVERY image and before anything
         // is generated, so `framework = "zephyr"` (or one the board does not
         // boot) is refused whatever road the image would take.
+        let board_name = image.board.as_deref().unwrap_or_default();
         descriptor
-            .image_framework(
-                image.board.as_deref().unwrap_or_default(),
-                image.framework.as_deref(),
-            )
-            .map_err(|e| eyre::eyre!("`{qual}` cannot be built: {e}"))?;
+            .image_framework(board_name, image.framework.as_deref())
+            .map_err(|e| {
+                // RFC-0129 D7 -- at the image's line, and the board's.
+                crate::fix::framework_refusal(
+                    &crate::fix::workspace_files(&root),
+                    &image_id,
+                    board_name,
+                    descriptor.source_file(nano_ros_root.as_deref()).as_deref(),
+                    &format!("`{qual}` cannot be built: {e}"),
+                )
+                .report()
+            })?;
         let platform = descriptor.platform.kebab().to_string();
         // Issue 2629 — refused on every road, not only the west one that
         // passes them: an image's FVP model parameters on a board that is no
@@ -6315,7 +6323,17 @@ fn generate_entry(
     // no longer picks the framework.
     let framework = descriptor
         .image_framework(&board_name, image.framework.as_deref())
-        .map_err(|e| eyre::eyre!("`[image.{image_id}]`: {e}"))?;
+        .map_err(|e| {
+            // RFC-0129 D7 -- at the image's line, and the board's.
+            crate::fix::framework_refusal(
+                &crate::fix::workspace_files(root),
+                image_id,
+                &board_name,
+                descriptor.source_file(nano_ros_root).as_deref(),
+                &e,
+            )
+            .report()
+        })?;
 
     // Where the entry will be written — needed to make its dependency paths
     // relative, and computed before the spec because the spec carries them.

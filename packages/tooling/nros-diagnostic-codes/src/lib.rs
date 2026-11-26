@@ -196,6 +196,7 @@ impl Diag {
             diag: self,
             detail,
             at: None,
+            note_at: None,
             fixable: false,
             help: None,
             note: None,
@@ -237,6 +238,7 @@ pub struct Refusal<'a> {
     diag: Diag,
     detail: &'a dyn fmt::Display,
     at: Option<Location<'a>>,
+    note_at: Option<(Location<'a>, &'a dyn fmt::Display)>,
     fixable: bool,
     help: Option<&'a dyn fmt::Display>,
     note: Option<&'a dyn fmt::Display>,
@@ -249,6 +251,16 @@ impl<'a> Refusal<'a> {
     #[must_use]
     pub fn at(mut self, at: Location<'a>) -> Self {
         self.at = Some(at);
+        self
+    }
+
+    // RFC-0129 D7.
+    /// A second place the refusal is about: the line that states the fact the
+    /// user's line was compared with (a board definition's `frameworks`),
+    /// rendered under the primary span as a `note:` with its own span block.
+    #[must_use]
+    pub fn note_at(mut self, at: Location<'a>, label: &'a dyn fmt::Display) -> Self {
+        self.note_at = Some((at, label));
         self
     }
 
@@ -309,6 +321,10 @@ impl fmt::Display for Refusal<'_> {
         let e = self.diag.entry();
         write!(f, "error[{}]: {}", e.code, self.detail)?;
         if let Some(at) = &self.at {
+            write_location(f, at)?;
+        }
+        if let Some((at, label)) = &self.note_at {
+            write!(f, "\n  note: {label}")?;
             write_location(f, at)?;
         }
         match self.help {
