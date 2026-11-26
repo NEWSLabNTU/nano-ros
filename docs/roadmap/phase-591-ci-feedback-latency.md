@@ -67,15 +67,28 @@ summary names each failed row; the lane is still red.
   03:00-07:00 window, so the push run 45780577883 printed "Dispatched nightly.yml on
   main." and `nightly` 45780611528 (workflow_dispatch at `d5e7486a9a`, 08:08:07Z)
   finished green at 10:24:53Z: 2 h 17 min after the merge, inside 6 h. The history
-  that follows is the first attempt.
-- **First attempt:** the run the re-run dispatched, 45422927491, FAILED
-  (completed 2026-11-24 19:04Z, 3 h 52 min after dispatch), so the
-  acceptance's second half is not met (audited 2026-11-26). The automatic
-  re-run fired live: #4790 (phase-590 B24, carrying a
-  `Fixes-Lane:` trailer) merged at 15:12:53Z as `730dfbebeb`, and the `automation` push run
-  45422883315 dispatched `run-matrix.yml` on `main` at that commit 16 s later (run
-  45422927491, 15:13:09Z). Acceptance's second half closes when that run is green, inside
-  6 hours of the merge.
+  that follows classifies the first firing and records a second green one.
+
+**The first firing, classified (2026-11-26).** #4790 (phase-590 B24, carrying a
+`Fixes-Lane:` trailer) merged at 15:12:53Z on 2026-11-24 as `730dfbebeb`. The `automation`
+push run 45422883315 dispatched `run-matrix.yml` on `main` at that commit 16 s later (run
+45422927491, 15:13:09Z). The dispatch was right; the run was red. Its real failures, read
+from the junit artifacts (every other red in the log is a `[SKIPPED:lane]` the junit rewrite
+drops), were code defects, not infra and not flakes. Each is fixed:
+
+| Job | Real failure | Cause | Fixed by |
+| --- | --- | --- | --- |
+| tier 1, tier-2 nightly | `rmw_coordinate_truth::a_rows_rmw_is_the_backend_its_artifact_linked`, TIMEOUT at 60 s | issue 2940's per-row freshness check ran serially, about 80 s over the in-lane rows | `5897d5ac13` (one batch, 3.8 s) |
+| tier-2 nightly | `rmw_coordinate_truth::a_rows_entry_registers_its_nodes_at_runtime`, a stale `workspace-cpp-threadx-linux-service-server-cyclonedds` | issue 2960 (B32): the census host build shared the image build tree, first seen in this run | issue 2960 (resolved) |
+| tier 2 | `emulator::test_qemu_rtic_levels_preempt_and_wake_on_time`, `isr_wake_rtos::...on_baremetal_mps2` | issue 2959 (B31): host load on the runner | #4835's isolation |
+
+At `01388e07a3` (run 45684820840) all four pass in tier 2 and tier-2 nightly.
+
+**The second firing, green.** #4781 (this phase's W3, `Fixes-Lane: live-peer`) merged at
+16:05:23Z on 2026-11-24 as `4d1015b708`. The `automation` run dispatched `live-peer.yml` on
+`main` at that commit 15 s later (run 45433078734, 16:05:38Z). It finished green at 19:12:45Z,
+3 h 7 min after the merge, inside the 6 hours, with every job green, all three VERDICT jobs
+included.
 
 User ruling 2026-11-24: a green `workflow_dispatch` of a scheduled workflow, on `main` at the
 release commit, with every job green, counts as release evidence like a scheduled run.
