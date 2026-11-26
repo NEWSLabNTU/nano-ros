@@ -820,8 +820,8 @@ AN536) stay green.
 | `nros run` `--forbid`, `--settle`, `--zephyr-workspace` | fixed; used on `nano-ros-next` | issue 2863 |
 | the Zephyr workspace ladder skips the project's west workspace (`run-zephyr-fvp-ci.sh:202-213`, `--zephyr-workspace` on every call) | done: fixed in nano-ros (2877 resolved); the island dropped its flag | issue 2877, I37 |
 | the island's last Zephyr patch, an out-of-tree tracing backend (`patches/zephyr/0003-*`, `scripts/apply-zephyr-patches.sh`) | done: ruled in 2878 (resolved); the island dropped its patch | issue 2878, I38 |
-| S32Z network: board network file, VLAN, second interface (`network_config.cpp`, the last `PLATFORM_*` reader; the DHCP sleep in `board_network_hook.cpp`) | fixed in nano-ros for one interface with its VLAN (2879 resolved; a second interface is an open decision); the island names the file next | issue 2879, I39 |
-| S32Z Zephyr module pins (`actuation_module/west.yml`: `cmsis`, `hal_nxp`, `zephyr-lang-rust` by hand) | fixed in nano-ros (2880 resolved); the island imports the fragment next | issue 2880, I40 |
+| S32Z network: board network file, VLAN, second interface (`network_config.cpp`, the last `PLATFORM_*` reader; the DHCP sleep in `board_network_hook.cpp`) | done: fixed in nano-ros for one interface with its VLAN (2879 resolved; a second interface is an open decision); the island names the file | issue 2879, I39 |
+| S32Z Zephyr module pins (`actuation_module/west.yml`: `cmsis`, `hal_nxp`, `zephyr-lang-rust` by hand) | done: fixed in nano-ros (2880 resolved); the island imports the fragment | issue 2880, I40 |
 | compile-time log floor (`common/logger/logger.hpp`, `CONFIG_LOG_LEVEL`, P4) | done: fixed in nano-ros (2881 resolved); the island dropped its gating | issue 2881, I41 |
 | a release past nros11 (branch `nano-ros` on `0.6.0-nros11`; everything else on `nano-ros-next` with a source CLI) | filed | issue 2882, I42; planned by [phase-590](phase-590-nros12-release-plan.md) |
 | `halt` after `platform` on a "none" port is unreachable (island writes `sntp` alone, P5) | 2883 resolved | issue 2883, tracked by [phase-582](phase-582-wall-clock-source.md) |
@@ -891,8 +891,12 @@ AN536) stay green.
   usual address rows; the module's `net_vlan.c` configures Zephyr's VLAN
   interface through `net_config_init_by_iface`, because Zephyr's own
   `NET_CONFIG_MY_VLAN_ID` addresses the untagged interface (issue 2879,
-  resolved). A second interface is an open decision there. The island's
-  deletion waits on its pin.
+  resolved). A second interface is an open decision there. Done on the
+  island: `zephyr/net-s32z.toml` (`eth0`, DHCP) is the S32Z image's board
+  network file; `network_config.cpp`, `board_network_hook.cpp`, the
+  `NET_IFACE2_*` Kconfig and the last `PLATFORM_*` defines are gone (ASI
+  `nano-ros-next` at 25cbfe7, pin 1a638e9958, CI run 45779296670). The
+  island sets no VLAN tag; a build with `vlan = 20` rendered it and linked.
 
 ### I40 -- a downstream west fragment for the S32Z270 Zephyr board
 
@@ -904,8 +908,10 @@ AN536) stay green.
 - **Status:** the nano-ros half is done: the board ships the fragment
   (`zephyr-lang-rust`, `hal_nxp`, `cmsis`), `just check
   zephyr-west-downstream` holds it to `west.yml` and the Zephyr tree's pins,
-  and the module-fixtures job fetches through it (issue 2880, resolved). The
-  island's import waits on its pin.
+  and the module-fixtures job fetches through it (issue 2880, resolved). Done
+  on the island: `actuation_module/west.yml` imports the fragment and pins
+  only `zephyr` and nano-ros by hand (ASI `nano-ros-next` at e4590e2, pin
+  d92c369a14, CI run 45769783165).
 
 ### I41 -- a compile-time log floor
 
@@ -1234,9 +1240,9 @@ island switch.
 - [x] I38: the out-of-tree tracing backend patch ruled and built or
       documented; under the first answer the island carries no Zephyr patch
       (issue 2878).
-- [ ] I39: an S32Z image names a board network file, with its VLAN tag; the
+- [x] I39: an S32Z image names a board network file, with its VLAN tag; the
       island's `network_config.cpp` and `PLATFORM_*` defines go (issue 2879).
-- [ ] I40: `s32z270-rtu0-zephyr` ships a checked `west-downstream.yml`; the
+- [x] I40: `s32z270-rtu0-zephyr` ships a checked `west-downstream.yml`; the
       island imports it (issue 2880).
 - [x] I41: `RCLCPP_LOG_MIN_SEVERITY` compiles out the levels below it, with
       their arguments; the island's `CONFIG_LOG_LEVEL` gating goes (issue
