@@ -150,7 +150,7 @@ detection model: `class_id`, `class_name` (`"person"`), `score` and `bbox`.
   65,400 data bytes is the most that passes, with a large enough stream
   window and receive buffer; at the defaults a 1 KB sample is refused at
   receive. A sample at or over 64 KiB used to be lost or cut, and is now
-  refused at publish (issue 2978). Of the messages above, only a
+  refused at publish (PR #4888). Of the messages above, only a
   `vision_msgs` array of more than about 148 detections, or a `yolo_msgs`
   array of more than about 340, is over the limit; `max_det: 300` with
   `vision_msgs` is.
@@ -266,7 +266,7 @@ criterion and the component.
 ### W8 — GPU perception on the original Jetson Nano, with its latency
 
 - **Owner:** nros 241.
-- **Status:** OPEN
+- **Status:** BLOCKED (deferred until the board is attached) (user ruling 2026-11-26: the Nano is not attached yet). It runs after phase-589 W10, W12 and W11, on the RT kernel W11 builds. About 30 minutes to build the TensorRT engine on the Nano, then about half a day of measurement with a camera attached: stock and RT kernels, idle and under `stress-ng`.
 - **The board:** the Jetson Nano of phase-589 W10, on JetPack 4.6.6 (CUDA
   10.2, TensorRT 8.2, a Maxwell GPU). The Nano runs TensorRT engines in FP16;
   NVIDIA says INT8 is not supported on it. A YOLOv8n engine has been reported
