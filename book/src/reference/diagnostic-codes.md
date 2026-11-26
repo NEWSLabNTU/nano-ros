@@ -459,14 +459,14 @@ must have a port for that link on the board's platform.
 
 ### How to fix it
 
-Read the reason; it names the link or the address and what the board offers.
-`nros board net <board>` prints the board's links and network. Change the
+Read the reason; it names the link or the address and what the board offers
+(the board's `[board.net] links`, in its `nros-board.toml`). Change the
 image's `locator` (or its `[image.<id>.network]`) to one the board carries,
 or choose a board that has the link.
 
 The refusal's `help` line, unless the site gives a more specific one:
 
-> change the image's `locator` or network to one the board carries (`nros board net <board>`), or choose a board that has the link
+> change the image's `locator` or network to one the board carries (its `[board.net] links`), or choose a board that has the link
 
 [Back to the list of codes](#diagnostic-codes)
 

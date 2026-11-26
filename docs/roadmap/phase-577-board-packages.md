@@ -92,7 +92,7 @@ is already a package. What is missing is measured in RFC-0135's Motivation:
 ### W6 — The pre-build compatibility check
 
 - **Owner:** nros 133 (claimed 2026-11-26).
-- **Status:** IN PROGRESS. Branch `feat/board-compat-check`. Built on
+- **Status:** OPEN. In progress on branch `feat/board-compat-check`. Built on
   phase-578 W4's `RefusalGroup` and framework refusal.
   - Landing in the first PR: the two new facts (`[board.memory]` on the four
     boards whose linker script states it, `[rmw.needs]` on Cyclone and

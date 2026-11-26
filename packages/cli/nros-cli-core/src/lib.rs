@@ -63,11 +63,11 @@ pub mod declared_params_header;
 /// code: `Diag::X.err(format_args!(..))`.
 pub mod diag;
 // RFC-0129 D7/D8 (phase-578 W4): refusals at their line, and `nros fix`.
+pub mod compat;
 /// phase-463 W3 -- the census CHECK: the join of the contract, the census and
 /// the derived inventory, one verdict per (node, kind, name). The producer is
 /// `cmd::entity_census`; this is the comparison it feeds.
 pub mod entity_census;
-pub mod compat;
 pub mod fix;
 pub mod source_file;
 // phase-403 W9 (issue 0965) — the ENTITY inventory: WHICH entities an image

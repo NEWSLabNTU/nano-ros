@@ -24,7 +24,7 @@ CODES = {
     "ImageBoardIncompatible": ("NROS-0015", "an image cannot build for its board", "fix each reason listed, or choose a board that has what the image needs"),
     "BoardNoBuildRoad": ("NROS-0016", "no build road takes this image's languages to this board", "choose a board whose build road compiles every language the image uses, or move the image's C or C++ code into a package for another image"),
     "RmwNeedsCapability": ("NROS-0017", "the image's RMW needs a capability the board lacks", "choose an RMW this board can run (`nros rmw list`), or a board with the capability"),
-    "LinkNotOnBoard": ("NROS-0018", "the image's network or link is not one the board carries", "change the image's `locator` or network to one the board carries (`nros board net <board>`), or choose a board that has the link"),
+    "LinkNotOnBoard": ("NROS-0018", "the image's network or link is not one the board carries", "change the image's `locator` or network to one the board carries (its `[board.net] links`), or choose a board that has the link"),
     "BoardToolMissing": ("NROS-0019", "a tool the board builds with is not installed", "run the `run:` line the reason prints; `nros setup <board>` installs everything the board needs"),
     "BoardSdkRootUnset": ("NROS-0020", "the board's vendor SDK root is not set", "export the variable the reason names, set to the vendor SDK's directory"),
     "ImageOverMemoryBudget": ("NROS-0021", "the image needs more RAM than the board has", "lower what the image states (task stacks, heap, transient-local depth), or choose a board with more RAM"),
