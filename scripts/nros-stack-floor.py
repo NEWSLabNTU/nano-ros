@@ -57,7 +57,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
-from build_walk import build_files  # noqa: E402  the one walk of build output
+from build_walk import build_files, glob_paths  # noqa: E402  the one walk of build output
 import stack_builtins  # noqa: E402  phase-557 W9b: a toolchain archive's measured frames
 import site_channels  # noqa: E402  phase-557 W7f: which functions a call site can hold
 import exact_walk  # noqa: E402  phase-557 W7f Checkpoint 2: the exact search, measured
@@ -912,13 +912,14 @@ def bitcode_dirs_expanded(dirs: list[str]) -> list[str]:
     the keyed cargo directory names at configure time). A glob may match
     nothing (an image with no message FFI crate), but if every one does, that
     is an error: a walk with no Rust bitcode would miss every Rust frame."""
-    import glob as _glob
     out: list[str] = []
     globs: list[str] = []
     for d in dirs:
         if any(c in d for c in "*?["):
             globs.append(d)
-            out += sorted(p for p in _glob.glob(d, recursive=True) if Path(p).is_dir())  # walk-ok: untracked cargo bitcode dirs under the build dir the caller names
+            # `glob_paths`, never `glob.glob(recursive=True)`: that one follows a
+            # link back up the tree round and round (issue 2986).
+            out += [p for p in glob_paths(d) if Path(p).is_dir()]
         else:
             out.append(d)
     if globs and not out:
@@ -2624,13 +2625,12 @@ def cc_fragments(dirs: list[str]) -> list[str]:
     (`<target-dir>[/<triple>]/<profile>/build/<crate>-<hash>/out/cc/<lib>/`).
     Which of them describe THIS image is decided per entry by object
     identity (`linked_c_entries`), never by location or file time."""
-    import glob as _glob
     out: set[str] = set()
     for d in dirs:
         # A glob spelling (`<bin>/**/nano_ros_*_ffi_*/target`) names several.
         # walk-ok: a cargo target dir is build output (untracked), and the glob is
         # the same spelling the BITCODE dirs use
-        roots = _glob.glob(d, recursive=True) if any(c in d for c in "*?[") else [d]
+        roots = glob_paths(d) if any(c in d for c in "*?[") else [d]
         for r in roots:
             root = Path(r)
             for depth in ("", "*/", "*/*/", "*/*/*/"):
@@ -4754,6 +4754,12 @@ def self_test() -> int:
     for name, ok in stack_builtins.runtime_member_checks():
         check(name, ok)
     # phase-557 W7f Checkpoint 2 -- the exact search's own rules
+    # issues 2466 and 2986 -- the one walk of build output: through links, each
+    # real directory once, never round a link back up the tree
+    import build_walk
+    bad_bw = build_walk.self_test()
+    check("build walk: links followed, never round a loop"
+          + (f" (failed: {'; '.join(bad_bw)})" if bad_bw else ""), not bad_bw)
     bad_ex = exact_walk.self_test()
     check("exact walk: every search rule holds"
           + (f" (failed: {'; '.join(bad_ex)})" if bad_ex else ""), not bad_ex)
