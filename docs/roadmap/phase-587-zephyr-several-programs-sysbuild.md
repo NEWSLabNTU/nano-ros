@@ -1,6 +1,6 @@
 # Phase 587 — Several programs from one Zephyr package, one image each
 
-**Status (2026-11-22). PROPOSED: not started, no owner.** Implements the part of
+**Status (2026-11-26). IN PROGRESS: owner nros 139.** W1 (the prototype) is next. Implements the part of
 [RFC-0071 D20](../design/0071-rmw-backend-descriptor.md#amendment-2026-11-20-an-owned-entry-with-several-executables-d20)
 that Zephyr does not have yet: an owned entry may build several programs, and
 the run chooses one. phase-583 gave that to the native and RTOS carrier roads.
