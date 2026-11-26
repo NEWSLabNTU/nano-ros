@@ -37,6 +37,15 @@ largest share is on the publish that is also delivered locally. A remote-only
 publish grew ~11 µs and the local-delivery one ~26 µs, so the local path grew
 about twice as much as the network path.
 
+## Release ruling (2026-11-26)
+
+User ruling, relayed by the release owner: this is **not** an nros12 blocker.
+
+- nros12 ships with it, listed in the release notes as a known issue.
+- The bisect below runs after the release, not before it.
+- The issue stays open after the release until the bisect or the
+  benchmark cell below answers it.
+
 ## Why low priority
 
 0.05 ms on a 100 ms period, and the contract on the path is 50 ms. It matters
