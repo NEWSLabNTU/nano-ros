@@ -179,6 +179,10 @@ mod tests;
 #[cfg(all(test, feature = "alloc", not(feature = "rmw-cffi")))]
 mod graph_wait_tests;
 
+// issue 2981 — the one way a test cancels a running spin from a peer thread.
+#[cfg(all(test, feature = "alloc", not(feature = "rmw-cffi")))]
+pub(crate) mod cancel_peer;
+
 // Flat re-exports so users write `executor::Executor` etc.
 #[cfg(any(has_rmw, test))]
 pub use action::{

@@ -6774,12 +6774,14 @@ fn test_spin_halt() {
     assert!(executor.is_halted());
 
     // spin resets halt then checks it — so we need a thread
-    let halt = executor.halt_flag();
-    std::thread::spawn(move || {
-        std::thread::sleep(std::time::Duration::from_millis(50));
-        halt.store(true, portable_atomic::Ordering::SeqCst);
-    });
+    // issue 2981: the peer re-asserts until spin returns, so the entry clear
+    // cannot swallow it.
+    let peer = crate::executor::cancel_peer::CancelPeer::after(
+        executor.halt_flag(),
+        std::time::Duration::from_millis(50),
+    );
     let result = executor.spin(SpinOptions::default());
+    peer.finish();
     assert!(result.is_ok());
 }
 
@@ -6815,12 +6817,12 @@ fn spin_without_a_timeout_still_runs_with_no_clock() {
     let mut executor: Executor = executor_with_clock(session);
     executor.clock_us_fn = None;
 
-    let halt = executor.halt_flag();
-    std::thread::spawn(move || {
-        std::thread::sleep(std::time::Duration::from_millis(50));
-        halt.store(true, portable_atomic::Ordering::SeqCst);
-    });
+    let peer = crate::executor::cancel_peer::CancelPeer::after(
+        executor.halt_flag(),
+        std::time::Duration::from_millis(50),
+    );
     assert!(executor.spin(SpinOptions::new()).is_ok());
+    peer.finish();
 }
 
 /// issue 0709 — the sibling guard: a period that cannot be paced is an error
@@ -7073,13 +7075,13 @@ fn test_spin_period_halts() {
     let session = MockSession::new();
     let mut executor: Executor = executor_with_clock(session);
 
-    let halt = executor.halt_flag();
-    std::thread::spawn(move || {
-        std::thread::sleep(std::time::Duration::from_millis(50));
-        halt.store(true, portable_atomic::Ordering::SeqCst);
-    });
+    let peer = crate::executor::cancel_peer::CancelPeer::after(
+        executor.halt_flag(),
+        std::time::Duration::from_millis(50),
+    );
 
     let result = executor.spin_period(std::time::Duration::from_millis(10));
+    peer.finish();
     assert!(result.is_ok());
 }
 
@@ -12388,14 +12390,14 @@ fn a_sched_task_slower_than_its_declared_cadence_is_late() {
 #[test]
 fn spin_period_counts_its_wakes_and_keeps_late_within_total() {
     let mut executor: Executor = executor_with_clock(MockSession::new());
-    let flag = executor.halt_flag();
-    std::thread::spawn(move || {
-        std::thread::sleep(std::time::Duration::from_millis(60));
-        flag.store(true, portable_atomic::Ordering::SeqCst);
-    });
+    let peer = crate::executor::cancel_peer::CancelPeer::after(
+        executor.halt_flag(),
+        std::time::Duration::from_millis(60),
+    );
     executor
         .spin_period(core::time::Duration::from_millis(2))
         .expect("a clock is installed, so spin_period must run");
+    peer.finish();
 
     let (max_us, late, total) = executor.release_jitter();
     assert!(total > 0, "the loop ran, so wakes must have been counted");

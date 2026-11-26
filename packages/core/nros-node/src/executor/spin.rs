@@ -19309,9 +19309,10 @@ mod cancel_tests {
                 Arc,
                 atomic::{AtomicBool, Ordering},
             },
-            thread,
             time::{Duration, Instant},
         };
+
+        use crate::executor::cancel_peer::CancelPeer;
 
         let mut exec = executor();
         assert!(!exec.is_spinning());
@@ -19320,25 +19321,23 @@ mod cancel_tests {
         // to it. It observes and drives through the two flag handles instead —
         // which is the supported cross-thread surface (`halt_flag()`), and
         // keeps this test on the same seam a signal handler uses.
-        let cancel_bit = exec.halt_flag();
+        //
+        // The peer RE-ASSERTS the cancel until the spin returns (issue 2981):
+        // `spin` clears the flag on entry, so a single store made before this
+        // thread reached the loop was lost and the test hung for 2400 s.
         let saw_spinning = Arc::new(AtomicBool::new(false));
         let saw_spinning_peer = Arc::clone(&saw_spinning);
 
         let started = Instant::now();
-        let peer = thread::spawn(move || {
-            // Give the loop time to enter. Bounded, and the assertion below is
-            // on what was OBSERVED, so a slow host cannot turn this green by
-            // accident — it fails instead.
-            thread::sleep(Duration::from_millis(50));
+        let peer = CancelPeer::after_with(exec.halt_flag(), Duration::from_millis(50), move || {
             saw_spinning_peer.store(true, Ordering::SeqCst);
-            cancel_bit.store(true, Ordering::SeqCst);
         });
 
         exec.spin(crate::executor::types::SpinOptions::default())
             .expect("an untimed spin runs until cancelled");
         let elapsed = started.elapsed();
 
-        peer.join().expect("peer thread must not panic");
+        peer.finish();
 
         assert!(
             saw_spinning.load(Ordering::SeqCst),
@@ -19399,26 +19398,33 @@ mod cancel_tests {
         // `exec` is dropped at the end of the test.
         unsafe impl Send for FlagPtr {}
 
-        let cancel_bit = exec.halt_flag();
         let observed = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
         let spinning_bit_seen = std::sync::Arc::clone(&observed);
         let flag = FlagPtr(&exec.spinning as *const portable_atomic::AtomicBool);
-        let peer = std::thread::spawn(move || {
-            let flag = flag;
-            for _ in 0..500 {
-                // SAFETY: see the `unsafe impl Send` above.
-                if unsafe { &*flag.0 }.load(core::sync::atomic::Ordering::SeqCst) {
-                    spinning_bit_seen.store(true, std::sync::atomic::Ordering::SeqCst);
-                    break;
+        // Watch for up to 10 s, then cancel — and keep cancelling until the
+        // spin returns (issue 2981). A single store after a bounded watch was
+        // lost whenever this thread reached `spin` after the watch ran out,
+        // because `spin` clears the flag on entry; the test then hung instead
+        // of failing on `observed`.
+        let peer = crate::executor::cancel_peer::CancelPeer::after_with(
+            exec.halt_flag(),
+            Duration::ZERO,
+            move || {
+                let flag = flag;
+                for _ in 0..5000 {
+                    // SAFETY: see the `unsafe impl Send` above.
+                    if unsafe { &*flag.0 }.load(core::sync::atomic::Ordering::SeqCst) {
+                        spinning_bit_seen.store(true, std::sync::atomic::Ordering::SeqCst);
+                        break;
+                    }
+                    std::thread::sleep(Duration::from_millis(2));
                 }
-                std::thread::sleep(Duration::from_millis(2));
-            }
-            cancel_bit.store(true, std::sync::atomic::Ordering::SeqCst);
-        });
+            },
+        );
 
         exec.spin(crate::executor::types::SpinOptions::default())
             .expect("an untimed spin runs until cancelled");
-        peer.join().expect("peer thread must not panic");
+        peer.finish();
 
         assert!(
             observed.load(std::sync::atomic::Ordering::SeqCst),
