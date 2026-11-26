@@ -1,6 +1,7 @@
 # Phase 562 — An image's entry framework is its own field
 
-**Status (2026-11-15). OPEN: W1, W2, W3, W4 and W8 done. Owner: nros 142.** Opened by
+**Status (2026-11-26). OPEN: W1, W2, W3, W4, W8 and W10 done; W5, W6, W7 and
+W9 open (audited against main 2026-11-26). Owner: nros 142.** Opened by
 the user's ruling on phase-555's platform-board-rtos brief (P5 (a), 2026-11-14):
 "open a phase for [RFC-0111](../design/0111-image-framework-axis.md)'s seven
 steps, with [RFC-0112](../design/0112-framework-support-tiers.md) D5 as one of
@@ -300,7 +301,8 @@ state `framework = "zephyr"` in its metadata: that is the board deciding.
   deadline + the level-wake ISR + dispatcher entry + the longest
   executor-internal BASEPRI section]. The boot level's state, idle in WFI or
   busy in a long callback, does not enter it.
-- **Status:** DONE (2026-11-18, #4197 and the levels-cell change after it)
+- **Status:** DONE (2026-11-18, #4232 at 2d6f8b2e0e, which replaced
+  #4197, #4221 and #4226; those three closed unmerged)
 - **Done in two changes:**
   - The mechanism (board hooks, mps2 lock and level wake,
     `nros::levels::RunToCompletionLevels`, `nros::level_wake`, the macro's
