@@ -134,11 +134,13 @@ on `main` that meets the rule above, is green after the fix.
 | B40 | `ci gate` | an example that aborted while its core dump outlasted the deadline read as `timeout`'s 124, i.e. booted | [2973](../issues/2973-abort-during-core-dump-reads-as-timeout.md) | nros 243 | #4872 (`446c8e8d8d`) | fixed: green in the evidence at `d92c369a14` |
 | B41 | `ci gate` | a reset-download resume test could pass without resuming | [2974](../issues/archived/2974-download-reset-resume-offset-timing.md) | nros 175 | #4873 (`ee6dfe8ff4`) | fixed: green in the evidence at `d92c369a14` |
 | B42 | tier 2-nightly | `test-ignored` ran the cli tests `cli-tests` owns, on a runner without colcon | [2975](../issues/archived/2975-cli-ignored-tests-owned-by-other-lanes.md) | nros 118 | #4880 (`d92c369a14`) | fixed: green in the evidence at `d92c369a14` |
+| B43 | island (fresh `nros build`, s32z270-rtu0-zephyr) | the post-link stack-floor walk recursed once per call-graph level, so every fresh jobserver build of a deep image failed with `RecursionError` and a retry passed | 2979 (#4901) | nros 133 | #4901 | OPEN: found 2026-11-26 by the safety-island migration on the `d92c369a14` candidate; the user ruled it a blocker, so `d92c369a14` is superseded |
 
 Owners are the sessions the manager routed each blocker to (2026-11-23). B5 is in the same family as
 issue 2772. The 118 session owns the `host-tests` / `live-peer` lane wiring itself.
 
-B18 to B42 were opened while W1 and W2 ran, 2026-11-23 to 2026-11-26 (B20 was reserved for a NuttX
+B18 to B42 were opened while W1 and W2 ran, 2026-11-23 to 2026-11-26, and B43 during W3's
+candidate migration (B20 was reserved for a NuttX
 riscv link red that #4720 fixed before it reproduced, and was never used). Each fix was gated at
 its exact head before it merged. Tier 2 first reached its cells on 2026-11-25, which is why late
 rows keep appearing: each run that got further reached reds that had been latent behind earlier ones.
@@ -185,14 +187,21 @@ must print no `REFUSED` line once the 06:00 `run-matrix` finishes, about 10:30 U
 
 ### W3 -- cut and rehearse
 
-- **Status:** OPEN (in progress): `release/nros12` cut at `d92c369a14` on 2026-11-26; the `publish=false`
-  run is release-nros.yml 45768486500.
+- **Status:** OPEN (re-cut pending): `release/nros12` was cut at `d92c369a14` on 2026-11-26 and its
+  `publish=false` run (release-nros.yml 45768486500) passed, as did B21's upgrade probes in all three
+  languages. The safety-island migration on that candidate then found B43, which the user ruled a
+  blocker. Once #4901 merges, W2 is measured again at one `main` commit that contains it, and
+  `release/nros12` fast-forwards there (no tag exists, so the re-cut is allowed). The cross-bringup
+  census staleness (an image's configure refused over another bringup's stale census, fix #4902) is a known issue in the release
+  notes, not a blocker (user, 2026-11-26).
 
 1. Create `release/nros12` at the W2 commit. The name may be re-cut from `main` while no
    `nros-0.6.0-nros12` tag exists.
 2. Update `book/src/migrating/releases/0.6.0-nros12.md` with the breaking changes above and
-   the codegen answer. A docs-only commit on `main`, cherry-picked with `-x`, keeps W1 of
-   phase-567 satisfied.
+   the codegen answer on `main` BEFORE the W2 commit, so the cut carries it. A cherry-pick onto
+   the branch does not work for this: W1 measures each pick's SOURCE on `main`, and a docs-only
+   source that sits on code landed after the cut is refused on every lane (measured 2026-11-26,
+   `8a1ae9ee46`).
 3. `gh workflow run release-nros.yml --ref release/nros12 -f version=0.6.0-nros12`,
    `publish=false`. The lanes job must pass W1 and W2; the build, island and starter-image jobs
    must pass, including the installed-track probe against the candidate asset.
