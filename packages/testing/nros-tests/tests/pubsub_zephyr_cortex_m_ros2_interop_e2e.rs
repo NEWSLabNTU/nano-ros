@@ -69,6 +69,7 @@ use nros_tests::{
     alloc::port_of,
     fixtures::{QemuProcess, Rmw, ZenohRouter, build_zephyr_cortex_m_example, is_qemu_available},
     matrix::{Lang, PlatformId, Workload},
+    qemu::MPS2_AN385_ZEPHYR,
     ros2::{DEFAULT_ROS_DISTRO, require_ros2, ros2_env_setup_with_locator},
     unmet,
 };
@@ -131,7 +132,10 @@ fn nros_zephyr_cortex_m_publisher_reaches_ros2_topic_echo() {
     });
     let locator = router.locator();
 
-    let mut qemu = QemuProcess::start_mps2_an385_networked(&binary)
+    // The Zephyr board's descriptor, held to the image's own west `run_qemu`
+    // line. The bare-metal mps2 launcher booted it with that board's
+    // semihosting until issue 2977, and now refuses a Zephyr image.
+    let mut qemu = QemuProcess::start_zephyr_networked(MPS2_AN385_ZEPHYR, &binary)
         .expect("spawn Zephyr Cortex-M zenoh talker");
 
     // Wait for the in-kernel stack before asking ROS 2 anything: until
