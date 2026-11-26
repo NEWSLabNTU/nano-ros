@@ -48,6 +48,12 @@ WHAT THIS REFUSES
    (issue 2670). Those are matched by EXACT name: the `_on` forms they forward
    to are shared with the C/C++ shims, which record through their own hook,
    and must not record twice.
+   And, DERIVED rather than listed (issue 2985, after the listed rows missed
+   every Rust `Node` timer and guard method): every `pub fn` in `nros-node`'s
+   `node.rs` that calls a timer or guard primitive must call
+   `observe_callback_slot`; every executor `register_timer*` /
+   `register_guard_condition*` primitive must be in SHARED_SLOT_PRIMITIVES,
+   naming the callers that record for it.
 2. An RMW seam in `nros-rmw-metadata` that does not record, or records without
    the QoS it was handed (a `_qos` parameter is the 2026-09 defect verbatim).
 3. A hook whose `metadata-mode` body no longer reaches the recorder.
@@ -147,6 +153,39 @@ ENTRY_HOOKS: tuple[tuple[str, str, str], ...] = (
     (NODE_SPIN, "parameter_on$", "observe_code_parameter_declare("),
     (NODE_NODE, "declare_parameter_with_descriptor$", "observe_code_parameter_declare("),
 )
+
+# Issue 2985 -- the Rust slot routes are DERIVED, not listed. A timer or a
+# guard condition is a callback slot the RMW never sees, so it is counted only
+# when its route reports it. Rule 5 finds the routes itself:
+#
+# * every `pub fn` in `nros-node`'s `node.rs` whose body calls a slot
+#   primitive (`.register_timer*` / `.register_guard_condition*`) must call
+#   `observe_callback_slot(` -- the Rust `Node` methods, which sit below
+#   `nros` and so cannot call the hooks. A new `create_timer_*` is held to it
+#   the day it is added; the authored rows above missed the whole family;
+# * every `pub fn register_timer*` / `register_guard_condition*` on the
+#   executor is a PRIMITIVE the C and C++ shims, the declarative sink and those
+#   `Node` methods share. Each records at its CALLER (observing in the
+#   primitive would count those callers twice), so each must be listed here
+#   with the callers that record for it. A new primitive fails until someone
+#   decides who records for it, and a listed one that is gone fails too.
+SLOT_PRIMITIVE_CALL = re.compile(r"\.\s*register_(?:timer|guard_condition)\w*\s*(?:::<[^>]*>\s*)?\(")
+SLOT_PRIMITIVE_DEF = re.compile(r"\bpub\s+fn\s+(register_(?:timer|guard_condition)\w*)\s*[<(]")
+SLOT_OBSERVER = "observe_callback_slot("
+SHARED_SLOT_PRIMITIVES: dict[str, str] = {
+    "register_timer": "nros-cpp `nros_cpp_timer_create` records (`on_timer_create`)",
+    "register_timer_on_clock": "nros-cpp `nros_cpp_timer_create_on_clock` records",
+    "register_timer_oneshot": "nros-cpp `nros_cpp_timer_create_oneshot` records",
+    "register_timer_with_info": "the declarative sink `create_entity` records",
+    "register_timer_with_info_on": (
+        "nros-c `rclc_executor_add_timer*` and `Node::create_timer_with_info` record"
+    ),
+    "register_timer_on": "nros-cpp's group timer and `Node::create_timer_in_group` record",
+    "register_guard_condition": "nros-cpp `nros_cpp_guard_condition_create` records",
+    "register_guard_condition_on": (
+        "nros-c `rclc_node_create_guard_condition` and `Node::create_guard_condition` record"
+    ),
+}
 
 # The RMW seams: each must record, and must pass the profile it received.
 RMW_SEAMS = ("create_publisher", "create_subscription", "create_service", "create_client")
@@ -419,6 +458,38 @@ def check(files: dict[str, str]) -> tuple[list[str], dict[str, int]]:
                 )
                 break
 
+    # 5. Issue 2985 -- the Rust slot routes, derived (see SHARED_SLOT_PRIMITIVES).
+    node_code = stripped[NODE_NODE]
+    node_pub = set(re.findall(r"\bpub\s+fn\s+([A-Za-z_][A-Za-z0-9_]*)\s*[<(]", node_code))
+    routes = sorted(
+        n for n, body in bodies[NODE_NODE].items() if n in node_pub and SLOT_PRIMITIVE_CALL.search(body)
+    )
+    if not routes:
+        errs.append(
+            f"{NODE_NODE}: no `pub fn` calls a timer or guard primitive -- the Rust `Node` "
+            "methods moved and this gate did not follow, which is the vacuous-gate class"
+        )
+    for name in routes:
+        stats["entry_points"] += 1
+        if SLOT_OBSERVER not in bodies[NODE_NODE][name]:
+            errs.append(
+                f"{NODE_NODE}:{line_of(node_code, f'fn {name}')}: `{name}` creates a timer or "
+                f"guard condition and never calls `{SLOT_OBSERVER})` -- the census would be "
+                "one callback slot short for it"
+            )
+    defined = set(SLOT_PRIMITIVE_DEF.findall(stripped[NODE_SPIN]))
+    for name in sorted(defined - SHARED_SLOT_PRIMITIVES.keys()):
+        errs.append(
+            f"{NODE_SPIN}:{line_of(stripped[NODE_SPIN], f'fn {name}')}: `{name}` is a new timer "
+            "or guard primitive, and nothing says who records its slot -- record at its "
+            "callers and list it in SHARED_SLOT_PRIMITIVES with them"
+        )
+    for name in sorted(SHARED_SLOT_PRIMITIVES.keys() - defined):
+        errs.append(
+            f"{NODE_SPIN}: `pub fn {name}` is listed in SHARED_SLOT_PRIMITIVES and no longer "
+            "exists -- drop the row"
+        )
+
     return errs, stats
 
 
@@ -557,6 +628,26 @@ def self_test(files: dict[str, str]) -> None:
     red("Rust typed parameter builder unobserved", m, "`parameter_on`")
 
 
+    # 11. Issue 2985 -- a Rust `Node` guard method stops reporting its slot.
+    m = dict(files)
+    body_start = m[NODE_NODE].find("pub fn create_guard_condition<")
+    call = m[NODE_NODE].find("crate::executor::registration_observer::observe_callback_slot(", body_start)
+    call_end = m[NODE_NODE].find(");", call) + 2
+    m[NODE_NODE] = m[NODE_NODE][:call] + m[NODE_NODE][call_end:]
+    red("Rust guard condition unobserved", m, "`create_guard_condition`")
+
+    # 12. A new timer primitive appears on the executor with nobody recording
+    #     its slot.
+    m = dict(files)
+    drop_once(
+        NODE_SPIN,
+        m,
+        "    pub fn register_timer_oneshot<F>(",
+        "    pub fn register_timer_burst<F>(&mut self) {}\n    pub fn register_timer_oneshot<F>(",
+    )
+    red("unlisted timer primitive", m, "`register_timer_burst`")
+
+
 def main() -> int:
     try:
         files = load_subjects()
@@ -581,7 +672,7 @@ def main() -> int:
     print(
         "check-census-hooks-complete: OK "
         f"({stats['entry_points']} entry points hooked, {stats['rmw_seams']} RMW seams record "
-        f"QoS, {stats['hooks']} hooks reach the recorder, layer rule clean; 12 mutations red)"
+        f"QoS, {stats['hooks']} hooks reach the recorder, layer rule clean; 14 mutations red)"
     )
     return 0
 
