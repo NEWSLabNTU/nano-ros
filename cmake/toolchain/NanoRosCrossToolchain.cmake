@@ -496,3 +496,24 @@ function(nros_gated_toolchain_report)
         "nano-ros: ${_A_TOOL} \"${_ver}\" via ${_A_ROOT_VAR}=${${_A_ROOT_VAR}} — "
         "${_A_COMPILER} (${_stated})")
 endfunction()
+
+# phase-578 W8.b (RFC-0137 D3) -- archives whose bytes do not depend on when
+# or by whom they were built. GNU `ar` writes each member's mtime, uid, gid and
+# mode into the archive header unless given `D`. Measured: two builds of the
+# mps2-an385-freertos C talker produced lwIP archives whose 40 objects were
+# byte-identical and whose archives differed, in the member headers alone. A
+# prebuilt archive the weekly comparison rebuilds must match byte for byte, so
+# the rule writes zeroes instead (`ar D`, `ranlib -D`). The objects are
+# untouched; only the header fields change.
+#
+# For a GNU binutils `ar` (every toolchain file that calls this). TI's
+# `tiarmar` is LLVM's archiver, which is deterministic by default. A plain
+# variable, not a cache entry: CMake reads these rule variables after the
+# toolchain file, and `try_compile` re-reads the file.
+macro(nros_deterministic_archives)
+    foreach(_nros_da_lang C CXX ASM)
+        set(CMAKE_${_nros_da_lang}_ARCHIVE_CREATE "<CMAKE_AR> qcD <TARGET> <LINK_FLAGS> <OBJECTS>")
+        set(CMAKE_${_nros_da_lang}_ARCHIVE_APPEND "<CMAKE_AR> qD <TARGET> <LINK_FLAGS> <OBJECTS>")
+        set(CMAKE_${_nros_da_lang}_ARCHIVE_FINISH "<CMAKE_RANLIB> -D <TARGET>")
+    endforeach()
+endmacro()

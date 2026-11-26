@@ -77,3 +77,6 @@ set(CMAKE_CXX_COMPILER_WORKS TRUE CACHE BOOL "Compiler works" FORCE)
 # syscall stubs resolve only in the real image). Same idiom as the CM3
 # file; see the comment there.
 set(CMAKE_TRY_COMPILE_TARGET_TYPE STATIC_LIBRARY)
+
+# phase-578 W8.b: archive headers carry no mtime, uid or gid.
+nros_deterministic_archives()

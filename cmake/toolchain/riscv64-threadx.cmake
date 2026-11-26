@@ -457,3 +457,6 @@ set(CMAKE_C_LINK_EXECUTABLE
 set(CMAKE_CXX_LINK_EXECUTABLE
     "${_lld_env} bash ${_lld_wrapper} -flavor gnu <CMAKE_CXX_LINK_FLAGS> <LINK_FLAGS> <OBJECTS> -o <TARGET> <LINK_LIBRARIES>"
     CACHE STRING "" FORCE)
+
+# phase-578 W8.b: archive headers carry no mtime, uid or gid.
+nros_deterministic_archives()

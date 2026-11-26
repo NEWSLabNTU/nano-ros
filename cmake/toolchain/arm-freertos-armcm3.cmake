@@ -69,3 +69,6 @@ set(CMAKE_CXX_COMPILER_WORKS TRUE CACHE BOOL "Compiler works" FORCE)
 # STATIC_LIBRARY makes ABI detection compile-only (no link) — the standard
 # bare-metal-CMake idiom.
 set(CMAKE_TRY_COMPILE_TARGET_TYPE STATIC_LIBRARY)
+
+# phase-578 W8.b: archive headers carry no mtime, uid or gid.
+nros_deterministic_archives()
