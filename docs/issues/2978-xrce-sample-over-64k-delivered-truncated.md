@@ -5,7 +5,7 @@ status: open
 type: bug
 severity: high
 area: [rmw-xrce]
-related: [phase-574]
+related: [phase-574, phase-590]
 found: 2026-11-26
 ---
 

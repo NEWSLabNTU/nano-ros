@@ -5,7 +5,7 @@ status: open
 type: bug
 severity: low
 area: [zenoh, rmw, zephyr, qemu]
-related: [issue-2971]
+related: [issue-2971, phase-590]
 found: 2026-11-26
 ---
 
