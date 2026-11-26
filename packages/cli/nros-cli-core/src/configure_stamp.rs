@@ -886,6 +886,50 @@ fn recorded_censuses(project: &Path) -> Vec<PathBuf> {
     out
 }
 
+/// The bringup a stamp key belongs to: `<bringup>` of `<bringup>:<id>` and
+/// of a shared configure's `@<bringup>:<coord>`. `None` for a leaf's bare
+/// image id and for [`PROJECT_KEY`], which cover the whole project.
+fn key_bringup(key: &str) -> Option<&str> {
+    let key = key.strip_prefix('@').unwrap_or(key);
+    key.split_once(':').map(|(bringup, _)| bringup)
+}
+
+/// The bringup a recorded census belongs to, read from where it lives:
+/// `build/nros/models/<bringup>/...` (a model's census) or
+/// `build/nros/census/owned/<bringup>/...` (an owned entry's). `None` for a
+/// census whose path names no bringup.
+fn census_bringup(project: &Path, census: &Path) -> Option<String> {
+    let rel = census.strip_prefix(project.join("build")).ok()?;
+    let parts: Vec<String> = rel
+        .components()
+        .map(|c| c.as_os_str().to_string_lossy().into_owned())
+        .collect();
+    let parts: Vec<&str> = parts.iter().map(String::as_str).collect();
+    let owned: Vec<&str> = CENSUS_DIR.split('/').chain(["owned"]).collect();
+    // `<dir>/<bringup>/<file...>`: a file directly under `<dir>` names none.
+    for dir in [&["nros", "models"][..], &owned[..]] {
+        if let Some(rest) = parts.strip_prefix(dir)
+            && rest.len() >= 2
+        {
+            return Some(rest[0].to_string());
+        }
+    }
+    None
+}
+
+/// Issue 2980 -- whether `census` is one `image`'s configure read. A census
+/// of ANOTHER bringup is never an input of this image, so its staleness must
+/// not make this image's stamp stale: when it did, a stale census of one
+/// bringup left every other bringup's image unseeded until that census was
+/// re-taken. A key that covers the whole project, and a census whose path
+/// names no bringup, stay in scope.
+fn census_in_scope(project: &Path, image: &str, census: &Path) -> bool {
+    match (key_bringup(image), census_bringup(project, census)) {
+        (Some(mine), Some(theirs)) => mine == theirs,
+        _ => true,
+    }
+}
+
 /// phase-530 W6 — every recorded census's entities digest, keyed by its
 /// path under the project. A census that cannot be read digests as
 /// `unreadable`, which no real digest equals.
@@ -933,6 +977,30 @@ fn refused_model_markers(project: &Path, model_dir: Option<&Path>) -> Vec<PathBu
     }
     out.sort();
     out
+}
+
+/// Issue 2980 -- whether a refused-resolve `marker` is one of `image`'s.
+/// A models dir holds `<bringup>/<stem>.refused`, so the bringup is the
+/// marker's first directory under whichever models dir holds it. Another
+/// bringup's refused resolve is no input of this image, and the marker stays
+/// until THAT bringup resolves, so reading it left every other bringup's image
+/// stale (and its host configure unseeded) for as long as one bringup was
+/// refused. Scoped as [`census_in_scope`] is: a project-wide key, and a
+/// marker that names no bringup, stay in scope.
+fn marker_in_scope(project: &Path, model_dir: Option<&Path>, image: &str, marker: &Path) -> bool {
+    let Some(mine) = key_bringup(image) else {
+        return true;
+    };
+    let own = project.join("build").join("nros").join("models");
+    let theirs = std::iter::once(own.as_path())
+        .chain(model_dir)
+        .find_map(|root| {
+            let rel = marker.strip_prefix(root).ok()?;
+            let mut parts = rel.components();
+            let bringup = parts.next()?.as_os_str().to_string_lossy().into_owned();
+            parts.next().map(|_| bringup)
+        });
+    theirs.is_none_or(|theirs| theirs == mine)
 }
 
 /// The models dir a configure with `flags` wrote into, when it is not the
@@ -1274,7 +1342,7 @@ pub(crate) fn currency(
     let model_dir = configured_model_dir(flags, env);
     if let Some(marker) = refused_model_markers(project, model_dir.as_deref())
         .into_iter()
-        .next()
+        .find(|m| marker_in_scope(project, model_dir.as_deref(), image, m))
     {
         return Ok(Currency::Stale(format!(
             "model resolve was refused (`{}`)",
@@ -1304,7 +1372,10 @@ pub(crate) fn currency(
     {
         return Ok(Currency::Stale(line));
     }
-    for census in recorded_censuses(project) {
+    for census in recorded_censuses(project)
+        .into_iter()
+        .filter(|c| census_in_scope(project, image, c))
+    {
         match census_freshness(&census, project) {
             Freshness::Fresh => {}
             Freshness::Stale(why) | Freshness::Missing(why) => {
@@ -1318,19 +1389,22 @@ pub(crate) fn currency(
     }
     // phase-530 W6 — a FRESH census that counts other entities than the
     // ones this configure derived from (the census build step re-took it).
-    let now = census_digests(project);
-    if stamp.censuses != now {
+    // Issue 2980 -- compared over this image's own censuses only, on both
+    // sides: the stamp records every census the project had.
+    let scoped = |m: &std::collections::BTreeMap<String, String>| {
+        m.iter()
+            .filter(|(k, _)| census_in_scope(project, image, &project.join(k)))
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect::<std::collections::BTreeMap<_, _>>()
+    };
+    let now = scoped(&census_digests(project));
+    let recorded = scoped(&stamp.censuses);
+    if recorded != now {
         let moved = now
             .iter()
-            .find(|(k, v)| stamp.censuses.get(*k) != Some(*v))
+            .find(|(k, v)| recorded.get(*k) != Some(*v))
             .map(|(k, _)| k.clone())
-            .or_else(|| {
-                stamp
-                    .censuses
-                    .keys()
-                    .find(|k| !now.contains_key(*k))
-                    .cloned()
-            })
+            .or_else(|| recorded.keys().find(|k| !now.contains_key(*k)).cloned())
             .unwrap_or_default();
         return Ok(Currency::Stale(format!(
             "entity census `{moved}` counts other entities than this configure read"
@@ -1835,6 +1909,184 @@ mod tests {
             is_current_with(&p, "demo_bringup:img", &real_env(), None).unwrap(),
             Currency::Current
         );
+    }
+
+    /// Issue 2980 -- a census is an input of its own bringup's images
+    /// only. A stale census of another bringup (the island's FVP CAN test,
+    /// beside its S32Z image) left the S32Z image's stamp stale, so its host
+    /// configure read no seed and stopped at the promise check.
+    #[test]
+    fn another_bringups_stale_census_leaves_this_image_current() {
+        let p = tmp("census-other-bringup");
+        for b in ["s32z_bringup", "can_output_test_bringup"] {
+            std::fs::create_dir_all(p.join("src").join(b)).unwrap();
+            std::fs::write(p.join("src").join(b).join("system.toml"), "[system]\n").unwrap();
+        }
+        record(&p, "s32z_bringup:s32z270-rtu0", &stamp_for(&p)).unwrap();
+        // `{}` records no recorder schema, so `census_freshness` calls it stale.
+        let theirs = [
+            p.join("build/nros/models/can_output_test_bringup/fvp.census.json"),
+            p.join("build")
+                .join(CENSUS_DIR)
+                .join("owned/can_output_test_bringup/fvp-aemv8r-smp.census.json"),
+        ];
+        for c in &theirs {
+            std::fs::create_dir_all(c.parent().unwrap()).unwrap();
+            std::fs::write(c, "{}").unwrap();
+            assert!(matches!(
+                crate::cmd::entity_census::census_freshness(c, &p),
+                Freshness::Stale(_)
+            ));
+        }
+        assert_eq!(
+            is_current_with(&p, "s32z_bringup:s32z270-rtu0", &real_env(), None).unwrap(),
+            Currency::Current
+        );
+        // The FVP image itself still sees its own stale census.
+        record(&p, "can_output_test_bringup:fvp-aemv8r-smp", &stamp_for(&p)).unwrap();
+        match is_current_with(
+            &p,
+            "can_output_test_bringup:fvp-aemv8r-smp",
+            &real_env(),
+            None,
+        )
+        .unwrap()
+        {
+            Currency::Stale(why) => assert!(why.contains("can_output_test_bringup"), "{why}"),
+            other => panic!("the FVP image's own census is stale: {other:?}"),
+        }
+    }
+
+    /// Issue 2980 -- the image's OWN stale census, a model's or an owned
+    /// entry's, still makes its stamp stale.
+    #[test]
+    fn this_bringups_stale_census_makes_the_image_stale() {
+        for own in [
+            "build/nros/models/s32z_bringup/s32z.census.json",
+            "build/nros/census/owned/s32z_bringup/s32z270-rtu0.census.json",
+        ] {
+            let p = tmp("census-own-bringup");
+            std::fs::create_dir_all(p.join("src/s32z_bringup")).unwrap();
+            std::fs::write(p.join("src/s32z_bringup/system.toml"), "[system]\n").unwrap();
+            record(&p, "s32z_bringup:s32z270-rtu0", &stamp_for(&p)).unwrap();
+            let c = p.join(own);
+            std::fs::create_dir_all(c.parent().unwrap()).unwrap();
+            std::fs::write(&c, "{}").unwrap();
+            assert!(
+                matches!(
+                    is_current_with(&p, "s32z_bringup:s32z270-rtu0", &real_env(), None).unwrap(),
+                    Currency::Stale(_)
+                ),
+                "{own}"
+            );
+        }
+    }
+
+    /// Issue 2980 -- the recorded-digest comparison is scoped the same way:
+    /// another bringup's census that the stamp recorded and that is gone now
+    /// moves nothing this image read.
+    #[test]
+    fn another_bringups_census_digest_is_not_compared() {
+        let p = tmp("census-digest-other-bringup");
+        for b in ["s32z_bringup", "can_output_test_bringup"] {
+            std::fs::create_dir_all(p.join("src").join(b)).unwrap();
+            std::fs::write(p.join("src").join(b).join("system.toml"), "[system]\n").unwrap();
+        }
+        let theirs = p.join("build/nros/models/can_output_test_bringup/fvp.census.json");
+        std::fs::create_dir_all(theirs.parent().unwrap()).unwrap();
+        std::fs::write(&theirs, "{}").unwrap();
+        let stamp = stamp_for(&p);
+        assert_eq!(stamp.censuses.len(), 1, "{:?}", stamp.censuses);
+        record(&p, "s32z_bringup:s32z270-rtu0", &stamp).unwrap();
+        std::fs::remove_file(&theirs).unwrap();
+        assert_eq!(
+            is_current_with(&p, "s32z_bringup:s32z270-rtu0", &real_env(), None).unwrap(),
+            Currency::Current
+        );
+    }
+
+    /// Issue 2980 -- the same class, one field over: a refused resolve
+    /// of another bringup leaves this image current, and its own does not.
+    #[test]
+    fn another_bringups_refused_model_leaves_this_image_current() {
+        let p = tmp("refused-other-bringup");
+        for b in ["s32z_bringup", "can_output_test_bringup"] {
+            std::fs::create_dir_all(p.join("src").join(b)).unwrap();
+            std::fs::write(p.join("src").join(b).join("system.toml"), "[system]\n").unwrap();
+        }
+        let ext = crate::model_gate::MARKER_EXT.trim_start_matches('.');
+        let models = p.join("build/nros/models");
+        record(&p, "s32z_bringup:s32z270-rtu0", &stamp_for(&p)).unwrap();
+        let theirs = models.join(format!("can_output_test_bringup/system_model.{ext}"));
+        std::fs::create_dir_all(theirs.parent().unwrap()).unwrap();
+        std::fs::write(&theirs, "refused\n").unwrap();
+        assert_eq!(
+            is_current_with(&p, "s32z_bringup:s32z270-rtu0", &real_env(), None).unwrap(),
+            Currency::Current
+        );
+        let own = models.join(format!("s32z_bringup/system_model.{ext}"));
+        std::fs::create_dir_all(own.parent().unwrap()).unwrap();
+        std::fs::write(&own, "refused\n").unwrap();
+        match is_current_with(&p, "s32z_bringup:s32z270-rtu0", &real_env(), None).unwrap() {
+            Currency::Stale(why) => assert!(why.contains("s32z_bringup"), "{why}"),
+            other => panic!("its own refused resolve makes the image stale: {other:?}"),
+        }
+        // Under a `--model-dir` too, and a project-wide key reads them all.
+        let elsewhere = tmp("refused-other-bringup-model-dir");
+        let m = elsewhere.join(format!("can_output_test_bringup/system_model.{ext}"));
+        assert!(!marker_in_scope(
+            &p,
+            Some(&elsewhere),
+            "s32z_bringup:img",
+            &m
+        ));
+        assert!(marker_in_scope(
+            &p,
+            Some(&elsewhere),
+            "can_output_test_bringup:img",
+            &m
+        ));
+        assert!(marker_in_scope(&p, Some(&elsewhere), PROJECT_KEY, &m));
+    }
+
+    #[test]
+    fn a_census_is_attributed_to_the_bringup_its_path_names() {
+        let p = Path::new("/w");
+        let at = |rel: &str| census_bringup(p, &p.join(rel));
+        assert_eq!(
+            at("build/nros/models/b/m.census.json").as_deref(),
+            Some("b")
+        );
+        assert_eq!(
+            at("build/nros/census/owned/b/img.census.json").as_deref(),
+            Some("b")
+        );
+        assert_eq!(
+            at("build/nros/census/owned/b/img/exe.census.json").as_deref(),
+            Some("b")
+        );
+        assert_eq!(at("build/nros/census/talker.json"), None);
+        assert_eq!(at("build/nros/models/m.census.json"), None);
+        assert_eq!(key_bringup("b:img"), Some("b"));
+        assert_eq!(key_bringup("@b:posix-zenoh-linux"), Some("b"));
+        assert_eq!(key_bringup("img"), None);
+        assert_eq!(key_bringup(PROJECT_KEY), None);
+        // A census naming no bringup stays in every image's scope.
+        assert!(census_in_scope(
+            p,
+            "b:img",
+            &p.join("build/nros/census/talker.json")
+        ));
+        assert!(!census_in_scope(
+            p,
+            "b:img",
+            &p.join("build/nros/models/c/m.census.json")
+        ));
+        assert!(census_in_scope(
+            p,
+            "img",
+            &p.join("build/nros/models/c/m.census.json")
+        ));
     }
 
     /// Issue 2478: a file outside the project that configure read (a board
