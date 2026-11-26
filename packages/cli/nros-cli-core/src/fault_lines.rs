@@ -511,47 +511,111 @@ mod tests {
         assert_eq!(out.matches("cannot look the fault up").count(), 1, "{out}");
     }
 
-    /// This test binary's own ELF: a function's address resolves to its name
-    /// and to this file, and an address past the code is refused.
-    #[test]
-    fn an_address_resolves_to_its_function_and_file() {
-        #[inline(never)]
-        fn a_known_function() -> u32 {
-            std::hint::black_box(7)
-        }
-        assert_eq!(a_known_function(), 7);
-        let exe = std::env::current_exe().unwrap();
-        let sym = Symbolizer::open(&exe).unwrap();
-        let bytes = std::fs::read(&exe).unwrap();
+    /// The committed fixture (`testdata/fault-lines/fixture.c` and its
+    /// `fixture.elf`, Cortex-M3 Thumb, built with `-g`): the tests do not
+    /// depend on the host build's debug info, which CI turns off.
+    fn fixture() -> (Symbolizer, String) {
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("testdata/fault-lines");
+        let src = std::fs::read_to_string(dir.join("fixture.c")).unwrap();
+        (Symbolizer::open(&dir.join("fixture.elf")).unwrap(), src)
+    }
+
+    /// The 1-based line of `src` holding `marker`.
+    fn line_of(src: &str, marker: &str) -> u32 {
+        let at = src.lines().position(|l| l.contains(marker)).unwrap();
+        u32::try_from(at + 1).unwrap()
+    }
+
+    /// The fixture's symbol `name`, as the symbol table states it (bit 0 set:
+    /// a Thumb function).
+    fn symbol(name: &str) -> u64 {
+        let bytes = std::fs::read(
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("testdata/fault-lines/fixture.elf"),
+        )
+        .unwrap();
         let file = object::File::parse(&*bytes).unwrap();
-        let link = file
-            .symbols()
-            .find(|s| s.name().is_ok_and(|n| n.contains("a_known_function")))
+        file.symbols()
+            .find(|s| s.name() == Ok(name))
             .map(|s| s.address())
-            .expect("the test's own symbol");
-        match sym.lookup(Reg::Pc, link) {
+            .unwrap()
+    }
+
+    #[test]
+    fn a_pc_resolves_to_its_function_and_line() {
+        let (sym, src) = fixture();
+        let want = line_of(&src, "fault-lines: inner store");
+        // The function's first instruction is the store; the symbol carries
+        // the Thumb bit, which the lookup clears.
+        let pc = symbol("fixture_inner");
+        assert_eq!(pc & 1, 1, "a Thumb symbol");
+        let got = sym.lookup(Reg::Pc, pc);
+        assert_eq!(
+            got,
+            Lookup::Frames(vec![Frame {
+                function: Some("fixture_inner".into()),
+                location: Some(format!("./fixture.c:{want}")),
+            }])
+        );
+    }
+
+    /// A return address names the call, with the inlined function the call
+    /// sits in and the function that inlined it.
+    #[test]
+    fn an_lr_resolves_to_its_call_site_and_inlined_callers() {
+        let (sym, src) = fixture();
+        let call = line_of(&src, "fault-lines: inlined call");
+        let site = line_of(&src, "fixture_middle(&x);");
+        // `_start`'s `bl fixture_inner` is 4 bytes at +0xa; the return
+        // address is the next instruction, with the Thumb bit.
+        let lr = (symbol("_start") & !1) + 0xe + 1;
+        match sym.lookup(Reg::Lr, lr) {
             Lookup::Frames(frames) => {
-                // The innermost frame may be an inlined callee (`black_box`);
-                // the function itself is one of the frames.
-                assert!(
-                    frames.iter().any(|f| f
-                        .function
-                        .as_deref()
-                        .is_some_and(|n| n.contains("a_known_function"))),
-                    "{frames:?}"
+                assert_eq!(frames.len(), 2, "{frames:?}");
+                assert_eq!(frames[0].function.as_deref(), Some("fixture_middle"));
+                assert_eq!(
+                    frames[0].location.as_deref(),
+                    Some(format!("./fixture.c:{call}").as_str())
                 );
-                assert!(
-                    frames.iter().any(|f| f
-                        .location
-                        .as_deref()
-                        .is_some_and(|l| l.contains("fault_lines.rs"))),
-                    "{frames:?}"
+                assert_eq!(frames[1].function.as_deref(), Some("_start"));
+                assert_eq!(
+                    frames[1].location.as_deref(),
+                    Some(format!("./fixture.c:{site}").as_str())
                 );
+                let lines = render(Reg::Lr, lr, &Lookup::Frames(frames), sym.path());
+                assert!(
+                    lines[0].contains(": fixture_middle at ./fixture.c:"),
+                    "{lines:?}"
+                );
+                assert!(lines[1].contains("inlined into _start at"), "{lines:?}");
             }
-            Lookup::NotInElf => panic!("the function is in the ELF's code"),
+            Lookup::NotInElf => panic!("the call is in the fixture's code"),
         }
-        assert_eq!(sym.lookup(Reg::Pc, u64::MAX - 16), Lookup::NotInElf);
-        let lines = render(Reg::Pc, u64::MAX - 16, &Lookup::NotInElf, &exe);
+    }
+
+    #[test]
+    fn an_address_outside_the_code_is_refused() {
+        let (sym, _) = fixture();
+        assert_eq!(sym.lookup(Reg::Pc, 0x0010_0000), Lookup::NotInElf);
+        let lines = render(Reg::Pc, 0x0010_0000, &Lookup::NotInElf, sym.path());
         assert!(lines[0].contains("not in"), "{lines:?}");
+    }
+
+    /// End to end through the console watch: the ELF is named once, then the
+    /// lookup.
+    #[test]
+    fn the_watch_names_the_elf_once_then_the_lines() {
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("testdata/fault-lines");
+        let mut w = FaultLines::new(ElfSource::Flag(dir.join("fixture.elf")));
+        let pc = symbol("fixture_inner");
+        let out = w.feed(
+            format!("nros-fault: kind=hardfault pc={pc:#010x}\nnros-fault: pc={pc:#010x}\n")
+                .as_bytes(),
+        );
+        assert_eq!(out.matches("symbolizing with").count(), 1, "{out}");
+        assert_eq!(
+            out.matches(": fixture_inner at ./fixture.c:").count(),
+            2,
+            "{out}"
+        );
     }
 }
