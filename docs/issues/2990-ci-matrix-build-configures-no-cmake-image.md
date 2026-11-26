@@ -55,7 +55,29 @@ docs prescribe, has its CMake roads unbuilt. #4928 would have armed on a
 green that never configured a CMake image. 175 caught it by reading the
 log, not from any verdict.
 
-## Options (not decided here)
+## Ruling (2026-11-27)
+
+The user, relayed by the manager, chose option 3: **add a CMake smoke.**
+`just ci matrix build` also configures and links one cheap CMake-road image
+per cross-toolchain file, so a `cmake/` change is linked at tier-2 build
+depth.
+
+- The toolchain list is DERIVED from `cmake/toolchain/*.cmake`, never an
+  authored table. A new toolchain file with no smoke fails the gate.
+- The seed is the set #4928 needed, one row per GNU toolchain file:
+  - `freertos-c-zenoh-talker` (armcm3);
+  - `workspace-cpp-mps3-an536-freertos` (armcr52);
+  - `workspace-c-nuttx` (armv7a-nuttx-eabihf);
+  - `workspace-c-nuttx-riscv-realtime` (riscv32imac-nuttx-elf);
+  - `workspace-c-threadx-riscv64` (riscv64-threadx);
+  - armcr5f, which has no board row: `check r5f-hard-float-abi` and
+    `check out-of-tree-board-images`.
+- The added minutes are measured and stated, and the "27 s" / "46 s"
+  figures are corrected to what the recipe then builds.
+
+Implementation follows #4931.
+
+## Options considered
 
 1. Make build depth really be tier 2's cover at link depth: the
    `build-test-fixtures lane=tier2` build that `_matrix-run` relies on,
