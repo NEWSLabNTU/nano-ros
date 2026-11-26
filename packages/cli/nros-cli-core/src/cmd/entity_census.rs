@@ -1816,6 +1816,11 @@ const OWNED_ENTRY_BUILD_FILE: &str = "CMakeLists.txt";
 /// Issue 2900 -- whether the census at `path` records its entry's build file.
 /// A census taken before that was an input records only the binary, so it
 /// would read fresh after the very edit this issue is about; it is re-taken.
+///
+/// Issue 2983 -- and the row must be ABSOLUTE. A census that recorded it
+/// relative to the entry package reads stale to every reader that resolves it
+/// against another root (the configure stamp uses the project's), so it is
+/// re-taken once rather than believed.
 fn records_entry_build_file(path: &Path) -> bool {
     std::fs::read_to_string(path)
         .ok()
@@ -1824,8 +1829,13 @@ fn records_entry_build_file(path: &Path) -> bool {
         .is_some_and(|rows| {
             rows.iter().any(|r| {
                 r.get("role").and_then(serde_json::Value::as_str) == Some("build_file")
-                    && r.get("path").and_then(serde_json::Value::as_str)
-                        == Some(OWNED_ENTRY_BUILD_FILE)
+                    && r.get("path")
+                        .and_then(serde_json::Value::as_str)
+                        .map(Path::new)
+                        .is_some_and(|p| {
+                            p.is_absolute()
+                                && p.file_name().is_some_and(|n| n == OWNED_ENTRY_BUILD_FILE)
+                        })
             })
         })
 }
@@ -3356,7 +3366,15 @@ fn collect_inputs(
     }];
 
     if model.is_none() && !program_dirs.is_empty() {
-        program_inputs(program_dirs, &rel, &mut inputs)?;
+        // Issue 2983 -- the owned road records ABSOLUTE paths, as its stated
+        // census does (`record_stated_empty_census`). Its `ws` is the entry
+        // PACKAGE, while the configure stamp reads the census against the
+        // PROJECT root: relative to the package, the entry's own source tree
+        // was `""`, which the stamp resolved to the whole workspace, so every
+        // taken owned census read stale to configure and the host configure
+        // ran unseeded.
+        let abs = |p: &Path| -> String { p.to_string_lossy().into_owned() };
+        program_inputs(program_dirs, &abs, &mut inputs)?;
         return Ok(inputs);
     }
 
@@ -4432,7 +4450,15 @@ executable=prog_b=/b/b
             };
             std::fs::write(&out, serde_json::to_string(&census).unwrap()).unwrap();
         };
-        let fresh = || matches!(census_freshness(&out, &pkg), Freshness::Fresh);
+        // Issue 2983 -- fresh to EVERY reader: the take's own check reads the
+        // census against the package, the configure stamp against the
+        // project root.
+        let fresh = || {
+            let by_pkg = matches!(census_freshness(&out, &pkg), Freshness::Fresh);
+            let by_project = matches!(census_freshness(&out, ws), Freshness::Fresh);
+            assert_eq!(by_pkg, by_project, "the package and the project disagree");
+            by_pkg
+        };
 
         // The shape before this fix: the binary alone. Fresh by digest, and
         // still not believed.
@@ -4442,6 +4468,30 @@ executable=prog_b=/b/b
 
         write(collect_inputs(&pkg, &bin, None, &dirs).unwrap());
         assert!(fresh() && records_entry_build_file(&out));
+        // Every row names its file absolutely; none is the empty path the
+        // stamp resolved to the whole workspace.
+        let doc: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&out).unwrap()).unwrap();
+        for row in doc["provenance"]["inputs"].as_array().unwrap() {
+            let path = row["path"].as_str().unwrap();
+            assert!(Path::new(path).is_absolute(), "{row}");
+        }
+        // The shape issue 2983 found (rows relative to the package): stale to
+        // the project, so not believed, and re-taken.
+        let relative: Vec<Input> = collect_inputs(&pkg, &bin, None, &dirs)
+            .unwrap()
+            .into_iter()
+            .map(|i| Input {
+                path: Path::new(&i.path)
+                    .strip_prefix(&pkg)
+                    .map_or(i.path.clone(), |r| r.to_string_lossy().into_owned()),
+                ..i
+            })
+            .collect();
+        write(relative);
+        assert!(matches!(census_freshness(&out, &pkg), Freshness::Fresh));
+        assert!(!matches!(census_freshness(&out, ws), Freshness::Fresh));
+        assert!(!records_entry_build_file(&out));
         for edit in [
             pkg.join("CMakeLists.txt"),
             pkg.join("package.xml"),
@@ -4453,6 +4503,113 @@ executable=prog_b=/b/b
             std::fs::write(&edit, format!("{before}# edited\n")).unwrap();
             assert!(!fresh(), "editing {} left the census fresh", edit.display());
         }
+    }
+
+    /// Issue 2983 -- every census road, read back the way `nros configure`'s
+    /// stamp reads it: `census_freshness(<census>, <project root>)`
+    /// (`configure_stamp::currency`). A census its taker reads as fresh must
+    /// be fresh to the stamp too, or the host configure runs unseeded. The
+    /// owned road recorded its rows relative to the entry PACKAGE and failed
+    /// exactly this; the others are here so the next road cannot.
+    #[test]
+    fn every_census_road_reads_fresh_against_the_project_root() {
+        use crate::orchestration::metadata_refresh::RECORDER_SCHEMA_VERSION;
+        let write = |out: &Path, entry: &str, inputs: Vec<Input>| {
+            std::fs::create_dir_all(out.parent().unwrap()).unwrap();
+            let census = Census {
+                schema: CENSUS_SCHEMA,
+                entry: entry.into(),
+                provenance: Provenance {
+                    tool: "test".into(),
+                    inputs,
+                },
+                incomplete: None,
+                stated: None,
+                census: serde_json::json!({"version": RECORDER_SCHEMA_VERSION, "nodes": []}),
+            };
+            std::fs::write(out, serde_json::to_string(&census).unwrap()).unwrap();
+        };
+        let fresh =
+            |census: &Path, root: &Path| matches!(census_freshness(census, root), Freshness::Fresh);
+
+        // A workspace with an owned entry package and a sibling it depends on.
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().canonicalize().unwrap();
+        let pkg = root.join("src/entry_pkg");
+        let dep = root.join("src/dep_lib");
+        std::fs::create_dir_all(pkg.join("src")).unwrap();
+        std::fs::create_dir_all(dep.join("include")).unwrap();
+        std::fs::write(pkg.join("CMakeLists.txt"), "project(entry_pkg)\n").unwrap();
+        std::fs::write(pkg.join("package.xml"), "<package/>\n").unwrap();
+        std::fs::write(pkg.join("src/main.c"), "int main(void){return 0;}\n").unwrap();
+        std::fs::write(dep.join("include/dep.h"), "#define DEP 1\n").unwrap();
+        let bringup_dir = root.join("src/b_bringup");
+        std::fs::create_dir_all(&bringup_dir).unwrap();
+        std::fs::write(bringup_dir.join("system.toml"), "[system]\n").unwrap();
+        let bin = root.join("build/nros/census-host/b_bringup/img/entry_pkg");
+        std::fs::create_dir_all(bin.parent().unwrap()).unwrap();
+        std::fs::write(&bin, b"\x7fELF").unwrap();
+
+        // Owned, taken: run with `workspace = <the package>` (as
+        // `census_host_program` runs it), read against the project root.
+        let owned = owned_census_path(&root, "b_bringup", "img");
+        let dirs = owned_entry_dirs(&pkg, &[]);
+        write(
+            &owned,
+            "entry_pkg",
+            collect_inputs(&pkg, &bin, None, &dirs).unwrap(),
+        );
+        assert!(fresh(&owned, &pkg), "the owned census, by its taker");
+        assert!(
+            fresh(&owned, &root),
+            "the owned census, by the configure stamp"
+        );
+        std::fs::write(pkg.join("src/main.c"), "int main(void){return 1;}\n").unwrap();
+        assert!(!fresh(&owned, &root), "an edit must still make it stale");
+
+        // Owned, stated empty (`runs_nano_ros = false`): its own producer.
+        record_stated_empty_census(
+            &root,
+            &pkg,
+            "b_bringup",
+            "stated",
+            &bringup_dir.join("system.toml"),
+        )
+        .unwrap();
+        let stated = owned_census_path(&root, "b_bringup", "stated");
+        assert!(
+            fresh(&stated, &root),
+            "the stated census, by the configure stamp"
+        );
+
+        // Model: the workspace road runs with `workspace = <the project>`,
+        // and its census sits beside the model (`model_census_fixture`).
+        let model = model_census_fixture(&root);
+        assert!(
+            fresh(&census_path_for_model(&model), &root),
+            "the model census, by the configure stamp"
+        );
+
+        // Leaf: a standalone leaf IS its project, and its census is taken
+        // with `workspace = <the leaf>`.
+        let leaf = root.join("leaf");
+        std::fs::create_dir_all(leaf.join("src")).unwrap();
+        std::fs::write(leaf.join("CMakeLists.txt"), "project(leaf)\n").unwrap();
+        std::fs::write(leaf.join("system.toml"), "[system]\n").unwrap();
+        std::fs::write(leaf.join("src/main.c"), "int main(void){return 0;}\n").unwrap();
+        let leaf_bin = leaf.join("build/census-host/leaf");
+        std::fs::create_dir_all(leaf_bin.parent().unwrap()).unwrap();
+        std::fs::write(&leaf_bin, b"\x7fELF").unwrap();
+        let leaf_out = leaf_census_path(&leaf);
+        write(
+            &leaf_out,
+            "leaf",
+            collect_inputs(&leaf, &leaf_bin, None, &[]).unwrap(),
+        );
+        assert!(
+            fresh(&leaf_out, &leaf),
+            "the leaf census, by the configure stamp"
+        );
     }
 
     /// Issue 2899 -- the census project include adds the owned entry's
