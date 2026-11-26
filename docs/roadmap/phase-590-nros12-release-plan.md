@@ -134,13 +134,14 @@ on `main` that meets the rule above, is green after the fix.
 | B40 | `ci gate` | an example that aborted while its core dump outlasted the deadline read as `timeout`'s 124, i.e. booted | [2973](../issues/2973-abort-during-core-dump-reads-as-timeout.md) | nros 243 | #4872 (`446c8e8d8d`) | fixed: green in the evidence at `d92c369a14` |
 | B41 | `ci gate` | a reset-download resume test could pass without resuming | [2974](../issues/archived/2974-download-reset-resume-offset-timing.md) | nros 175 | #4873 (`ee6dfe8ff4`) | fixed: green in the evidence at `d92c369a14` |
 | B42 | tier 2-nightly | `test-ignored` ran the cli tests `cli-tests` owns, on a runner without colcon | [2975](../issues/archived/2975-cli-ignored-tests-owned-by-other-lanes.md) | nros 118 | #4880 (`d92c369a14`) | fixed: green in the evidence at `d92c369a14` |
-| B43 | island (fresh `nros build`, s32z270-rtu0-zephyr) | the post-link stack-floor walk recursed once per call-graph level, so every fresh jobserver build of a deep image failed with `RecursionError` and a retry passed | 2979 (#4901) | nros 133 | #4901 | OPEN: found 2026-11-26 by the safety-island migration on the `d92c369a14` candidate; the user ruled it a blocker, so `d92c369a14` is superseded |
+| B43 | island (fresh `nros build`, s32z270-rtu0-zephyr) | the post-link stack-floor walk recursed once per call-graph level, so every fresh jobserver build of a deep image failed with `RecursionError` and a retry passed | 2979 | nros 133 | #4901 (`e9a55424fa`) | fixed: the island's fresh s32z270 build passed on the first try at `ebbb3a570d` (8 walk orders on 8 job tokens) |
+| B44 | island (Zephyr FVP lane, multi-bringup configure) | an owned entry's census recorded its inputs relative to the entry package, but configure resolved them against the project root, so every taken owned census read stale and the host configure stopped unseeded; a regression from #4825 (`94a28565c5`), in `ebbb3a570d` and not in `d92c369a14` | the regression filed with PR 4917 | nros 241 | #4917 | OPEN: found 2026-11-26 by the island's FVP lane on the `ebbb3a570d` candidate; the user ruled it a blocker, fixed forward (no revert) |
 
 Owners are the sessions the manager routed each blocker to (2026-11-23). B5 is in the same family as
 issue 2772. The 118 session owns the `host-tests` / `live-peer` lane wiring itself.
 
-B18 to B42 were opened while W1 and W2 ran, 2026-11-23 to 2026-11-26, and B43 during W3's
-candidate migration (B20 was reserved for a NuttX
+B18 to B42 were opened while W1 and W2 ran, 2026-11-23 to 2026-11-26, and B43 and B44 during W3's
+candidate migrations (B20 was reserved for a NuttX
 riscv link red that #4720 fixed before it reproduced, and was never used). Each fix was gated at
 its exact head before it merged. Tier 2 first reached its cells on 2026-11-25, which is why late
 rows keep appearing: each run that got further reached reds that had been latent behind earlier ones.
@@ -200,11 +201,12 @@ must print no `REFUSED` line once the 06:00 `run-matrix` finishes, about 10:30 U
 
 - **Status:** OPEN (re-cut pending): `release/nros12` was cut at `d92c369a14` on 2026-11-26 and its
   `publish=false` run (release-nros.yml 45768486500) passed, as did B21's upgrade probes in all three
-  languages. The safety-island migration on that candidate then found B43, which the user ruled a
-  blocker. Once #4901 merges, W2 is measured again at one `main` commit that contains it, and
-  `release/nros12` fast-forwards there (no tag exists, so the re-cut is allowed). The cross-bringup
-  census staleness (an image's configure refused over another bringup's stale census, fix #4902) is a known issue in the release
-  notes, not a blocker (user, 2026-11-26).
+  languages. The safety-island migration on that candidate found B43, so W2 was measured again at
+  `ebbb3a570d` (lanes dispatched 12:31Z), which the island then found carried B44. Both were ruled
+  blockers by the user. Once #4917 merges, W2 is measured again at one `main` commit containing it,
+  the island's full CI runs at that commit, and `release/nros12` fast-forwards there (no tag exists,
+  so the re-cut is allowed). The cross-bringup census staleness (fix #4902) is a known issue in the
+  release notes, not a blocker (user, 2026-11-26).
 
 1. Create `release/nros12` at the W2 commit. The name may be re-cut from `main` while no
    `nros-0.6.0-nros12` tag exists.
