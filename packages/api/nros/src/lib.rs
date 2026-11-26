@@ -435,11 +435,13 @@ pub mod __macro {
         usize,
     ) -> i32;
 
-    #[cfg(all(feature = "rmw-cffi", feature = "probe-descriptor-text"))]
-    pub use crate::node::record_node_metadata_watching_prose;
     #[cfg(feature = "rmw-cffi")]
     pub use crate::node::{__record_with_context, record_node_metadata, register_node};
     pub use crate::node::{ActionExecutor, ClientDispatch, GraphQuery, PublisherResolver, TimerOp};
+    #[cfg(all(feature = "rmw-cffi", feature = "probe-descriptor-text"))]
+    pub use crate::node::{
+        record_node_metadata_seeded_watching_prose, record_node_metadata_watching_prose,
+    };
     // Phase 257 (W0-B) / phase-305 W3 — the uniform cross-language
     // component-install seam backing `__nros_component_<pkg>_install`.
     #[cfg(all(feature = "rmw-cffi", feature = "alloc"))]

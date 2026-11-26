@@ -48,7 +48,7 @@ pub struct SourceMetadata {
     /// the component with (`seeds`), or why it ran on its declaration defaults
     /// although launch instances name it (`unseeded`). Stamped CLI-side beside
     /// [`Self::provenance`]; absent when no launch instance names the
-    /// component, and on a Rust component (its harness takes no seeds yet).
+    /// component. The Rust harness writes it too (phase-566 W4).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub probe: Option<super::probe_seeds::ProbeSeedRecord>,
 }

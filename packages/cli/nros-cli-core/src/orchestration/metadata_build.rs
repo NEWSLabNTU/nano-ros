@@ -47,6 +47,12 @@ pub struct MetadataBuildOptions {
     pub output_path: PathBuf,
     /// Scratch directory for the generated harness crate.
     pub harness_dir: PathBuf,
+    // phase-566 W4.
+    /// The launch values the component is constructed with, `(name, baked
+    /// text)` (`probe_seeds`, D1/D2): the same text a board's entry bakes.
+    /// Empty for a component no launch names, which then runs on its
+    /// declaration defaults as before.
+    pub seeds: Vec<(String, String)>,
 }
 
 /// The registered type's path.
@@ -431,6 +437,13 @@ pub fn render_harness_main(o: &MetadataBuildOptions) -> Result<String> {
         .as_deref()
         .map(|s| format!("\n        .exported_symbol({s:?})"))
         .unwrap_or_default();
+    // phase-566 W4 -- the launch values, as the literal slice a Rust entry
+    // bakes (`{:?}` of a `str` is a valid Rust string literal).
+    let seeds: String = o
+        .seeds
+        .iter()
+        .map(|(k, v)| format!("\n    ({k:?}, {v:?}),"))
+        .collect();
     // History: Phase 172.E (the harness), phase-483 W3 (the metadata
     // executor), issue 2166 (bare type), issue 0498 (temp + rename).
     Ok(format!(
@@ -440,6 +453,8 @@ pub fn render_harness_main(o: &MetadataBuildOptions) -> Result<String> {
          // The posix C port DEFINES the `nros_platform_*` symbols the executor\n\
          // calls; naming the crate is what links it.\n\
          extern crate nros_platform_cffi as _;\n\
+         // The launch values the node is constructed with (empty: none names it).\n\
+         const SEEDS: &[(&str, &str)] = &[{seeds}\n];\n\
          fn main() {{\n\
          \x20   // Bare type: default const-params, which bound nothing under `alloc`.\n\
          \x20   let mut recorder: nros::MetadataRecorder = nros::MetadataRecorder::default();\n\
@@ -448,7 +463,7 @@ pub fn render_harness_main(o: &MetadataBuildOptions) -> Result<String> {
          \x20   let mut executor = nros::Executor::open(&config)\n\
          \x20       .expect(\"open the metadata backend\");\n\
          \x20   // And the parameter prose the code sets (description lengths).\n\
-         \x20   nros::__macro::record_node_metadata_watching_prose::<{type_path}>(&mut recorder, &mut executor)\n\
+         \x20   nros::__macro::record_node_metadata_seeded_watching_prose::<{type_path}>(&mut recorder, &mut executor, SEEDS)\n\
          \x20       .expect(\"component register (metadata mode)\");\n\
          \x20   let export = nros::SourceMetadataExport::new({pkg:?}, {comp:?}){exe}{sym};\n\
          \x20   let json = recorder\n\
@@ -1507,6 +1522,7 @@ some later noise
             nano_ros_workspace: PathBuf::from("/nano-ros"),
             output_path: PathBuf::from("/out/talker.metadata.json"),
             harness_dir: PathBuf::from("/scratch/probe"),
+            seeds: Vec::new(),
         }
     }
 
@@ -1578,11 +1594,9 @@ some later noise
         );
         assert_eq!(crate_name(&o), Some("action_client_pkg"));
         let main = render_harness_main(&o).unwrap();
-        assert!(
-            main.contains(
-                "record_node_metadata_watching_prose::<action_client_pkg::FibonacciClient>"
-            )
-        );
+        assert!(main.contains(
+            "record_node_metadata_seeded_watching_prose::<action_client_pkg::FibonacciClient>"
+        ));
         let toml = render_harness_cargo_toml(&o).unwrap();
         assert!(toml.contains(
             "action_client_pkg = { path = \"/ws/src/demo_pkg\", package = \"action_client_pkg\" }"
@@ -1602,8 +1616,14 @@ some later noise
     #[test]
     fn harness_main_calls_record_and_serialize() {
         let main = render_harness_main(&opts()).unwrap();
+        assert!(main.contains(
+            "record_node_metadata_seeded_watching_prose::<demo_pkg::talker::Component>\
+             (&mut recorder, &mut executor, SEEDS)"
+        ));
+        // No launch names it: an empty slice, the probe as before seeds.
         assert!(
-            main.contains("record_node_metadata_watching_prose::<demo_pkg::talker::Component>")
+            main.contains("const SEEDS: &[(&str, &str)] = &[\n];"),
+            "{main}"
         );
         assert!(main.contains("SourceMetadataExport::new(\"demo_pkg\", \"talker\")"));
         assert!(main.contains(".executable(\"talker\")"));
@@ -1623,6 +1643,29 @@ some later noise
     /// Asserted on the RENDERED text because that text is a string template:
     /// nothing type-checks it until a fixture build compiles the generated
     /// crate, which is minutes away and on someone else's machine.
+    // phase-566 W4.
+    /// The seeds D2 chose are baked into the harness as the literal slice a
+    /// Rust entry bakes, each text escaped as a Rust string literal, so a
+    /// value holding a quote or a backslash cannot break the harness source.
+    #[test]
+    fn harness_main_bakes_the_launch_seeds() {
+        let mut o = opts();
+        o.seeds = vec![
+            ("ctrl_period_ms".into(), "20".into()),
+            ("frame".into(), "\"base\\link\"".into()),
+            ("gains".into(), "[1.0, 2.5]".into()),
+        ];
+        let main = render_harness_main(&o).unwrap();
+        assert!(
+            main.contains(
+                "const SEEDS: &[(&str, &str)] = &[\n    (\"ctrl_period_ms\", \"20\"),\n    \
+                 (\"frame\", \"\\\"base\\\\link\\\"\"),\n    \
+                 (\"gains\", \"[1.0, 2.5]\"),\n];"
+            ),
+            "{main}"
+        );
+    }
+
     #[test]
     fn harness_main_writes_its_output_atomically() {
         let main = render_harness_main(&opts()).unwrap();

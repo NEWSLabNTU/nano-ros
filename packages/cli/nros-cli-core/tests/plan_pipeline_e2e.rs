@@ -146,6 +146,7 @@ fn metadata_mode_build_emits_source_metadata_for_component() {
         nano_ros_workspace: nano_ros_workspace(),
         output_path: output_path.clone(),
         harness_dir: out.join("probe"),
+        seeds: Vec::new(),
     })
     .expect("metadata-mode build produces source metadata");
 

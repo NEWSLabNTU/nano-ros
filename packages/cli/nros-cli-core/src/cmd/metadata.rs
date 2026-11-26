@@ -76,6 +76,9 @@ fn metadata_build_options(
         nano_ros_workspace: nano_ros.to_path_buf(),
         output_path: decl.source_metadata_path(),
         harness_dir: probe,
+        // A standalone `nros metadata --build` has no resolved model, so
+        // nothing to seed (phase-566 D1 reads the sync's models).
+        seeds: Vec::new(),
     }
 }
 
