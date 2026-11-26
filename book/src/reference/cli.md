@@ -1906,6 +1906,9 @@ Options:
       --nano-ros-path <NANO_ROS_PATH>
           Package form: nano-ros checkout (auto-detected if omitted)
 
+      --board <BOARD>
+          Check, without building, whether the image whose `board` is this board can build for it: its framework, its RMW's needs, its links and network, its toolchain and the board's vendor SDK. Every reason is printed at once. The image is chosen as `nros build --board` chooses it
+
   -h, --help
           Print help (see a summary with '-h')
 

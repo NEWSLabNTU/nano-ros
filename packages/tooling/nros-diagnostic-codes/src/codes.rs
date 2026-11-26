@@ -142,8 +142,8 @@ diagnostics! {
     0018 LinkNotOnBoard {
         title: "the image's network or link is not one the board carries",
         surfaces: [Cli],
-        remedy: "change the image's `locator` or network to one the board carries (`nros \
-                 board net <board>`), or choose a board that has the link",
+        remedy: "change the image's `locator` or network to one the board carries (its \
+                 `[board.net] links`), or choose a board that has the link",
     }
 
     /// A toolchain or tool the board builds with is not installed. History:

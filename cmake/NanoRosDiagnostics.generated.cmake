@@ -41,7 +41,7 @@ set(_NROS_DIAG_REMEDY_BoardNoBuildRoad "choose a board whose build road compiles
 set(_NROS_DIAG_CODE_RmwNeedsCapability "NROS-0017")
 set(_NROS_DIAG_REMEDY_RmwNeedsCapability "choose an RMW this board can run (`nros rmw list`), or a board with the capability")
 set(_NROS_DIAG_CODE_LinkNotOnBoard "NROS-0018")
-set(_NROS_DIAG_REMEDY_LinkNotOnBoard "change the image's `locator` or network to one the board carries (`nros board net <board>`), or choose a board that has the link")
+set(_NROS_DIAG_REMEDY_LinkNotOnBoard "change the image's `locator` or network to one the board carries (its `[board.net] links`), or choose a board that has the link")
 set(_NROS_DIAG_CODE_BoardToolMissing "NROS-0019")
 set(_NROS_DIAG_REMEDY_BoardToolMissing "run the `run:` line the reason prints; `nros setup <board>` installs everything the board needs")
 set(_NROS_DIAG_CODE_BoardSdkRootUnset "NROS-0020")
