@@ -203,16 +203,39 @@ them), and works without a server.
 
 ### W8 — a shorter first build
 
-- **Status:** OPEN — design drafted for ruling: [RFC-0137](../design/0137-prebuilt-board-libraries.md) (input-digest keys, exact-match use, reproducibility; measured first builds; four questions)
+- **Status:** OPEN — design ruled 2026-11-26: [RFC-0137](../design/0137-prebuilt-board-libraries.md) is Stable (input-digest keys, exact-match use, reproducibility; all four questions ruled as drafted). The items below run in the ruled order.
 - **Owner:** nros 118, after its current batch
-- **Needs:** an RFC: what is prebuilt (zenoh-pico, lwIP, the RTOS kernel, the
-  nano-ros C and Rust libraries), per which key (board, RMW, knobs that change
-  the object code), and how a prebuilt piece is checked against the source it
-  claims to be.
 
 Ship prebuilt, per-board libraries in the store, the way the PX4 POSIX
 archives already ship (phase-541), so a first build compiles only the user's
-code.
+code. Measured on newslab-118 (RFC-0137 "Problem"): first builds of the
+tutorial's `mps2-an385-freertos` talker take 64 s (Rust), 84 s (C) and 60 s
+(C++) on 48 cores.
+
+- **W8.a — one cargo run for the C image (ruling Q2, first).** The C talker
+  builds both the `nros-c` and the `nros-cpp` image crates and links the C++
+  one (also seen linking the TI image, phase-575 W3). Build one. Its own
+  change, needing no prebuilt. Acceptance: the C talker's first build runs
+  cargo once, with the measured before and after times stated.
+- **W8.b — reproducible pieces, then the weekly comparison (ruling Q3).**
+  Measure how far zenoh-pico's and the Rust image crate's builds are from
+  reproducible, and close the gap (`-ffile-prefix-map`,
+  `--remap-path-prefix`, a fixed `SOURCE_DATE_EPOCH`, `ar D`). Then the
+  RFC-0137 D3 job: weekly, it rebuilds a sample of published pieces from
+  source under the same digest and compares the bytes. Advisory until green
+  for a release, then gating the release. No prebuilt ships before this job
+  exists.
+- **W8.c — input digests and the first two prebuilt pieces (ruling Q1).**
+  zenoh-pico and nano-ros's Rust image crate: the input digest (D1), computed
+  by the code that drives the build; exact-match use with the one-line reason
+  on a miss (D2); `[prebuilt.<board>.<piece>]` rows produced by the release
+  workflow for each board's default inputs (D3). Gates (D5): the
+  default-image and changed-knob fixture, and the mutation-tested gate that
+  every input reaching the compiler is in the digest. lwIP and the RTOS
+  kernel come after these two.
+- **W8.d — a prebuilt replaces its source download (ruling Q4).** `nros
+  setup` skips the source of a piece it installs prebuilt; the source is
+  fetched lazily when a build needs that piece from source.
 
 Acceptance: from a clean store, the tutorial's first FreeRTOS QEMU build
 completes in a stated time, measured by the probe.
@@ -261,8 +284,9 @@ injected deadline miss.
 ## Order
 
 W1, W3, W5 and W7 are small and independent, and the most visible: start
-there. W2, W4 and W6 each need their design note first. W8 and W11 need an
-RFC. W9's first half is small; its second half waits for a user decision.
+there. W2, W4 and W6 each need their design note first. W11 needs an
+RFC; W8's, RFC-0137, is ruled. W9's first half is small; its second half
+waits for a user decision.
 
 ## Related
 

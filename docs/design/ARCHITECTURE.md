@@ -351,6 +351,11 @@ boards self-describe their dependencies.
   must match something the host already runs comes from the system — shipping our own
   is the drift RFC-0075 removed for the zenoh router — and the remainder prefers the
   system once a version constraint can say "good enough" (phase-404).
+- A prebuilt board library (zenoh-pico and the Rust image crate first) is named by the
+  digest of every input that shapes its object code and is used only on an exact match;
+  otherwise the build compiles it and names the first input that differed. Its bytes are
+  trusted by SHA-256 and by a reproducibility rebuild, and it replaces its source download,
+  the source being fetched only when a build needs it → RFC-0137.
 - Cross-RTOS launch tree + manifest codegen → RFC-0015; per-RTOS scheduling survey → RFC-0016.
 - Real-time timer primitive: RFC-0017; the RT executor model: RFC-0002 (Draft; its settled
   parts are carried by RFC-0084, RFC-0106, RFC-0108 and RFC-0113).
