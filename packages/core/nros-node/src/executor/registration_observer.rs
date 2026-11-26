@@ -236,6 +236,83 @@ pub(crate) fn observe_node_create(reg: ObservedNodeCreate<'_>) {
     }
 }
 
+// Issue 2985.
+/// Which kind of executor callback slot the Rust code created, as the census
+/// tells them apart (`nros::node_metadata::TimerKind`, which this crate sits
+/// below).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CallbackSlotKind {
+    /// A repeating timer on the steady clock.
+    Wall,
+    /// A repeating timer on a chosen clock.
+    Clock,
+    /// A timer that fires once.
+    Oneshot,
+    /// A repeating timer in a named callback group.
+    InGroup,
+    /// A guard condition: one slot, no period.
+    GuardCondition,
+}
+
+/// A timer or guard condition created through a Rust `Node` method.
+///
+/// Timers and guard conditions never reach the RMW, so the census counts them
+/// only when a hook reports them. `nros::census_hooks::on_timer_create` and
+/// `on_guard_condition_create` are called by the C, C++ and declarative Rust
+/// routes. The imperative Rust routes -- `Node::create_guard_condition` and
+/// the `Node::create_timer_*` family -- live in this crate, below `nros`, so
+/// they reported nothing, and a census of Rust code that created a guard or a
+/// timer that way (a component reaching its executor through
+/// `NodeRuntime::executor_mut`) was one callback slot short for each: an
+/// `ExecutorFull` at boot on an image sized from it.
+///
+/// Only those `Node` methods report here. The `Executor::register_*`
+/// primitives they forward to are also what the C and C++ shims and the
+/// declarative route call, and those record through their own hook; observing
+/// there would count each of their slots twice.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ObservedCallbackSlot {
+    /// The kind of slot.
+    pub kind: CallbackSlotKind,
+    /// A timer's period in milliseconds, as the code passed it; `None` for a
+    /// guard condition.
+    pub period_ms: Option<u64>,
+}
+
+/// A sink a metadata probe installs to hear every imperative Rust timer and
+/// guard condition.
+pub type CallbackSlotObserver = fn(ObservedCallbackSlot);
+
+static CALLBACK_SLOT_OBSERVER: Mutex<Option<CallbackSlotObserver>> = Mutex::new(None);
+
+/// Install the callback-slot sink. Same contract as [`set_observer`]: only
+/// `nros::metadata_mode` calls it, and the last caller wins.
+pub fn set_callback_slot_observer(observer: CallbackSlotObserver) {
+    CALLBACK_SLOT_OBSERVER.with(|slot| *slot = Some(observer));
+}
+
+/// Remove the callback-slot sink.
+pub fn clear_callback_slot_observer() {
+    CALLBACK_SLOT_OBSERVER.with(|slot| *slot = None);
+}
+
+/// Report one imperative timer or guard condition. A no-op when nothing is
+/// listening.
+///
+/// Called BEFORE the executor answers, like `observe_node_create`: a slot the
+/// full callback table refuses is exactly the one the census must count.
+///
+/// Gated like [`observe`]: its only callers are `Node` methods, which exist
+/// only with an RMW seam.
+#[cfg(any(has_rmw, test))]
+pub(crate) fn observe_callback_slot(reg: ObservedCallbackSlot) {
+    // Released before the sink runs, as in `observe`.
+    let sink = CALLBACK_SLOT_OBSERVER.with(|slot| *slot);
+    if let Some(sink) = sink {
+        sink(reg);
+    }
+}
+
 // Issue 2670.
 /// A parameter that Rust code declared through one of the executor's own
 /// declaration routes.

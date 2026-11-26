@@ -440,6 +440,23 @@ pub fn listen_for_registrations() {
             );
         }
     });
+    // Issue 2985 -- a timer or guard condition the imperative Rust `Node`
+    // methods create is one callback slot, recorded through the same hook the
+    // C, C++ and declarative routes call, so all four count alike.
+    nros_node::executor::registration_observer::set_callback_slot_observer(|reg| {
+        use nros_node::executor::registration_observer::CallbackSlotKind as K;
+        let kind = match reg.kind {
+            K::GuardCondition => {
+                crate::census_hooks::on_guard_condition_create();
+                return;
+            }
+            K::Wall => crate::node_metadata::TimerKind::Wall,
+            K::Clock => crate::node_metadata::TimerKind::Clock,
+            K::Oneshot => crate::node_metadata::TimerKind::Oneshot,
+            K::InGroup => crate::node_metadata::TimerKind::InGroup,
+        };
+        crate::census_hooks::on_timer_create(kind, reg.period_ms.unwrap_or(0));
+    });
     nros_node::executor::registration_observer::set_observer(|reg| {
         // A dropped `false` here is a fact silently lost, which is the shape
         // every other recorder entry point is `#[must_use]` against. It is NOT
