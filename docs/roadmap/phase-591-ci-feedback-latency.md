@@ -63,7 +63,10 @@ summary names each failed row; the lane is still red.
 
 ### W2 -- evidence from a dispatch, and automatic re-runs (owners: nros 243 rule, nros 118 automation)
 
-- **Status:** OPEN -- the automatic re-run fired live: #4790 (phase-590 B24, carrying a
+- **Status:** OPEN -- the run the re-run dispatched, 45422927491, FAILED
+  (completed 2026-11-24 19:04Z, 3 h 52 min after dispatch), so the
+  acceptance's second half is not met (audited 2026-11-26). The automatic
+  re-run fired live: #4790 (phase-590 B24, carrying a
   `Fixes-Lane:` trailer) merged at 15:12:53Z as `730dfbebeb`, and the `automation` push run
   45422883315 dispatched `run-matrix.yml` on `main` at that commit 16 s later (run
   45422927491, 15:13:09Z). Acceptance's second half closes when that run is green, inside
@@ -82,7 +85,11 @@ lands is proven within 6 hours of its merge.
 
 ### W3 -- `live-peer` host job time (owner: nros 118)
 
-- **Status:** OPEN -- in review as #4781 (draft): the host fixture rows build on four
+- **Status:** OPEN -- #4781 merged 2026-11-24 (4d1015b708). The first scheduled
+  run that carries it, 45545116210 (2026-11-25), was green in 85 min. The
+  second, 45753606904 (2026-11-26), was still running at the audit. W3 is
+  done when that run is also under 120 min (audited 2026-11-26). The
+  original note: in review as #4781 (draft): the host fixture rows build on four
   shards and one cells job runs after (`scripts/ci/fixture-shards.sh`,
   `scripts/ci/live-peer-host-fixtures.sh`). The pack set is derived from the fixtures
   manifest, with a coverage check on the normal path. Proof dispatch 45370439146: shards
@@ -129,7 +136,11 @@ Acceptance: each nightly platform job builds in under 60 min.
 
 ### W6 -- `host-tests` shard balance (owner: nros 142, taken over from nros 118 on 2026-11-24)
 
-- **Status:** OPEN -- in review as #4754: six shards split by measured weights
+- **Status:** DONE (2026-11-25, #4766 at 29baf7ea0b). The acceptance is met on
+  scheduled `host-tests` runs: 45538275999 (2026-11-25), whose build shards took
+  37-59 min, and 45747295109 (2026-11-26), whose took 41-74 min, all under
+  80. #4754 and #4762 closed unmerged, and #4766 is what landed. The original
+  note: in review as #4754: six shards split by measured weights
   (`scripts/ci/build-gate-weights.py`), the last shard charged for its
   `no-std` + `pristine-checkout`. Measured on branch dispatches: three balanced
   shards ~85 min each; four 73 / 76 / 91 / 63 min (run 45319129706); five
