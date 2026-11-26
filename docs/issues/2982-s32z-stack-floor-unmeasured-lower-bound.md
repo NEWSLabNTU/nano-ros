@@ -1,6 +1,6 @@
 ---
 id: 2982
-title: "An S32Z Zephyr image's stack-floor walk refuses on five frameless functions and warns of a 194 KB lower bound against a 32 KiB stack"
+title: "A refused stack-floor walk warns of a certain overflow along a path that crosses type-bound indirect calls (194 KB on an S32Z image with a 32 KiB stack)"
 status: open
 type: bug
 severity: medium
@@ -43,19 +43,54 @@ Five functions on the walk have no frame in any input:
 - `arch_cpu_idle`, `z_arm_cortex_r_svc`, `z_arm_int_exit`: Zephyr
   architecture code with no stack-usage record.
 
-## Is 194 KB a real path?
+## Is 194 KB a real path? No
 
-Open. The figure is the depth of ONE path, not a sum, and the frameless
-functions count 0, so interrupt handlers and idle are not added into it.
-But the three largest frames are executor callbacks, which run one after
-another under the executor rather than nested, and one path holding all
-three means the walk resolved an indirect call to more than the call site
-can reach. The bind summary supports that reading: of the image's indirect
-call sites, 119 have no typed target and 98 have no IR, so each of those 98
-is bound to every function C code can hold, a callback dispatcher among
-them. If so, 194 KB is an over-approximation and not a real overflow.
-Settling it needs the OPEN role's chain from the build's
-`nros/stack-floor/report.json` (requested).
+Settled by re-running the walk on a fresh build with the five frameless
+functions accepted as 0-byte leaves (`--external`): it completes, at
+`floor 215072 B (path 195520 B + 10%)`, and the walker itself labels the
+path an UPPER bound, through an indirect call bound by type rather than by
+a vtable slot. The path is 1008 frames. Checked against the linked image's
+disassembly, about 310 steps are indirect calls and about 280 could not be
+classified.
+
+The three large frames are on one chain only through steps that are not
+real calls:
+
+- the subscription lambda (22096 B) is reached from a publisher's
+  `publish_with_buffer`, but a publish never calls a subscriber's lambda;
+- `MpcLateralController::run` (17432 B) is reached through a work-queue
+  dispatch and a service-server trampoline; it actually runs from the
+  controller's timer;
+- `action_client_raw_try_process` (16488 B) is reached through an
+  interrupt entry and a socket thread, in an image whose shape states no
+  action client (`NROS_EXECUTOR_ACTION_CLIENTS=0`), so it may not run at
+  all.
+
+In the real image each of these runs directly under the executor, one at a
+time. The real depth is roughly the largest of them plus the init and
+executor frames, not their sum. The image's 32 KiB main stack may still be
+tight for the 22 KiB lambda; that is for the image to measure.
+
+## The defect: the warning calls an upper bound a lower bound
+
+The warning an UNMEASURED image gets when its walk refuses says the walk
+"reached at least N B ... (every missing frame counted as 0)" and, when
+N exceeds the stack, that the image "WILL overflow it". Counting missing
+frames as 0 makes N a lower bound only along the path it reports. The path
+itself crosses indirect calls bound by type, which a completed walk reports
+as an upper bound. Here the "certain overflow" is a path that cannot run.
+So the warning must not claim a lower bound or a certain overflow when its
+path crosses a bound indirect edge (`upper_bound_edge`, which a completed
+walk already asks), and should say "an upper-bound path" instead.
+
+A second gap: a refused walk records only its three largest frames.
+`report.json` keeps no path for a refused role, so reading it took a
+re-run with `--external`. The refused role's path belongs in the report.
+
+The set of frameless functions also moved between two builds at the same
+pin. One rebuild's refusal also named Eigen kernels (`gemv_dense_selector`,
+`general_matrix_matrix_product`) and `__gnu_cxx::__to_xstring`, which the
+next did not.
 
 ## A real cost found on the way
 
@@ -73,7 +108,7 @@ buffers, would halve or remove it.
 1. Give the five functions frames: a builtins row for this libgcc (`just
    zephyr stack-builtins`), and `[[policy]]` rows (or measured frames) for
    the three arch functions. The walk then completes.
-2. Read the completed path. If it nests sibling callbacks through a bound
-   indirect site, the binding is the defect; if it is real, raise
-   `CONFIG_MAIN_STACK_SIZE` for the image.
+2. Fix the warning (above): no "at least" and no "WILL overflow" for a
+   path that crosses a bound indirect edge; and keep a refused role's path
+   in `report.json`.
 3. Separately, share one splice buffer in `action_client_raw_try_process`.
