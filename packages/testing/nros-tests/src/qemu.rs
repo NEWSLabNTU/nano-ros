@@ -393,6 +393,9 @@ impl QemuProcess {
                 binary.display()
             )));
         }
+        if let Some(zephyr_board) = boot.zephyr_board {
+            refuse_image_of_the_other_kind(binary, zephyr_board)?;
+        }
         let mut run = crate::run::qemu_image(binary, &boot)?;
         let mut cmd = run.take_command();
         cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
@@ -1387,6 +1390,50 @@ pub fn image_nic(net_file: &Path, model: &str) -> TestResult<String> {
 /// count, every run. Measured in issue 2252.
 pub const MPS2_AN385_CORE_ICOUNT: &str = "shift=5";
 
+/// Whether `binary` is a Zephyr image: its symbol table names `z_cstart`, the
+/// kernel's C entry, which every Zephyr image links and no other image here
+/// defines. A plain byte search, so it needs no ELF parser and also reads a
+/// copied or renamed image.
+///
+/// # Errors
+///
+/// `binary` cannot be read.
+pub fn is_zephyr_image(binary: &Path) -> std::io::Result<bool> {
+    const MARKER: &[u8] = b"\0z_cstart\0";
+    let bytes = std::fs::read(binary)?;
+    Ok(bytes.windows(MARKER.len()).any(|w| w == MARKER))
+}
+
+/// Refuse to boot `binary` on a descriptor of the other kind (issue 2977): a
+/// Zephyr image on a non-Zephyr board, or the reverse. Both boot on the same
+/// QEMU machine, so nothing else would notice. The image then runs under the
+/// wrong board's line, its semihosting and `-icount` included.
+fn refuse_image_of_the_other_kind(binary: &Path, zephyr_board: bool) -> TestResult<()> {
+    let zephyr_image = is_zephyr_image(binary)
+        .map_err(|e| TestError::ProcessFailed(format!("{}: {e}", binary.display())))?;
+    if zephyr_image == zephyr_board {
+        return Ok(());
+    }
+    let (image, board, use_instead) = if zephyr_image {
+        (
+            "a Zephyr image",
+            "a non-Zephyr board descriptor",
+            "`QemuProcess::start_zephyr_networked(MPS2_AN385_ZEPHYR, ..)` or \
+             `start_zephyr_mps2_an385_networked_measured`",
+        )
+    } else {
+        (
+            "not a Zephyr image",
+            "the Zephyr board descriptor",
+            "the bare-metal/FreeRTOS launcher (`start_mps2_an385_networked` and its siblings)",
+        )
+    };
+    Err(TestError::ProcessFailed(format!(
+        "{} is {image} but was booted on {board} (issue 2977); use {use_instead}",
+        binary.display()
+    )))
+}
+
 /// A board whose QEMU boot the harness reads from its descriptor's
 /// `[board.run.qemu]` (phase-544 W1, issue 2172): the package directory under
 /// `packages/boards/` and one of its `[[board]]` `names`.
@@ -1482,7 +1529,30 @@ impl DescriptorBoard {
         Ok(crate::run::QemuBoot {
             args,
             passthrough: Vec::new(),
+            zephyr_board: Some(self.platform_in(text)? == "zephyr"),
         })
+    }
+
+    /// This board's `[[board]] platform` in the descriptor `text`.
+    fn platform_in(&self, text: &str) -> TestResult<String> {
+        let fail = |why: String| {
+            TestError::ProcessFailed(format!("{}: {why}", self.descriptor_path().display()))
+        };
+        let doc: toml::Table = text.parse().map_err(|e| fail(format!("not TOML: {e}")))?;
+        doc.get("board")
+            .and_then(toml::Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(toml::Value::as_table)
+            .find(|b| {
+                b.get("names")
+                    .and_then(toml::Value::as_array)
+                    .is_some_and(|ns| ns.iter().any(|n| n.as_str() == Some(self.name)))
+            })
+            .and_then(|b| b.get("platform"))
+            .and_then(toml::Value::as_str)
+            .map(str::to_string)
+            .ok_or_else(|| fail(format!("board `{}` states no `platform`", self.name)))
     }
 
     /// The board's boot with no NIC: its `[board.run.qemu]` as plan args.
@@ -1617,6 +1687,44 @@ pub fn qemu_monitor_command(
 
 #[cfg(test)]
 mod tests {
+    /// Issue 2977: the launcher refuses a Zephyr image on a non-Zephyr
+    /// descriptor and the reverse, by the `z_cstart` symbol name, and passes
+    /// each kind on its own board.
+    #[test]
+    fn a_launch_refuses_an_image_of_the_other_kind() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let zephyr = dir.path().join("zephyr.elf");
+        let freertos = dir.path().join("freertos.elf");
+        std::fs::write(&zephyr, b"\x7fELF..\0main\0z_cstart\0k_sleep\0").unwrap();
+        std::fs::write(&freertos, b"\x7fELF..\0main\0vTaskStartScheduler\0").unwrap();
+        assert!(is_zephyr_image(&zephyr).unwrap());
+        assert!(!is_zephyr_image(&freertos).unwrap());
+        refuse_image_of_the_other_kind(&zephyr, true).expect("Zephyr on Zephyr");
+        refuse_image_of_the_other_kind(&freertos, false).expect("FreeRTOS on bare metal");
+        let err = format!(
+            "{:?}",
+            refuse_image_of_the_other_kind(&zephyr, false).unwrap_err()
+        );
+        assert!(
+            err.contains("is a Zephyr image") && err.contains("2977"),
+            "{err}"
+        );
+        let err = format!(
+            "{:?}",
+            refuse_image_of_the_other_kind(&freertos, true).unwrap_err()
+        );
+        assert!(err.contains("not a Zephyr image"), "{err}");
+    }
+
+    /// The descriptors the mps2 launchers read state the kind the guard
+    /// checks: the bare-metal one (which FreeRTOS images share) is not a
+    /// Zephyr board, the Zephyr one is.
+    #[test]
+    fn the_mps2_descriptors_state_their_image_kind() {
+        assert_eq!(MPS2_AN385.boot().unwrap().zephyr_board, Some(false));
+        assert_eq!(MPS2_AN385_ZEPHYR.boot().unwrap().zephyr_board, Some(true));
+    }
+
     use super::*;
 
     #[test]
@@ -1771,6 +1879,7 @@ mod tests {
                     let boot = crate::run::QemuBoot {
                         args,
                         passthrough: Vec::new(),
+                        zephyr_board: None,
                     }
                     .arg("nic_model", &nic);
                     let package = entry.file_name().to_string_lossy().into_owned();
