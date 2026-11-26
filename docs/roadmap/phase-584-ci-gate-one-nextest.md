@@ -119,7 +119,9 @@ Approved by the user on 2026-11-20 as sent; recorded in RFC-0131 D2 and D3.
 ### W4 — Resources
 
 - **Owner:** nros 142.
-- **Status:** OPEN (the W4 PR)
+- **Status:** DONE (2026-11-22, #4647). Its acceptance was measured in that
+  PR on host 142: a full `ci gate` in gate-order mode passed both name orders,
+  728/728, wall 3489 s.
 - `uses:root-target` on `test-unit`, `out-of-lane-deselected`, `api-parity`
   and `probe-workspace-caps`, and on whichever build gates already contend
   for the root `target/`, after measuring which do. `pristine-checkout` gets a
