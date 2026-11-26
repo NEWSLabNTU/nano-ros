@@ -873,6 +873,10 @@ probe_args() {
         # clones and commits, the sites this probe is for) and skips the
         # extractions.
         scripts/check-book-probe-tracks.py) echo "--self-test" ;;
+        # Its normal path runs the whole fast lane in a clone (minutes). Its
+        # one `git init` is the baseline selftest (issue 2988), which
+        # `--self-test` runs alone.
+        scripts/ci/pristine-checkout-fast.sh) echo "--self-test" ;;
         # Its normal path is the self-test FOLLOWED by a release-range audit
         # of the real history (`git log`/`describe` reads plus a `gh` GraphQL
         # call per 100 commits). Every repository it builds (`git init`, the
