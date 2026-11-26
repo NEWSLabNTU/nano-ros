@@ -288,6 +288,30 @@ tutorial's `mps2-an385-freertos` talker take 64 s (Rust), 84 s (C) and 60 s
   from that checkout as a local edit (the store's ladder), not from the
   store. Such a build is not of the digest's sources, and D1's input digest
   has to see the difference.
+  **Plan, agreed 2026-11-27.** The producer and the weekly comparison build
+  inside the runner image at fixed paths: one canonical checkout path and
+  one `$HOME`, so the store, cargo registry and rustup paths match too. That
+  removes the Rust crate's path strings and its `-C metadata` hash with no
+  code change. The in-tree fixes are the ones a fixed path cannot make:
+  - `ar D` for the CMake road's archives (#4928). Measured: the talker built
+    twice gave 8 of 8 CMake archives byte-identical, which lwIP was not
+    before;
+  - D1's digest covers the source tree actually compiled: the submodule
+    commit and the ladder's local-edit verdict, not only the pin.
+
+  Acceptance is the same piece built in that image on two hosts (118 and
+  241), byte-identical.
+
+  Tried and dropped: reaching the checkout through a link inside the image
+  crate (`<root>/_nros`, the shape of issue 2322's `_ws`). Cargo then
+  hashes the path dependencies relative to the root. With
+  `exclude = ["_nros"]`, so that they keep nano-ros's workspace, two checkouts
+  built one byte-exact staticlib in a scratch test. In the real build the
+  link points at the checkout, and the build tree lies inside that checkout,
+  so a recursive walk that follows links loops. `nros-stack-floor.py`'s
+  `**` glob ran 7 h 42 min (fixed by #4927). A link to an
+  ancestor of its own build dir is a hazard for every such walker, so the
+  fixed path was chosen instead.
 - **W8.c — input digests and the first two prebuilt pieces (ruling Q1).**
   zenoh-pico and nano-ros's Rust image crate: the input digest (D1), computed
   by the code that drives the build; exact-match use with the one-line reason
