@@ -1226,6 +1226,22 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
             )
             .map_err(|e| eyre::eyre!("`{qual}` cannot be built: {e}")),
         );
+        if let Some(driver) = driver {
+            let sizing = sizing_descriptor_at(&SizingAt {
+                driver,
+                root: &root,
+                platform: &platform,
+                image: &image,
+                bringup: &bringup,
+                bringup_dir: &bringup_dir,
+                image_id: &image_id,
+                entry: &want_entry,
+                rust_only: !image_has_non_rust(&image, &bringup_dir),
+                resolved_dir: None,
+                output: None,
+            });
+            compat_memory(&mut compat, &board, descriptor, sizing.as_deref());
+        }
 
         // ---- stage 3 ----------------------------------------------------
         // Before anything is generated or compiled: a missing prerequisite
@@ -3762,6 +3778,15 @@ fn plan_leaf_image(
         root,
         Some(&nros_root),
     );
+    compat_memory(
+        &mut compat,
+        &img.board,
+        descriptor,
+        Some(&crate::sizing_descriptor::descriptor_path_for_leaf(
+            &img.leaf,
+            &img.image_id,
+        )),
+    );
     crate::cmd::setup::expose_store_tools(descriptor, Some(&nros_root));
     // Issue 2180 — a query refuses nothing over the toolchain.
     let mut missing = if planning != Planning::Query {
@@ -4126,6 +4151,14 @@ fn plan_single_package_cmake(
             .and_then(nros_orchestration_ir::leaf_system::link_kind_of_locator),
         root,
         Some(&nros_root),
+    );
+    compat_memory(
+        &mut compat,
+        &board,
+        descriptor,
+        Some(&crate::sizing_descriptor::descriptor_path_for_leaf(
+            root, &image_id,
+        )),
     );
 
     // The toolchain half of preflight, as on the cargo leaf road; its sync
@@ -7838,6 +7871,28 @@ fn compat_board_rows(
         sdk_var,
         sdk_value.as_deref(),
     ));
+}
+
+/// RFC-0135 D8, ruled 2026-11-26 -- the RAM the image's sizing descriptor
+/// states in bytes, as a LOWER bound, against the board's `[board.memory]
+/// ram`. Only a descriptor an earlier configure or sync wrote is read: before
+/// the first one there is nothing stated, and the size report after the link
+/// is the verdict. A descriptor that does not read is left to its consumers.
+fn compat_memory(
+    compat: &mut crate::compat::Incompatible,
+    board: &str,
+    descriptor: &crate::orchestration::board_descriptor::BoardDescriptor,
+    sizing: Option<&std::path::Path>,
+) {
+    let Some(ram) = descriptor.memory.and_then(|m| m.ram) else {
+        return;
+    };
+    if let Some(path) = sizing.filter(|p| p.is_file())
+        && let Ok(desc) = nros_sizing_descriptor::read(path)
+    {
+        let floor = nros_sizing_descriptor::stated_ram_floor(&desc);
+        compat.extend(crate::compat::memory(board, &floor, Some(ram)));
+    }
 }
 
 pub(crate) fn descriptor_board_net(

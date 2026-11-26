@@ -40,5 +40,7 @@
 #define NROS_DIAG_BOARD_TOOL_MISSING "NROS-0019"
 /** the board's vendor SDK root is not set */
 #define NROS_DIAG_BOARD_SDK_ROOT_UNSET "NROS-0020"
+/** the image needs more RAM than the board has */
+#define NROS_DIAG_IMAGE_OVER_MEMORY_BUDGET "NROS-0021"
 
 #endif /* NROS_DIAGNOSTICS_H */

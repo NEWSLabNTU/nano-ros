@@ -608,3 +608,13 @@ time.
   package ships its own `nros-knobs.toml` (D2's contents and a new D2 item),
   the D5 scan reads it, and D8 checks the image's package knobs against the
   merged registry. Then ACCEPTED by the user's ruling of 2026-11-19.
+- 2026-11-26: D8's memory row clarified by the user's ruling of 2026-11-26
+  (option b), raised by phase-577 W6's owner because nothing turns a sizing
+  descriptor into bytes before the link:
+  - before the build, the check sums only the bytes the descriptor STATES
+    (the spawned tasks' stacks, the configured heap, the transient-local
+    retention rings) and compares that LOWER bound with `[board.memory]
+    ram`, worded "needs at least N";
+  - the exact verdict comes after the link, from the image's size report
+    (phase-578 W1) against the same budget;
+  - no cost model turns counts into bytes.

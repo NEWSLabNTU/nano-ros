@@ -46,6 +46,8 @@ set(_NROS_DIAG_CODE_BoardToolMissing "NROS-0019")
 set(_NROS_DIAG_REMEDY_BoardToolMissing "run the `run:` line the reason prints; `nros setup <board>` installs everything the board needs")
 set(_NROS_DIAG_CODE_BoardSdkRootUnset "NROS-0020")
 set(_NROS_DIAG_REMEDY_BoardSdkRootUnset "export the variable the reason names, set to the vendor SDK's directory")
+set(_NROS_DIAG_CODE_ImageOverMemoryBudget "NROS-0021")
+set(_NROS_DIAG_REMEDY_ImageOverMemoryBudget "lower what the image states (task stacks, heap, transient-local depth), or choose a board with more RAM")
 
 function(nros_refuse _name)
     if(DEFINED _NROS_DIAG_RETIRED_${_name})

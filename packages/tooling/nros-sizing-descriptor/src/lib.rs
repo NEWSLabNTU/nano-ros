@@ -62,9 +62,11 @@ pub mod fact;
 pub mod infra;
 // Issue 1722 — the parameter family's request price, shared by every backend.
 pub mod param_request;
+pub mod ram_floor;
 // Issue 1368 — the receive class against zenoh-pico's reassembly ceiling.
 pub mod receive_ceiling;
 pub use param_request::param_request_max_from;
+pub use ram_floor::{RamFloor, stated_ram_floor};
 mod render;
 mod schema;
 // Issue 2812 — the service families' per-node heap term, shared by every
