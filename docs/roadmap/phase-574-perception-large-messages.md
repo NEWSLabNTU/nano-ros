@@ -82,13 +82,82 @@ decides only whether an MCU-class camera node is viable later.
 ### W1 — Requirements, confirmed
 
 - **Owner:** nros 241.
-- **Status:** OPEN
+- **Status:** DONE (2026-11-26). The table is below.
 - Confirm the message-class table from the outputs of one open-source
   visual-inertial odometry node and one detector, with their real field
   counts and rates. Record which message types and sizes each application
   needs at the real-time core.
 - **Acceptance:** a requirements table in this document, giving each class's
   size, rate and latency budget, with its source.
+
+#### W1 result: requirements (2026-11-26)
+
+**The two nodes.**
+
+- **VIO: OpenVINS**, the ROS 2 node `run_subscribe_msckf`
+  (`ov_msckf/src/ros/ROS2Visualizer.cpp`, launched by
+  `ov_msckf/launch/subscribe.launch.py` in namespace `ov_msckf`), with its
+  shipped EuRoC configuration.
+- **Detector: `mgonzs13/yolo_ros`**, release 4.7.1 (`yolo_node.py`,
+  `yolo_bringup/launch/yolo.launch.py`). Its `main` has since become a C++
+  node with per-camera topics. Its message, `yolo_msgs/DetectionArray`, is
+  unchanged in shape, so the sizes below hold for both versions.
+  The generic `vision_msgs/Detection2DArray` is sized as well, because a
+  detector that publishes the standard type pays its per-detection cost.
+
+**How the sizes were taken.** The `nav_msgs`, `sensor_msgs` and
+`vision_msgs` sizes are the serialized length (CDR, including the 4-byte
+encapsulation header) from `rclpy.serialization.serialize_message` on ROS 2
+Humble, with each node's own frame ids. `yolo_msgs` is not packaged for
+Humble here. Its size is computed from the 4.7.1 `.msg` definitions with the
+same alignment rules, filling the fields the node fills for a plain
+detection model: `class_id`, `class_name` (`"person"`), `score` and `bbox`.
+`id`, `bbox3d`, `mask` and the keypoints are left empty.
+
+| Message | Reaches the real-time core | Fields that grow | Size | Rate | Source of the rate |
+| --- | --- | --- | --- | --- | --- |
+| `nav_msgs/Odometry` on `/ov_msckf/odomimu` | yes (drone: PX4 external vision) | none; both 6x6 covariances filled | 716 B | about 200 Hz | one per IMU sample (`callback_inertial` calls `visualize_odometry`, with no rate limit); EuRoC IMU `update_rate: 200.0` |
+| `geometry_msgs/PoseWithCovarianceStamped` on `poseimu` | no (Linux side) | none | under 0.4 KB | about 20 Hz | once per processed camera frame; EuRoC `track_frequency: 21.0` |
+| `sensor_msgs/PointCloud2` on `points_msckf` and `points_slam` | no (visualization) | 12 B per feature (`x`, `y`, `z` float32) | 113 B + 12 B per point: 713 B at `max_slam: 50` | about 20 Hz | once per camera frame |
+| `yolo_msgs/DetectionArray` on `/yolo/detections` | yes (drone: moving-object rejection; sprayer: nozzle decision) | about 192 B per detection | 48 B + about 192 B each: 1,965 B at 10, 19,245 B at 100, 57,645 B at `max_det: 300` | one per input image, no throttle; 19 FPS on the original Jetson Nano | `image_cb` predicts and publishes per frame; Qengineering's YOLOv8n TensorRT FP16 table, inference only |
+| `vision_msgs/Detection2DArray` (same detections, standard type) | yes, where the detector publishes the standard type | 440 B per detection, most of it the hypothesis pose's 6x6 covariance | 25 B + 440 B each: 4,425 B at 10, 44,025 B at 100, 132,025 B at 300 | as the detector | as above |
+| `sensor_msgs/Image`, EuRoC camera, 752x480 mono8 | no (VIO input, Linux) | `data` | 361,012 B | 20 Hz per camera, stereo | EuRoC camera chain |
+| `sensor_msgs/Image`, detector input, 640x480 rgb8 | no (detector input, Linux) | `data` | 921,652 B | camera rate | `yolo.launch.py` default 640x480 |
+
+**What the real-time core receives, per application.**
+
+| Application | Message | Size per message | Rate | Latency budget | Source of the budget |
+| --- | --- | --- | --- | --- | --- |
+| Drone, localization | `nav_msgs/Odometry` | 716 B | 30–50 Hz into PX4 (OpenVINS publishes at about 200 Hz, so the bridge decimates) | the estimate's age must be stable and is compensated up to `EKF2_EV_DELAY`'s maximum of 300 ms; this phase sets transport at below one 30 Hz period (33 ms) | PX4 "External Position Estimation": "streamed at between 30Hz (if containing covariances) and 50 Hz", and below that "EKF2 will not fuse"; `EKF2_EV_DELAY` in `params_external_vision.yaml`, 0–300 ms |
+| Drone, moving-object rejection | detection array | 2–20 KB (10–100 detections, `yolo_msgs`) | camera rate, 19–30 Hz | one frame period, 33 ms at 30 Hz, so the result applies to the frame it came from | this phase's latency criterion; no external figure found |
+| Sprayer, nozzle decision | detection array | 2–58 KB with `yolo_msgs`, 4–132 KB with `vision_msgs` (10 to 300 detections) | camera rate | 180 ms end to end, from capture to spray, at about 20 km/h with a 1 m field of view; transport takes its 33 ms share, leaving the rest to capture, inference (53 ms at 19 FPS on the Nano) and the valve | Bilberry patent US11071991B2: "the latency time (tl) has to be less than 180 ms", travel at "between 7 and 25 km/h" |
+
+**What changes in the class table above.**
+
+- The two predicted medium sizes hold: `nav_msgs/Odometry` is 716 B, and a
+  `vision_msgs` detection is 440 B.
+- The medium class's upper end is set by the detection count, not by a
+  thumbnail. A `vision_msgs` array at the detector's `max_det: 300` is
+  132 KB. No measured application here sends a JPEG to the real-time core.
+- Images stay on the Linux side in both applications. The large class is
+  needed only for a future MCU-class camera node, as the class table says.
+- The small class (setpoints, nozzle commands, health) is not confirmed by
+  these two nodes. Its sizes stay computed.
+
+**Limits the table runs into, from W2 so far.**
+
+- **XRCE:** a sample travels as one DATA submessage with a 16-bit length, so
+  65,400 data bytes is the most that passes, with a large enough stream
+  window and receive buffer; at the defaults a 1 KB sample is refused at
+  receive. A sample at or over 64 KiB used to be lost or cut, and is now
+  refused at publish (issue 2978). Of the messages above, only a
+  `vision_msgs` array of more than about 148 detections, or a `yolo_msgs`
+  array of more than about 340, is over the limit; `max_det: 300` with
+  `vision_msgs` is.
+- **zenoh:** every size above passes on the host once the fragment and
+  subscriber buffer sizes exceed the sample. At the defaults, 16 KB is
+  dropped at the subscriber buffer, so a 100-detection array needs raised
+  limits.
 
 ### W2 — Capability matrix
 
@@ -156,6 +225,33 @@ decides only whether an MCU-class camera node is viable later.
   homed here, with its measurement.
 - **Acceptance:** a verdict section in this document, and one issue per
   blocking defect, each linked from the table under Issues homed here.
+
+#### Shape of the verdict
+
+The verdict is filled in once W2 to W5 have measured. It has three parts.
+
+1. **One row per phase criterion.** Each row gives the criterion and its
+   threshold, the measured value with the item and target it came from, and
+   one of three outcomes:
+   - **holds**: measured, and within the threshold;
+   - **fails**: measured, and outside it, with the limiting component named;
+   - **not measured**: with the reason, such as a target not yet run.
+     A criterion that is not measured is never counted as holding.
+2. **One row per W1 requirement and RMW.** For each message the real-time
+   core receives (size and rate, from the W1 table), and for zenoh, XRCE and
+   Cyclone, the row says whether W2's matrix carries it, whether W3's memory
+   figure fits an M7-class map, and what configuration it needed. A
+   protocol limit, such as XRCE's 16-bit sample length, is recorded as a
+   limit of that RMW, not as a defect to fix.
+3. **Blocking issues, ranked.** Each defect behind a failed row becomes an
+   issue homed here, with its measurement. They are ranked by how many
+   applications they block, then by fix cost, and W7 takes them in that
+   order.
+
+The overall verdict is **feasible** only if every criterion holds. It is
+**feasible with named fixes** if every failure has a W7 issue whose fix is
+inside this phase's scope. Otherwise it is **not feasible**, naming the
+criterion and the component.
 
 ### W7 — Fixes named by W6
 
