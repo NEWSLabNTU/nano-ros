@@ -28,5 +28,17 @@
 #define NROS_DIAG_RETIRED_BOARD_KEY "NROS-0013"
 /** an image states a framework its board does not boot */
 #define NROS_DIAG_IMAGE_FRAMEWORK_REFUSED "NROS-0014"
+/** an image cannot build for its board */
+#define NROS_DIAG_IMAGE_BOARD_INCOMPATIBLE "NROS-0015"
+/** no build road takes this image's languages to this board */
+#define NROS_DIAG_BOARD_NO_BUILD_ROAD "NROS-0016"
+/** the image's RMW needs a capability the board lacks */
+#define NROS_DIAG_RMW_NEEDS_CAPABILITY "NROS-0017"
+/** the image's network or link is not one the board carries */
+#define NROS_DIAG_LINK_NOT_ON_BOARD "NROS-0018"
+/** a tool the board builds with is not installed */
+#define NROS_DIAG_BOARD_TOOL_MISSING "NROS-0019"
+/** the board's vendor SDK root is not set */
+#define NROS_DIAG_BOARD_SDK_ROOT_UNSET "NROS-0020"
 
 #endif /* NROS_DIAGNOSTICS_H */

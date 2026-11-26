@@ -28,6 +28,12 @@ changes its meaning, and a retired code names the one that replaced it.
 | [NROS-0012](#NROS-0012) | an image's env row sets a registry knob |
 | [NROS-0013](#NROS-0013) | an image names a retired host board key |
 | [NROS-0014](#NROS-0014) | an image states a framework its board does not boot |
+| [NROS-0015](#NROS-0015) | an image cannot build for its board |
+| [NROS-0016](#NROS-0016) | no build road takes this image's languages to this board |
+| [NROS-0017](#NROS-0017) | the image's RMW needs a capability the board lacks |
+| [NROS-0018](#NROS-0018) | the image's network or link is not one the board carries |
+| [NROS-0019](#NROS-0019) | a tool the board builds with is not installed |
+| [NROS-0020](#NROS-0020) | the board's vendor SDK root is not set |
 
 <a id="NROS-0001"></a>
 
@@ -343,5 +349,178 @@ This needs a decision, so `nros fix` does not change it.
 The refusal's `help` line, unless the site gives a more specific one:
 
 > choose a framework from the board's `frameworks` list, or remove the line so the board's default is used
+
+[Back to the list of codes](#diagnostic-codes)
+
+<a id="NROS-0015"></a>
+
+## NROS-0015: an image cannot build for its board
+
+An image cannot build for the board it names, and the reasons are listed
+below the error, each with its own code and a `fix:` line.
+
+Before it generates or compiles anything, `nros build` compares the image
+with its board: the framework and entry the board boots, what the image's
+RMW needs from a board, the links and network the board carries, the tools
+the board builds with, and the vendor SDK the board package names. It reports
+every mismatch at once, so switching an image to another board shows the
+whole list in one run instead of one failure per build. `nros check --board
+<board>` runs the same comparison without building.
+
+The error names where the board came from (its descriptor file), so a board
+that exists in two places is not confused with the copy you edited.
+
+### How to fix it
+
+Work through the listed reasons; each has its own explanation
+(`nros explain <code>`). If most of them say the board lacks something, the
+image probably wants a different board: `nros board list` names them all.
+
+The refusal's `help` line, unless the site gives a more specific one:
+
+> fix each reason listed, or choose a board that has what the image needs
+
+[Back to the list of codes](#diagnostic-codes)
+
+<a id="NROS-0016"></a>
+
+## NROS-0016: no build road takes this image's languages to this board
+
+No way of building takes this image's languages to this board.
+
+Each board is built along one road (cargo, CMake or west), chosen by its
+platform and entry shape. A road compiles a fixed set of languages, and an
+image whose packages are written in C or C++ needs a road that compiles them.
+When the board's road cannot, there is no build to run, and nano-ros says so
+before starting one rather than failing later with an error about a tool.
+
+### How to fix it
+
+Read the reason: it names the board's road and the languages it lacks.
+Choose a board whose road compiles every language the image uses, or keep the
+C or C++ packages out of this image.
+
+The refusal's `help` line, unless the site gives a more specific one:
+
+> choose a board whose build road compiles every language the image uses, or move the image's C or C++ code into a package for another image
+
+[Back to the list of codes](#diagnostic-codes)
+
+<a id="NROS-0017"></a>
+
+## NROS-0017: the image's RMW needs a capability the board lacks
+
+The image's RMW backend needs a capability the board does not have.
+
+Each RMW backend states what it needs from a board in its `nros-rmw.toml`:
+
+```toml
+[rmw.needs]
+threads = true
+heap = true
+```
+
+in the same words a board uses for what it has, in its `nros-board.toml`:
+
+```toml
+[board.capabilities]
+heap = true
+atomics = true
+threads = false
+```
+
+A backend that runs its own threads cannot build for a board without them; it
+would fail at link time, or at run time, with a message about something else.
+
+### How to fix it
+
+Choose an RMW the board can run: `nros rmw list` names every backend and the
+boards each is verified on. Set it with `rmw = "<name>"` in the image's
+`[image.<id>]` table. Or choose a board that has the capability.
+
+The refusal's `help` line, unless the site gives a more specific one:
+
+> choose an RMW this board can run (`nros rmw list`), or a board with the capability
+
+[Back to the list of codes](#diagnostic-codes)
+
+<a id="NROS-0018"></a>
+
+## NROS-0018: the image's network or link is not one the board carries
+
+The image's network or link is not one its board can carry.
+
+A board states the links it has in `[board.net] links` (`ethernet`, `serial`,
+`can`, …). An image reaches its peers through its `locator`, whose scheme
+names a link (`tcp/…` and `udp/…` need an IP link, `serial/…` a serial one).
+The image's address must also fit the network the board is on, and the RMW
+must have a port for that link on the board's platform.
+
+### How to fix it
+
+Read the reason; it names the link or the address and what the board offers.
+`nros board net <board>` prints the board's links and network. Change the
+image's `locator` (or its `[image.<id>.network]`) to one the board carries,
+or choose a board that has the link.
+
+The refusal's `help` line, unless the site gives a more specific one:
+
+> change the image's `locator` or network to one the board carries (`nros board net <board>`), or choose a board that has the link
+
+[Back to the list of codes](#diagnostic-codes)
+
+<a id="NROS-0019"></a>
+
+## NROS-0019: a tool the board builds with is not installed
+
+A toolchain or tool that the board builds with is not installed.
+
+Each board names the compiler, the Rust target and the host tools its images
+need. They are checked before anything is generated, so a missing tool is
+reported by name, with the command that installs it, instead of as a compiler
+error halfway through a build.
+
+### How to fix it
+
+Run the `run:` line printed under the reason. `nros setup <board>` installs
+everything the board needs at once; `nros doctor` shows what is present.
+
+The refusal's `help` line, unless the site gives a more specific one:
+
+> run the `run:` line the reason prints; `nros setup <board>` installs everything the board needs
+
+[Back to the list of codes](#diagnostic-codes)
+
+<a id="NROS-0020"></a>
+
+## NROS-0020: the board's vendor SDK root is not set
+
+The board package builds against a vendor SDK, and the environment variable
+that says where that SDK is installed is not set, or does not name a
+directory.
+
+A board package that cannot ship its vendor's SDK names the variable in its
+`nros-board.toml`:
+
+```toml
+[board.sdk]
+root_env = "ACME_SDK_ROOT"
+```
+
+and every build of an image for that board reads the SDK from there.
+
+### How to fix it
+
+Install the vendor SDK, then export the variable in the shell you build from:
+
+```sh
+export ACME_SDK_ROOT=/opt/acme/sdk
+```
+
+The board package's documentation says which SDK release it supports.
+
+The refusal's `help` line, unless the site gives a more specific one:
+
+> export the variable the reason names, set to the vendor SDK's directory
 
 [Back to the list of codes](#diagnostic-codes)

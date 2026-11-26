@@ -21,6 +21,12 @@ CODES = {
     "ImageEnvNamesKnob": ("NROS-0012", "an image's env row sets a registry knob", "move the row to the image's `[image.<id>.knobs.<group>]` table, which the refusal names; `nros fix` does it"),
     "RetiredBoardKey": ("NROS-0013", "an image names a retired host board key", "write `board = \"linux\"`; `nros fix` does it"),
     "ImageFrameworkRefused": ("NROS-0014", "an image states a framework its board does not boot", "choose a framework from the board's `frameworks` list, or remove the line so the board's default is used"),
+    "ImageBoardIncompatible": ("NROS-0015", "an image cannot build for its board", "fix each reason listed, or choose a board that has what the image needs"),
+    "BoardNoBuildRoad": ("NROS-0016", "no build road takes this image's languages to this board", "choose a board whose build road compiles every language the image uses, or move the image's C or C++ code into a package for another image"),
+    "RmwNeedsCapability": ("NROS-0017", "the image's RMW needs a capability the board lacks", "choose an RMW this board can run (`nros rmw list`), or a board with the capability"),
+    "LinkNotOnBoard": ("NROS-0018", "the image's network or link is not one the board carries", "change the image's `locator` or network to one the board carries (`nros board net <board>`), or choose a board that has the link"),
+    "BoardToolMissing": ("NROS-0019", "a tool the board builds with is not installed", "run the `run:` line the reason prints; `nros setup <board>` installs everything the board needs"),
+    "BoardSdkRootUnset": ("NROS-0020", "the board's vendor SDK root is not set", "export the variable the reason names, set to the vendor SDK's directory"),
 }
 
 

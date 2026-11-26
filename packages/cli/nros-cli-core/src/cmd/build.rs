@@ -1118,19 +1118,32 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
         // is generated, so `framework = "zephyr"` (or one the board does not
         // boot) is refused whatever road the image would take.
         let board_name = image.board.as_deref().unwrap_or_default();
-        descriptor
-            .image_framework(board_name, image.framework.as_deref())
-            .map_err(|e| {
-                // RFC-0129 D7 -- at the image's line, and the board's.
-                crate::fix::framework_refusal(
-                    &crate::fix::workspace_files(&root),
-                    &image_id,
-                    board_name,
-                    descriptor.source_file(nano_ros_root.as_deref()).as_deref(),
-                    &format!("`{qual}` cannot be built: {e}"),
-                )
-                .report()
-            })?;
+        // RFC-0135 D8 (phase-577 W6) -- from here to stage 3, every check that
+        // compares the image with its board ADDS its verdict to `compat`
+        // instead of stopping at the first, so switching an image to a board
+        // that cannot take it prints every reason in one run, before anything
+        // is generated. Each check stays the authority for its own fact.
+        let mut compat = crate::compat::Incompatible::new(
+            &image_id,
+            board_name,
+            descriptor.source_file(nano_ros_root.as_deref()).as_deref(),
+        );
+        compat.collect(
+            crate::diag::Diag::ImageFrameworkRefused,
+            descriptor
+                .image_framework(board_name, image.framework.as_deref())
+                .map_err(|e| {
+                    // RFC-0129 D7 -- at the image's line, and the board's.
+                    crate::fix::framework_refusal(
+                        &crate::fix::workspace_files(&root),
+                        &image_id,
+                        board_name,
+                        descriptor.source_file(nano_ros_root.as_deref()).as_deref(),
+                        &format!("`{qual}` cannot be built: {e}"),
+                    )
+                    .report()
+                }),
+        );
         let platform = descriptor.platform.kebab().to_string();
         // Issue 2629 — refused on every road, not only the west one that
         // passes them: an image's FVP model parameters on a board that is no
@@ -1153,8 +1166,11 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
             sys.wcet_profile_for_image(&image_id, &platform)
                 .map_err(|e| eyre::eyre!("`{qual}` cannot be built: {e}"))?;
             // RFC-0103 D10b (phase-497 W1) — the address against its network.
-            sys.validate_image_networks()
-                .map_err(|e| eyre::eyre!("`{qual}` cannot be built: {e}"))?;
+            compat.collect(
+                crate::diag::Diag::LinkNotOnBoard,
+                sys.validate_image_networks()
+                    .map_err(|e| eyre::eyre!("`{qual}` cannot be built: {e}")),
+            );
             // RFC-0136 D2 -- the alternatives groups, before the collision
             // check below trusts them.
             sys.validate_image_alternatives()
@@ -1164,32 +1180,52 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
         // RFC-0103 D10 (phase-497 W2) — this image's network, resolved by the
         // one resolver over EVERY image of its bringup, so a duplicate address
         // or MAC on a shared network is refused before anything is built.
-        let image_net =
-            workspace_image_net(&catalog, &bringup_dir, &image_id, nano_ros_root.as_deref())
-                .map_err(|e| eyre::eyre!("`{qual}` cannot be built: {e}"))?;
+        let image_net = compat
+            .collect(
+                crate::diag::Diag::LinkNotOnBoard,
+                workspace_image_net(&catalog, &bringup_dir, &image_id, nano_ros_root.as_deref())
+                    .map_err(|e| eyre::eyre!("`{qual}` cannot be built: {e}")),
+            )
+            .flatten();
         // phase-560 W9.d -- an endpoint on a link the RMW's port has no arm
         // for on this platform is refused here, not at the final link.
-        check_image_link_arms(
+        compat.collect(
+            crate::diag::Diag::LinkNotOnBoard,
+            check_image_link_arms(
+                &image_id,
+                &board,
+                &platform,
+                image.rmw.as_deref().unwrap_or("zenoh"),
+                image.locator.as_deref(),
+                &bringup_dir,
+                nano_ros_root.as_deref(),
+            )
+            .map_err(|e| eyre::eyre!("`{qual}` cannot be built: {e}")),
+        );
+        compat_board_rows(
+            &mut compat,
             &image_id,
             &board,
-            &platform,
-            image.rmw.as_deref().unwrap_or("zenoh"),
-            image.locator.as_deref(),
-            &bringup_dir,
+            descriptor,
+            image.rmw.as_deref(),
+            image.link_kind(),
+            &root,
             nano_ros_root.as_deref(),
-        )
-        .map_err(|e| eyre::eyre!("`{qual}` cannot be built: {e}"))?;
+        );
         // A refusal here is RFC-0065 D3's third outcome, not an internal error:
         // the board and the language mix together name a combination nano-ros
         // has no road for, and the message says which. Bailing beats answering
         // with a road that would fail one stage later for a reason about a tool
         // rather than about the image.
-        let driver = plan::driver_for_board(
-            &platform,
-            descriptor.entry_kind,
-            image_has_non_rust(&image, &bringup_dir),
-        )
-        .map_err(|e| eyre::eyre!("`{qual}` cannot be built: {e}"))?;
+        let driver = compat.collect(
+            crate::diag::Diag::BoardNoBuildRoad,
+            plan::driver_for_board(
+                &platform,
+                descriptor.entry_kind,
+                image_has_non_rust(&image, &bringup_dir),
+            )
+            .map_err(|e| eyre::eyre!("`{qual}` cannot be built: {e}")),
+        );
 
         // ---- stage 3 ----------------------------------------------------
         // Before anything is generated or compiled: a missing prerequisite
@@ -1247,9 +1283,13 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
                 ),
             ));
         }
-        if !missing.is_empty() {
-            return Err(crate::builder::preflight::PreflightRefusal(missing).into());
-        }
+        // Every verdict from the board checks above and the toolchain's, as
+        // one report (RFC-0135 D8). Only missing tools: the preflight's own
+        // refusal, unchanged, since `nros configure` treats that as a refusal
+        // of this host rather than of the image.
+        compat.missing(missing);
+        compat.into_result()?;
+        let driver = driver.expect("a driver that did not resolve is a reason, returned above");
         // Issue 2909 -- the preflight QUERY must answer for Zephyr's absence
         // too. A full plan refuses it at stage 4 (`ZephyrAbsent`, the west
         // command), so `nros configure` skips the image with a stamp; the
@@ -3672,10 +3712,56 @@ fn plan_leaf_image(
     };
     // RFC-0103 D10 (phase-497 W2) — refused here, at preflight, with the
     // image named; `leaf_settings` resolves the same answer into the build.
-    let image_net = leaf_image_net(descriptor, &img.board, Some(&nros_root), &img.decl)
-        .map_err(|e| eyre::eyre!("`{qual}` cannot be built: {e}"))?;
-    check_leaf_link_arms(descriptor, &img.board, &img.decl, &nros_root)
-        .map_err(|e| eyre::eyre!("`{qual}` cannot be built: {e}"))?;
+    // RFC-0135 D8 -- every board verdict collected, as on the workspace road.
+    let mut compat = crate::compat::Incompatible::new(
+        &img.image_id,
+        &img.board,
+        descriptor.source_file(Some(&nros_root)).as_deref(),
+    );
+    // RFC-0111 D3 -- the framework against the board, by the check stage 4
+    // asks again when it picks the entry surface (`leaf_settings`), so a
+    // refusal there is reported here with the others.
+    compat.collect(
+        crate::diag::Diag::ImageFrameworkRefused,
+        descriptor
+            .image_framework(&img.board, img.decl.framework.as_deref())
+            .map_err(|e| {
+                crate::fix::framework_refusal(
+                    &[img.decl.origin_path().to_path_buf()],
+                    &img.image_id,
+                    &img.board,
+                    descriptor.source_file(Some(&nros_root)).as_deref(),
+                    &e,
+                )
+                .report()
+            }),
+    );
+    let image_net = compat
+        .collect(
+            crate::diag::Diag::LinkNotOnBoard,
+            leaf_image_net(descriptor, &img.board, Some(&nros_root), &img.decl)
+                .map_err(|e| eyre::eyre!("`{qual}` cannot be built: {e}")),
+        )
+        .flatten();
+    compat.collect(
+        crate::diag::Diag::LinkNotOnBoard,
+        check_leaf_link_arms(descriptor, &img.board, &img.decl, &nros_root)
+            .map_err(|e| eyre::eyre!("`{qual}` cannot be built: {e}")),
+    );
+    compat_board_rows(
+        &mut compat,
+        &img.image_id,
+        &img.board,
+        descriptor,
+        img.decl.rmw.as_deref(),
+        img.decl
+            .network
+            .locator
+            .as_deref()
+            .and_then(nros_orchestration_ir::leaf_system::link_kind_of_locator),
+        root,
+        Some(&nros_root),
+    );
     crate::cmd::setup::expose_store_tools(descriptor, Some(&nros_root));
     // Issue 2180 — a query refuses nothing over the toolchain.
     let mut missing = if planning != Planning::Query {
@@ -3689,9 +3775,8 @@ fn plan_leaf_image(
     // dependency and no component, which sync gives nothing to write. What this
     // build actually reads from sync is checked precisely just below.
     missing.retain(|m| m.remedy != crate::builder::preflight::CONFIGURE_REMEDY);
-    if !missing.is_empty() {
-        return Err(crate::builder::preflight::PreflightRefusal(missing).into());
-    }
+    compat.missing(missing);
+    compat.into_result()?;
     if planning == Planning::Preflight {
         return Ok(Some(Vec::new()));
     }
@@ -4007,16 +4092,41 @@ fn plan_single_package_cmake(
         eyre::bail!("{}", crate::cmd::board_facts::unresolved_board(&board));
     };
     let image_net = leaf_image_net(descriptor, &board, Some(&nros_root), &decl)
-        .map_err(|e| eyre::eyre!("`{board}` cannot be built: {e}"))?;
-    check_leaf_link_arms(descriptor, &board, &decl, &nros_root)
-        .map_err(|e| eyre::eyre!("`{board}` cannot be built: {e}"))?;
+        .map_err(|e| eyre::eyre!("`{board}` cannot be built: {e}"));
+    let link_arms = check_leaf_link_arms(descriptor, &board, &decl, &nros_root)
+        .map_err(|e| eyre::eyre!("`{board}` cannot be built: {e}"));
     let platform = descriptor.platform.kebab().to_string();
     if plan::driver_for_board(&platform, descriptor.entry_kind, true) != Ok(Driver::CMake) {
+        // Not this road's image, so not this road's verdicts: the road that
+        // takes it reports them.
         return Ok(None);
     }
     check_leaf_selection(args, root, &package)?;
     let image_id = decl.image.clone().unwrap_or_else(|| board.clone());
     let qual = plan::qualified(&package, &image_id);
+    // RFC-0135 D8 -- every board verdict collected, as on the workspace road.
+    let mut compat = crate::compat::Incompatible::new(
+        &image_id,
+        &board,
+        descriptor.source_file(Some(&nros_root)).as_deref(),
+    );
+    let image_net = compat
+        .collect(crate::diag::Diag::LinkNotOnBoard, image_net)
+        .flatten();
+    compat.collect(crate::diag::Diag::LinkNotOnBoard, link_arms);
+    compat_board_rows(
+        &mut compat,
+        &image_id,
+        &board,
+        descriptor,
+        decl.rmw.as_deref(),
+        decl.network
+            .locator
+            .as_deref()
+            .and_then(nros_orchestration_ir::leaf_system::link_kind_of_locator),
+        root,
+        Some(&nros_root),
+    );
 
     // The toolchain half of preflight, as on the cargo leaf road; its sync
     // probe is a workspace heuristic, and this configure generates its own
@@ -4029,9 +4139,8 @@ fn plan_single_package_cmake(
         Vec::new()
     };
     missing.retain(|m| m.remedy != crate::builder::preflight::CONFIGURE_REMEDY);
-    if !missing.is_empty() {
-        return Err(crate::builder::preflight::PreflightRefusal(missing).into());
-    }
+    compat.missing(missing);
+    compat.into_result()?;
     if planning == Planning::Preflight {
         return Ok(Some(Vec::new()));
     }
@@ -7705,6 +7814,48 @@ fn board_rx_configure_args(
 /// RFC-0103 D10 (phase-497 W2) — a board's `[board.net]`, from the
 /// descriptor the catalog recorded for it. A board with no descriptor file
 /// has no interfaces, so an image naming one is refused, never dropped.
+/// RFC-0135 D8 (phase-577 W6) -- the comparisons whose facts D8 added to the
+/// data, on every road: the image's link against the board's `[board.net]
+/// links` (RFC-0109 D3), its RMW's `[rmw.needs]` against the board's
+/// `[board.capabilities]`, and the vendor SDK root the board package names.
+/// A board network file that does not read, and an RMW the index cannot
+/// resolve, are left to the checks whose job it is to refuse them.
+#[allow(clippy::too_many_arguments)]
+fn compat_board_rows(
+    compat: &mut crate::compat::Incompatible,
+    image_id: &str,
+    board: &str,
+    descriptor: &crate::orchestration::board_descriptor::BoardDescriptor,
+    rmw: Option<&str>,
+    link: Option<&str>,
+    root: &std::path::Path,
+    nano_ros_root: Option<&std::path::Path>,
+) {
+    if let Ok(net) = descriptor_board_net(descriptor, board, nano_ros_root)
+        && let Ok(links) = net.links()
+    {
+        compat.extend(crate::compat::link(image_id, link, board, links));
+    }
+    let rmw = rmw.unwrap_or("zenoh");
+    if let Ok(rmws) = crate::orchestration::rmw_index::for_workspace(root)
+        && let Ok(resolved) = rmws.resolve(rmw)
+    {
+        compat.extend(crate::compat::rmw_needs(
+            rmw,
+            resolved.needs(),
+            board,
+            descriptor.capabilities(),
+        ));
+    }
+    let sdk_var = descriptor.sdk.as_ref().and_then(|s| s.root_env.as_deref());
+    let sdk_value = sdk_var.and_then(|v| std::env::var(v).ok());
+    compat.extend(crate::compat::sdk_root(
+        board,
+        sdk_var,
+        sdk_value.as_deref(),
+    ));
+}
+
 pub(crate) fn descriptor_board_net(
     descriptor: &crate::orchestration::board_descriptor::BoardDescriptor,
     board: &str,
@@ -13902,6 +14053,46 @@ mod single_package_tests {
         assert!(
             v["profile"].get("nros-minsizerel").is_some(),
             "the presets travel with the file"
+        );
+    }
+
+    /// RFC-0135 D8's acceptance: switch a working image to a board that
+    /// cannot take it, and every reason is printed at once, before anything
+    /// is generated. Here the image keeps its Cyclone RMW, which needs
+    /// threads, and its `framework = "zephyr"`, and moves to the bare-metal
+    /// board, which has no threads and boots no Zephyr.
+    #[test]
+    fn switching_to_an_incompatible_board_reports_every_reason_before_building() {
+        let tmp = tempfile::tempdir().unwrap();
+        let leaf = leaf(tmp.path());
+        std::fs::write(
+            leaf.join("system.toml"),
+            "[system]\nname = \"demo\"\nrmw = \"cyclonedds\"\ndomain_id = 0\n\n\
+             [image.linux]\nboard = \"mps2-an385-baremetal\"\n\
+             framework = \"zephyr\"\n",
+        )
+        .unwrap();
+        let e = preflight_query(&args(&leaf, &[])).expect_err("incompatible");
+        let text = format!("{e}");
+        assert!(
+            text.starts_with(
+                "error[NROS-0015]: image `linux` cannot build for board `mps2-an385-baremetal` \
+                 (2 problems)\n  board: "
+            ),
+            "{text}"
+        );
+        assert!(
+            text.contains("nros-board-mps2-an385/nros-board.toml"),
+            "{text}"
+        );
+        assert!(text.contains("error[NROS-0014]: image `linux`"), "{text}");
+        assert!(
+            text.contains("error[NROS-0017]: rmw `cyclonedds` needs threads"),
+            "{text}"
+        );
+        assert!(
+            !leaf.join("build").exists(),
+            "nothing is generated before the check"
         );
     }
 

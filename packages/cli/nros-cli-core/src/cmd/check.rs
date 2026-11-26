@@ -123,6 +123,15 @@ pub struct Args {
     /// Package form: nano-ros checkout (auto-detected if omitted).
     #[arg(long)]
     pub nano_ros_path: Option<PathBuf>,
+
+    /// Check, without building, whether the image whose `board` is this
+    /// board can build for it: its framework, its RMW's needs, its links and
+    /// network, its toolchain and the board's vendor SDK. Every reason is
+    /// printed at once. The image is chosen as `nros build --board` chooses
+    /// it.
+    // RFC-0135 D8, phase-577 W6.
+    #[arg(long, value_name = "BOARD", add = clap_complete::ArgValueCandidates::new(crate::cmd::complete::boards))]
+    pub board: Option<String>,
 }
 
 /// The package a positional argument names, or `None` for a path.
@@ -141,6 +150,18 @@ pub(crate) fn package_name_of(arg: &Path) -> Option<&str> {
 }
 
 pub fn run(args: Args) -> Result<()> {
+    // RFC-0135 D8 -- the pre-build compatibility check on its own: stages 1
+    // to 3 of `nros build`, which write nothing.
+    if let Some(board) = &args.board {
+        let project = std::env::current_dir()?;
+        let mut build =
+            crate::cmd::configure::build_args(&project, "", &args.nano_ros_path, false, false);
+        build.images.clear();
+        build.board = Some(board.clone());
+        crate::cmd::build::preflight_query(&build)?;
+        eprintln!("nros check: ok (the image for board `{board}` can build for it)");
+        return Ok(());
+    }
     // Phase 212.L — `--workspace [<dir>]` runs the workspace-walk lint.
     if let Some(ws_root) = args.workspace.as_deref() {
         let report = check_workspace(ws_root)?;

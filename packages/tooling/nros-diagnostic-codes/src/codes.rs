@@ -104,4 +104,63 @@ diagnostics! {
         remedy: "choose a framework from the board's `frameworks` list, or remove the line so \
                  the board's default is used",
     }
+
+    /// The pre-build compatibility check found reasons an image cannot build
+    /// for its board; each reason below it carries its own code. History:
+    /// RFC-0135 D8, phase-577 W6.
+    0015 ImageBoardIncompatible {
+        title: "an image cannot build for its board",
+        surfaces: [Cli],
+        remedy: "fix each reason listed, or choose a board that has what the image needs",
+    }
+
+    /// The board and the languages of the image's packages name a
+    /// combination nano-ros has no build road for (a C or C++ package on a
+    /// board whose road compiles Rust only, and the like). History: RFC-0065
+    /// D3; collected by RFC-0135 D8. The framework check is NROS-0014.
+    0016 BoardNoBuildRoad {
+        title: "no build road takes this image's languages to this board",
+        surfaces: [Cli],
+        remedy: "choose a board whose build road compiles every language the image uses, or \
+                 move the image's C or C++ code into a package for another image",
+    }
+
+    /// The image's RMW backend needs a board capability (`[rmw.needs]`) that
+    /// the board's `[board.capabilities]` does not state. History: RFC-0135
+    /// D8, phase-577 W6.
+    0017 RmwNeedsCapability {
+        title: "the image's RMW needs a capability the board lacks",
+        surfaces: [Cli],
+        remedy: "choose an RMW this board can run (`nros rmw list`), or a board with the \
+                 capability",
+    }
+
+    /// The image's network or link cannot be carried on this board: a link
+    /// the board's `[board.net] links` does not list, an address outside its
+    /// network, or an endpoint the RMW has no arm for on this platform.
+    /// History: RFC-0109 D3, RFC-0103 D10; collected by RFC-0135 D8.
+    0018 LinkNotOnBoard {
+        title: "the image's network or link is not one the board carries",
+        surfaces: [Cli],
+        remedy: "change the image's `locator` or network to one the board carries (`nros \
+                 board net <board>`), or choose a board that has the link",
+    }
+
+    /// A toolchain or tool the board builds with is not installed. History:
+    /// RFC-0065 D2 (the toolchain preflight); collected by RFC-0135 D8.
+    0019 BoardToolMissing {
+        title: "a tool the board builds with is not installed",
+        surfaces: [Cli],
+        remedy: "run the `run:` line the reason prints; `nros setup <board>` installs \
+                 everything the board needs",
+    }
+
+    /// The board package names an environment variable for its vendor SDK
+    /// root (`[board.sdk] root_env`), and it is not set or names no
+    /// directory. History: RFC-0135 D8, phase-577 W6.
+    0020 BoardSdkRootUnset {
+        title: "the board's vendor SDK root is not set",
+        surfaces: [Cli],
+        remedy: "export the variable the reason names, set to the vendor SDK's directory",
+    }
 }

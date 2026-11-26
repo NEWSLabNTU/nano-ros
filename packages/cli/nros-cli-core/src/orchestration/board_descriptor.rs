@@ -519,6 +519,17 @@ pub struct BoardMemory {
     pub ram: Option<u64>,
 }
 
+/// `[board.sdk]` — where a vendor SDK the board needs is found (RFC-0135
+/// D8). The board package names the environment variable; the user sets it.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct BoardSdk {
+    /// The environment variable that holds the SDK's root directory
+    /// (`ACME_SDK_ROOT`).
+    #[serde(default)]
+    pub root_env: Option<String>,
+}
+
 impl BoardCapabilities {
     /// Conservative defaults inferred from the platform when a board omits the
     /// `[board.capabilities]` block (migration path; a lint flags reliance on
@@ -711,6 +722,10 @@ pub struct BoardDescriptor {
     /// size report prints absolute numbers.
     #[serde(default)]
     pub memory: Option<BoardMemory>,
+    /// `[board.sdk]` — a vendor SDK the board builds against and does not
+    /// ship (RFC-0135 D8). `None`: the board needs none.
+    #[serde(default)]
+    pub sdk: Option<BoardSdk>,
     /// CMake cross-compile facts for `nros setup`'s CMakePreset emission
     /// (RFC-0048 §6 / phase-287 W5). `None` for host boards (posix) that need no
     /// toolchain file — their preset carries only `nano_ros_ROOT`.
@@ -3373,6 +3388,8 @@ signature = "#[nros_board_stm32f4::entry]\nfn main() -> !"
             entry: None,
             disambiguate_by_target: None,
             capabilities: None,
+            memory: None,
+            sdk: None,
             cmake: None,
             source: None,
             zephyr: None,
@@ -3649,6 +3666,8 @@ signature = "#[nros_board_stm32f4::entry]\nfn main() -> !"
             entry: None,
             disambiguate_by_target: None,
             capabilities: None,
+            memory: None,
+            sdk: None,
             cmake: None,
             source: None,
             zephyr: None,
