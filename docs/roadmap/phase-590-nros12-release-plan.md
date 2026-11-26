@@ -145,6 +145,17 @@ riscv link red that #4720 fixed before it reproduced, and was never used). Each 
 its exact head before it merged. Tier 2 first reached its cells on 2026-11-25, which is why late
 rows keep appearing: each run that got further reached reds that had been latent behind earlier ones.
 
+Known issues the user ruled NOT blockers (2026-11-26). Each is on the release page and is fixed
+after the release:
+
+- [2978](../issues/2978-xrce-sample-over-64k-delivered-truncated.md): an XRCE sample over 65,535
+  bytes is lost or truncated with no error. Not new in nros12; the refusal at the publish is the
+  first change after the release.
+- [2976](../issues/2976-local-delivery-publish-cost-grew.md): a zenoh publish on mps2/an385 costs
+  about 51 µs (7 %) more at a fixed instruction count. Bisected after the release.
+- The cross-bringup census staleness (its fix is PR 4902): an image's configure stops because
+  another bringup's census is stale. Workaround on the release page.
+
 The release workflow path itself is not a blocker. W3 of phase-567 rehearses it end to end
 (the island-shaped workspace job, both starter images, `verify-starter-image.sh` and the
 installed-track probe against the candidate asset), and the 2026-11-17 dry run built
