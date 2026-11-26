@@ -2176,6 +2176,14 @@ impl<'e, 's> Node<'e, 's> {
     where
         F: FnMut() + 'static,
     {
+        // Issue 2985 -- the census hears a Rust timer or guard condition here.
+        #[cfg(feature = "registration-observer")]
+        crate::executor::registration_observer::observe_callback_slot(
+            crate::executor::registration_observer::ObservedCallbackSlot {
+                kind: crate::executor::registration_observer::CallbackSlotKind::InGroup,
+                period_ms: Some(period.as_millis()),
+            },
+        );
         self.executor
             .register_timer_on(Some(self.node_id), period, callback, Some(group.name()))
     }
@@ -2201,9 +2209,18 @@ impl<'e, 's> Node<'e, 's> {
     where
         F: FnMut() + 'static,
     {
+        let period: crate::timer::TimerDuration = period.into();
+        // Issue 2985 -- the census hears a Rust timer or guard condition here.
+        #[cfg(feature = "registration-observer")]
+        crate::executor::registration_observer::observe_callback_slot(
+            crate::executor::registration_observer::ObservedCallbackSlot {
+                kind: crate::executor::registration_observer::CallbackSlotKind::Wall,
+                period_ms: Some(period.as_millis()),
+            },
+        );
         self.executor.register_timer_entry(
             Some(self.node_id),
-            period.into(),
+            period,
             super::TimerClockSource::Steady,
             false,
             None,
@@ -2224,9 +2241,18 @@ impl<'e, 's> Node<'e, 's> {
     where
         F: FnMut() + 'static,
     {
+        let period: crate::timer::TimerDuration = period.into();
+        // Issue 2985 -- the census hears a Rust timer or guard condition here.
+        #[cfg(feature = "registration-observer")]
+        crate::executor::registration_observer::observe_callback_slot(
+            crate::executor::registration_observer::ObservedCallbackSlot {
+                kind: crate::executor::registration_observer::CallbackSlotKind::Oneshot,
+                period_ms: Some(period.as_millis()),
+            },
+        );
         self.executor.register_timer_entry(
             Some(self.node_id),
-            period.into(),
+            period,
             super::TimerClockSource::Steady,
             true,
             None,
@@ -2251,10 +2277,19 @@ impl<'e, 's> Node<'e, 's> {
     where
         F: FnMut() + 'static,
     {
+        let period: crate::timer::TimerDuration = period.into();
+        // Issue 2985 -- the census hears a Rust timer or guard condition here.
+        #[cfg(feature = "registration-observer")]
+        crate::executor::registration_observer::observe_callback_slot(
+            crate::executor::registration_observer::ObservedCallbackSlot {
+                kind: crate::executor::registration_observer::CallbackSlotKind::Wall,
+                period_ms: Some(period.as_millis()),
+            },
+        );
         let mut callback = callback;
         self.executor.register_timer_entry_with(
             Some(self.node_id),
-            period.into(),
+            period,
             super::TimerClockSource::Steady,
             false,
             false,
@@ -2299,6 +2334,14 @@ impl<'e, 's> Node<'e, 's> {
     where
         F: FnMut() + 'static,
     {
+        // Issue 2985 -- the census hears a Rust timer or guard condition here.
+        #[cfg(feature = "registration-observer")]
+        crate::executor::registration_observer::observe_callback_slot(
+            crate::executor::registration_observer::ObservedCallbackSlot {
+                kind: crate::executor::registration_observer::CallbackSlotKind::GuardCondition,
+                period_ms: None,
+            },
+        );
         self.executor
             .register_guard_condition_on(Some(self.node_id), callback)
     }
@@ -2336,6 +2379,14 @@ impl<'e, 's> Node<'e, 's> {
     where
         F: FnMut() + 'static,
     {
+        // Issue 2985 -- the census hears a Rust timer or guard condition here.
+        #[cfg(feature = "registration-observer")]
+        crate::executor::registration_observer::observe_callback_slot(
+            crate::executor::registration_observer::ObservedCallbackSlot {
+                kind: crate::executor::registration_observer::CallbackSlotKind::Clock,
+                period_ms: Some(period.as_millis()),
+            },
+        );
         self.executor.register_timer_entry(
             Some(self.node_id),
             period,
@@ -2361,6 +2412,14 @@ impl<'e, 's> Node<'e, 's> {
     where
         F: FnMut() + 'static,
     {
+        // Issue 2985 -- the census hears a Rust timer or guard condition here.
+        #[cfg(feature = "registration-observer")]
+        crate::executor::registration_observer::observe_callback_slot(
+            crate::executor::registration_observer::ObservedCallbackSlot {
+                kind: crate::executor::registration_observer::CallbackSlotKind::Clock,
+                period_ms: Some(period.as_millis()),
+            },
+        );
         self.executor.register_timer_entry(
             Some(self.node_id),
             period,
@@ -2400,6 +2459,18 @@ impl<'e, 's> Node<'e, 's> {
     where
         F: FnMut(&crate::TimerCallInfo) + 'static,
     {
+        // Issue 2985 -- the census hears a Rust timer or guard condition here.
+        #[cfg(feature = "registration-observer")]
+        crate::executor::registration_observer::observe_callback_slot(
+            crate::executor::registration_observer::ObservedCallbackSlot {
+                kind: if matches!(source, crate::executor::TimerClockSource::Steady) {
+                    crate::executor::registration_observer::CallbackSlotKind::Wall
+                } else {
+                    crate::executor::registration_observer::CallbackSlotKind::Clock
+                },
+                period_ms: Some(period.as_millis()),
+            },
+        );
         self.executor.register_timer_with_info_on(
             Some(self.node_id),
             period,
