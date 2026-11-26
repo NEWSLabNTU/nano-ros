@@ -29,8 +29,8 @@ use nros_tests::{
     },
     matrix::PlatformId,
     output::{
-        ISR_PARK_DONE, ISR_PARK_SAMPLE, ISR_RACE_DONE, ISR_RACE_SAMPLE, ISR_WAKE_DONE,
-        ISR_WAKE_NOT_IN_ISR, ISR_WAKE_READY_PERIOD, ISR_WAKE_SAMPLE,
+        DEVICE_PRIO_DONE, ISR_PARK_DONE, ISR_PARK_SAMPLE, ISR_RACE_DONE, ISR_RACE_SAMPLE,
+        ISR_WAKE_DONE, ISR_WAKE_NOT_IN_ISR, ISR_WAKE_READY_PERIOD, ISR_WAKE_SAMPLE,
     },
     wait_for_port,
 };
@@ -58,11 +58,42 @@ fn a_timer_interrupt_wakes_the_parked_executor_on_freertos_mps2() {
     );
     let binary = build_isr_wake_freertos_mps2()
         .require("isr-wake-freertos-mps2 — run `just build freertos`");
-    run_and_check(
+    let output = run_and_check(
         binary,
         nros_tests::alloc::FREERTOS_ISR_WAKE_PORT,
         "FreeRTOS",
-        ISR_WAKE_DONE,
+        DEVICE_PRIO_DONE,
+    );
+    check_device_priority_output(&output);
+}
+
+/// Phase 579 W3a, on the same image: a device completed from the timer
+/// interrupt runs its continuation at its bound (critical) priority, ahead of
+/// a best-effort guard the same interrupt readied first, in every round.
+fn check_device_priority_output(output: &str) {
+    let done = output
+        .lines()
+        .find_map(|l| l.split(DEVICE_PRIO_DONE).nth(1))
+        .unwrap_or_else(|| panic!("the device phase never finished:\n{output}"));
+    let v: Vec<u64> = done
+        .split_whitespace()
+        .map(|v| v.parse().unwrap_or(u64::MAX))
+        .collect();
+    let [rounds, device_first, low_first, refused] = v[..] else {
+        panic!("malformed device-phase line {done:?}");
+    };
+    eprintln!(
+        "FreeRTOS device completion: {rounds} rounds, device first {device_first}, low first {low_first}, refused {refused}"
+    );
+    assert!(rounds >= 50, "too few device rounds:\n{output}");
+    assert_eq!(
+        low_first, 0,
+        "a best-effort callback ran before the critical device continuation"
+    );
+    assert_eq!(device_first, rounds);
+    assert_eq!(
+        refused, 0,
+        "the device's interrupt-safe signal reached no wake object"
     );
 }
 

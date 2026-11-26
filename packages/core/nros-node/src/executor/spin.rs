@@ -23,12 +23,13 @@ use super::types::{ENTRY_IDLE_BUDGET, ENTRY_POLL_BUDGET};
 // `alloc`-gated (a bare-metal entry is exactly the caller that needs it).
 use super::{
     arena::{
-        BufferStrategy, CallbackMeta, EntryKind, GuardConditionEntry, ServiceClientCallbackEntry,
-        ServiceClientRawArenaEntry, ServiceClientSendHeader, SrvEntry, SrvRawEntry,
-        SubBufferedEntry, SubBufferedRawCEntry, SubBufferedRawEntry, SubBufferedRawInfoCEntry,
-        SubBufferedRawInfoEntry, SubBufferedRawMsgInfoEntry, SubBufferedTypedCEntry,
-        SubBufferedViewEntry, SubInfoEntry, SubInplaceEntry, TimerClockSource, TimerEntry,
-        TimerHeader, TimerOverrunPolicy, TraceName, always_ready, buffered_region_size, drop_entry,
+        BufferStrategy, CallbackMeta, DeviceEntry, EntryKind, GuardConditionEntry,
+        ServiceClientCallbackEntry, ServiceClientRawArenaEntry, ServiceClientSendHeader, SrvEntry,
+        SrvRawEntry, SubBufferedEntry, SubBufferedRawCEntry, SubBufferedRawEntry,
+        SubBufferedRawInfoCEntry, SubBufferedRawInfoEntry, SubBufferedRawMsgInfoEntry,
+        SubBufferedTypedCEntry, SubBufferedViewEntry, SubInfoEntry, SubInplaceEntry,
+        TimerClockSource, TimerEntry, TimerHeader, TimerOverrunPolicy, TraceName, always_ready,
+        buffered_region_size, device_has_data, device_pre_sample, device_try_process, drop_entry,
         guard_has_data, guard_try_process, no_pre_sample, service_client_callback_try_process,
         service_client_raw_try_process, srv_has_data, srv_raw_has_data, srv_raw_try_process,
         srv_try_process, srv_try_process_with_info, sub_buffered_has_data,
@@ -1458,6 +1459,29 @@ impl WakeCtx {
             w = waiter.next.load(portable_atomic::Ordering::Acquire);
         }
         self.signal_own();
+    }
+
+    /// [`mark_ready`](Self::mark_ready) from an interrupt handler: the bit,
+    /// then the interrupt-safe wake of the worker whose band holds the slot,
+    /// else the executor's own. `true` when the executor's own wake object
+    /// took the signal; a band worker's `wake_from_isr` reports nothing back,
+    /// so a slot in a band answers `true` once its waiter has been signalled.
+    pub(crate) fn mark_ready_from_isr(&self, slot: usize) -> bool {
+        self.ready.set(slot);
+        let mut w = self.band_waiters.load(portable_atomic::Ordering::Acquire);
+        while !w.is_null() {
+            // SAFETY: only `'static` waiters are linked, never unlinked.
+            let waiter = unsafe { &*w };
+            if waiter.slots.test(slot) {
+                waiter.signal_from_isr();
+                return true;
+            }
+            w = waiter.next.load(portable_atomic::Ordering::Acquire);
+        }
+        self.flag.store(true, core::sync::atomic::Ordering::SeqCst);
+        self.node_wake
+            .as_ref()
+            .is_some_and(|nw| nw.signal_from_isr())
     }
 }
 
@@ -12046,6 +12070,84 @@ impl<'s> Executor<'s> {
         }
     }
 
+    /// Register a device event source on no particular node: a fixed slot whose
+    /// `callback` (the continuation) runs when a port signals the returned
+    /// [`Completion`](super::device::Completion).
+    ///
+    /// The extension hook the device companion package and board code build
+    /// on, not a ROS user API. Register before the first spin: the slot is
+    /// claimed once, with no allocation beyond the arena. The continuation runs
+    /// at the priority of the sched context the slot is bound to
+    /// ([`bind_handle_to_sched_context`](Self::bind_handle_to_sched_context)),
+    /// and in LET mode a completion is sampled at the start of the spin.
+    pub fn register_device<F>(
+        &mut self,
+        callback: F,
+    ) -> Result<(HandleId, super::device::Completion), NodeError>
+    where
+        F: FnMut() + 'static,
+    {
+        self.register_device_on(None, callback)
+    }
+
+    /// The node-bound form of [`register_device`](Self::register_device): the
+    /// slot takes the node's default sched context.
+    pub fn register_device_on<F>(
+        &mut self,
+        node_id: Option<super::node_record::NodeId>,
+        callback: F,
+    ) -> Result<(HandleId, super::device::Completion), NodeError>
+    where
+        F: FnMut() + 'static,
+    {
+        let slot = self.next_entry_slot()?;
+        let offset = self.arena_alloc::<DeviceEntry<F>>()?;
+
+        unsafe {
+            let arena_ptr = self.arena.as_mut_ptr() as *mut u8;
+            let entry_ptr = arena_ptr.add(offset) as *mut DeviceEntry<F>;
+            #[allow(unused_mut)]
+            let mut signal = super::device::DeviceSignal::new(slot);
+            // The completion marks this slot ready through the attributed
+            // wake path. The executor is the producer here, so it attributes
+            // the slot itself: no backend has to accept a waker.
+            #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
+            {
+                let _ = self.wake_ctx_ptr();
+                signal.wake_ctx = self.wake_ctx.clone();
+                if self.node_wake.is_some() && slot < super::entity_wake::SLOTS {
+                    self.entity_attributed.set(slot);
+                    self.entity_recheck.set(slot);
+                }
+            }
+            core::ptr::write(
+                entry_ptr,
+                DeviceEntry {
+                    signal,
+                    sampled: false,
+                    callback,
+                },
+            );
+            let completion =
+                super::device::Completion::new(core::ptr::addr_of!((*entry_ptr).signal));
+
+            let meta = CallbackMeta {
+                offset,
+                kind: EntryKind::Device,
+                arena_len: super::arena::ArenaLen::UNRECORDED,
+                try_process: device_try_process::<F>,
+                has_data: device_has_data::<F>,
+                pre_sample: device_pre_sample::<F>,
+                invocation: InvocationMode::OnNewData,
+                drop_fn: drop_entry::<DeviceEntry<F>>,
+            };
+            self.emplace_entry(slot, meta, TraceName::Slot("device", slot));
+            self.apply_node_default_sched(slot, node_id, None);
+
+            Ok((self.handle_for(slot), completion))
+        }
+    }
+
     /// A guard condition the BACKEND triggers when the ROS
     /// graph changes. Upstream's `rcl_node_get_graph_guard_condition`, under
     /// this project's guard-condition shape.
@@ -13079,7 +13181,7 @@ impl<'s> Executor<'s> {
         if matches!(s.semantics, ExecutorSemantics::LogicalExecutionTime) {
             for (i, meta) in s.entries.iter().enumerate() {
                 let Some(meta) = meta else { continue };
-                if matches!(meta.kind, EntryKind::Subscription)
+                if matches!(meta.kind, EntryKind::Subscription | EntryKind::Device)
                     && band_mask.test(i)
                     && !Self::slot_held(s.slot_tags, i)
                 {
@@ -13422,7 +13524,7 @@ impl<'s> Executor<'s> {
                     | EntryKind::ActionServer
                     | EntryKind::ActionClient => result.services_handled += 1,
                     EntryKind::Timer => result.timers_fired += 1,
-                    EntryKind::GuardCondition => {}
+                    EntryKind::GuardCondition | EntryKind::Device => {}
                 },
                 Ok(false) => {}
                 Err(e) => {
@@ -13438,7 +13540,7 @@ impl<'s> Executor<'s> {
                         | EntryKind::ServiceClient
                         | EntryKind::ActionServer
                         | EntryKind::ActionClient => result.service_errors += 1,
-                        EntryKind::Timer | EntryKind::GuardCondition => {}
+                        EntryKind::Timer | EntryKind::GuardCondition | EntryKind::Device => {}
                     }
                 }
             }
@@ -19615,6 +19717,57 @@ mod band_wake_routing_tests {
             "the thread path uses `wake`"
         );
         assert_eq!(ISR_WAKES.load(Ordering::SeqCst), 1);
+    }
+
+    static ROUTED_THREAD: AtomicUsize = AtomicUsize::new(0);
+    static ROUTED_ISR: AtomicUsize = AtomicUsize::new(0);
+
+    unsafe extern "C" fn routed_thread(_ctx: *mut c_void) {
+        ROUTED_THREAD.fetch_add(1, Ordering::SeqCst);
+    }
+
+    unsafe extern "C" fn routed_isr(_ctx: *mut c_void) {
+        ROUTED_ISR.fetch_add(1, Ordering::SeqCst);
+    }
+
+    /// A device completion from an interrupt: `mark_ready_from_isr` sets the
+    /// slot's bit and signals only the band that holds the slot, through its
+    /// interrupt-safe wake, never the thread `wake`. A slot no band holds
+    /// falls back to the executor's own flag.
+    #[test]
+    fn an_isr_mark_ready_routes_to_its_band_through_the_interrupt_safe_wake() {
+        // SAFETY: the functions ignore the context.
+        static W: BandWaiter =
+            unsafe { BandWaiter::new(routed_thread, routed_isr, wait, core::ptr::null_mut()) };
+        W.slots.store(SlotMask::from_word0(0b0100));
+        let flag = portable_atomic_util::Arc::new(portable_atomic::AtomicBool::new(false));
+        let ctx = WakeCtx::new(flag.clone(), None);
+        ctx.band_waiters
+            .store(&W as *const _ as *mut _, Ordering::SeqCst);
+
+        assert!(ctx.mark_ready_from_isr(2), "the band's waiter took it");
+        assert!(ctx.ready.test(2), "the bit is set before the wake");
+        assert_eq!(ROUTED_ISR.load(Ordering::SeqCst), 1);
+        assert_eq!(
+            ROUTED_THREAD.load(Ordering::SeqCst),
+            0,
+            "no thread signal from an ISR"
+        );
+        assert!(
+            !flag.load(Ordering::SeqCst),
+            "the executor's own worker sleeps on"
+        );
+
+        assert!(
+            !ctx.mark_ready_from_isr(5),
+            "no band holds slot 5 and there is no wake object"
+        );
+        assert!(ctx.ready.test(5));
+        assert!(
+            flag.load(Ordering::SeqCst),
+            "the executor's own flag is set"
+        );
+        assert_eq!(ROUTED_ISR.load(Ordering::SeqCst), 1);
     }
 
     #[test]

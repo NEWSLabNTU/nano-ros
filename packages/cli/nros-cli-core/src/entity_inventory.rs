@@ -218,6 +218,9 @@ pub enum EntityKind {
     ActionServer,
     ActionClient,
     GuardCondition,
+    /// A device event source: a job device's completion or a source's frame,
+    /// registered with `Executor::register_device`.
+    Device,
 }
 
 /// Every kind, in emission order. The one list; a second one is how a kind
@@ -231,7 +234,30 @@ pub const ALL_ENTITY_KINDS: &[EntityKind] = &[
     EntityKind::ActionServer,
     EntityKind::ActionClient,
     EntityKind::GuardCondition,
+    EntityKind::Device,
 ];
+
+/// The count the executor arena's model prices for `kind`, read from a
+/// derivation's `per_kind` table.
+///
+/// The arena model has one row per entry SHAPE, not per kind: a device entry
+/// (an atomic flag, its slot, its wake reference, a sample bit and the
+/// continuation) fits the guard-condition row's fixed allowance, which
+/// `nros-node` asserts at compile time. So the guard-condition row carries
+/// guards and devices together, and a declared device is never priced at
+/// zero. `None` when the table has no row for `kind`.
+pub fn arena_priced_count(
+    per_kind: &BTreeMap<&'static str, usize>,
+    kind: EntityKind,
+) -> Option<usize> {
+    let n = *per_kind.get(kind.tag())?;
+    Some(match kind {
+        EntityKind::GuardCondition => {
+            n + per_kind.get(EntityKind::Device.tag()).copied().unwrap_or(0)
+        }
+        _ => n,
+    })
+}
 
 /// phase-550 W15 (RFC-0126 Q6, amended 2026-11-14) -- where the metadata probe
 /// ran AND the bringup also declares a component's `entities`, the two are one
@@ -313,6 +339,7 @@ impl EntityKind {
             EntityKind::ActionServer => "action_server",
             EntityKind::ActionClient => "action_client",
             EntityKind::GuardCondition => "guard_condition",
+            EntityKind::Device => "device",
         }
     }
 
@@ -337,7 +364,8 @@ impl EntityKind {
             | EntityKind::ServiceClient
             | EntityKind::ActionServer
             | EntityKind::ActionClient
-            | EntityKind::GuardCondition => 1,
+            | EntityKind::GuardCondition
+            | EntityKind::Device => 1,
         }
     }
 
@@ -366,6 +394,8 @@ impl EntityKind {
     ///   (`DEFAULT_TX_BUF` in `executor/types.rs`), which is a transmit buffer
     ///   and a different question.
     /// * `Timer`, `GuardCondition` -- no payload at all.
+    /// * `Device` -- none through the executor: a device's result is taken
+    ///   from its port, into memory the job named.
     ///
     /// This is the SEMANTIC predicate. It is deliberately wider than
     /// [`Self::receives_topic_sample`], because the two answer different
@@ -377,7 +407,10 @@ impl EntityKind {
             | EntityKind::ServiceClient
             | EntityKind::ActionServer
             | EntityKind::ActionClient => true,
-            EntityKind::Publisher | EntityKind::Timer | EntityKind::GuardCondition => false,
+            EntityKind::Publisher
+            | EntityKind::Timer
+            | EntityKind::GuardCondition
+            | EntityKind::Device => false,
         }
     }
 
@@ -413,7 +446,10 @@ impl EntityKind {
     /// buffer, so nothing reads it yet, but it is a real QoS field and
     /// forbidding it here would make the grammar say something false.
     pub fn carries_qos_depth(self) -> bool {
-        !matches!(self, EntityKind::Timer | EntityKind::GuardCondition)
+        !matches!(
+            self,
+            EntityKind::Timer | EntityKind::GuardCondition | EntityKind::Device
+        )
     }
 
     /// Parse one declared kind.
@@ -432,6 +468,7 @@ impl EntityKind {
             "action_server" => EntityKind::ActionServer,
             "action_client" => EntityKind::ActionClient,
             "guard_condition" | "guard" => EntityKind::GuardCondition,
+            "device" => EntityKind::Device,
             _ => {
                 return Err(format!(
                     "unknown entity kind `{s}` -- expected one of: {}",
@@ -6607,6 +6644,12 @@ impl EntityInventory {
                     k.entity_total
                 ));
                 for (name, n) in &k.per_kind {
+                    // The arena's guard row carries devices too.
+                    let n = if *name == EntityKind::GuardCondition.tag() {
+                        arena_priced_count(&k.per_kind, EntityKind::GuardCondition).unwrap_or(*n)
+                    } else {
+                        *n
+                    };
                     let key = name.to_ascii_uppercase();
                     s.push_str(&format!("set(NROS_ENTITY_COUNT_{key} {n})\n"));
                 }
@@ -8594,6 +8637,27 @@ contracts:
         assert!(EntityDecl::parse("sub:std_msgs/msg/Int32:/t@depth=1@depth=2").is_err());
     }
 
+    /// A declared device is priced on the arena model's guard row, beside the
+    /// guards, never at zero.
+    #[test]
+    fn a_device_is_priced_on_the_guard_row_of_the_arena_model() {
+        let mut per_kind = BTreeMap::new();
+        for k in ALL_ENTITY_KINDS {
+            per_kind.insert(k.tag(), 0usize);
+        }
+        per_kind.insert(EntityKind::GuardCondition.tag(), 2);
+        per_kind.insert(EntityKind::Device.tag(), 3);
+        assert_eq!(
+            arena_priced_count(&per_kind, EntityKind::GuardCondition),
+            Some(5),
+            "a declared device must never be priced at zero"
+        );
+        assert_eq!(arena_priced_count(&per_kind, EntityKind::Device), Some(3));
+        assert_eq!(arena_priced_count(&per_kind, EntityKind::Timer), Some(0));
+        per_kind.remove(EntityKind::Timer.tag());
+        assert_eq!(arena_priced_count(&per_kind, EntityKind::Timer), None);
+    }
+
     /// A timer has no QoS, so a depth on one is a statement about nothing.
     /// Rejected rather than ignored -- an author who wrote it meant something.
     #[test]
@@ -8601,13 +8665,17 @@ contracts:
         let err = EntityDecl::parse("timer@depth=5").unwrap_err();
         assert!(err.contains("has no QoS"), "{err}");
         assert!(EntityDecl::parse("guard@depth=5").is_err());
+        assert!(EntityDecl::parse("device@depth=5").is_err());
         // Every other kind carries one. A publisher's depth sizes no receive
         // buffer today, and forbidding it would make the grammar say something
         // false about the QoS a publisher really has.
         for k in ALL_ENTITY_KINDS {
             assert_eq!(
                 k.carries_qos_depth(),
-                !matches!(k, EntityKind::Timer | EntityKind::GuardCondition),
+                !matches!(
+                    k,
+                    EntityKind::Timer | EntityKind::GuardCondition | EntityKind::Device
+                ),
                 "{} and QoS depth",
                 k.tag()
             );
@@ -9602,6 +9670,7 @@ structure:
             EntityKind::Publisher,
             EntityKind::Timer,
             EntityKind::GuardCondition,
+            EntityKind::Device,
         ] {
             assert!(!k.receives(), "{} receives nothing", k.tag());
         }

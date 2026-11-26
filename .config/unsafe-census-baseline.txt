@@ -20,7 +20,7 @@ contract-monitor                           1   0     0       1      0
 heap-free-cpp-poc-mps2                     1   0     0       1      0
 heap-free-poc-mps2                         4   0     0       0      0
 isr-wake-baremetal-mps2                    3   0     0       0      0
-isr-wake-freertos-mps2                     4   0     0       0      0
+isr-wake-freertos-mps2                     5   0     0       0      0
 isr-wake-nuttx-qemu-arm                   11   0     0       2      0
 isr-wake-threadx-linux                     9   0     0       1      0
 isr-wake-threadx-riscv64                   2   0     0       1      0
@@ -49,7 +49,7 @@ nros-board-zephyr                         36   0     1      11      0
 nros-bridge                               36   1     0       8      0
 nros-build                                 1   0     0       0      0
 nros-build-helpers                         2   0     0       2      0
-nros-c                                   595  107     7     526      0
+nros-c                                   599  107     7     528      0
 nros-can-mock                              7   0     0       1      0
 nros-cli                                   1   0     0       0      0
 nros-cli-core                             46   0     0       0      0
@@ -58,7 +58,7 @@ nros-core                                  3   0     2       3      0
 nros-cpp                                1191  51     0     472      0
 nros-log                                  24   0     7       1      0
 nros-macros                               25   0     1       4      0
-nros-node                                926  286    41     199      0
+nros-node                                939  290    43     204      0
 nros-nuttx-ffi                             1   0     0       1      0
 nros-nuttx-riscv-ffi                       1   0     0       1      0
 nros-orchestration-ir                      4   0     0       0      0

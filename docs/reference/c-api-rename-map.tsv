@@ -119,6 +119,7 @@ NROS_DECLARED_QOS_COMPILE_TIME	NROS_DECLARED_QOS_COMPILE_TIME	build	build or con
 NROS_DECLARED_QOS_ROWS_Q	NROS_DECLARED_QOS_ROWS_Q	build	build or configuration fact
 NROS_DECLARED_RELIABILITY	NROS_DECLARED_RELIABILITY	build	build or configuration fact
 NROS_DEPRECATED	NROS_DEPRECATED	build	build or configuration fact
+NROS_DEVICE_HOOK_H	NROS_DEVICE_HOOK_H	build	build or configuration fact
 NROS_DIAGNOSTICS_H	NROS_DIAGNOSTICS_H	build	build or configuration fact
 NROS_DIAG_AMENT_PREFIX_UNSET	NROS_DIAG_AMENT_PREFIX_UNSET	build	a diagnostic code, generated from the code list (RFC-0129 D4)
 NROS_DIAG_BOARD_NO_BUILD_ROAD	NROS_DIAG_BOARD_NO_BUILD_ROAD	build	a diagnostic code, generated from the code list (RFC-0129 D4)
@@ -612,6 +613,7 @@ nros_clock_is_valid	rclc_clock_is_valid	ours	ours-only
 nros_clock_state_t	rclc_clock_state_t	ours	ours-only
 nros_clock_t	rcl_clock_t	adopt	conforms to upstream `rcl_clock_t` (same)
 nros_clock_type_t	rcl_clock_type_t	adopt	conforms to upstream `rcl_clock_type_t` (same)
+nros_completion_t	nros_completion_t	seam	declared by a port seam or the C++ FFI
 nros_count_status_t	rclc_count_status_t	ours	ours-only
 nros_cpp_action_client_create	nros_cpp_action_client_create	seam	declared by a port seam or the C++ FFI
 nros_cpp_action_client_get_result_async	nros_cpp_action_client_get_result_async	seam	declared by a port seam or the C++ FFI
@@ -660,6 +662,7 @@ nros_declared_reliability	rclc_declared_reliability	ours	ours-only
 nros_declared_reliability_vs_passed__1_best_effort_2_reliable__at_line_	rclc_declared_reliability_vs_passed__1_best_effort_2_reliable__at_line_	ours	ours-only
 nros_depth	rclc_depth	ours	ours-only
 nros_depth_expr	rclc_depth_expr	ours	ours-only
+nros_device_callback_t	nros_device_callback_t	seam	the device extension hook board code and the device companion package build on: written against nano-ros, not ported
 nros_difference_times	rcl_difference_times	adopt	conforms to upstream `rcl_difference_times` (same)
 nros_dur_expr	rclc_dur_expr	ours	ours-only
 nros_duration_from_nanoseconds	rclc_duration_from_nanoseconds	ours	ours-only
@@ -719,6 +722,7 @@ nros_executor_node_init	rclc_executor_node_init	ours	ours-only
 nros_executor_ping	rclc_executor_ping	ours	ours-only
 nros_executor_register_action_client	rclc_executor_register_action_client	ours	ours-only
 nros_executor_register_action_server	rclc_executor_register_action_server	ours	ours-only
+nros_executor_register_device	nros_executor_register_device	seam	the device extension hook board code and the device companion package build on: written against nano-ros, not ported
 nros_executor_register_lifecycle_services	rclc_executor_register_lifecycle_services	ours	ours-only
 nros_executor_register_subscription_in_group	rclc_executor_register_subscription_in_group	ours	ours-only
 nros_executor_register_subscription_raw_with_info	rclc_executor_register_subscription_raw_with_info	ours	ours-only

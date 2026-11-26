@@ -1384,10 +1384,11 @@ pub mod contract;
 // Re-export RMW-dependent types (require an active transport backend)
 #[cfg(feature = "rmw-cffi")]
 pub use nros_node::{
-    ActionClient, ActionServer, ActionServerHandle, ActiveGoal, CompletedGoal, EmbeddedPublisher,
-    EmbeddedRawPublisher, EmbeddedServiceClient, EmbeddedServiceServer, Executor, ExecutorSizing,
-    FeedbackStream, GoalFeedbackStream, LoanError, Node, Promise, PublishLoan, RawActiveGoal,
-    RawSubscription, RecvView, SessionHandle, SessionSpec, Subscription, action_channel_type,
+    ActionClient, ActionServer, ActionServerHandle, ActiveGoal, CompletedGoal, Completion,
+    CompletionCell, EmbeddedPublisher, EmbeddedRawPublisher, EmbeddedServiceClient,
+    EmbeddedServiceServer, Executor, ExecutorSizing, FeedbackStream, GoalFeedbackStream, LoanError,
+    Node, Promise, PublishLoan, RawActiveGoal, RawSubscription, RecvView, SessionHandle,
+    SessionSpec, Subscription, action_channel_type,
 };
 
 // phase-271 (issue #110) — per-entry executor sizing helper: the orchestration

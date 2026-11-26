@@ -377,7 +377,7 @@ fn contract_block(kind: EntityKind) -> &'static str {
         EntityKind::Subscription => "sub",
         EntityKind::ServiceServer | EntityKind::ServiceClient => "srv",
         EntityKind::ActionServer | EntityKind::ActionClient => "action",
-        EntityKind::Timer | EntityKind::GuardCondition => "<none>",
+        EntityKind::Timer | EntityKind::GuardCondition | EntityKind::Device => "<none>",
     }
 }
 

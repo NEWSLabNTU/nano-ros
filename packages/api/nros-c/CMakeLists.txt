@@ -197,6 +197,8 @@ target_link_libraries(nros_c-static INTERFACE nros_cpp-static)
 target_include_directories(nros_c-static INTERFACE
     "${CMAKE_CURRENT_SOURCE_DIR}/../../platform/nros-platform-api/include"
     "${CMAKE_CURRENT_SOURCE_DIR}/include"
+    # The device port ABI, which <nros/device_hook.h> includes.
+    "${CMAKE_CURRENT_SOURCE_DIR}/../../core/nros-rmw-abi/include"
 )
 
 # Phase 140 — all install(...) rules deleted. nros-c is consumed

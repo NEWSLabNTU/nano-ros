@@ -423,6 +423,8 @@ pub enum TimerKind {
     InGroup,
     /// A guard condition: one callback slot, no period.
     GuardCondition,
+    /// A device event source: one callback slot, no period, like a guard.
+    Device,
 }
 
 /// Optional callback effect relation.
@@ -1459,6 +1461,7 @@ impl<const MAX_NODES: usize, const MAX_ENTITIES: usize, const MAX_CALLBACKS: usi
                 EntityKind::Timer if entity.timer_kind == TimerKind::GuardCondition => {
                     "guard_condition"
                 }
+                EntityKind::Timer if entity.timer_kind == TimerKind::Device => "device",
                 EntityKind::Timer => "timer",
                 EntityKind::ServiceServer => "service",
                 EntityKind::ActionServer => "action_goal",
@@ -1988,6 +1991,7 @@ fn timer_kind_json(kind: TimerKind) -> &'static str {
         TimerKind::Oneshot => "oneshot",
         TimerKind::InGroup => "in_group",
         TimerKind::GuardCondition => "guard_condition",
+        TimerKind::Device => "device",
     }
 }
 

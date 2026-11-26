@@ -562,6 +562,7 @@ macro_rules! rmw_modules {
 #[cfg(not(cbindgen))]
 rmw_modules! {
     mod action;
+    mod device;
     mod event;
     mod executor;
     mod guard_condition;

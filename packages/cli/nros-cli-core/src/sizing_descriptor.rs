@@ -638,7 +638,7 @@ fn endpoint_kind(k: EntityKind) -> Option<EndpointKind> {
         // Not endpoints: they carry no type and no topic, so they have no
         // identity this table can key on. `EntityKind::carries_qos_depth`
         // already draws exactly this line.
-        EntityKind::Timer | EntityKind::GuardCondition => return None,
+        EntityKind::Timer | EntityKind::GuardCondition | EntityKind::Device => return None,
     })
 }
 
@@ -1513,8 +1513,8 @@ fn image_facts(inputs: &DescriptorInputs<'_>) -> nros_sizing_descriptor::Image {
             // missing tag is a kind this derivation does not know — refused,
             // never stated as a zero it did not count.
             for (field, kind) in ENTITY_COUNT_FIELDS {
-                match k.per_kind.get(kind.tag()) {
-                    Some(&n) => set_entity_count(&mut img, field, n),
+                match crate::entity_inventory::arena_priced_count(&k.per_kind, kind) {
+                    Some(n) => set_entity_count(&mut img, field, n),
                     None => {
                         img.refuse(
                             field,
@@ -6967,7 +6967,7 @@ pub fn sched_task_rows(
             set_entity_count(
                 &mut img,
                 field,
-                k.per_kind.get(kind.tag()).copied().unwrap_or(0),
+                crate::entity_inventory::arena_priced_count(&k.per_kind, kind).unwrap_or(0),
             );
         }
         let mut subscription_topics: Vec<String> = rows

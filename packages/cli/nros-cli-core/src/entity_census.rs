@@ -550,7 +550,8 @@ fn read_census(census: &Value) -> Vec<ObservedNode> {
         if let Some(rows) = node.get("timers").and_then(Value::as_array) {
             for row in rows {
                 match row.get("kind").and_then(Value::as_str) {
-                    Some("guard_condition") => guard_conditions += 1,
+                    // A device is a guard-shaped slot: noted, not compared.
+                    Some("guard_condition") | Some("device") => guard_conditions += 1,
                     _ => timer_periods_ms
                         .push(row.get("period_ms").and_then(Value::as_u64).unwrap_or(0)),
                 }

@@ -106,6 +106,9 @@ pub(crate) enum EntryKind {
     ActionServer,
     ActionClient,
     GuardCondition,
+    /// A device event source (a job device's completion, or a source's
+    /// frame), signalled through a [`Completion`](super::device::Completion).
+    Device,
 }
 
 /// What a registration site calls the callback it is registering.
@@ -567,6 +570,24 @@ pub(crate) struct SrvRawEntry<
     /// when the context is not a capture, which is every C caller.
     pub(crate) capture: CaptureGuard,
 }
+
+/// Concrete device entry stored in the arena. The signal is first, at a fixed
+/// address, because every `Completion` handed out points at it.
+#[repr(C)]
+pub(crate) struct DeviceEntry<F> {
+    pub(crate) signal: super::device::DeviceSignal,
+    /// LET mode: the completion this spin's pre-sample took.
+    pub(crate) sampled: bool,
+    pub(crate) callback: F,
+}
+
+// A device entry is priced on the arena model's guard-condition row
+// (`GUARD_CONDITION_FIXED` in `build.rs`, 32 bytes before the callback), so its
+// fixed part must fit there on every target this crate builds for.
+const _: () = assert!(
+    core::mem::size_of::<DeviceEntry<()>>() <= 32,
+    "a device entry outgrew the guard-condition row the arena model prices it on"
+);
 
 /// Concrete guard condition entry stored in the arena.
 #[repr(C)]
@@ -4252,6 +4273,33 @@ where
     }
 }
 
+/// Monomorphized device dispatch: consume the completion (the LET sample if
+/// the pre-sample took one, else the live flag), then run the continuation.
+///
+/// # Safety
+/// `ptr` must point to a valid, aligned `DeviceEntry<F>`.
+pub(crate) unsafe fn device_try_process<F>(
+    ptr: *mut u8,
+    _delta_us: u64,
+    desc_idx: u8,
+) -> Result<bool, TransportError>
+where
+    F: FnMut(),
+{
+    let entry = unsafe { &mut *(ptr as *mut DeviceEntry<F>) };
+    let taken = core::mem::take(&mut entry.sampled)
+        || entry
+            .signal
+            .flag
+            .swap(false, portable_atomic::Ordering::AcqRel);
+    if taken {
+        trace_cb_start(desc_idx);
+        (entry.callback)();
+        trace_cb_end(desc_idx);
+    }
+    Ok(taken)
+}
+
 // ============================================================================
 // Readiness check functions
 // ============================================================================
@@ -4306,6 +4354,15 @@ pub(crate) unsafe fn guard_has_data<F>(ptr: *const u8) -> bool {
     entry.flag.load(portable_atomic::Ordering::Acquire)
 }
 
+/// Device readiness: a sampled completion, or the live flag.
+///
+/// # Safety
+/// `ptr` must point to a valid `DeviceEntry<F>`.
+pub(crate) unsafe fn device_has_data<F>(ptr: *const u8) -> bool {
+    let entry = unsafe { &*(ptr as *const DeviceEntry<F>) };
+    entry.sampled || entry.signal.flag.load(portable_atomic::Ordering::Acquire)
+}
+
 /// Timers and action entries are always considered ready.
 pub(crate) unsafe fn always_ready(_ptr: *const u8) -> bool {
     true
@@ -4339,6 +4396,22 @@ pub(crate) unsafe fn sub_safety_pre_sample<M, F>(ptr: *mut u8) {
         Ok(Some(len)) => len,
         _ => 0,
     };
+}
+
+/// LET pre-sample for a device: take the completion now, so one signalled
+/// after the spin's start waits for the next spin.
+///
+/// # Safety
+/// `ptr` must point to a valid, aligned `DeviceEntry<F>`.
+pub(crate) unsafe fn device_pre_sample<F>(ptr: *mut u8) {
+    let entry = unsafe { &mut *(ptr as *mut DeviceEntry<F>) };
+    if entry
+        .signal
+        .flag
+        .swap(false, portable_atomic::Ordering::AcqRel)
+    {
+        entry.sampled = true;
+    }
 }
 
 /// No-op pre-sample for non-subscription entries (services, timers, etc.).

@@ -398,6 +398,26 @@ c: c-fmt c-link-smoke
         "$nros_c_lib" -lpthread -ldl -lm \
         -o tmp/node_guard_condition
     ./tmp/node_guard_condition
+    echo "  - phase-579 W3a: a device completion signalled from a signal handler wakes the spin, at its bound priority"
+    # The C device extension hook (<nros/device_hook.h>): registration, a
+    # completion from a POSIX signal handler (the host's interrupt context)
+    # waking a parked spin against an idle-spin control, and the device's
+    # critical continuation running before a best-effort guard that was ready
+    # first. `test -f` first -- a missing TU must not read as a pass.
+    test -f packages/api/nros-c/tests/run/executor_device_hook.c || { \
+        echo "ERROR: executor_device_hook.c is MISSING -- this check passes on absence." >&2; \
+        exit 1; }
+    cc -std=c11 -Wall -Wextra -Wmissing-prototypes -D_GNU_SOURCE \
+        -I"$cgen" \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/core/nros-rmw-abi/include \
+        -Ipackages/platform/nros-platform-api/include \
+        -Ipackages/api/nros-c/tests/run \
+        packages/api/nros-c/tests/run/executor_device_hook.c \
+        packages/api/nros-c/tests/run/stub_rmw_backend.c \
+        "$nros_c_lib" -lpthread -ldl -lm \
+        -o tmp/executor_device_hook
+    ./tmp/executor_device_hook
     echo "  - issue 1385: a C executor INSTALLS the backend wake callback and HANDS IT BACK"
     # The FIFTH compile+link+run TU, and the first whose subject is a POINTER
     # the backend holds rather than a value a header states. Both halves of

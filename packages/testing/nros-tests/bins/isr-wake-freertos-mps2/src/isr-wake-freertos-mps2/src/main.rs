@@ -13,13 +13,22 @@
 //! prints `ISR_WAKE_DONE <fires> <callbacks> <refused>` and exits. The host test
 //! asserts the bound. The thread `trigger()` called here instead trips
 //! FreeRTOS's `configASSERT` (a critical section entered from an interrupt).
+//!
+//! Then a device's completion (phase 579 W3a). Each interrupt makes a
+//! best-effort guard ready and then signals a device bound to a critical
+//! sched context, through `Completion::signal_from_isr`. Both are ready when
+//! the executor wakes, so the device's continuation must run first. Each
+//! round prints nothing; after [`SAMPLES`] rounds the image prints
+//! `DEVICE_PRIO_DONE <rounds> <device_first> <low_first> <refused>`.
 
 #![no_std]
 #![no_main]
 
-use core::sync::atomic::{AtomicPtr, AtomicU32, Ordering};
+use core::sync::atomic::{AtomicBool, AtomicPtr, AtomicU32, Ordering};
 use cortex_m_semihosting::debug::{EXIT_SUCCESS, exit};
-use nros::{Executor, ExecutorConfig, GuardCondition};
+use nros::{
+    CompletionCell, Executor, ExecutorConfig, GuardCondition, Priority, SchedClass, SchedContext,
+};
 use nros_board_mps2_an385_freertos::{Config, Mps2An385, println};
 use panic_semihosting as _;
 
@@ -51,6 +60,19 @@ static FIRES: AtomicU32 = AtomicU32::new(0);
 /// Interrupts whose `trigger_from_isr` reported the wake reached nothing.
 static REFUSED: AtomicU32 = AtomicU32::new(0);
 
+/// The device phase is running: the interrupt drives the device, not `GUARD`.
+static DEVICE_PHASE: AtomicBool = AtomicBool::new(false);
+/// The best-effort guard the device phase readies first, leaked once set.
+static LOW: AtomicPtr<GuardCondition<'static>> = AtomicPtr::new(core::ptr::null_mut());
+/// The device's completion, as a port would hold it.
+static DONE: CompletionCell = CompletionCell::new();
+/// The low guard is ready and its callback has not run yet.
+static LOW_PENDING: AtomicBool = AtomicBool::new(false);
+static DEVICE_ROUNDS: AtomicU32 = AtomicU32::new(0);
+static DEVICE_FIRST: AtomicU32 = AtomicU32::new(0);
+static LOW_FIRST: AtomicU32 = AtomicU32::new(0);
+static DEVICE_REFUSED: AtomicU32 = AtomicU32::new(0);
+
 fn timer_write(off: usize, v: u32) {
     // SAFETY: TIMER1's registers, which nothing else on this board uses.
     unsafe { core::ptr::write_volatile((TIMER1_BASE + off) as *mut u32, v) };
@@ -67,6 +89,19 @@ fn timer_read(off: usize) -> u32 {
 extern "C" fn TIMER1_IRQHandler() {
     timer_write(INTCLEAR, 1);
     FIRES.fetch_add(1, Ordering::Relaxed);
+    if DEVICE_PHASE.load(Ordering::Acquire) {
+        // The lower-priority callback is ready first, then the device.
+        let low = LOW.load(Ordering::Acquire);
+        if !low.is_null() {
+            LOW_PENDING.store(true, Ordering::Release);
+            // SAFETY: a leaked handle, set before the phase began.
+            let _ = unsafe { &*low }.trigger_from_isr();
+        }
+        if !DONE.signal_from_isr() {
+            DEVICE_REFUSED.fetch_add(1, Ordering::Relaxed);
+        }
+        return;
+    }
     let g = GUARD.load(Ordering::Acquire);
     if !g.is_null() {
         // SAFETY: a leaked handle, set before the interrupt was enabled.
@@ -110,6 +145,34 @@ extern "C" fn main() -> ! {
             println!("ISR_WAKE {}", elapsed / TICKS_PER_US);
         })?;
         GUARD.store(alloc_leak(guard), Ordering::Release);
+
+        // The device phase's two sources, registered before the first spin.
+        let (h_low, low) = executor.register_guard_condition(|| {
+            LOW_PENDING.store(false, Ordering::Release);
+        })?;
+        let (h_dev, done) = executor.register_device(|| {
+            if LOW_PENDING.load(Ordering::Acquire) {
+                DEVICE_FIRST.fetch_add(1, Ordering::Relaxed);
+            } else {
+                LOW_FIRST.fetch_add(1, Ordering::Relaxed);
+            }
+            DEVICE_ROUNDS.fetch_add(1, Ordering::Relaxed);
+        })?;
+        let sc_low = executor.create_sched_context(SchedContext {
+            class: SchedClass::Fifo,
+            priority: Priority::BestEffort,
+            ..Default::default()
+        })?;
+        let sc_dev = executor.create_sched_context(SchedContext {
+            class: SchedClass::Fifo,
+            priority: Priority::Critical,
+            ..Default::default()
+        })?;
+        executor.bind_handle_to_sched_context(h_low, sc_low)?;
+        executor.bind_handle_to_sched_context(h_dev, sc_dev)?;
+        LOW.store(alloc_leak(low), Ordering::Release);
+        DONE.set(done);
+
         println!("ISR_WAKE_READY period_us={}", PERIOD_US);
         start_timer();
 
@@ -121,6 +184,18 @@ extern "C" fn main() -> ! {
             FIRES.load(Ordering::Relaxed),
             CALLBACKS.load(Ordering::Relaxed),
             REFUSED.load(Ordering::Relaxed)
+        );
+
+        DEVICE_PHASE.store(true, Ordering::Release);
+        while DEVICE_ROUNDS.load(Ordering::Relaxed) < SAMPLES {
+            let _ = executor.spin_once(core::time::Duration::from_millis(1000));
+        }
+        println!(
+            "DEVICE_PRIO_DONE {} {} {} {}",
+            DEVICE_ROUNDS.load(Ordering::Relaxed),
+            DEVICE_FIRST.load(Ordering::Relaxed),
+            LOW_FIRST.load(Ordering::Relaxed),
+            DEVICE_REFUSED.load(Ordering::Relaxed)
         );
         exit(EXIT_SUCCESS);
 

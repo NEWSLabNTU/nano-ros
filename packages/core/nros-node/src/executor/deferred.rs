@@ -208,7 +208,7 @@ impl<'s> Executor<'s> {
                 | EntryKind::ActionServer
                 | EntryKind::ActionClient => result.services_handled += 1,
                 EntryKind::Timer => result.timers_fired += 1,
-                EntryKind::GuardCondition => {}
+                EntryKind::GuardCondition | EntryKind::Device => {}
             },
             Ok(false) => {}
             Err(_) => match kind {
@@ -217,7 +217,7 @@ impl<'s> Executor<'s> {
                 | EntryKind::ServiceClient
                 | EntryKind::ActionServer
                 | EntryKind::ActionClient => result.service_errors += 1,
-                EntryKind::Timer | EntryKind::GuardCondition => {}
+                EntryKind::Timer | EntryKind::GuardCondition | EntryKind::Device => {}
             },
         }
         true
