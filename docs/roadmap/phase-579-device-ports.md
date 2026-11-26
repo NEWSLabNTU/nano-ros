@@ -163,8 +163,9 @@ device. RFC-0139's Motivation has the measurements and the driver survey.
 
 ### W11 — Book pages
 
-- **Owner:** nros 139 AUO book (to confirm).
-- **Status:** OPEN
+- **Owner:** nros 139 AUO book (confirmed 2026-11-26).
+- **Status:** OPEN. Prose drafted ahead of W4; the examples are fenced with
+  probes when W4 lands.
 - Two pages: "Use a device from a node" (C, C++, Rust) and "Add device
   support to a board" (an adapter in C, then in Rust).
 - **Acceptance:** both pages' examples build, fenced by probes once W4 lands.
