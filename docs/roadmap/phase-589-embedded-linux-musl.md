@@ -143,7 +143,7 @@ Each piece of hand wiring is a work item below.
 ### W10 — An image for the original Jetson Nano
 
 - **Owner:** nros 241.
-- **Status:** OPEN
+- **Status:** BLOCKED (deferred until the board is attached) (user ruling 2026-11-26: the Nano is not attached yet). About 1 hour of board time, with the board on the LAN beside a host that has ROS 2; the image cross-builds on any host and installs nothing on the Nano. Runs first, in one slot with W12.
 - **The board:** the original Jetson Nano Developer Kit (Tegra X1, 4x
   Cortex-A57, 128-core Maxwell GPU). This is not the Orin Nano. Its last
   software release is JetPack 4.6.6, L4T R32.7.6, which is final for JetPack 4:
@@ -165,7 +165,7 @@ Each piece of hand wiring is a work item below.
 ### W11 — A real-time kernel on the Nano, measured
 
 - **Owner:** nros 241.
-- **Status:** OPEN
+- **Status:** BLOCKED (deferred until the board is attached) (user ruling 2026-11-26). About 1 hour of host CPU for the kernel cross-build, then about half a day of board time with console access: flash and boot, then `cyclictest` and the timer jitter, idle and loaded, on both kernels, keeping the stock kernel bootable. Runs after W10 and W12.
 - **Why a kernel:** the Tegra X1 has no real-time co-processor a user can
   program. Its BPMP runs boot and power firmware, and there is no SPE as on
   Xavier and Orin, so the IVC co-processor work does not apply. Real time here
@@ -193,7 +193,7 @@ Each piece of hand wiring is a work item below.
 ### W12 — ROS 2 interop through a router on a host
 
 - **Owner:** nros 241.
-- **Status:** OPEN
+- **Status:** BLOCKED (deferred until the board is attached) (user ruling 2026-11-26). About 1 hour, with the same setup as W10 and in the same slot.
 - **Why a host:** ROS 2 Humble targets Ubuntu 22.04 and ships no 18.04
   packages, so no ROS 2 runs on the Nano. The Nano's nodes run in zenoh client
   mode against `rmw_zenohd` on a host with ROS 2, which is the proof of
@@ -215,3 +215,7 @@ W1 first. W2 to W4 are small and independent. W5 depends on W1 and absorbs
 the proof of concept's wrapper. W6 and W7 are measured on the device. W8 and
 W9 follow W5. W10 needs only W1, so it does not wait for W5; W11 and W12
 follow W10, and W11 measures W7's 1 kHz case on a second device.
+
+W10 to W12 wait for the board to be attached. When it is, they run as W10
+and W12 in one slot, then W11, then phase-574 W8: about 1.5 to 2 days of
+board time in all.
