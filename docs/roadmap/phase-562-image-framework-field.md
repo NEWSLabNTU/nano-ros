@@ -301,8 +301,8 @@ state `framework = "zephyr"` in its metadata: that is the board deciding.
   deadline + the level-wake ISR + dispatcher entry + the longest
   executor-internal BASEPRI section]. The boot level's state, idle in WFI or
   busy in a long callback, does not enter it.
-- **Status:** DONE (2026-11-18, #4232 at 2d6f8b2e0e, which replaced
-  #4197, #4221 and #4226; those three closed unmerged)
+- **Status:** DONE (2026-11-18, #4232 at 2d6f8b2e0e). #4232 replaced #4197,
+  #4221 and #4226, which closed unmerged.
 - **Done in two changes:**
   - The mechanism (board hooks, mps2 lock and level wake,
     `nros::levels::RunToCompletionLevels`, `nros::level_wake`, the macro's
