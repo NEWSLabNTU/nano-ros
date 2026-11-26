@@ -502,3 +502,11 @@ include = ["system/common"]
 file = "rmw/zenoh.json5"
 format = "session-json5"
 retired = "rmw/zenoh.conf"
+
+# RFC-0135 D8 -- what this backend needs from a board, in the board's
+# `[board.capabilities]` vocabulary. zenoh-pico allocates its session, buffers
+# and declarations through z_malloc, so it needs a heap. It does NOT need
+# threads: without them it runs single-threaded, driven by spin_once (the
+# bare-metal boards).
+[rmw.needs]
+heap = true

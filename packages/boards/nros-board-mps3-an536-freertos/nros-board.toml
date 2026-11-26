@@ -92,6 +92,13 @@ kind = "semihosting"
 
 [board.entry]
 
+# RFC-0135 D8 -- the memory an image may use, in bytes, read from this
+# board's linker script (config/an536.ld). `nros build` compares the
+# image against it.
+[board.memory]
+flash = 16777216
+ram = 50331648
+
 [board.capabilities]
 heap = true
 atomics = true

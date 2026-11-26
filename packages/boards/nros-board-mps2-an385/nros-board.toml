@@ -118,6 +118,13 @@ own_panic_root_deps = ["panic-semihosting = { version = \"0.6\", features = [\"e
 # `nros::main!` emits a second handler (E0152), phase-517 W10.
 panic = "own"
 
+# RFC-0135 D8 -- the memory an image may use, in bytes, read from this
+# board's linker script (mps2-an385.x). `nros build` compares the
+# image against it.
+[board.memory]
+flash = 4194304
+ram = 4194304
+
 # RFC-0042 D2 / phase-241 wave C — declared capabilities (SSoT).
 #
 # issue 1512 — `heap` was `false`, commented "Pure bare-metal: no heap (static

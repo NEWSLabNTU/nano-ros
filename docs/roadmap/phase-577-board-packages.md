@@ -91,8 +91,8 @@ is already a package. What is missing is measured in RFC-0135's Motivation:
 
 ### W6 — The pre-build compatibility check
 
-- **Owner:** unassigned.
-- **Status:** OPEN
+- **Owner:** nros 133 (claimed 2026-11-26).
+- **Status:** IN PROGRESS. Branch `feat/board-compat-check`.
 - RFC-0135 D8: one check, run by `nros build` before any build step and by
   `nros check --board <key>` alone. It calls the existing checks and collects
   every verdict, then adds:

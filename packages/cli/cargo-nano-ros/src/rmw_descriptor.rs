@@ -54,6 +54,10 @@ pub const LINK_CMAKE: &str = "cmake";
 ///   (`nros-zenoh-session-config`).
 pub const CONFIG_FORMATS: &[&str] = &["verbatim-xml", "session-json5"];
 
+/// The board capability vocabulary `[rmw.needs]` is written in: the keys of a
+/// board definition's `[board.capabilities]` (RFC-0135 D8).
+pub const BOARD_CAPABILITIES: &[&str] = &["heap", "atomics", "threads"];
+
 /// `[rmw.host].peer` values (issue 2381): what the backend needs running on
 /// the HOST side of an image's link, which is what `nros run --router auto`
 /// starts. A closed vocabulary because nros must know how to START each one;
@@ -131,6 +135,14 @@ pub struct RmwDescriptor {
     /// states the fact and a check asks for it by key. A fact the descriptor
     /// does not state is UNKNOWN, never false.
     pub facts: Vec<(String, bool)>,
+    /// `[rmw.needs]` — what the backend needs from a board, in the board's
+    /// own capability vocabulary ([`BOARD_CAPABILITIES`]; RFC-0135 D8). Each
+    /// entry is a capability stated `true`; a capability stated `false` or
+    /// left out is not needed. The pre-build compatibility check compares
+    /// these with the board's `[board.capabilities]`. A closed vocabulary,
+    /// unlike `[rmw.facts]`: a need no board can state is a need no board can
+    /// meet, so a misspelling is refused rather than carried.
+    pub needs: Vec<String>,
     /// The Rust crate whose registration function an image calls to put this
     /// backend in the cffi registry (RFC-0071 D11):
     /// `[rmw.provides.cargo] register_crate`, else the backend's own
@@ -290,6 +302,25 @@ pub fn parse_rmw_descriptor(text: &str, origin: &str) -> Result<RmwDescriptor, S
                     }
                 };
                 d.facts.push((k.to_string(), v));
+            }
+            ("rmw.needs", k) => {
+                if !BOARD_CAPABILITIES.contains(&k) {
+                    return Err(format!(
+                        "{origin}: [rmw.needs].{k} — a need is one of the board \
+                         capabilities {BOARD_CAPABILITIES:?}, the vocabulary \
+                         `[board.capabilities]` states"
+                    ));
+                }
+                match value {
+                    "true" => d.needs.push(k.to_string()),
+                    "false" => {}
+                    other => {
+                        return Err(format!(
+                            "{origin}: [rmw.needs].{k} = {other} — a need is `true` or \
+                             `false`"
+                        ));
+                    }
+                }
             }
             ("rmw.codegen", "per_message") => d.per_message_hook = scalar(),
             ("rmw.config", "file") => d.config_file = scalar(),
@@ -606,6 +637,34 @@ mod tests {
             d.capabilities,
             vec![("never-heard-of-it".to_string(), "acme-feature".to_string())]
         );
+    }
+
+    /// RFC-0135 D8 -- `[rmw.needs]` is the board capability vocabulary:
+    /// `true` needs it, `false` does not, and any other key or value is
+    /// refused rather than carried.
+    #[test]
+    fn needs_are_board_capabilities_stated_true() {
+        let d = parse_rmw_descriptor(
+            "[rmw]\ncpp_define = \"X\"\n[rmw.link]\nrlib_dep = \"a\"\n\
+             [rmw.needs]\nthreads = true\nheap = true\natomics = false\n",
+            "acme",
+        )
+        .unwrap();
+        assert_eq!(d.needs, vec!["threads".to_string(), "heap".to_string()]);
+        let err = parse_rmw_descriptor(
+            "[rmw]\ncpp_define = \"X\"\n[rmw.link]\nrlib_dep = \"a\"\n\
+             [rmw.needs]\nthread = true\n",
+            "acme",
+        )
+        .unwrap_err();
+        assert!(err.contains("[rmw.needs].thread"), "{err}");
+        let err = parse_rmw_descriptor(
+            "[rmw]\ncpp_define = \"X\"\n[rmw.link]\nrlib_dep = \"a\"\n\
+             [rmw.needs]\nheap = 1\n",
+            "acme",
+        )
+        .unwrap_err();
+        assert!(err.contains("[rmw.needs].heap = 1"), "{err}");
     }
 
     /// Issue 2174 -- `[rmw.facts]` holds booleans, an open vocabulary, and

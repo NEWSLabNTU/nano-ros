@@ -100,3 +100,12 @@ request_source_timestamp = true
 [rmw.config]
 file = "rmw/cyclonedds.xml"
 format = "verbatim-xml"
+
+# RFC-0135 D8 -- what this backend needs from a board, in the board's
+# `[board.capabilities]` vocabulary. The pre-build compatibility check refuses
+# a board that lacks one. Cyclone runs its own receive, lease and delivery
+# threads and allocates every sample through ddsrt_malloc: no board without
+# threads appears among its verified boards (board-support-status.json).
+[rmw.needs]
+threads = true
+heap = true
