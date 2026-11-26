@@ -976,3 +976,57 @@ fn large_message_is_delivered_intact_on_the_host(
         "{rmw:?} {size} B: not every sample arrived intact: {recv_line}\nOutput:\n{received}"
     );
 }
+
+/// Issue 2978 -- an XRCE sample the 16-bit WRITE_DATA length cannot state is
+/// refused at publish, by name, and never reaches a subscriber.
+///
+/// The image's reliable stream (8 KiB MTU x 16) is wider than 64 KiB, so a
+/// 64 KiB sample fits the stream and only the length check can refuse it.
+/// Before the check, every such publish returned `Ok` and the sample was lost,
+/// or delivered cut to its size modulo 65,536. The 16 KiB cell above is the
+/// same image delivering intact.
+#[rstest]
+#[case::at_64k(64 << 10)]
+#[case::at_70000(70_000)]
+fn xrce_sample_over_the_write_data_length_is_refused_at_publish(#[case] size: usize) {
+    use nros_tests::{
+        fixtures::{RequireFixture, Rmw, build_large_msg_probe},
+        output::LARGE_MSG_PUB_DONE,
+    };
+    use std::process::Command;
+
+    require_xrce_agent();
+    let probe = build_large_msg_probe(Rmw::Xrce)
+        .require("the large-message probe (row `large-msg-probe-xrce`)")
+        .to_path_buf();
+    let agent = XrceAgent::start_unique().expect("XRCE Agent start");
+    std::thread::sleep(Duration::from_secs(1));
+
+    let mut cmd = Command::new(&probe);
+    cmd.env("MODE", "talker")
+        .env("PAYLOAD_SIZE", size.to_string())
+        .env("COUNT", "3")
+        .env("LARGE_TOPIC", format!("/large_msg_refused_{size}"))
+        .env(
+            "ROS_DOMAIN_ID",
+            nros_tests::unique_ros_domain_id().to_string(),
+        )
+        .env("NROS_LOCATOR", format!("udp/{}", agent.addr()));
+    let mut talker = ManagedProcess::spawn_image(cmd, "large-msg-refused-talker")
+        .expect("spawn the large-message talker");
+    let published = talker.collect_until(LARGE_MSG_PUB_DONE, Duration::from_secs(60));
+    talker.kill();
+
+    let line = summary_line(&published, LARGE_MSG_PUB_DONE)
+        .unwrap_or_else(|| panic!("the talker printed no summary.\nOutput:\n{published}"));
+    assert_eq!(
+        (summary_field(line, "sent"), summary_field(line, "failed")),
+        (Some("0"), Some("3")),
+        "{size} B over XRCE: every publish must be refused: {line}"
+    );
+    assert_eq!(
+        summary_field(line, "first_error"),
+        Some("Transport(MessageTooLarge)"),
+        "{size} B over XRCE: the refusal must name the size: {line}"
+    );
+}

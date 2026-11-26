@@ -137,6 +137,36 @@ static int check_stream_loop(void) {
     return 0;
 }
 
+/* Issue 2978 -- a WRITE_DATA submessage's length is 16 bits: the 4-byte object
+ * request, a reply's 24-byte SampleIdentity, then the body. Declared locally
+ * for the reason `xrce_drive_streamed_body` is. */
+bool xrce_write_data_fits(size_t body_len, size_t prefix_len);
+
+static int check_write_data_limit(void) {
+    const struct {
+        size_t body, prefix;
+        bool fits;
+    } cases[] = {
+        {0, 0, true},
+        {65531, 0, true},  /* 4 + 65531 = 65535: the largest sample or request */
+        {65532, 0, false}, /* one over */
+        {65536, 0, false}, /* would wrap to a short length */
+        {70000, 0, false}, /* the measured case: delivered as 4,464 bytes */
+        {65507, 24, true}, /* the largest reply */
+        {65508, 24, false},
+        {0, 65532, false},     /* a prefix past the room never fits */
+        {(size_t)-1, 0, false} /* no overflow in the arithmetic */
+    };
+    for (size_t i = 0; i < sizeof(cases) / sizeof(cases[0]); ++i) {
+        if (xrce_write_data_fits(cases[i].body, cases[i].prefix) != cases[i].fits) {
+            fprintf(stderr, "FAIL: write_data_fits(%zu, %zu) is %d, want %d\n", cases[i].body,
+                    cases[i].prefix, !cases[i].fits, cases[i].fits);
+            return 1;
+        }
+    }
+    return 0;
+}
+
 int main(void) {
     g_received_vtable = NULL;
 
@@ -254,6 +284,9 @@ int main(void) {
     }
 
     if (check_stream_loop() != 0) {
+        return EXIT_FAILURE;
+    }
+    if (check_write_data_limit() != 0) {
         return EXIT_FAILURE;
     }
 

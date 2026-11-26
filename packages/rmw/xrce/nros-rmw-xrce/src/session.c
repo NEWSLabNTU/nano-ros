@@ -1246,6 +1246,54 @@ rmw_ret_t xrce_output_refusal(const xrce_session_state_t* st) {
     return NROS_RMW_RET_MESSAGE_TOO_LARGE;
 }
 
+bool xrce_write_data_fits(size_t body_len, size_t prefix_len) {
+    const size_t room = XRCE_WRITE_DATA_LENGTH_MAX - XRCE_WRITE_DATA_REQUEST_LEN;
+    return prefix_len <= room && body_len <= room - prefix_len;
+}
+
+/* Issue 2978 -- the four WRITE_DATA writers; see internal.h. */
+uint16_t xrce_write_topic(xrce_session_state_t* st, uxrObjectId datawriter_id, const uint8_t* body,
+                          size_t body_len, bool* too_large) {
+    *too_large = !xrce_write_data_fits(body_len, 0);
+    if (*too_large) {
+        return UXR_INVALID_REQUEST_ID;
+    }
+    /* The client takes a mutable pointer and only reads through it. */
+    return uxr_buffer_topic(&st->session, st->output_reliable, datawriter_id,
+                            (uint8_t*)(uintptr_t)body, body_len);
+}
+
+uint16_t xrce_write_request(xrce_session_state_t* st, uxrObjectId requester_id, const uint8_t* body,
+                            size_t body_len, bool* too_large) {
+    *too_large = !xrce_write_data_fits(body_len, 0);
+    if (*too_large) {
+        return UXR_INVALID_REQUEST_ID;
+    }
+    return uxr_buffer_request(&st->session, st->output_reliable, requester_id,
+                              (uint8_t*)(uintptr_t)body, body_len);
+}
+
+uint16_t xrce_write_reply(xrce_session_state_t* st, uxrObjectId replier_id,
+                          SampleIdentity* sample_id, const uint8_t* body, size_t body_len,
+                          bool* too_large) {
+    *too_large = !xrce_write_data_fits(body_len, XRCE_SAMPLE_IDENTITY_LEN);
+    if (*too_large) {
+        return UXR_INVALID_REQUEST_ID;
+    }
+    return uxr_buffer_reply(&st->session, st->output_reliable, replier_id, sample_id,
+                            (uint8_t*)(uintptr_t)body, body_len);
+}
+
+uint16_t xrce_prepare_topic_stream(xrce_session_state_t* st, uxrObjectId datawriter_id,
+                                   ucdrBuffer* ub, size_t body_len, bool* too_large) {
+    *too_large = !xrce_write_data_fits(body_len, 0);
+    if (*too_large) {
+        return UXR_INVALID_REQUEST_ID;
+    }
+    return uxr_prepare_output_stream(&st->session, st->output_reliable, datawriter_id, ub,
+                                     (uint32_t)body_len);
+}
+
 void xrce_session_entity_detach(xrce_session_state_t* st) {
     if (st == NULL) {
         return;

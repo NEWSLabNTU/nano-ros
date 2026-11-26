@@ -25,14 +25,16 @@ frag_max_bytes = 4196352
 buffer_bytes = 4195328
 
 # XRCE: one sample is one DATA submessage, whose length is 16 bits on the wire,
-# so no configuration carries 64 KiB; this image is sized for the 16 KiB cell.
-# The reliable stream reassembles up to `transport_mtu x stream_history` bytes,
-# and the subscriber's ring entry holds the whole sample.
+# so no configuration carries 64 KiB; this image receives the 16 KiB cell. The
+# reliable stream reassembles up to `transport_mtu x stream_history` bytes, and
+# the subscriber's ring entry holds the whole sample. The window (128 KiB) is
+# wider than the 16-bit length on purpose: a 64 KiB publish then fits the
+# stream, so only the length check can refuse it.
 [image.linux_xrce]
 entry = "large-msg"
 rmw = "xrce"
 [image.linux_xrce.knobs.xrce]
-transport_mtu = 4096
+transport_mtu = 8192
 stream_history = 16
 subscriber_buffer_bytes = 17408
 subscriber_ring_depth = 4

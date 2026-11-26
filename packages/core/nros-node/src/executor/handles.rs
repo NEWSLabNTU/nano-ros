@@ -193,7 +193,9 @@ impl<M: RosMessage> EmbeddedPublisher<M> {
         self.observe_publish_stamp(&buffer[..len]);
         self.handle
             .publish_raw(&buffer[..len])
-            .map_err(|_| NodeError::Transport(TransportError::PublishFailed))
+            // Issue 2978 -- the backend's own refusal (MessageTooLarge, WouldBlock,
+            // SessionLost ...), not a flattened PublishFailed.
+            .map_err(NodeError::Transport)
     }
 
     /// RFC-0052 W3b.4 — one relaxed bump per publish on contracted
@@ -233,7 +235,9 @@ impl<M: RosMessage> EmbeddedPublisher<M> {
         self.bump_monitor();
         self.handle
             .publish_raw(data)
-            .map_err(|_| NodeError::Transport(TransportError::PublishFailed))
+            // Issue 2978 -- the backend's own refusal (MessageTooLarge, WouldBlock,
+            // SessionLost ...), not a flattened PublishFailed.
+            .map_err(NodeError::Transport)
     }
 
     /// Renamed to [`publish_serialized`](Self::publish_serialized),
@@ -1000,7 +1004,9 @@ impl<const TX_BUF: usize> EmbeddedRawPublisher<TX_BUF> {
         self.bump_monitor();
         self.handle
             .publish_raw(data)
-            .map_err(|_| NodeError::Transport(TransportError::PublishFailed))
+            // Issue 2978 -- the backend's own refusal (MessageTooLarge, WouldBlock,
+            // SessionLost ...), not a flattened PublishFailed.
+            .map_err(NodeError::Transport)
     }
 
     /// Renamed to [`publish_serialized`](Self::publish_serialized),
@@ -1037,7 +1043,9 @@ impl<const TX_BUF: usize> EmbeddedRawPublisher<TX_BUF> {
         self.bump_monitor();
         self.handle
             .publish_raw_with_attachment(data, attachment)
-            .map_err(|_| NodeError::Transport(TransportError::PublishFailed))
+            // Issue 2978 -- the backend's own refusal (MessageTooLarge, WouldBlock,
+            // SessionLost ...), not a flattened PublishFailed.
+            .map_err(NodeError::Transport)
     }
 
     /// Renamed to
@@ -1236,7 +1244,7 @@ impl<'a, const TX_BUF: usize> PublishLoan<'a, TX_BUF> {
             .publisher
             .handle
             .publish_raw(self.slice)
-            .map_err(|_| LoanError::Backend(TransportError::PublishFailed));
+            .map_err(LoanError::Backend); // issue 2978
         self.committed = true;
         // Drop runs and releases the slot.
         res

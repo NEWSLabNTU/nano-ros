@@ -590,9 +590,15 @@ static rmw_ret_t xrce_service_send_response_locked(const rmw_service_t* server, 
         body_len -= XRCE_CDR_HEADER_LEN;
     }
 
-    /* `uxr_buffer_reply` takes a mutable pointer; cast away const on data. */
-    uint16_t req = uxr_buffer_reply(&st->session, st->output_reliable, ss->replier_oid,
-                                    reply_sample_id, (uint8_t*)(uintptr_t)body, body_len);
+    bool too_large = false;
+    uint16_t req =
+        xrce_write_reply(st, ss->replier_oid, reply_sample_id, body, body_len, &too_large);
+    if (too_large) {
+        /* Issue 2978 -- a reply the WRITE_DATA length cannot state is never
+         * sendable, so its token is released like any other lost reply. */
+        ss->slot->reply_tokens[seq].in_use = false;
+        return NROS_RMW_RET_MESSAGE_TOO_LARGE;
+    }
     if (req == UXR_INVALID_REQUEST_ID) {
         /* Issue 2577 — the reliable output stream is full, so this reply is
          * lost. The token belongs to THIS call: the executor sends each reply
@@ -646,8 +652,11 @@ static rmw_ret_t xrce_service_send_request_raw_locked(const rmw_client_t* client
         body += XRCE_CDR_HEADER_LEN;
         body_len -= XRCE_CDR_HEADER_LEN;
     }
-    uint16_t req = uxr_buffer_request(&st->session, st->output_reliable, cs->requester_oid,
-                                      (uint8_t*)(uintptr_t)body, body_len);
+    bool too_large = false;
+    uint16_t req = xrce_write_request(st, cs->requester_oid, body, body_len, &too_large);
+    if (too_large) {
+        return NROS_RMW_RET_MESSAGE_TOO_LARGE; /* issue 2978 */
+    }
     if (req == UXR_INVALID_REQUEST_ID) {
         return NROS_RMW_RET_ERROR;
     }

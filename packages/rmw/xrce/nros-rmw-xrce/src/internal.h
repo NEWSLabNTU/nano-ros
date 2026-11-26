@@ -953,6 +953,39 @@ void xrce_liveness_tap(xrce_session_state_t* st, uint64_t now_ms);
 bool xrce_liveness_tick(xrce_session_state_t* st, uint64_t now_ms);
 rmw_ret_t xrce_output_refusal(const xrce_session_state_t* st);
 
+/* Issue 2978 -- every sample, request and reply leaves as ONE WRITE_DATA
+ * submessage, and a submessage's length is a 16-bit wire field. It counts the
+ * object request (4 bytes), a reply's SampleIdentity (24) and the body. The
+ * client writes `(uint16_t)` of that sum without checking, so past 65,535 the
+ * Agent reads a wrapped length and the sample is lost, or delivered cut to its
+ * size modulo 65,536, while the call reports success.
+ *
+ * These four wrappers are the only calls in this backend that buffer a
+ * WRITE_DATA (a test in nros-rmw-xrce-cffi refuses a direct `uxr_buffer_topic`,
+ * `uxr_buffer_request`, `uxr_buffer_reply` or `uxr_prepare_output_stream`
+ * anywhere else). Each refuses a body the field cannot state before anything
+ * is written: it returns UXR_INVALID_REQUEST_ID and sets `*too_large`, which
+ * the caller reports as NROS_RMW_RET_MESSAGE_TOO_LARGE. Otherwise it returns
+ * what the client returned, with `*too_large` false. */
+#define XRCE_WRITE_DATA_LENGTH_MAX 65535u
+#define XRCE_WRITE_DATA_REQUEST_LEN 4u
+#define XRCE_SAMPLE_IDENTITY_LEN 24u
+
+/* True when a body of `body_len` bytes after `prefix_len` bytes of its own
+ * (0 for a sample or a request, XRCE_SAMPLE_IDENTITY_LEN for a reply) fits the
+ * 16-bit WRITE_DATA length. */
+bool xrce_write_data_fits(size_t body_len, size_t prefix_len);
+
+uint16_t xrce_write_topic(xrce_session_state_t* st, uxrObjectId datawriter_id, const uint8_t* body,
+                          size_t body_len, bool* too_large);
+uint16_t xrce_write_request(xrce_session_state_t* st, uxrObjectId requester_id, const uint8_t* body,
+                            size_t body_len, bool* too_large);
+uint16_t xrce_write_reply(xrce_session_state_t* st, uxrObjectId replier_id,
+                          SampleIdentity* sample_id, const uint8_t* body, size_t body_len,
+                          bool* too_large);
+uint16_t xrce_prepare_topic_stream(xrce_session_state_t* st, uxrObjectId datawriter_id,
+                                   ucdrBuffer* ub, size_t body_len, bool* too_large);
+
 /* Mark the session closed and free its state IF no entity still points at it.
  * Split out of `xrce_session_destroy` so the lifetime decision is testable
  * without a transport: `uxr_delete_session` waits on a session status and

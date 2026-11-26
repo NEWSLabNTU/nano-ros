@@ -653,7 +653,9 @@ pub unsafe extern "C" fn rclc_publish_serialized(
 
         match pub_handle.publish_raw(data_slice) {
             Ok(()) => RCL_RET_OK,
-            Err(_) => RCLC_RET_PUBLISH_FAILED,
+            // Issue 2978 -- the backend's own refusal (a sample too large is
+            // RCLC_RET_FULL), through the crate's one mapper.
+            Err(e) => crate::support::transport_error_to_ret(e),
         }
     }
 
@@ -840,7 +842,9 @@ pub unsafe extern "C" fn rclc_publisher_publish_streamed(
         // `user_ctx` valid for the synchronous callback sequence.
         match unsafe { pub_handle.publish_streamed(size_cb, chunk_cb, user_ctx) } {
             Ok(()) => RCL_RET_OK,
-            Err(_) => RCLC_RET_PUBLISH_FAILED,
+            // Issue 2978 -- the backend's own refusal (a sample too large is
+            // RCLC_RET_FULL), through the crate's one mapper.
+            Err(e) => crate::support::transport_error_to_ret(e),
         }
     }
 
@@ -1147,7 +1151,9 @@ pub unsafe extern "C" fn rclc_publisher_commit(
     // still outstanding and is consumed here exactly once.
     match pub_handle.commit_raw(token as *mut _, actual_len) {
         Ok(()) => RCL_RET_OK,
-        Err(_) => RCLC_RET_PUBLISH_FAILED,
+        // Issue 2978 -- the backend's own refusal (a sample too large is
+        // RCLC_RET_FULL), through the crate's one mapper.
+        Err(e) => crate::support::transport_error_to_ret(e),
     }
 }
 
