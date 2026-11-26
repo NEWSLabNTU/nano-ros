@@ -47,6 +47,7 @@ pub mod elf;
 use nros_platform_cffi as _;
 
 pub mod fixtures;
+pub mod guest_time;
 // RFC-0061 / phase-318 W3 — CI lane selection computed from `matrix`.
 pub mod buckets;
 pub mod capture;
