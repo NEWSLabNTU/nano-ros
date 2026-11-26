@@ -217,6 +217,23 @@ tutorial's `mps2-an385-freertos` talker take 64 s (Rust), 84 s (C) and 60 s
   one (also seen linking the TI image, phase-575 W3). Build one. Its own
   change, needing no prebuilt. Acceptance: the C talker's first build runs
   cargo once, with the measured before and after times stated.
+  **DONE.** The change is #4235 (2100f094ce, 2026-11-18): `nros_c-static`
+  became an interface over the `nros-cpp` archive, held by
+  `check-c-image-one-cargo-run`. Measured 2026-11-26 on newslab-118 (48
+  cores, load 2.6 at the start): fresh `nros new fr_c --board
+  mps2-an385-freertos --template talker --lang c`, then `nros build`, with
+  sccache off. The two sides ran back to back, one sample each, so read the
+  saving as about 8 s, not a precise figure.
+
+  | | wall | cargo runs | crates compiled |
+  | --- | --- | --- | --- |
+  | before (2100f094ce^) | 81.2 s | 2: `nros_c` 19.5 s, `nros_cpp` 21.5 s | 181 |
+  | after (d92c369a14) | 73.0 s | 1: `nros_cpp` 22.9 s | 114 |
+
+  Cargo time summed over runs fell from 41 s to 23 s, but the wall time fell
+  only 8.2 s (10 %): ninja ran the two cargo runs side by side, so the
+  removed run mostly overlapped the one that stayed. RFC-0137's "about 20 s"
+  was the run's own length, not its share of the wall.
 - **W8.b — reproducible pieces, then the weekly comparison (ruling Q3).**
   Measure how far zenoh-pico's and the Rust image crate's builds are from
   reproducible, and close the gap (`-ffile-prefix-map`,
@@ -225,6 +242,28 @@ tutorial's `mps2-an385-freertos` talker take 64 s (Rust), 84 s (C) and 60 s
   source under the same digest and compares the bytes. Advisory until green
   for a release, then gating the release. No prebuilt ships before this job
   exists.
+  **Measured 2026-11-26 (the gap, before any fix).** The same C talker was
+  built three times at d92c369a14, sccache off: twice from one checkout in
+  two project directories, and once from a second checkout of the same
+  commit. Comparing the outputs:
+
+  | piece | another project dir | another checkout | what differs |
+  | --- | --- | --- | --- |
+  | zenoh-pico (`libzenohpico.a`) | identical | identical | nothing here. It is built from the store (`~/.nros/sources/zenoh-pico/<pin>`), not the checkout, and the `cc` crate already writes deterministic archive headers. Each object's `STT_FILE` symbol holds the store's absolute path (34 strings), so another store location (another user or host) will differ. |
+  | Rust image crate (`libnros_cpp.a`) | identical | differs | panic locations hold the checkout's absolute path (76 strings), plus `~/.cargo/registry`, `~/.rustup` and the store path. Cargo's `-C metadata` hash comes from the absolute path of the path dependencies, so object names and 10 of 3566 exported symbols differ too. `--remap-path-prefix` fixes the strings but not the hash. |
+  | lwIP (`liblwip.a`) | differs | differs | archive member headers only (mtime, uid/gid). All 40 objects are byte-identical, so `ar D` (CMake's deterministic archive flags) closes it. |
+  | the linked image | identical | differs | follows from the Rust crate. |
+
+  So a different project directory already reproduces. The gap is the
+  build's absolute paths, and for the Rust crate that is more than strings:
+  the metadata hash means a published piece must be built at a fixed path
+  (or the same checkout-relative layout), not only remapped. Not yet
+  measured: another host or user (`$HOME`, toolchain paths), and
+  `SOURCE_DATE_EPOCH`, which nothing compared here reads. One trap met on
+  the way: a checkout whose zenoh-pico submodule sits off its pin builds
+  from that checkout as a local edit (the store's ladder), not from the
+  store. Such a build is not of the digest's sources, and D1's input digest
+  has to see the difference.
 - **W8.c — input digests and the first two prebuilt pieces (ruling Q1).**
   zenoh-pico and nano-ros's Rust image crate: the input digest (D1), computed
   by the code that drives the build; exact-match use with the one-line reason
