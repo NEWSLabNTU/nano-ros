@@ -64,6 +64,20 @@ pub type rmw_topic_endpoint_info_visit_fn = ::core::option::Option<
 >;
 #[doc = " Runtime-pluggable custom transport. The runtime never\n dereferences `user_data`; it's the caller's per-transport\n context, threaded back into every callback's first argument.\n\n THIS declaration is the ABI single source of truth: Rust\n consumes the committed bindgen output of this header, and\n `nros_rmw::NrosTransportOps` is the hand-written Rust-side view kept in\n lockstep with it — not the other way round. The previous wording had that\n backwards. Layout equivalence is asserted on both sides: see\n `nros_transport_ops_t` in `nros-rmw-cffi/tests/c_stubs/abi_layout_check.c`\n and the `const _` size/align block beside\n `nros_rmw_cffi_set_custom_transport` in `nros-rmw-cffi/src/lib.rs`. Same\n layout, same threading contract, same return codes."]
 pub type nros_transport_ops_t = nros_transport_ops_s;
+#[doc = " The result of a port operation. An `int32_t` rather than an enum, so it is\n four bytes on every target."]
+pub type nros_device_ret_t = i32;
+#[doc = " A completion handle. The runtime hands one to `submit` (a worker) or\n `start` (a source); the port signals it when the device has a result.\n It is a value: a port may copy it and store it where its interrupt\n handler can reach it."]
+pub type nros_completion_t = nros_completion_s;
+#[doc = " A buffer a job reads or a result is written to."]
+pub type nros_device_buffer_t = nros_device_buffer_s;
+#[doc = " A job, type-erased. `op` points at the job of the device's class (an\n inference job, a 2D operation); the companion package's per-class headers\n define those types."]
+pub type nros_device_job_t = nros_device_job_s;
+#[doc = " A result, type-erased. The capture time is a pair read at one instant:\n `captured_at_ns` on the monotonic clock, which a stage's maximum age is\n measured against, and `captured_stamp_ns` on the wall clock, which a\n message header takes."]
+pub type nros_device_result_t = nros_device_result_s;
+#[doc = " A worker port: a job goes in, a result comes back."]
+pub type nros_worker_port_ops_t = nros_worker_port_ops_s;
+#[doc = " A source port: data produced on the device's own clock."]
+pub type nros_source_port_ops_t = nros_source_port_ops_s;
 #[doc = " Global identifier for a publisher — upstream `rmw_gid_t`, field for field.\n\n  Mirrors upstream exactly, including the 24-byte width and the\n  `implementation_identifier`. The identifier matters MORE here than upstream:\n  `nros_rmw_cffi_register_named` admits several backends in one image, so two\n  gids are comparable only when it matches.\n\n  Comparison is over the whole array, so a producer MUST zero-pad an\n  identifier shorter than 24 bytes rather than leave the tail undefined —\n  otherwise two gids naming the same entity compare unequal on stack garbage.\n\n  **One type and one value.** A gid obtained from a take\n  (`rmw_message_info_t::publisher_gid`) and one obtained from\n  `get_gid_for_publisher` are the same width (per the RMW gap-closure\n  design study) and produced from ONE source on\n  every backend that produces either: Cyclone's writer GUID on both sides\n  (`take_with_info`); zenoh's XXH3-128 of the entity's liveliness keyexpr,\n  which is `rmw_zenoh_cpp`'s own derivation and so also the gid a stock\n  graph query prints for the entity. */\n/** Bytes to READ.\n\n  `len` is a FACT: how many bytes exist. Nothing is written through this, and\n  `const` says so — `publish` handing a backend a mutable pointer is an\n  invitation.\n\n  PASSED BY VALUE. Two words, and there is nothing to report back."]
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
@@ -986,6 +1000,107 @@ pub struct nros_transport_ops_s {
         ) -> i32,
     >,
 }
+#[doc = " A completion handle. The runtime hands one to `submit` (a worker) or\n `start` (a source); the port signals it when the device has a result.\n It is a value: a port may copy it and store it where its interrupt\n handler can reach it."]
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct nros_completion_s {
+    #[doc = " The runtime's slot. Opaque to the port."]
+    pub _slot: *mut core::ffi::c_void,
+}
+#[doc = " A buffer a job reads or a result is written to."]
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct nros_device_buffer_s {
+    #[doc = " The bytes."]
+    pub data: *mut core::ffi::c_void,
+    #[doc = " Their capacity, in bytes."]
+    pub size: usize,
+}
+#[doc = " A job, type-erased. `op` points at the job of the device's class (an\n inference job, a 2D operation); the companion package's per-class headers\n define those types."]
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct nros_device_job_s {
+    #[doc = " The class-specific operation."]
+    pub op: *const core::ffi::c_void,
+    #[doc = " The input."]
+    pub input: nros_device_buffer_t,
+    #[doc = " Where the output goes."]
+    pub output: nros_device_buffer_t,
+}
+#[doc = " A result, type-erased. The capture time is a pair read at one instant:\n `captured_at_ns` on the monotonic clock, which a stage's maximum age is\n measured against, and `captured_stamp_ns` on the wall clock, which a\n message header takes."]
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct nros_device_result_s {
+    #[doc = " The buffer the result is in."]
+    pub output: nros_device_buffer_t,
+    #[doc = " The bytes of `output` the device wrote."]
+    pub length: usize,
+    #[doc = " When the input was captured, monotonic, in nanoseconds."]
+    pub captured_at_ns: i64,
+    #[doc = " The wall clock at that instant, in nanoseconds since the epoch."]
+    pub captured_stamp_ns: i64,
+    #[doc = " The job's outcome: `NROS_DEVICE_RET_OK` or an error."]
+    pub status: nros_device_ret_t,
+    #[doc = " Reserved; zero."]
+    pub _reserved: u32,
+}
+#[doc = " A worker port: a job goes in, a result comes back."]
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct nros_worker_port_ops_s {
+    #[doc = " Must equal `NROS_DEVICE_PORT_ABI_V1`."]
+    pub abi_version: u32,
+    #[doc = " Reserved; zero."]
+    pub _reserved: u32,
+    #[doc = " The port's own context, passed back as the first argument."]
+    pub user_data: *mut core::ffi::c_void,
+    #[doc = " Start `job` on the device and return at once. The port signals `done`\n when the device has finished."]
+    pub submit: ::core::option::Option<
+        unsafe extern "C" fn(
+            user_data: *mut core::ffi::c_void,
+            job: *const nros_device_job_t,
+            done: nros_completion_t,
+        ) -> nros_device_ret_t,
+    >,
+    #[doc = " Collect the result of the finished job into `out`, or return\n `NROS_DEVICE_RET_PENDING` if it has not finished."]
+    pub take: ::core::option::Option<
+        unsafe extern "C" fn(
+            user_data: *mut core::ffi::c_void,
+            out: *mut nros_device_result_t,
+        ) -> nros_device_ret_t,
+    >,
+    #[doc = " Abandon the running job. May be NULL when the device cannot."]
+    pub cancel: ::core::option::Option<
+        unsafe extern "C" fn(user_data: *mut core::ffi::c_void) -> nros_device_ret_t,
+    >,
+}
+#[doc = " A source port: data produced on the device's own clock."]
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct nros_source_port_ops_s {
+    #[doc = " Must equal `NROS_DEVICE_PORT_ABI_V1`."]
+    pub abi_version: u32,
+    #[doc = " Reserved; zero."]
+    pub _reserved: u32,
+    #[doc = " The port's own context, passed back as the first argument."]
+    pub user_data: *mut core::ffi::c_void,
+    #[doc = " Start producing. The port signals `ready` each time an item is ready."]
+    pub start: ::core::option::Option<
+        unsafe extern "C" fn(
+            user_data: *mut core::ffi::c_void,
+            ready: nros_completion_t,
+        ) -> nros_device_ret_t,
+    >,
+    #[doc = " Collect the next ready item into `out`, or return\n `NROS_DEVICE_RET_PENDING` if none is ready."]
+    pub take: ::core::option::Option<
+        unsafe extern "C" fn(
+            user_data: *mut core::ffi::c_void,
+            out: *mut nros_device_result_t,
+        ) -> nros_device_ret_t,
+    >,
+    #[doc = " Stop producing."]
+    pub stop: ::core::option::Option<unsafe extern "C" fn(user_data: *mut core::ffi::c_void)>,
+}
 pub const NROS_RMW_RET_EXTENSION_BASE: i32 = 1000;
 pub const NROS_RMW_RET_OK: i32 = 0;
 pub const NROS_RMW_RET_ERROR: i32 = 1;
@@ -1049,6 +1164,14 @@ pub const NROS_RMW_VISITOR_DEFINED: i32 = 1;
 pub const NROS_RMW_READINESS_NONE: i32 = 0;
 pub const NROS_RMW_READINESS_NOTIFY: i32 = 1;
 pub const NROS_RMW_READINESS_WAITABLE: i32 = 2;
+pub const NROS_DEVICE_PORT_ABI_V1: i32 = 1;
+pub const NROS_DEVICE_RET_OK: i32 = 0;
+pub const NROS_DEVICE_RET_PENDING: i32 = 1;
+pub const NROS_DEVICE_RET_REJECTED: i32 = -1;
+pub const NROS_DEVICE_RET_FAULT: i32 = -2;
+pub const NROS_DEVICE_RET_TIMEOUT: i32 = -3;
+pub const NROS_DEVICE_RET_UNSUPPORTED: i32 = -4;
+pub const NROS_DEVICE_RET_ABI_MISMATCH: i32 = -5;
 #[doc = " Borrow-shaped union the backend supplies to the registered\n  callback. The `kind` argument selects which member is valid.\n\n  Members are APPENDED (the matched and incompatible-type events grew it from 8 to 16 bytes). A caller\n  owns the union it hands `*_take_event`, so a backend built against the\n  older, smaller header writes within the larger one."]
 #[repr(C)]
 #[derive(Copy, Clone)]
@@ -1225,4 +1348,12 @@ unsafe extern "C" {
 unsafe extern "C" {
     #[doc = " Install a custom transport for subsequent session opens.\n\n The struct's contents are copied internally; the caller may\n stack-allocate. To clear the slot, pass NULL.\n\n The fn pointer is exported from the nano-ros C staticlib\n (`packages/api/nros-c/`), where it forwards to the\n `nros-rmw-cffi` registry. C++ consumers should include\n `<rclcpp/transport.hpp>` (from `nros-cpp`) which calls this\n function under the hood.\n\n @retval NROS_RMW_RET_OK on success (transport installed or\n         cleared).\n @retval NROS_RMW_RET_INCOMPATIBLE_ABI when `ops` is non-NULL but\n         `ops->abi_version` does not match\n         `NROS_TRANSPORT_OPS_ABI_VERSION_V1`. The previously\n         installed transport (if any) is left untouched."]
     pub fn nros_rmw_cffi_set_custom_transport(ops: *const nros_transport_ops_t) -> rmw_ret_t;
+}
+unsafe extern "C" {
+    #[doc = " Signal a completion from thread context."]
+    pub fn nros_completion_signal(c: nros_completion_t);
+}
+unsafe extern "C" {
+    #[doc = " Signal a completion from an interrupt handler. The only call a port may\n make in interrupt context. Bounded and non-blocking."]
+    pub fn nros_completion_signal_from_isr(c: nros_completion_t);
 }

@@ -1622,6 +1622,64 @@ const _: () = {
     );
 };
 
+// phase-579 W2 (RFC-0139 D3) -- the device port ABI, the Rust half of its
+// layout check. The C half is the `NROS_DP_AT` block in
+// tests/c_stubs/abi_layout_check.c and states the SAME offsets in the same
+// terms (pointer size, `i64` alignment), so a field moved in the header alone
+// fails there (and `check-abi-bindings` finds the bindings stale), and a field
+// moved in the generated bindings alone fails here. Every offset is pinned, not
+// only the size: two fields of one width swapped keep the size.
+const _: () = {
+    use core::mem::{align_of, offset_of, size_of};
+    const P: usize = size_of::<*const core::ffi::c_void>();
+    const I64: usize = align_of::<i64>();
+    const fn up(x: usize, a: usize) -> usize {
+        x.div_ceil(a) * a
+    }
+    const RES: usize = up(3 * P, I64);
+    const OPS: usize = up(8, P);
+
+    assert!(size_of::<generated::nros_device_ret_t>() == 4);
+
+    assert!(offset_of!(generated::nros_completion_t, _slot) == 0);
+    assert!(size_of::<generated::nros_completion_t>() == P);
+
+    assert!(offset_of!(generated::nros_device_buffer_t, data) == 0);
+    assert!(offset_of!(generated::nros_device_buffer_t, size) == P);
+    assert!(size_of::<generated::nros_device_buffer_t>() == 2 * P);
+
+    assert!(offset_of!(generated::nros_device_job_t, op) == 0);
+    assert!(offset_of!(generated::nros_device_job_t, input) == P);
+    assert!(offset_of!(generated::nros_device_job_t, output) == 3 * P);
+    assert!(size_of::<generated::nros_device_job_t>() == 5 * P);
+
+    assert!(offset_of!(generated::nros_device_result_t, output) == 0);
+    assert!(offset_of!(generated::nros_device_result_t, length) == 2 * P);
+    assert!(offset_of!(generated::nros_device_result_t, captured_at_ns) == RES);
+    assert!(offset_of!(generated::nros_device_result_t, captured_stamp_ns) == RES + 8);
+    assert!(offset_of!(generated::nros_device_result_t, status) == RES + 16);
+    assert!(offset_of!(generated::nros_device_result_t, _reserved) == RES + 20);
+    assert!(
+        size_of::<generated::nros_device_result_t>() == up(RES + 24, if I64 > P { I64 } else { P })
+    );
+
+    assert!(offset_of!(generated::nros_worker_port_ops_t, abi_version) == 0);
+    assert!(offset_of!(generated::nros_worker_port_ops_t, _reserved) == 4);
+    assert!(offset_of!(generated::nros_worker_port_ops_t, user_data) == OPS);
+    assert!(offset_of!(generated::nros_worker_port_ops_t, submit) == OPS + P);
+    assert!(offset_of!(generated::nros_worker_port_ops_t, take) == OPS + 2 * P);
+    assert!(offset_of!(generated::nros_worker_port_ops_t, cancel) == OPS + 3 * P);
+    assert!(size_of::<generated::nros_worker_port_ops_t>() == OPS + 4 * P);
+
+    assert!(offset_of!(generated::nros_source_port_ops_t, abi_version) == 0);
+    assert!(offset_of!(generated::nros_source_port_ops_t, _reserved) == 4);
+    assert!(offset_of!(generated::nros_source_port_ops_t, user_data) == OPS);
+    assert!(offset_of!(generated::nros_source_port_ops_t, start) == OPS + P);
+    assert!(offset_of!(generated::nros_source_port_ops_t, take) == OPS + 2 * P);
+    assert!(offset_of!(generated::nros_source_port_ops_t, stop) == OPS + 3 * P);
+    assert!(size_of::<generated::nros_source_port_ops_t>() == OPS + 4 * P);
+};
+
 /// C entry point for installing a custom transport.
 ///
 /// Mirrors the Rust-side `nros_rmw::set_custom_transport(Some(...))`

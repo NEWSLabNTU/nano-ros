@@ -60,8 +60,17 @@ device. RFC-0139's Motivation has the measurements and the driver survey.
 
 ### W2 — The port ABI header
 
-- **Owner:** unassigned.
-- **Status:** OPEN
+- **Owner:** nros 139 (2026-11-26).
+- **Status:** OPEN (in review). `<nros/device_port.h>` sits beside
+  `<nros/rmw_transport.h>` in `nros-rmw-abi`, and its bindings are in the RMW
+  surface (`nros-rmw-cffi/src/generated.rs`), which `check-abi-bindings`
+  already covers. Every field offset is pinned on both sides, in pointer-size
+  terms: `abi_layout_check.c` for C, a `const _` block in
+  `nros-rmw-cffi/src/lib.rs` for Rust. Mutation-tested: a reorder in the
+  header alone (a function-pointer swap; a same-width `int64_t` swap that keeps
+  the size) fails the C half and leaves the bindings stale, and a reorder in
+  the generated bindings alone fails the Rust half. The capture time in the
+  result is ruling Q4's pair (`captured_at_ns`, `captured_stamp_ns`).
 - `<nros/device_port.h>` (RFC-0139 D3): worker and source ops, the completion
   handle and its two signal functions, the generic job and result, the return
   codes, `abi_version`. Committed bindgen output for Rust; layout checks on
