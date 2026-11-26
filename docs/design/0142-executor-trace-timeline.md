@@ -1,7 +1,7 @@
 ---
 rfc: 0142
 title: "Executor trace timeline: one event stream, one viewer format"
-status: Draft
+status: Stable
 area: runtime-api
 since: 2026-11
 last-reviewed: 2026-11
@@ -13,12 +13,11 @@ superseded-by: null
 
 # RFC-0142 — Executor trace timeline
 
-**Status:** Draft (2026-11-26). Nothing is built. It is waiting for the user to
-rule on D1 (the event set), D2 (the format) and D6 (how the test checks the
-viewer opens the trace). No code is written until phase-575 W5 (budget
-enforcement and deadline monitors on FreeRTOS) has landed, because two of the
-events in D1 are emitted by code that work item writes. Tracked by
-phase-578 W11.
+**Status:** Stable (ruled 2026-11-26). Drafted the same day for phase-578
+W11. All three questions were ruled as drafted (see "Rulings" below). Nothing
+is built yet, and no code is written until phase-575 W5 (budget enforcement
+and deadline monitors on FreeRTOS) lands, because that work item writes the
+emitters for D1's new events. Tracked by phase-578 W11.
 
 ## Summary
 
@@ -144,7 +143,7 @@ switches, it must add a task id before it is supported, rather than guess.
 - RMW-internal events (zenoh-pico reads, lease ticks). That is a different
   layer, and it would need its own RFC.
 
-### D2 — the format: Perfetto (recommended)
+### D2 — the format: Perfetto
 
 The output a user opens is a Perfetto trace, in the protobuf `TrackEvent`
 form, viewed at ui.perfetto.dev or with `trace_processor`. The recording stays
@@ -159,7 +158,7 @@ converter writes.
 | Already used here | no | Zephyr recording, test-only | FreeRTOS, through `tband-cli` |
 | Licence for us | target library under Segger's terms, viewer proprietary | open | open (Apache-2.0) |
 
-**Recommendation: Perfetto.**
+**Perfetto, as ruled.**
 - It is the only one of the three that a user can open with nothing installed.
 - It is already where the FreeRTOS path ends.
 - It draws a callback as a slice, a deadline miss as an instant and a sample
@@ -248,13 +247,13 @@ reader agree. So the test opens the converted file with Perfetto's
 - a job window encloses it;
 - a `deadline-miss-runtime` instant falls after the window's deadline.
 
-**Recommended:** provision `trace_processor_shell` through
+**Ruled:** provision `trace_processor_shell` through
 `nros-sdk-index.toml` as a pinned prebuilt, one binary for each host
 architecture. It is fetched by `nros setup` like any other tool and never
 downloaded by the test.
 
-**Alternative:** check the file against Perfetto's published protobuf schema
-only. That needs no binary, but a file can parse against the schema and still
+**Not chosen:** checking the file against Perfetto's published protobuf
+schema only. That needs no binary, but a file can parse against the schema and still
 show nothing in the viewer.
 
 The run itself: a FreeRTOS MPS2-AN385 fixture (phase-575 W5's board) whose
@@ -265,15 +264,23 @@ every other.
 A Zephyr run of the same image follows, with the same assertions through the
 CTF reader. That is the check that two recorders produce one timeline.
 
-## Open questions for the ruling
+## Rulings (2026-11-26)
 
-1. **D1:** is a budget overrun a violation, with its own rule
-   (`budget-overrun-runtime`) as proposed, or only the throttle interval
-   (30/31)? The proposal gives it a rule, so that it reaches the log and
-   `/diagnostics` like a deadline miss.
-2. **D2:** Perfetto, as recommended, or another format?
-3. **D6:** provision `trace_processor_shell` (recommended), or check the
-   schema only?
+The user ruled all three questions as drafted, relayed by the manager session.
+
+1. **A budget overrun is its own violation rule, `budget-overrun-runtime`**
+   (appended to `RULE_IDS`, code 18), not only the throttle interval. It then
+   reaches the log line and `/diagnostics` the way a deadline miss does, and
+   events 30 and 31 still draw how long the task was throttled.
+2. **The viewer format is Perfetto.** SystemView and CTF are not viewer
+   formats here; Zephyr keeps CTF as its recording format, read by D3.
+3. **The SDK provisions `trace_processor_shell`** as a pinned prebuilt per
+   host architecture in `nros-sdk-index.toml`, fetched by `nros setup`. The
+   acceptance test queries the converted trace with it and never downloads
+   it itself.
+
+Phase-575 W5's owner was told about ids 28..31 and the new rule, since that
+work item writes their emitters.
 
 ## Not decided here
 
@@ -283,6 +290,13 @@ CTF reader. That is the check that two recorders produce one timeline.
 - **Streaming capture.** RTT, or Tonbandgeraet's streaming backend over a
   serial line, for runs longer than a RAM snapshot.
 - **Bare-metal and POSIX recorders.**
+
+## Changelog
+
+- 2026-11-26 — Ruled: all three questions as drafted (a budget overrun is
+  its own rule, `budget-overrun-runtime`; Perfetto; `trace_processor_shell`
+  provisioned by the SDK for acceptance). Draft to Stable; work is phase-578
+  W11, after phase-575 W5.
 
 ## Related
 

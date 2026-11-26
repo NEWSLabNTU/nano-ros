@@ -370,6 +370,11 @@ boards self-describe their dependencies.
   flash, and the arena floor applies only where demand is unknown → RFC-0107. Per core,
   one ready set ordered by the contract's rank, run by N preemption levels → RFC-0108,
   which amends RFC-0107's per-tier dispatcher.
+- What the executor and scheduler did is ONE trace stream: two-word events through one
+  installed sink (callback start/end, takes, job release/complete, budget throttling), and a
+  deadline miss or budget overrun is a monitor violation in it, never a separate event. Each
+  platform records the stream its own way (Zephyr CTF, FreeRTOS Tonbandgeraet), and one
+  host converter writes Perfetto from any of them, on the recorder's clock → RFC-0142.
 
 ## 5. Codegen, workspace & user workflow
 

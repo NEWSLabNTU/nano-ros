@@ -272,10 +272,11 @@ path is smaller and prints the same lines in `nros monitor`.
 - **Status:** OPEN
 - **Owner:** nros 133, after its current batch
 - **After:** phase-575 W5
-- **Needs:** the user's ruling on RFC-0142 (the event set; the output
-  format, Perfetto recommended over SystemView and CTF; how the test checks
-  the viewer opens it). The RFC is drafted (2026-11-26); no code before
-  phase-575 W5 lands.
+- **Design:** RFC-0142, ruled 2026-11-26 (Stable): the existing executor
+  trace stream plus job and budget events 28..31 and the
+  `budget-overrun-runtime` rule; Perfetto as the viewer format; acceptance
+  queried with `trace_processor_shell`, provisioned by the SDK. No code before
+  phase-575 W5 lands, since it writes the new events' emitters.
 
 Record executor and scheduling events (task start and end, budget overrun,
 deadline miss) and export them in a format an existing viewer opens.
