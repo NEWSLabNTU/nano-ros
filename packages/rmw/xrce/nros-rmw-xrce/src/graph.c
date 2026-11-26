@@ -211,8 +211,8 @@ static bool graph_probe(xrce_session_state_t* st) {
         if (now_ms - start_ms >= XRCE_GRAPH_PROBE_TIMEOUT_MS) {
             break;
         }
-        (void)uxr_buffer_request(&st->session, st->output_reliable, rq, g->probe_nonce,
-                                 sizeof(g->probe_nonce));
+        bool too_large = false; /* a fixed-size nonce: never */
+        (void)xrce_write_request(st, rq, g->probe_nonce, sizeof(g->probe_nonce), &too_large);
         xrce_session_pump(st, XRCE_GRAPH_PROBE_RETRY_MS);
     }
     g->probe_replier_id = 0;
@@ -584,8 +584,9 @@ void xrce_graph_flush(xrce_session_state_t* st) {
     }
     size_t len = xrce_graph_serialize(g, buf, cap);
     uint16_t req = UXR_INVALID_REQUEST_ID;
+    bool too_large = false;
     if (len > 0) {
-        req = uxr_buffer_topic(&st->session, st->output_reliable, g->writer_oid, buf, len);
+        req = xrce_write_topic(st, g->writer_oid, buf, len, &too_large);
     }
     nros_xrce_free(buf);
     if (req != UXR_INVALID_REQUEST_ID) {
@@ -599,11 +600,21 @@ void xrce_graph_flush(xrce_session_state_t* st) {
     if (!g->warned_too_large) {
         char msg[256];
         // issue 1292
-        (void)snprintf(msg, sizeof(msg),
-                       "ros_discovery_info sample (%lu bytes) did not fit one XRCE stream "
-                       "slot; raise NROS_XRCE_TRANSPORT_MTU (or NROS_XRCE_CUSTOM_TRANSPORT_MTU). "
-                       "Nodes created since are not listed by `ros2 node list`.",
-                       (unsigned long)len);
+        if (too_large) {
+            /* Issue 2978 -- no MTU raises the 16-bit WRITE_DATA length. */
+            (void)snprintf(msg, sizeof(msg),
+                           "ros_discovery_info sample (%lu bytes) is over the 65,535-byte "
+                           "length an XRCE message can state. Nodes created since are not "
+                           "listed by `ros2 node list`.",
+                           (unsigned long)len);
+        } else {
+            (void)snprintf(msg, sizeof(msg),
+                           "ros_discovery_info sample (%lu bytes) did not fit one XRCE stream "
+                           "slot; raise NROS_XRCE_TRANSPORT_MTU (or "
+                           "NROS_XRCE_CUSTOM_TRANSPORT_MTU). Nodes created since are not "
+                           "listed by `ros2 node list`.",
+                           (unsigned long)len);
+        }
         graph_log(XRCE_LOG_ERROR, msg);
         g->warned_too_large = true;
     }

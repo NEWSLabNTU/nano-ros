@@ -194,9 +194,11 @@ static rmw_ret_t xrce_publisher_publish_raw_locked(const rmw_publisher_t *publis
     }
 
     /* Try the non-fragmented fast path first. */
-    uint16_t req = uxr_buffer_topic(
-        &st->session, st->output_reliable, ps->datawriter_oid,
-        (uint8_t *)(uintptr_t)body, body_len);
+    bool too_large = false;
+    uint16_t req = xrce_write_topic(st, ps->datawriter_oid, body, body_len, &too_large);
+    if (too_large) {
+        return NROS_RMW_RET_MESSAGE_TOO_LARGE; /* issue 2978 */
+    }
     if (req != UXR_INVALID_REQUEST_ID) {
         /* Flush so the bytes reach the agent without waiting for the
          * next drive_io tick. Mirrors the Rust impl. */
@@ -322,9 +324,11 @@ static rmw_ret_t xrce_publisher_publish_streamed_locked(
     size_t body_len = total - XRCE_CDR_HEADER_LEN;
 
     ucdrBuffer ub;
-    uint16_t req = uxr_prepare_output_stream(
-        &st->session, st->output_reliable, ps->datawriter_oid,
-        &ub, (uint32_t)body_len);
+    bool too_large = false;
+    uint16_t req = xrce_prepare_topic_stream(st, ps->datawriter_oid, &ub, body_len, &too_large);
+    if (too_large) {
+        return NROS_RMW_RET_MESSAGE_TOO_LARGE; /* issue 2978 */
+    }
     if (req == UXR_INVALID_REQUEST_ID) {
         /* A full window or a `body_len` past one stream slot (no fragmented
          * path in the K.2 backend yet — same gap as `publish_raw`); issue

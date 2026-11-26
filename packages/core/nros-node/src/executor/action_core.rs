@@ -586,7 +586,9 @@ impl<
 
         self.feedback_publisher
             .publish_raw(&self.feedback_buffer[..len])
-            .map_err(|_| NodeError::Transport(TransportError::PublishFailed))
+            // Issue 2978 -- the backend's own refusal (MessageTooLarge, WouldBlock,
+            // SessionLost ...), not a flattened PublishFailed.
+            .map_err(NodeError::Transport)
     }
 
     /// Set a goal's status and publish the updated GoalStatusArray.
@@ -1532,7 +1534,9 @@ impl<
         let len = writer.position();
         self.status_publisher
             .publish_raw(&buf[..len])
-            .map_err(|_| NodeError::Transport(TransportError::PublishFailed))
+            // Issue 2978 -- the backend's own refusal (MessageTooLarge, WouldBlock,
+            // SessionLost ...), not a flattened PublishFailed.
+            .map_err(NodeError::Transport)
     }
 }
 

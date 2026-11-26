@@ -59,6 +59,49 @@ the stream window holds, and the receive path (`xrce_topic_callback`,
 The 65,535-byte case (nothing received and a hang at close) is in the same
 range and is checked by the same cell.
 
+## Progress (2026-11-26)
+
+**Fixed: a nano-ros sender refuses.** Every WRITE_DATA the backend sends now
+goes through one of four checked writers in `nros-rmw-xrce/src/session.c`
+(`xrce_write_topic`, `xrce_write_request`, `xrce_write_reply`,
+`xrce_prepare_topic_stream`). Each returns `MESSAGE_TOO_LARGE` for a body the
+16-bit length cannot state, before anything is written. That covers publish
+(raw and streamed), service request and reply, the action messages (which
+travel as those), and the graph sample. A test in `nros-rmw-xrce-cffi`
+(`write_data_writers.rs`) refuses a direct call to the client's writer
+anywhere else, so a new send path cannot skip the check. `nros-node` used to
+flatten every publish error to `PublishFailed`; it now passes the backend's
+own error up, so the Rust caller sees `MessageTooLarge`. The C surface maps
+it to `RCLC_RET_FULL` and C++ to `NROS_CPP_RET_FULL`, as for any
+`MessageTooLarge`.
+
+Measured with the large-message probe on an image whose stream window
+(8 KiB MTU x 16) is wider than 64 KiB, so only the length check can refuse:
+64 KiB and 70,000-byte publishes return `MessageTooLarge`, three of three,
+and 16 KiB still delivers intact. The cells are in `tests/large_msg.rs`
+(`xrce_sample_over_the_write_data_length_is_refused_at_publish`,
+`large_message_is_delivered_intact_on_the_host::xrce_16k`).
+
+**Still open: a sample the Agent relays from a DDS publisher.** A ROS 2
+node on DDS can publish a sample over 64 KiB; the Agent writes it with a
+wrapped length and the client hands nano-ros the cut sample. The receive
+callback cannot tell a wrapped length from a short sample: its buffer runs
+past the submessage (several submessages share one message) and a
+fragmented sample is read through a callback. This needs the Agent's side
+of the fix below, or a check against the type's own serialized size.
+
+**Carrying samples past 64 KiB (not done).** The upstream client has
+`UCLIENT_TWEAK_XRCE_WRITE_LIMIT`: on its fragmented path
+(`uxr_prepare_output_stream_fragmented`) a WRITE_DATA longer than 65,535
+bytes is sent with length 0, which the Agent reads as "to the end of the
+reassembled message". The backend uses neither that path nor the flag, and
+whether the 2.4.3 Agent honours length 0 in both directions is unmeasured.
+That is the route to XRCE samples above 64 KiB; the refusal comes first.
+
+The listener in the measurements above also hung at `close` after a run in
+which nothing arrived (65,400 and 65,535 bytes against a 17 KiB receive
+buffer); not investigated here.
+
 ## Reproduce
 
 ```

@@ -317,7 +317,8 @@ pub enum TransportError {
     DeserializationError,
     /// Buffer too small
     BufferTooSmall,
-    /// Incoming message exceeded the static buffer capacity
+    /// A message larger than the buffer that holds it, or than the transport
+    /// can carry (an XRCE message states its length in 16 bits).
     MessageTooLarge,
     /// Timeout waiting for message
     Timeout,
@@ -428,7 +429,7 @@ impl core::fmt::Display for TransportError {
             Self::SerializationError => "serialization failed",
             Self::DeserializationError => "deserialization failed",
             Self::BufferTooSmall => "buffer too small",
-            Self::MessageTooLarge => "incoming message exceeds the static buffer",
+            Self::MessageTooLarge => "message is larger than the buffer or the transport can carry",
             Self::Timeout => "timed out",
             Self::InvalidConfig => "invalid configuration",
             Self::WouldBlock => "resource momentarily unavailable; retry",

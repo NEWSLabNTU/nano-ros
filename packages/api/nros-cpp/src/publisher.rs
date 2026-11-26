@@ -20,8 +20,8 @@ use core::ffi::{c_char, c_void};
 use nros_rmw::{Publisher as PublisherTrait, Session, TopicInfo};
 
 use crate::{
-    NROS_CPP_RET_ERROR, NROS_CPP_RET_INVALID_ARGUMENT, NROS_CPP_RET_OK, cstr_to_str,
-    nros_cpp_node_t, nros_cpp_qos_t, nros_cpp_ret_t,
+    NROS_CPP_RET_INVALID_ARGUMENT, NROS_CPP_RET_OK, cstr_to_str, nros_cpp_node_t, nros_cpp_qos_t,
+    nros_cpp_ret_t,
 };
 use nros_node::executor::ffi::ExecutorFfi as _;
 
@@ -291,7 +291,9 @@ pub unsafe extern "C" fn nros_cpp_publish_raw(
     publisher.bump_monitor();
     match publisher.handle.publish_raw(data_slice) {
         Ok(()) => NROS_CPP_RET_OK,
-        Err(_) => NROS_CPP_RET_ERROR,
+        // Issue 2978 -- the backend's own refusal (a sample too large is
+        // NROS_CPP_RET_FULL), through the crate's one mapper.
+        Err(e) => crate::transport_error_to_cpp_ret(e),
     }
 }
 
@@ -345,7 +347,8 @@ pub unsafe extern "C" fn nros_cpp_publisher_publish_streamed(
             .publish_streamed(size_cb, chunk_cb, user_ctx)
     } {
         Ok(()) => NROS_CPP_RET_OK,
-        Err(_) => NROS_CPP_RET_ERROR,
+        // Issue 2978 -- as `nros_cpp_publish_raw`.
+        Err(e) => crate::transport_error_to_cpp_ret(e),
     }
 }
 

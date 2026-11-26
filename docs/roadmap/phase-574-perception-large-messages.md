@@ -140,8 +140,9 @@ The configuration each needed:
   ring entry holds the data but not the CDR prefix) and 64 KB fails at
   publish. 64 KB and above fails for any configuration: a sample is one DATA
   submessage, whose length is 16 bits on the wire. Up to 65,400 bytes passes
-  with a large enough window; above 65,535 a sample is lost, or delivered cut
-  to its size modulo 65,536 with no error (issue 2978).
+  with a large enough window. Above that, a sample used to be lost, or
+  delivered cut to its size modulo 65,536, while the publish returned `Ok`;
+  it is now refused at publish with `MessageTooLarge` (issue 2978).
 - **Cyclone:** nothing; the defaults carry 4 MB.
 
 Still to measure: the embedded targets, and the `inline` and `view` storage
