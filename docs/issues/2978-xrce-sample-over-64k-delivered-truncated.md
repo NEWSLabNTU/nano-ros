@@ -90,6 +90,13 @@ past the submessage (several submessages share one message) and a
 fragmented sample is read through a callback. This needs the Agent's side
 of the fix below, or a check against the type's own serialized size.
 
+**Real messages that cross the limit.** A `vision_msgs/Detection2DArray`
+costs 440 B per detection (25 B base), so more than about 148 detections
+exceeds 65,400 bytes; `mgonzs13/yolo_ros`'s `max_det` default is 300
+(132,025 B). A `yolo_msgs/DetectionArray` (about 192 B each) crosses only
+above about 340 detections. Measured with rclpy `serialize_message` on
+Humble; `yolo_msgs` computed from its 4.7.1 `.msg` files. See phase 574 W1.
+
 **Carrying samples past 64 KiB (not done).** The upstream client has
 `UCLIENT_TWEAK_XRCE_WRITE_LIMIT`: on its fragmented path
 (`uxr_prepare_output_stream_fragmented`) a WRITE_DATA longer than 65,535
