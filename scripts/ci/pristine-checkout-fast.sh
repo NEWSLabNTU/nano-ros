@@ -34,7 +34,7 @@
 # Not a fast gate (it RUNS the fast tier, so the tier would recurse). Its recipe
 # is `tier` exempt, and `just ci gate` runs it after `check::fast`.
 #
-# Usage: scripts/ci/pristine-checkout-fast.sh [--keep]
+# Usage: scripts/ci/pristine-checkout-fast.sh [--keep | --self-test]
 
 set -uo pipefail
 
@@ -64,6 +64,65 @@ cleanup() {
     fi
 }
 trap cleanup EXIT
+
+# The baseline is the BRANCH POINT, exactly as the in-tree gates resolve it
+# (`pin-baseline.sh resolve`: CI's event base, else the merge-base with
+# origin/main), never main's tip. Handing the clone `origin/main` itself made
+# every gate that reads this baseline compare a branch BEHIND main with main:
+# codes main added since were "removed from codes.lock", while the in-tree
+# `check diagnostics` on the same tree passed (issue 2988). So the clone gets
+# `merge-base(HEAD, <candidate>)`: the caller's own baseline when it set one,
+# else the resolver's answer. A candidate that is already an ancestor of HEAD
+# is unchanged, and a tip can no longer arrive as a baseline. The objects are
+# shared, so the clone resolves the commit. Nothing resolvable: unset, and
+# the clone's gate says so as it always did.
+pristine_pin_baseline() {  # <repo> <candidate or empty>
+    local repo="$1" cand="$2"
+    if [ -z "$cand" ]; then
+        cand="$(cd "$repo" && bash "$repo/scripts/ci/pin-baseline.sh" resolve HEAD 2>/dev/null)" \
+            || return 1
+    fi
+    git -C "$repo" rev-parse --verify -q "${cand}^{commit}" >/dev/null || return 1
+    git -C "$repo" merge-base HEAD "$cand" 2>/dev/null
+}
+
+# Selftest on the normal path (~0.1 s): a branch one commit behind main gets
+# its branch point, not main's tip, whether the candidate is main itself or
+# left to the resolver. Built in a scratch repository, after the inherited git
+# environment was cleared above.
+pristine_baseline_selftest() {
+    local r="$tmp/baseline-selftest" fork tip got
+    git init -q -b main "$r" && git -C "$r" config user.email t@t \
+        && git -C "$r" config user.name t || return 1
+    mkdir -p "$r/scripts/ci" "$r/scripts/lib"
+    cp "$repo_root/scripts/ci/pin-baseline.sh" "$r/scripts/ci/"
+    cp "$repo_root/scripts/lib/git-history.sh" "$r/scripts/lib/"
+    git -C "$r" add -A && git -C "$r" commit -qm base
+    fork="$(git -C "$r" rev-parse HEAD)"
+    git -C "$r" commit -q --allow-empty -m "main moves on"
+    tip="$(git -C "$r" rev-parse HEAD)"
+    git -C "$r" update-ref refs/remotes/origin/main "$tip"
+    git -C "$r" checkout -q -b behind "$fork"
+    git -C "$r" commit -q --allow-empty -m "branch work"
+    for cand in "$tip" ""; do
+        got="$(unset GITHUB_EVENT_NAME GITHUB_EVENT_PATH; pristine_pin_baseline "$r" "$cand")" || got=""
+        if [ "$got" != "$fork" ]; then
+            echo "pristine-checkout SELFTEST FAILED: a branch behind main got baseline" \
+                "'${got:-none}' for candidate '${cand:-<resolver>}', want its branch point $fork" >&2
+            return 1
+        fi
+    done
+}
+# `--self-test` runs only the selftest above: the one place this script builds
+# a repository with `git init`, which is what `check-hook-repo-side-effects`
+# probes it for. The normal path runs the whole fast lane in a clone, which no
+# probe budget fits.
+if [ "${1:-}" = "--self-test" ]; then
+    pristine_baseline_selftest || exit 1
+    echo "pristine-checkout: selftest OK (a branch behind main gets its branch point)"
+    exit 0
+fi
+
 
 if ! git clone --quiet --local --shared --no-checkout "$repo_root" "$clone" 2>"$tmp/clone.log" \
     || ! git -C "$clone" checkout --quiet --detach "$(git rev-parse HEAD)" 2>>"$tmp/clone.log"; then
@@ -128,17 +187,9 @@ fi
 # checkout nobody pulls can be hundreds of commits old: measured 774 behind on
 # one host, so every pin moved since read "moved, NOT VERIFIED" and, once a
 # skip became a red, `check::pristine-checkout` failed in every worktree of it.
-# The caller's own baseline wins; else this checkout's `origin/main`. The
-# objects are shared, so the clone resolves the commit. Neither resolvable:
-# unset, and the clone's gate says so as it always did.
-pin_baseline=""
-for cand in "${NROS_SUBMODULE_PIN_BASELINE:-}" origin/main; do
-    [ -n "$cand" ] || continue
-    if pin_baseline="$(git -C "$repo_root" rev-parse --verify -q "${cand}^{commit}")"; then
-        break
-    fi
-    pin_baseline=""
-done
+pristine_baseline_selftest || exit 1
+
+pin_baseline="$(pristine_pin_baseline "$repo_root" "${NROS_SUBMODULE_PIN_BASELINE:-}")" || pin_baseline=""
 
 # The same stale `origin/main` would make `changelog-required` diff the branch
 # against that old local main, so the clone's gates get this checkout's own
