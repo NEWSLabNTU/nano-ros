@@ -428,10 +428,12 @@ The FreeRTOS carrier (W2) does not read the stated key yet: no FreeRTOS image
 has a row, and its configure does not run the image-facts query. It keys by
 bringup until a FreeRTOS row exists (issue 2461).
 
-The configure-time `NROS_RUST_MAIN_STACK_FLOOR` (32 KiB, issue 2359) STAYS.
-An unmeasured image is never refused here, so removing it would put every
-unmeasured Rust image back on the silent overflow 2359 found. It can retire
-once measured rows cover the boards.
+The configure-time `NROS_RUST_MAIN_STACK_FLOOR` (32 KiB, issue 2359) stayed
+until phase-557 W10 (#4572, 2026-11-21), which retired it. An unmeasured
+Rust image is now held to its board's measured floor (the largest template
+peak plus the margin), or to `fallback_rust_main_stack` with a warning on a
+board with no rows. So no unmeasured image is back on 2359's silent
+overflow.
 
 Measured on the three `nros new --board nucleo-f767zi-zephyr` projects, built
 by `nros build` with the check:
@@ -582,10 +584,10 @@ lives:
 - **W8, the drift check on the nightly:** the 2026-11-17 run walked 4 of 5
   rows within band. The fifth needs the nucleo board's rust targets provisioned in the job, and
   #4137 adds that. W8 is done after the first green nightly.
-- **The 32 KiB `NROS_RUST_MAIN_STACK_FLOOR` literal:** it stays by ruling until
-  measured rows cover the boards, so `check-zephyr-rust-main-stack` still reads
-  a number, not the producer. Retiring it is what meets the acceptance's
-  "neither holds a literal".
+- **The 32 KiB `NROS_RUST_MAIN_STACK_FLOOR` literal:** retired by phase-557 W10
+  (#4572). `check-zephyr-rust-main-stack` and the configure now both read
+  `nros-stack-floor.py --board-floor`, which meets the acceptance's "neither
+  holds a literal".
 
 Whether floors stay per image or move to per-layer declarations is the open
 design question with the user, and issues 2653 and 2658 are its measured
