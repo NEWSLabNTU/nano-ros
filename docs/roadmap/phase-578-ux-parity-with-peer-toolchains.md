@@ -272,8 +272,10 @@ path is smaller and prints the same lines in `nros monitor`.
 - **Status:** OPEN
 - **Owner:** nros 133, after its current batch
 - **After:** phase-575 W5
-- **Needs:** an RFC: the event set and the output format (SystemView,
-  Perfetto, or CTF).
+- **Needs:** the user's ruling on RFC-0142 (the event set; the output
+  format, Perfetto recommended over SystemView and CTF; how the test checks
+  the viewer opens it). The RFC is drafted (2026-11-26); no code before
+  phase-575 W5 lands.
 
 Record executor and scheduling events (task start and end, budget overrun,
 deadline miss) and export them in a format an existing viewer opens.
