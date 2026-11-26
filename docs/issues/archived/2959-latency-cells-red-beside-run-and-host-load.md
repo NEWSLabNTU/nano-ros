@@ -7,7 +7,7 @@ resolved_in: "#4835 (the isolation); this change records the acceptance"
 type: bug
 severity: high
 area: [ci, testing, qemu]
-related: [issue-2540, issue-2706, phase-591]
+related: [issue-2540, issue-2706, phase-590, phase-591]
 found: 2026-11-24
 ---
 

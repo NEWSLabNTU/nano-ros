@@ -5,7 +5,7 @@ status: resolved
 type: bug
 severity: high
 area: [zephyr, fixtures, build]
-related: [phase-581, 2906]
+related: [phase-581, 2906, phase-590]
 found: 2026-11-24
 resolved: 2026-11-26
 ---

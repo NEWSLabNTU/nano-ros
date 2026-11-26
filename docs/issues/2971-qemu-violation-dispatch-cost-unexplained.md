@@ -5,7 +5,7 @@ status: open
 type: bug
 severity: low
 area: [testing, zephyr, qemu, monitors, zenoh]
-related: [issue-2273, issue-2508, phase-544, phase-474]
+related: [issue-2273, issue-2508, phase-544, phase-474, phase-590]
 found: 2026-11-25
 ---
 

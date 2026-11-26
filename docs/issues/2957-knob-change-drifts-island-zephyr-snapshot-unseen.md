@@ -5,7 +5,7 @@ status: open
 type: tech-debt
 severity: medium
 area: [zephyr, testing, build]
-related: [2886, 2780, phase-567]
+related: [2886, 2780, phase-567, phase-590]
 found: 2026-11-25
 ---
 
