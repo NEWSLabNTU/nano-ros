@@ -1,7 +1,7 @@
 # Phase 582 — Wall-clock source
 
-**Status (2026-11-24). OPEN: W2 and W3 are done; W1 and W4 are open (see their
-Status lines). Open issues: 2839 (fix on main, its Zephyr cells running), 2884
+**Status (2026-11-26). OPEN: W2, W3 and W4 are done; W1 is open (see its
+Status line). Open issues: 2839 (fix on main, its Zephyr cells running), 2884
 (ruled; server-clock pacing implemented, the FVP measurement pending), 2897
 (the 64-bit Arm stack walk, in progress), 2846, 2866. Owner: nros 139.** Implements [RFC-0141](../design/0141-wall-clock-source.md): one selected
 wall-clock source per image, behind the one wall-clock symbol. A board can
@@ -287,7 +287,21 @@ SNTP never re-acquires. A consumer's board hook papers over that with
 
 ### W4 — Board guidance and the per-backend stamp table
 
-- **Status:** OPEN
+- **Status:** DONE (2026-11-26). The table (W4a) and the how-to (W4b, #4635)
+  are on main, and the board-package guide
+  ([Add a board](../../book/src/extending/add-a-board.md), step 4) now names
+  the hook, the platforms that accept `board` and how to select it, and
+  points at the how-to for the hook's contract and its link rule (the
+  guide's word budget leaves room for a pointer only).
+  Acceptance is met per backend: zenoh, cyclonedds and xrce each have a row
+  checked against a built image with a stamp read back (Linux; zenoh also on
+  Zephyr), and `just check source-timestamp-table` holds it. uorb is the one
+  backend with no stamp to read (no take-with-info entry).
+  **Not measured, each needing a built image with a stamp observer** (beyond
+  this acceptance, which asks per backend, not per platform): zenoh on
+  FreeRTOS, ThreadX and NuttX; cyclonedds on Zephyr, FreeRTOS and ThreadX;
+  xrce on Zephyr and FreeRTOS; uorb on PX4. Their rows say `not measured`
+  with the reason, and claim no verdict.
 - **Owner:** nros 139
 - The board-package guidance states:
   - board hooks are linked inside nano-ros's link group, after its library;

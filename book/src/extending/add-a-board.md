@@ -131,6 +131,11 @@ your RTOS yet, [add the platform](add-a-platform.md) first.
    strong definitions that attach your MAC driver to lwIP, or leave them out
    and reach the router over a serial locator.
 
+   A board that knows the time of day can be the image's wall clock on
+   Linux, FreeRTOS and bare metal: define `nros_board_wall_clock_ns` and
+   select it with `[knobs.clock] source = "board"`. See
+   [Set the wall clock from the board](../guide/deploy/set-the-wall-clock-from-the-board.md).
+
 5. On Zephyr, consume the board from the application's `CMakeLists.txt`, with
    one call before `find_package(Zephyr)`:
 
