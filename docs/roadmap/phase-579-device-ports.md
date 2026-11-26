@@ -88,10 +88,10 @@ device. RFC-0139's Motivation has the measurements and the driver survey.
 ### W4 — The companion package, in three languages
 
 - **Owner:** nros 139 (2026-11-26).
-- **Status:** OPEN. Design half drafted: RFC-0139's amendment gives the Rust
-  shape (the node API and the implementor trait), with four questions for the
-  user. Implementation starts after the ruling, and after W2 and W3, which it
-  builds on.
+- **Status:** OPEN. Design half done: RFC-0139's amendment (the Rust shape,
+  and the capture time as a monotonic and wall-clock pair in all three
+  languages) was accepted by the user's rulings of 2026-11-26. Implementation
+  follows W2 and W3, which it builds on.
 - `nros-device` (crate), `NanoRos::Device` (CMake), `<nros/device.h>`,
   `<nros/device.hpp>` (D7): worker and source registration, stages, slot
   views, the per-class headers for inference, 2D operation, camera frame and
