@@ -448,6 +448,12 @@ build-fixtures:
     if [ -n "$fixture_filter" ]; then
         zephyr_leaf_args+=(--filter "$fixture_filter")
     fi
+    # Issue 2987 -- the emitter reads no narrowing from the environment (it is
+    # also the inventory whole-manifest gates read), so the lane hands the row
+    # id over as a flag, as it does the filter.
+    if [ -n "${NROS_FIXTURE_ID:-}" ]; then
+        zephyr_leaf_args+=(--fixture-id "$NROS_FIXTURE_ID")
+    fi
     normal_records=0
     # Kept until the end: the sched-task-priority check below judges exactly the
     # images THESE records build (field 12 is each leaf's build dir).
