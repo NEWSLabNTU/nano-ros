@@ -5,7 +5,7 @@ status: open
 type: bug
 severity: high
 area: [ci, testing, qemu]
-related: [issue-2540, issue-2706]
+related: [issue-2540, issue-2706, phase-590]
 found: 2026-11-24
 ---
 

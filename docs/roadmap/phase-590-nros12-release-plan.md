@@ -110,9 +110,38 @@ on `main` that meets the rule above, is green after the fix.
 | B15 | tier 2 | a readiness marker rides Zephyr's deferred log, which drops lines under load, so a cell that worked reads as a timeout; `sched_dims_applied` CorePinPlacement a53 (B2's last row) is the second site. The release check has no flake allowance, so this blocks | [2847](../issues/archived/2847-zephyr-readiness-marker-rides-droppable-log.md) | nros 241 | #4704 (issue widened to both sites, merged); #4712 (code fix: Zephyr threads wait for log-buffer room instead of dropping, on every deferred-log board, plus a fast gate against opt-outs) | fix in review: draft until its full gate and the deferred-log board cells are green (the class is every Zephyr row except native_sim, 18 rows) |
 | B16 | live-peer | the host (`regression`) job's fixture step took 309 min of its 350-min cap on 11-23 (149 builds): every row re-runs a workspace-wide configure that never converges on a runner without the Zephyr SDK, and about 141 rows are built for 41 cells | [2905](../issues/2905-live-peer-regression-fixture-rows-outgrow-hosted-cap.md) | nros 118 | #4715 (configure only the row's image; name rows by test id) | fix in review (draft until its full gate) |
 | B17 | live-peer | the two zenoh `ros2_action_e2e` host cells hand the nano binary its router as `NROS_ENTRY_LOCATOR`, a build-time name no run-time reader reads, so it dials the default port (renamed in phase-581 W6) | 2908 (filed in #4718) | nros 139 | #4718 (both sites, plus a gate that a test's run-time env name has a reader) | fix gated green; in review |
+| B18 | nightly, tier 2 | a stale `CLI_CONFIG_` cache entry from before a setting's retirement trips the retired-name refusal on a persistent runner tree | [2906](../issues/archived/2906-zephyr-stale-cli-config-cache-trips-retired-refusal.md) | nros wtf (142 carried it) | #4719 (`fb09d58cc5`) | fixed: green in the evidence at `d92c369a14` |
+| B19 | tier 1, tier 2 | the census pre-pass skips the `nros-build` compile-check image rows | [2911](../issues/archived/2911-census-prepass-skips-compile-check-nros-image-rows.md) | NXP 175 | #4723 (`2067fd2ff9`) | fixed: green in the evidence at `d92c369a14` |
+| B21 | W3 (upgrade) | a project `nros new` made with nros11 writes `rate_hz`, which this release refuses, and the installed upgrade path had no runnable remedy | [2923](../issues/archived/2923-nros11-contract-spelling-refused-no-shipped-migrate.md) | nros 139, 139 AUO book, nros 133 | #4738 (`15e11ffbad`), #4755 (`b493149c41`), #4753 (`e335da7519`), #4736 (`d5c0c0d5b4`, the page) | fixed: green in the evidence at `d92c369a14` |
+| B22 | tier 1 | the west seed looks for a bound table under one language root only | [2924](../issues/archived/2924-seed-bound-tables-span-language-roots.md) | NXP 175 | #4739 (`fb2c34e379`) | fixed: green in the evidence at `d92c369a14` |
+| B23 | tier 2 | a Zephyr configure caches a `make` the fifo jobserver pool cannot run (`invalid --jobserver-auth string 'fifo:…'`), run 45351389552 | (PR only) | nros 118 | #4787 (`63928bcaa6`) | fixed: green in the evidence at `d92c369a14` |
+| B24 | tier 1, tier 2 | a Zephyr leaf signature omitted the renamed locator define, so persistent trees kept baking the default port | [2938](../issues/2938-zephyr-fixture-locator-define-rename.md) | nros 139 | #4790 (`730dfbebeb`) | fixed: green in the evidence at `d92c369a14` |
+| B25 | tier 2 | rclc's default parameter server asked for a quota of 4 in a store sized smaller from the declarations | [2939](../issues/archived/2939-runtime-param-store-smaller-than-rclc-default-quota.md) | nros 142 | #4788 (`2414191207`) | fixed: green in the evidence at `d92c369a14` |
+| B26 | tier 2 | an audit test ran every workspace row's binary, out-of-lane museum binaries included | [2940](../issues/archived/2940-audit-test-runs-out-of-lane-museum-binary.md) | nros 118 | #4793 (`325fcfce28`) | fixed: green in the evidence at `d92c369a14` |
+| B27 | tier 2 | a bringup-scoped root test hard-coded its launch packages | [2944](../issues/archived/2944-bringup-scoped-root-test-hardcodes-launch-packages.md) | nros 118 | #4796 (`de4d542c91`) | fixed: green in the evidence at `d92c369a14` |
+| B28 | tier 2 | an interface-subset linkage test lost its subject when the subsets became disjoint | [2945](../issues/archived/2945-interface-subset-linkage-subject-lost-disjoint-subsets.md) | nros 118 | #4796 (`de4d542c91`) | fixed: green in the evidence at `d92c369a14` |
+| B29 | tier 2 | threadx-linux's nsos receive notifier asked for a stack below the port's floor and never started | [2946](../issues/archived/2946-threadx-linux-nsos-notifier-below-stack-floor.md) | nros 142 | #4798 (`142994ff77`) | fixed: green in the evidence at `d92c369a14` |
+| B30 | nightly | the island-shaped Zephyr snapshot drifted from the derived heap floor; the class (the queue never runs the live snapshot check) is [2957](../issues/2957-knob-change-drifts-island-zephyr-snapshot-unseen.md) | [2780](../issues/2780-zephyr-images-boot-then-stall.md) | NXP 175 | #4823 (`d7c1c8ece7`) | fixed: green in the evidence at `d92c369a14` |
+| B31 | tier 2-nightly | the wall-clock latency cells went red beside the rest of the run and host load | [2959](../issues/2959-latency-cells-red-beside-run-and-host-load.md) | nros 118 | #4835 (`e5dcabd3ca`) | fixed: green in the evidence at `d92c369a14` |
+| B32 | tier 2-nightly | the census host build shared the image's build tree, so four threadx-linux C++ Cyclone rows failed to build | [2960](../issues/archived/2960-census-host-build-shares-image-build-tree.md) | nros 142 | #4844 (`939ac840b2`) | fixed: green in the evidence at `d92c369a14` |
+| B33 | host-tests | rt-sched S1: a level parked in whole milliseconds, then the verdict compared miss rates against a hosted VM's stalls; it now judges telemetry's longest uninterrupted run against 2000 us | [2965](../issues/2965-band-park-rounds-up-to-millisecond.md) | nros 118 | #4851 (`8c936f649a`), #4863 (`5058187aec`) | fixed: green in the evidence at `d92c369a14` |
+| B34 | tier 2 | `check::max-frame`: 20 frames over 4096 B, latent since 2026-11-22 and first reached by this tier 2; keys made stable, reports scoped to the lane, latent frames baselined | (PR only) | nros 175 | #4857 (`0b770ede24`) | fixed: green in the evidence at `d92c369a14` |
+| B35 | tier 2 | a census recorded in the shared tree before B32 was refused instead of re-taken | [2960](../issues/archived/2960-census-host-build-shares-image-build-tree.md) | nros 142 | #4858 (`cffdca5c9b`) | fixed: green in the evidence at `d92c369a14` |
+| B36 | tier 2 | the QEMU violation cell counted verdicts, and an ordinary mps2/an385 tick straddles the 50 ms bound under `shift=auto`; it now identifies the provoked overrun. The drift is the emulator ([2971](../issues/2971-qemu-violation-dispatch-cost-unexplained.md)) | (PR only) | nros 241 | #4864 (`01388e07a3`) | fixed: green in the evidence at `d92c369a14` |
+| B37 | live-peer | XRCE never saw a peer leave when its departure sample was lost inside a CPU-starved Agent; the client now re-syncs the graph every `xrce.graph_resync_ms` (default 5000) while graph features are in use (user ruling 2026-11-25: fix in nros12) | [2970](../issues/2970-xrce-graph-misses-departure-lost-in-agent.md) | nros 139 | #4865 (`b3ffe8a739`) | fixed: green in the evidence at `d92c369a14` |
+| B38 | tier 2-nightly | QEMU idle-time wakes judged as an on-time share carried the host's idle-wake latency; idle wakes are held to a cap below every non-interrupt fallback | (PR only) | nros 241 | #4866 (`66efdd5593`) | fixed: green in the evidence at `d92c369a14` |
+| B39 | tier 2 | the coordinate-truth audit timed out signing 401 rows one at a time; it signs them in one batch | (PR only) | nros 175 | #4871 (`5897d5ac13`) | fixed: green in the evidence at `d92c369a14` |
+| B40 | `ci gate` | an example that aborted while its core dump outlasted the deadline read as `timeout`'s 124, i.e. booted | [2973](../issues/2973-abort-during-core-dump-reads-as-timeout.md) | nros 243 | #4872 (`446c8e8d8d`) | fixed: green in the evidence at `d92c369a14` |
+| B41 | `ci gate` | a reset-download resume test could pass without resuming | [2974](../issues/archived/2974-download-reset-resume-offset-timing.md) | nros 175 | #4873 (`ee6dfe8ff4`) | fixed: green in the evidence at `d92c369a14` |
+| B42 | tier 2-nightly | `test-ignored` ran the cli tests `cli-tests` owns, on a runner without colcon | [2975](../issues/archived/2975-cli-ignored-tests-owned-by-other-lanes.md) | nros 118 | #4880 (`d92c369a14`) | fixed: green in the evidence at `d92c369a14` |
 
 Owners are the sessions the manager routed each blocker to (2026-11-23). B5 is in the same family as
 issue 2772. The 118 session owns the `host-tests` / `live-peer` lane wiring itself.
+
+B18 to B42 were opened while W1 and W2 ran, 2026-11-23 to 2026-11-26 (B20 was reserved for a NuttX
+riscv link red that #4720 fixed before it reproduced, and was never used). Each fix was gated at
+its exact head before it merged. Tier 2 first reached its cells on 2026-11-25, which is why late
+rows keep appearing: each run that got further reached reds that had been latent behind earlier ones.
 
 The release workflow path itself is not a blocker. W3 of phase-567 rehearses it end to end
 (the island-shaped workspace job, both starter images, `verify-starter-image.sh` and the
@@ -124,7 +153,7 @@ on `main`, so W1 has to fix it before the rehearsal can pass again.
 
 ### W1 -- every lane green on main
 
-- **Status:** OPEN.
+- **Status:** DONE (2026-11-26): every blocker above is fixed on `main`.
 
 Fix each red above on `main`, as its own pull request: file an issue, fix the class, and
 re-measure on the next scheduled run, or on a dispatch on `main`. Done when each lane has one
@@ -132,7 +161,14 @@ green run on a commit at or after its fix. They do not yet have to be the same c
 
 ### W2 -- one commit all five lanes passed
 
-- **Status:** OPEN.
+- **Status:** DONE (2026-11-26, at `d92c369a14`): `release-lanes-green.py` passes every slow lane on
+  dispatches on `main` at that commit (nightly 45742783398, run-matrix tier 1 and tier 2 45742794599,
+  host-tests 45742787244, live-peer 45742791109). Refused before it: `0d9fa3e470`, `730dfbebeb`,
+  `939ac840b2`, `cffdca5c9b` and `01388e07a3`, each by the rows above that were opened from it.
+  The user confirmed the cut at `d92c369a14` on 2026-11-26, after two known issues were ruled not
+  to block (the release notes name both): an XRCE sample over 65,535 B is lost or truncated without
+  an error, and a zenoh publish on mps2/an385 costs about 7 % more guest time than on 2026-11-09
+  (+51 us a dispatch at a fixed `-icount`; the larger drift issue 2971 measured is the emulator).
 
 Two ways to get there. Since the 2026-11-24 ruling, the direct one is to dispatch all four
 workflows on `main` at one commit (`gh workflow run <file> --ref main`, with no inputs that narrow
@@ -149,7 +185,8 @@ must print no `REFUSED` line once the 06:00 `run-matrix` finishes, about 10:30 U
 
 ### W3 -- cut and rehearse
 
-- **Status:** OPEN.
+- **Status:** OPEN (in progress): `release/nros12` cut at `d92c369a14` on 2026-11-26; the `publish=false`
+  run is release-nros.yml 45768486500.
 
 1. Create `release/nros12` at the W2 commit. The name may be re-cut from `main` while no
    `nros-0.6.0-nros12` tag exists.

@@ -5,7 +5,7 @@ status: open
 type: bug
 severity: high
 area: [executor, levels, real-time]
-related: [phase-162, phase-509, issue-1242]
+related: [phase-162, phase-509, issue-1242, phase-590]
 found: 2026-11-25
 ---
 
