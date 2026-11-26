@@ -177,6 +177,39 @@ fn run_listener() {
         agent_addr, expected_count, timeout_secs, actual_size
     );
 
+    // Phase 574 W2 -- the receive buffer is a const generic, so the listener
+    // picks the smallest class that holds the payload, and runs on a thread
+    // whose stack holds that buffer (the subscription keeps it inline).
+    let need = actual_size + 256;
+    let stack = 4 * need + (8 << 20);
+    let run = move || match need {
+        n if n <= 16384 => listen::<16384>(agent_addr, expected_count, timeout_secs, actual_size),
+        n if n <= 65536 => listen::<65536>(agent_addr, expected_count, timeout_secs, actual_size),
+        n if n <= (256 << 10) + 256 => {
+            listen::<{ (256 << 10) + 256 }>(agent_addr, expected_count, timeout_secs, actual_size)
+        }
+        n if n <= (1 << 20) + 256 => {
+            listen::<{ (1 << 20) + 256 }>(agent_addr, expected_count, timeout_secs, actual_size)
+        }
+        n if n <= (4 << 20) + 256 => {
+            listen::<{ (4 << 20) + 256 }>(agent_addr, expected_count, timeout_secs, actual_size)
+        }
+        _ => panic!("PAYLOAD_SIZE={actual_size} is above the largest receive class (4 MiB)"),
+    };
+    std::thread::Builder::new()
+        .stack_size(stack)
+        .spawn(run)
+        .expect("spawning the listener thread")
+        .join()
+        .expect("the listener thread panicked");
+}
+
+fn listen<const RX: usize>(
+    agent_addr: String,
+    expected_count: usize,
+    timeout_secs: u64,
+    actual_size: usize,
+) {
     let config = ExecutorConfig::new(&agent_addr).node_name("xrce_stress_listener");
     // Phase 104.A — explicit RMW backend registration. The auto-ctor
     // in `.init_array` doesn't survive Rust's archive-walk linkage
@@ -188,7 +221,7 @@ fn run_listener() {
         .create_node("xrce_stress_listener")
         .expect("Failed to create node");
     let mut subscription = node
-        .create_polling_subscription_sized::<std_msgs::msg::Int32, 16384>(&topic())
+        .create_polling_subscription_sized::<std_msgs::msg::Int32, RX>(&topic())
         .expect("Failed to create subscriber");
 
     println!("Ready: listening");

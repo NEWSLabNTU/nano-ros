@@ -5339,6 +5339,25 @@ pub fn build_sim_clock_listener() -> TestResult<&'static Path> {
     .map(|p| p.as_path())
 }
 
+/// Phase 574 W2 -- the large-message probe (`bins/large-msg`), one image per
+/// RMW, each sized for the largest payload the matrix runs on that backend.
+pub fn build_large_msg_probe(rmw: Rmw) -> TestResult<&'static Path> {
+    static ZENOH_BIN: OnceCell<PathBuf> = OnceCell::new();
+    static XRCE_BIN: OnceCell<PathBuf> = OnceCell::new();
+    static CYCLONE_BIN: OnceCell<PathBuf> = OnceCell::new();
+    let cell = match rmw {
+        Rmw::Zenoh => &ZENOH_BIN,
+        Rmw::Xrce => &XRCE_BIN,
+        Rmw::Cyclonedds => &CYCLONE_BIN,
+    };
+    cell.get_or_try_init(|| {
+        let dir = "packages/testing/nros-tests/bins/large-msg";
+        migrated_leaf_binary(dir, rmw, crate::fixtures::migrated_leaf::LeafVariant::Plain)
+            .unwrap_or_else(|| Err(not_migrated(dir)))
+    })
+    .map(|p| p.as_path())
+}
+
 /// The zenoh build — the default for every caller that does not care.
 pub fn build_int32_sink() -> TestResult<&'static Path> {
     build_int32_sink_rmw(Rmw::Zenoh)

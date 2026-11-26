@@ -1,0 +1,42 @@
+# What the large-message probe deploys to (RFC-0098 D3/D5). It keeps its own
+# `main` and opens its own executor, so it declares no component table.
+#
+# Phase 574 W2 — one image per RMW and target, each stating the size knobs its
+# backend needs for the largest payload the matrix runs on it. The knobs are
+# what the matrix records as "the configuration it needed".
+
+[system]
+name = "large_msg"
+rmw = "zenoh"
+domain_id = 0
+default_images = ["linux"]
+
+[image_defaults]
+board = "linux"
+
+# zenoh: a sample is reassembled whole, so the reassembly ceiling and the
+# subscriber's buffer both hold the largest sample (4 MiB of data plus the
+# CDR prefix and zenoh's headers).
+[image.linux]
+entry = "large-msg"
+[image.linux.knobs.zenoh]
+frag_max_bytes = 4196352
+[image.linux.knobs.subscriber]
+buffer_bytes = 4195328
+
+# XRCE: one sample is one DATA submessage, whose length is 16 bits on the wire,
+# so no configuration carries 64 KiB; this image is sized for the 16 KiB cell.
+# The reliable stream reassembles up to `transport_mtu x stream_history` bytes,
+# and the subscriber's ring entry holds the whole sample.
+[image.linux_xrce]
+entry = "large-msg"
+rmw = "xrce"
+[image.linux_xrce.knobs.xrce]
+transport_mtu = 4096
+stream_history = 16
+subscriber_buffer_bytes = 17408
+subscriber_ring_depth = 4
+
+[image.linux_cyclonedds]
+entry = "large-msg"
+rmw = "cyclonedds"
