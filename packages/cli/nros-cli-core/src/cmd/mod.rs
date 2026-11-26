@@ -19,6 +19,7 @@ pub mod board_support;
 pub mod bringup;
 pub mod build;
 pub mod build_next;
+pub mod build_size;
 pub mod check;
 pub mod check_workspace;
 pub mod code_verb;
