@@ -17,6 +17,7 @@ cargo-nano-ros                             1   0     0       0      0
 cmsdk-uart                                 6   0     0       0      0
 condvar-contract-threadx-linux             1   0     0       1      0
 contract-monitor                           1   0     0       1      0
+fault-report-freertos-mps2                 1   0     0       0      0
 heap-free-cpp-poc-mps2                     1   0     0       1      0
 heap-free-poc-mps2                         4   0     0       0      0
 isr-wake-baremetal-mps2                    3   0     0       0      0

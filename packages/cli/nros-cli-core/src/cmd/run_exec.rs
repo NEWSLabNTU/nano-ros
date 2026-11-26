@@ -146,8 +146,9 @@ pub struct ExecArgs {
     /// and the runner lookup alike (phase-527 W2d).
     #[command(flatten)]
     pub sources: crate::cmd::build::BasePathsArgs,
+    // RFC-0118 D9.
     /// The ELF a fault line's addresses are looked up in (else the image's
-    /// own, when the verb selected one). RFC-0118 D9.
+    /// own, when the verb selected one).
     #[arg(long, value_name = "FILE")]
     pub elf: Option<PathBuf>,
 }

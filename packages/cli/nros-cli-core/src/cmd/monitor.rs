@@ -60,9 +60,10 @@ pub struct Args {
     /// `--base-paths`, as `nros build` takes it (phase-527 W2d).
     #[command(flatten)]
     pub sources: crate::cmd::build::BasePathsArgs,
+    // RFC-0118 D9.
     /// The ELF a fault line's addresses are looked up in: needed with
     /// `--port` alone, or for an image this workspace did not build (else
-    /// the selected image's own). RFC-0118 D9.
+    /// the selected image's own).
     #[arg(long, value_name = "FILE")]
     pub elf: Option<PathBuf>,
 }

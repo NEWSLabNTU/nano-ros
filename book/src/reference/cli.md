@@ -842,6 +842,9 @@ Options:
           
           They replace the workspace and its `package_paths`, and nothing else: the nano-ros packages and `NROS_PACKAGE_PATH` stay on the search path. As in colcon, the roots are peers searched recursively, their order does not matter, a path repeated or inside another counts once, and a package name found in two of them is an error. A path that does not exist is an error; one that holds no package is a warning.
 
+      --elf <FILE>
+          The ELF a fault line's addresses are looked up in (else the image's own, when the verb selected one)
+
   -h, --help
           Print help (see a summary with '-h')
 
@@ -993,6 +996,9 @@ Options:
           The workspace's source roots, relative to the workspace (default: `.`, plus `nros.toml` `package_paths`).
           
           They replace the workspace and its `package_paths`, and nothing else: the nano-ros packages and `NROS_PACKAGE_PATH` stay on the search path. As in colcon, the roots are peers searched recursively, their order does not matter, a path repeated or inside another counts once, and a package name found in two of them is an error. A path that does not exist is an error; one that holds no package is a warning.
+
+      --elf <FILE>
+          The ELF a fault line's addresses are looked up in: needed with `--port` alone, or for an image this workspace did not build (else the selected image's own)
 
   -h, --help
           Print help (see a summary with '-h')
