@@ -504,6 +504,21 @@ pub struct BoardCapabilities {
     pub threads: bool,
 }
 
+/// `[board.memory]` — what the board has for an image, in bytes (RFC-0135
+/// D8). Each figure is the capacity an image may use: flash for its code,
+/// constants and initial data; RAM for its data, zeroed data, heap and stacks.
+/// A figure left out is unknown, and nothing is compared against it.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct BoardMemory {
+    /// Flash (or the code memory a loader places the image in), in bytes.
+    #[serde(default)]
+    pub flash: Option<u64>,
+    /// RAM, in bytes.
+    #[serde(default)]
+    pub ram: Option<u64>,
+}
+
 impl BoardCapabilities {
     /// Conservative defaults inferred from the platform when a board omits the
     /// `[board.capabilities]` block (migration path; a lint flags reliance on
@@ -691,6 +706,11 @@ pub struct BoardDescriptor {
     /// `platform` via `capabilities()` during the 241.C migration.
     #[serde(default)]
     pub capabilities: Option<BoardCapabilities>,
+    /// `[board.memory]` — the board's memory budget, in bytes (RFC-0135 D8).
+    /// `None`: the board states none, so nothing is compared against it and a
+    /// size report prints absolute numbers.
+    #[serde(default)]
+    pub memory: Option<BoardMemory>,
     /// CMake cross-compile facts for `nros setup`'s CMakePreset emission
     /// (RFC-0048 §6 / phase-287 W5). `None` for host boards (posix) that need no
     /// toolchain file — their preset carries only `nano_ros_ROOT`.

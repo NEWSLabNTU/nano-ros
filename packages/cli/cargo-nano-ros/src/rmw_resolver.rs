@@ -444,6 +444,13 @@ impl ResolvedRmwIn {
             .find(|(k, _)| k == fact)
             .map(|(_, v)| *v)
     }
+
+    /// The board capabilities this backend needs (`[rmw.needs]`, RFC-0135
+    /// D8), in the vocabulary of `[board.capabilities]`.
+    #[must_use]
+    pub fn needs(&self) -> &[String] {
+        &self.descriptor.needs
+    }
 }
 
 /// One provider scan, and every RMW name resolved over it (RFC-0071 D14).

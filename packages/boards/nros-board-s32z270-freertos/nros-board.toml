@@ -49,6 +49,12 @@ FREERTOS_CONFIG_DIR = { value = "${workspace}/packages/boards/nros-board-s32z270
 
 [board.entry]
 
+# RFC-0135 D8 -- the memory an image may use, in bytes, read from this
+XX
+[board.memory]
+flash = 4194304
+ram = 3670016
+
 [board.capabilities]
 heap = true
 atomics = true
@@ -103,6 +109,11 @@ FREERTOS_CONFIG_DIR = { value = "${workspace}/packages/boards/nros-board-s32z270
 '''
 
 [board.entry]
+
+# The same linker script as the board above, so the same budget.
+[board.memory]
+flash = 4194304
+ram = 3670016
 
 [board.capabilities]
 heap = true
