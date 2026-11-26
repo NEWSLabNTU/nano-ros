@@ -27,18 +27,17 @@
 //!
 //! phase-544 W2 (issue 2273) adds the QEMU leg, the matrix cell this binary
 //! answers: (ZephyrQemuCortexM, Cpp, Zenoh, ViolationChannel, Workspace). The
-//! same workspace, image `zephyr_mps2`, on mps2/an385 under the board
-//! descriptor's `-icount shift=auto`, so the arming and the 50 ms bound hold on
-//! the guest's own timer rather than the host's clock native_sim runs on. It
-//! asserts that the provoked overrun is the one post-arming verdict at or over
-//! the 110 ms it busy-waits, that nothing was stored before arming, and the
-//! arming line's suppressed count. It does NOT assert that no other tick
-//! crosses 50 ms there: a tick that only publishes three samples and prints
-//! one line measures ~37..63 ms of guest time on that board (the publishes go
-//! through the emulated network stack and SLIRP), so the 50 ms bound sits
-//! inside the board's own dispatch floor and an unprovoked verdict is a fact
-//! about the board, not about the violation channel (issue 2508 measured
-//! the same overhead from the other side). The native_sim test stays as the leg the
+//! same workspace, image `zephyr_mps2`, on mps2/an385 at the FIXED
+//! `MPS2_AN385_CORE_ICOUNT`, so the arming and the 50 ms bound hold on the
+//! guest's own timer rather than the host's clock native_sim runs on. It makes
+//! the same claim as the native_sim leg: the provoked overrun is the ONLY
+//! latency verdict, stored after arming, and the arming line counts INIT's
+//! suppressed ones. Issue 2971: an ordinary tick (three publishes and a
+//! printf) costs 0.79 ms of guest time at `shift=5`. Under the board's own
+//! `shift=auto` the same tick read 1.6 to 65 ms, because QEMU raises the
+//! shift (guest time per instruction doubles per step) when the host emulates
+//! slower than real time. A guest-time bound under `shift=auto` therefore
+//! measured host load, and this cell had to tolerate unprovoked verdicts. The native_sim test stays as the leg the
 //! matrix does not model as a cell (its coordinate is a tier-1 platform, and a
 //! cell there would put every `zephyr,cpp,zenoh` fixture into tier 1); it also
 //! carries the route assertions, which the QEMU cell does not take on.
@@ -125,41 +124,26 @@ fn measured_ms(line: &str) -> u32 {
         .unwrap_or(0)
 }
 
-/// Which verdicts besides the provoked one a leg may store.
-#[derive(Clone, Copy)]
-enum Floor {
-    /// native_sim: an unprovoked dispatch is far inside 50 ms, so the provoked
-    /// overrun is the ONLY latency verdict of the whole run.
-    InsideBound,
-    /// mps2/an385 under icount: an unprovoked dispatch measures ~37..63 ms of
-    /// guest time, so it may cross the 50 ms bound. Such a verdict is allowed
-    /// only after arming and only below [`OVERRUN_MS`]: one at or over it
-    /// could not be told apart from the provoked overrun.
-    StraddlesBound,
-}
-
 /// What [`check_provoked_overrun`] found on a console that passed it.
 struct Provoked<'a> {
     /// The RUN line's offset.
     run_at: usize,
     /// The provoked overrun's verdict line.
     line: &'a str,
-    /// The other `/handler/state` verdicts a [`Floor::StraddlesBound`] leg
-    /// stored (each under [`OVERRUN_MS`], after arming).
-    floor: Vec<&'a str>,
 }
 
 /// The claim both legs share, as a pure check so its refusals are tested
 /// without a fixture: the handler reached RUN and kept ticking; nothing was
 /// stored before the RUN line; exactly one `/handler/state` verdict measured
 /// at least the [`OVERRUN_MS`] overrun, after the overrun line, naming its
-/// 50 ms bound; and the arming line counts INIT's suppressed verdicts.
-/// `floor` says what else the leg may store.
+/// 50 ms bound; that it is the run's ONLY latency verdict; and the arming
+/// line counts INIT's suppressed verdicts. Both legs make this claim: at a
+/// fixed icount the QEMU leg's ordinary dispatch is under 1 ms (issue 2971).
 ///
 /// "Exactly one at or over [`OVERRUN_MS`]" is what keeps the identification
 /// honest: if an ordinary tick ever reached the overrun's size, two verdicts
 /// would qualify and the check refuses rather than pick one.
-fn check_provoked_overrun(console: &str, floor: Floor) -> Result<Provoked<'_>, String> {
+fn check_provoked_overrun(console: &str) -> Result<Provoked<'_>, String> {
     let run_at = console
         .find("[handler] RUN at tick 3")
         .ok_or("the handler never reached RUN")?;
@@ -206,56 +190,24 @@ fn check_provoked_overrun(console: &str, floor: Floor) -> Result<Provoked<'_>, S
              line @{overrun_at}, verdict @{at}: `{line}`)"
         ));
     }
-    let others: Vec<&str> = latency
-        .iter()
-        .filter(|(a, _)| *a != at)
-        .map(|(_, l)| *l)
-        .collect();
-    match floor {
-        Floor::InsideBound => {
-            if let Some(l) = others.first() {
-                return Err(format!(
-                    "the provoked overrun must be the only max-latency-runtime verdict: `{l}`"
-                ));
-            }
-        }
-        Floor::StraddlesBound => {
-            // Under OVERRUN_MS by construction of `provoked`. Only the 50 ms
-            // row may be crossed by the floor: `/t4/answer`'s 180 ms row is
-            // above every dispatch here (issue 2508), so a verdict on it is a
-            // defect on this leg too.
-            if let Some(l) = others
-                .iter()
-                .find(|l| !l.contains("max-latency-runtime /handler/state measured="))
-            {
-                return Err(format!(
-                    "only the 50 ms row may be crossed by an unprovoked dispatch: `{l}`"
-                ));
-            }
-        }
+    if let Some((_, l)) = latency.iter().find(|(a, _)| *a != at) {
+        return Err(format!(
+            "the provoked overrun must be the only max-latency-runtime verdict: `{l}`"
+        ));
     }
     if !console.contains(MONITORS_ARMED_SUPPRESSED_MARKER) {
         return Err("the arming line does not count INIT's suppressed verdicts".into());
     }
-    Ok(Provoked {
-        run_at,
-        line,
-        floor: others,
-    })
+    Ok(Provoked { run_at, line })
 }
 
 /// [`check_provoked_overrun`] on a live console: a refusal panics with the
-/// whole console, and a straddling leg's floor verdicts are printed.
+/// whole console.
 fn assert_provoked_overrun_after_arming<'a>(
     console: &'a str,
-    floor: Floor,
     excerpt: &dyn Fn() -> String,
 ) -> (usize, &'a str) {
-    let p = check_provoked_overrun(console, floor)
-        .unwrap_or_else(|why| panic!("{why}:\n{}", excerpt()));
-    for l in &p.floor {
-        eprintln!("dispatch floor over the 50 ms bound: {l}");
-    }
+    let p = check_provoked_overrun(console).unwrap_or_else(|why| panic!("{why}:\n{}", excerpt()));
     (p.run_at, p.line)
 }
 
@@ -293,7 +245,7 @@ fn zephyr_cpp_violation_channel_reports_one_overrun_after_arming() -> TestResult
     guest.kill();
 
     let excerpt = || console_dump(&console);
-    let (run_at, _) = assert_provoked_overrun_after_arming(&console, Floor::InsideBound, &excerpt);
+    let (run_at, _) = assert_provoked_overrun_after_arming(&console, &excerpt);
     let latency = verdicts(&console, RULE_MAX_LATENCY_RUNTIME);
 
     // phase10-B3 -- the route rule: two late routes, nothing for the on-time
@@ -372,23 +324,19 @@ fn zephyr_cortex_m_cpp_violation_channel_reports_one_overrun_after_arming() {
     assert_row_dials_port(QEMU_ROW, port);
     let _router = ZenohRouter::start_slirp(port)
         .unwrap_or_else(|e| panic!("failed to start zenohd on {port} for the SLIRP guest: {e:?}"));
-    // The board descriptor's `[board.run.qemu]` line, `-icount shift=auto`
-    // included, plus the SLIRP NIC.
-    let mut qemu = QemuProcess::start_mps2_an385_networked(&entry)
+    // The Zephyr board's line, held to the image's own west `run_qemu`, at
+    // the FIXED `MPS2_AN385_CORE_ICOUNT` rather than the descriptor's
+    // `shift=auto`: the claim is a bound on guest time, which under
+    // `shift=auto` scales with host load (issue 2971).
+    let mut qemu = QemuProcess::start_zephyr_mps2_an385_networked_measured(&entry)
         .unwrap_or_else(|e| panic!("boot the mps2/an385 violation image: {e:?}"));
     let console = qemu.collect_until(LAST_TICK, QEMU_BUDGET);
     qemu.kill();
 
     let excerpt = || console_dump(&console);
-    // The cell's subject is the provoked overrun and the arming, so the
-    // verdict is identified by what provoked it, over the whole run. A count
-    // of every latency verdict cannot be the claim on this board: a tick that
-    // only publishes and prints measures ~37..63 ms of guest time, which
-    // straddles the 50 ms bound. That read 60 ms on the late tick 10 in 1 of
-    // 6 runs (2026-11-09), so a window once ended at tick 9; on 2026-11-25
-    // (tier 2, cffdca5c9b) the unprovoked tick 5 read 63 ms, inside any
-    // window that still holds tick 6.
-    let (_, line) = assert_provoked_overrun_after_arming(&console, Floor::StraddlesBound, &excerpt);
+    // At a fixed icount an ordinary tick is under 1 ms of guest time, so the
+    // provoked overrun is the only latency verdict, as on native_sim.
+    let (_, line) = assert_provoked_overrun_after_arming(&console, &excerpt);
     eprintln!("mps2/an385 verdict: {line}");
 }
 
@@ -416,7 +364,7 @@ fn cases_bound_to_matrix_cells() {
 /// The refusals of [`check_provoked_overrun`], on synthetic consoles shaped
 /// like the handler's. Fixture-free.
 mod provoked_overrun_check {
-    use super::{Floor, check_provoked_overrun};
+    use super::check_provoked_overrun;
 
     const ARMED: &str = "[handler] RUN at tick 3: arming the monitors\n\
                          contract monitors armed; 1 verdict(s) before arming suppressed\n";
@@ -434,43 +382,32 @@ mod provoked_overrun_check {
     }
 
     #[test]
-    fn the_provoked_verdict_alone_passes_on_both_legs() {
+    fn the_provoked_verdict_alone_passes() {
         let c = console(&[ARMED, OVERRUN, &state(1, 152), LAST]);
-        for floor in [Floor::InsideBound, Floor::StraddlesBound] {
-            let p = check_provoked_overrun(&c, floor).expect("the provoked verdict alone");
-            assert!(p.line.contains("measured=152"));
-        }
+        let p = check_provoked_overrun(&c).expect("the provoked verdict alone");
+        assert!(p.line.contains("measured=152"));
     }
 
     #[test]
-    fn a_floor_verdict_is_refused_on_native_sim_and_allowed_on_qemu() {
+    fn an_unprovoked_verdict_over_the_bound_is_refused() {
         let c = console(&[ARMED, &state(1, 63), OVERRUN, &state(2, 152), LAST]);
-        let err = check_provoked_overrun(&c, Floor::InsideBound)
+        let err = check_provoked_overrun(&c)
             .err()
-            .expect("native_sim");
+            .expect("an ordinary tick over 50 ms");
         assert!(err.contains("only max-latency-runtime verdict"), "{err}");
-        let p = check_provoked_overrun(&c, Floor::StraddlesBound).expect("QEMU");
-        assert_eq!(p.floor.len(), 1);
-        assert!(p.floor[0].contains("measured=63"));
     }
 
     #[test]
     fn two_verdicts_at_the_overrun_size_are_ambiguous_and_refused() {
         let c = console(&[ARMED, &state(1, 110), OVERRUN, &state(2, 152), LAST]);
-        for floor in [Floor::InsideBound, Floor::StraddlesBound] {
-            let err = check_provoked_overrun(&c, floor)
-                .err()
-                .expect("two at >= 110");
-            assert!(err.contains("found 2"), "{err}");
-        }
+        let err = check_provoked_overrun(&c).err().expect("two at >= 110");
+        assert!(err.contains("found 2"), "{err}");
     }
 
     #[test]
     fn no_verdict_at_the_overrun_size_is_refused() {
         let c = console(&[ARMED, OVERRUN, &state(1, 63), LAST]);
-        let err = check_provoked_overrun(&c, Floor::StraddlesBound)
-            .err()
-            .expect("none >= 110");
+        let err = check_provoked_overrun(&c).err().expect("none >= 110");
         assert!(err.contains("found 0"), "{err}");
     }
 
@@ -480,12 +417,10 @@ mod provoked_overrun_check {
     #[test]
     fn the_overrun_line_is_inclusive_at_110() {
         let at = console(&[ARMED, OVERRUN, &state(1, 110), LAST]);
-        for floor in [Floor::InsideBound, Floor::StraddlesBound] {
-            let p = check_provoked_overrun(&at, floor).expect("110 is the provoked verdict");
-            assert!(p.line.contains("measured=110"));
-        }
+        let p = check_provoked_overrun(&at).expect("110 is the provoked verdict");
+        assert!(p.line.contains("measured=110"));
         let below = console(&[ARMED, OVERRUN, &state(1, 109), LAST]);
-        let err = check_provoked_overrun(&below, Floor::StraddlesBound)
+        let err = check_provoked_overrun(&below)
             .err()
             .expect("109 is not the provoked verdict");
         assert!(err.contains("found 0"), "{err}");
@@ -494,19 +429,15 @@ mod provoked_overrun_check {
     #[test]
     fn a_verdict_before_arming_is_refused() {
         let c = console(&[&state(1, 152), ARMED, OVERRUN, LAST]);
-        let err = check_provoked_overrun(&c, Floor::StraddlesBound)
-            .err()
-            .expect("before RUN");
+        let err = check_provoked_overrun(&c).err().expect("before RUN");
         assert!(err.contains("before arming"), "{err}");
     }
 
     #[test]
-    fn a_verdict_on_the_answer_row_is_refused_on_qemu() {
+    fn a_verdict_on_the_answer_row_is_refused() {
         let answer = "contract violation #2: max-latency-runtime /handler/answer measured=189 declared=180 (total=2 dropped=0)\n";
         let c = console(&[ARMED, OVERRUN, &state(1, 152), answer, LAST]);
-        let err = check_provoked_overrun(&c, Floor::StraddlesBound)
-            .err()
-            .expect("/t4/answer");
-        assert!(err.contains("only the 50 ms row"), "{err}");
+        let err = check_provoked_overrun(&c).err().expect("/t4/answer");
+        assert!(err.contains("only max-latency-runtime verdict"), "{err}");
     }
 }
