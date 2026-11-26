@@ -154,8 +154,6 @@ after the release:
   first change after the release.
 - [2976](../issues/2976-local-delivery-publish-cost-grew.md): a zenoh publish on mps2/an385 costs
   about 51 µs (7 %) more at a fixed instruction count. Bisected after the release.
-- The cross-bringup census staleness (its fix is PR 4902): an image's configure stops because
-  another bringup's census is stale. Workaround on the release page.
 
 The release workflow path itself is not a blocker. W3 of phase-567 rehearses it end to end
 (the island-shaped workspace job, both starter images, `verify-starter-image.sh` and the
@@ -205,8 +203,8 @@ must print no `REFUSED` line once the 06:00 `run-matrix` finishes, about 10:30 U
   `ebbb3a570d` (lanes dispatched 12:31Z), which the island then found carried B44. Both were ruled
   blockers by the user. Once #4917 merges, W2 is measured again at one `main` commit containing it,
   the island's full CI runs at that commit, and `release/nros12` fast-forwards there (no tag exists,
-  so the re-cut is allowed). The cross-bringup census staleness (fix #4902) is a known issue in the
-  release notes, not a blocker (user, 2026-11-26).
+  so the re-cut is allowed). The cross-bringup census staleness, ruled not a blocker (user, 2026-11-26), is
+  fixed in the release anyway: PR 4902 merged before the re-cut, so it is off the release page.
 
 1. Create `release/nros12` at the W2 commit. The name may be re-cut from `main` while no
    `nros-0.6.0-nros12` tag exists.
