@@ -1,7 +1,9 @@
 # Phase 555 -- Design doc review: organize the RFCs and resolve what conflicts
 
-**Status (2026-11-13). OPEN: W0 done (the inventory and its candidate pairs);
-W1 started (`area:` drafted on every RFC); W2 to W4 not started.**
+**Status (2026-11-26). OPEN: W0 done (the inventory and its candidate pairs);
+W1, W2 and W3 in progress; W4 not started. Audited against main 2026-11-26:
+eight live RFCs written after the review (0059, 0129-0133, 0136, 0137) have
+no `area:`, and two still read `Accepted`, so W1's acceptance is not met.**
 
 User request, 2026-11-12, verbatim: "Have a design doc review campaign. I
 would make them organized. Some design docs may be old and could conflict
@@ -146,7 +148,11 @@ brief of RFC-0126 did.
   `docs/roadmap/data/phase-555-w2-<area>.md`, holding the verdict table and
   the area's decision brief. Mechanical fixes are made in the RFCs, in the same
   commit.
-- **Status:** OPEN. test-ci reviewed 2026-11-13, brief awaiting a ruling
+- **Status:** OPEN. Every area's brief was ruled on 2026-11-14 (recorded in
+  #3806 at c98d30e687; the four open RFC pairs in #3917 at fce4c9499e). The original
+  2026-11-13 note follows. What is left is the RFCs written since the
+  review, which have no verdict yet (see the header). test-ci reviewed
+  2026-11-13, brief awaiting a ruling
   ([data/phase-555-w2-test-ci.md](data/phase-555-w2-test-ci.md)). workspace-system-model reviewed
   2026-11-13 (both halves, 21 RFCs), brief awaiting a ruling
   ([data/phase-555-w2-workspace-system-model.md](data/phase-555-w2-workspace-system-model.md)).
