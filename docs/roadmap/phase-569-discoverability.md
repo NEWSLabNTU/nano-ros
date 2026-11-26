@@ -1,6 +1,7 @@
 # Phase 569 — find what nano-ros offers from the `nros` command
 
-**Status (2026-11-17). OPEN: W1 is done; W2–W10 are open.
+**Status (2026-11-26). OPEN: W1, W3 and W7 are done; W2, W4, W5 and W6 are
+largely merged, each with one part open; W8–W10 are open.
 The user approved the design on 2026-11-17; recording a reason per derived
 value is [phase-570](phase-570-derived-value-reasons.md).**
 Implements [RFC-0133](../design/0133-discoverability.md). The request came
@@ -65,7 +66,9 @@ by the descriptor's own platform list, not by a list in `new.rs`.
 
 ### W2 — the knob catalog
 
-- **Status:** OPEN (W2a and W2b on one branch; W2c open)
+- **Status:** OPEN. W2a and W2b merged in #4267 (5f8c91ae5e, 2026-11-19);
+  W2c is open: no generated configuration reference or comparing gate on
+  main (audited 2026-11-26).
 - **W2a, the catalog fields:** done. Each row authors `scope` and `class`
   (public, carrier, internal, retired; a carrier names what it `carries`).
   The generator derives `default` (the Kconfig `default` lines with their
@@ -158,7 +161,10 @@ without building.
 
 ### W4 — dynamic completion and its registration
 
-- **Status:** OPEN (W4a landed 2026-11-21; W4b open)
+- **Status:** OPEN. W4a merged in #4473 (ae294738f5), W4b in #4510
+  (9b2cece484) and W4c in #4561 (f3377cc188), all 2026-11-20/21; W4d
+  (interface types) is open: no interface completer on main (audited
+  2026-11-26).
 - **W4a, the engine and its registration:** done.
   - `clap_complete` is pinned to `=4.6.3` with `unstable-dynamic`, in
     `nros-cli` and `nros-cli-core`.
@@ -272,8 +278,9 @@ Acceptance:
 
 ### W5 — the shared frame, and existing verbs adopt it
 
-- **Status:** OPEN (W5a in review; W5b on its branch, waiting for W5a;
-  W5c open)
+- **Status:** OPEN. W5a merged in #4443 (c0a964c08e) and W5b in #4527
+  (c80f3de04d), both 2026-11-21; W5c is open: `interface`, `toolchain list`
+  and `nros list` have no `--json` schema on main (audited 2026-11-26).
 - **W5a, the frame:** `cmd::frame` renders a `list` table, a `show`'s
   fields and Book line, the `--json` document, and the unknown-name refusal
   with the nearest names. The Book URL is the CLI workspace's
@@ -312,8 +319,9 @@ descriptor with a new section is printed by `board show`.
 
 ### W6 — `platform`, `template`, `code`, `runner` lists
 
-- **Status:** OPEN (W6a and W6b done locally 2026-11-21, on top of W5a;
-  `profile` is with W8)
+- **Status:** OPEN. W6a and W6b merged in #4529 (e1d26b3c2f, 2026-11-21);
+  what is left is `nros profile list`/`show`, which waits on W8 (audited
+  2026-11-26).
 - **W6a, `nros code` and `nros template`:**
   - `nros code list [--all] [--json]` / `show <code> [--json]` read the
     compiled-in code table (`nros.code.list.v1`, `nros.code.show.v1`).
