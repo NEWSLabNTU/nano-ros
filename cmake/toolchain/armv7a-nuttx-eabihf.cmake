@@ -79,3 +79,6 @@ set(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE NEVER)
 # ELFs that cannot be executed on the host.
 set(CMAKE_C_COMPILER_WORKS   TRUE CACHE BOOL "Compiler works" FORCE)
 set(CMAKE_CXX_COMPILER_WORKS TRUE CACHE BOOL "Compiler works" FORCE)
+
+# phase-578 W8.b: archive headers carry no mtime, uid or gid.
+nros_deterministic_archives()
