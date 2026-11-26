@@ -61,7 +61,13 @@ Approved by the user on 2026-11-20 as sent; recorded in RFC-0131 D2 and D3.
 ### W1 — The `gate` tier
 
 - **Owner:** nros 142.
-- **Status:** OPEN
+- **Status:** DONE (2026-11-19, #4406). Acceptance re-checked 2026-11-26 on
+  main `ee6dfe8ff4`: `check-gate-lists.py --lane-steps dev` names none of the
+  six, and `--lane-steps ci` names all six (`check::api-parity`,
+  `check::out-of-lane-deselected`, `check::pristine-checkout`,
+  `check::probe-workspace-caps`, `test-lane-contracts`, `test-unit`). A full
+  `just ci gate` on host 142 (2026-11-25, #4854's head, 762/762) ran each as a
+  `gate::` test and passed it.
 - `scripts/check/check-gate-lists.py` accepts tier `gate`. The
   `nros-gates` harness lists `gate::<name>` tests. `check fast` and `check
   build` do not select them.
