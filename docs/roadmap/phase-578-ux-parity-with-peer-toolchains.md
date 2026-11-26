@@ -56,7 +56,21 @@ at once (RFC-0135, draft).
 
 ### W1 — a size report after every build
 
-- **Status:** OPEN
+- **Status:** OPEN. The report itself is built (this change):
+  - `cmd::build_size` reads the linked ELF's allocated sections by the
+    `size -B` split, and `nros build` prints flash (text + data) and RAM
+    (data + bss) after the build.
+  - A hosted program, one with an `.interp`, gets no report.
+  - `render` takes a `Budget` and prints percentages and any overrun.
+  - Measured on `examples/mps2-an385-freertos/c/talker`:
+    text 528,444 / data 10,624 / bss 830,672 B, equal to
+    `arm-none-eabi-size -B` on the same image.
+  - What is left is the budget's source: no board definition states one
+    until RFC-0135 D8's memory budget lands (phase-577 W6), so a build
+    prints absolute numbers and says so.
+  - The largest pools are not printed. The sizing descriptor records
+    counts, not bytes, so it cannot rank a pool by size; the measured
+    per-symbol view is `just mem-report <elf>`.
 - **Owner:** nros 133, after its current batch
 
 `nros build` ends with the image's flash and RAM use, from the ELF's section
