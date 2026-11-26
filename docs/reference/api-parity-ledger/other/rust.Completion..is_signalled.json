@@ -1,0 +1,5 @@
+{
+  "key": "rust:Completion::is_signalled",
+  "verdict": "extension",
+  "why": "phase 579 W3a (RFC-0139 D3/D4/R6) -- whether the completion is signalled and not yet taken by the executor, the polling reader beside GuardCondition::is_triggered."
+}

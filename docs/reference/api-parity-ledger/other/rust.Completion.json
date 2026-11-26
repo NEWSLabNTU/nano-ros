@@ -1,0 +1,5 @@
+{
+  "key": "rust:Completion",
+  "verdict": "extension",
+  "why": "phase 579 W3a (RFC-0139 D3/D4/R6) -- the handle a device port signals when a job is done; Copy + Send, a pointer to the executor's arena entry. rclrs has no device event source; its waitable-based path is declined (RFC-0089), and this is the static stand-in."
+}

@@ -1,0 +1,5 @@
+{
+  "key": "rust:Completion::signal",
+  "verdict": "extension",
+  "why": "phase 579 W3a (RFC-0139 D3/D4/R6) -- signal a device completion from a thread; the continuation runs at the bound sched context's priority. No rclrs counterpart."
+}
