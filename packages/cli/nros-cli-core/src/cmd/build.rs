@@ -4568,7 +4568,11 @@ fn print_next_steps(args: &Args, plans: &[ResolvedBuild]) {
             .then(|| zephyr_base(&root, args.zephyr_workspace.as_deref()))
             .flatten();
         let steps = crate::cmd::build_next::next_steps(p, d, &qemu, zbase.as_deref());
-        print_size(&p.qualified, steps.artifact.as_deref());
+        let budget = d.memory.map(|m| crate::cmd::build_size::Budget {
+            flash: m.flash,
+            ram: m.ram,
+        });
+        print_size(&p.qualified, steps.artifact.as_deref(), budget.as_ref());
         print!("{}", crate::cmd::build_next::render(&p.qualified, &steps));
     }
 }
@@ -4576,13 +4580,21 @@ fn print_next_steps(args: &Args, plans: &[ResolvedBuild]) {
 /// phase-578 W1: the image's flash and RAM use, from the linked ELF. Silent
 /// for a hosted program; a file it cannot read is a note, never a failed
 /// build, since the build itself succeeded.
-fn print_size(qualified: &str, artifact: Option<&std::path::Path>) {
+fn print_size(
+    qualified: &str,
+    artifact: Option<&std::path::Path>,
+    budget: Option<&crate::cmd::build_size::Budget>,
+) {
     let Some(elf) = artifact.filter(|a| a.is_file()) else {
         return;
     };
     match crate::cmd::build_size::of_path(elf) {
-        // No board states a memory budget yet (RFC-0135 D8, phase-577 W6).
-        Ok(Some(size)) => print!("{}", crate::cmd::build_size::render(qualified, &size, None)),
+        // RFC-0135 D8 -- against the board's `[board.memory]`, the exact verdict
+        // the pre-build lower bound defers to.
+        Ok(Some(size)) => print!(
+            "{}",
+            crate::cmd::build_size::render(qualified, &size, budget)
+        ),
         Ok(None) => {}
         Err(e) => eprintln!("nros build: no size report for `{qualified}`: {e}"),
     }

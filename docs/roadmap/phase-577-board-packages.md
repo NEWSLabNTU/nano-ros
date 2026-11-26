@@ -92,9 +92,11 @@ is already a package. What is missing is measured in RFC-0135's Motivation:
 ### W6 — The pre-build compatibility check
 
 - **Owner:** nros 133 (claimed 2026-11-26).
-- **Status:** OPEN. In progress on branch `feat/board-compat-check`. Built on
-  phase-578 W4's `RefusalGroup` and framework refusal.
-  - Landing in the first PR: the two new facts (`[board.memory]` on the four
+- **Status:** OPEN. The check landed in #4922 (c675afb8c8, 2026-11-26),
+  built on phase-578 W4's `RefusalGroup` and framework refusal; the exact
+  memory verdict after the link followed with phase-578 W1's budget. Left:
+  the near-match listing below, and the deferred rows, each with its item.
+  - Landed in #4922: the two new facts (`[board.memory]` on the four
     boards whose linker script states it, `[rmw.needs]` on Cyclone and
     zenoh); a collecting check on all three roads (workspace, cargo leaf,
     CMake leaf) between board resolution and stage 3, so nothing is
@@ -117,8 +119,8 @@ is already a package. What is missing is measured in RFC-0135's Motivation:
     sizing descriptor states (spawned task stacks, configured heap,
     transient-local retention) are a lower bound against `[board.memory]
     ram`, worded "needs at least N"; the exact verdict is phase-578 W1's size
-    report after the link, against the same budget, in its own small PR. No
-    cost model.
+    report after the link, against the same budget (its own PR). No cost
+    model.
   - Open: a key found in no root does not yet list near matches and the
     roots searched (NROS-0002 lists every name).
 - RFC-0135 D8: one check, run by `nros build` before any build step and by
