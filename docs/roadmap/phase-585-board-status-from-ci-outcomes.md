@@ -123,7 +123,11 @@ in the order below.
 
 ### W5 — The CLI: `nros board list --status`
 
-- **Status:** OPEN
+- **Status:** OPEN. First part merged in #4546 (c9fdd968e0, 2026-11-21): the
+  Rust reader `cmd::board_evidence::status_from_evidence`, held to W3's shared
+  fixture. Not on main (audited 2026-11-26): nothing calls it from
+  `nros board list`/`show` or `nros doctor`; there is no `--status` or
+  `--online` flag; and `record-lane-runs.py` writes no results history.
 - **What:** `record-lane-runs.py` writes the results history into
   `board-support-runs.json` at release; `nros board list --status`, `show` and
   `nros doctor --report` apply W3's derivation offline; `--online` reads the
