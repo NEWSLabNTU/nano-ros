@@ -1336,6 +1336,10 @@ pub const NON_CELL_TESTS: &[(&str, NonCell)] = &[
         NonCell::Probe("the FreeRTOS libc clock shims answer from the clock symbols"),
     ),
     (
+        "freertos_fault_report",
+        NonCell::Probe("a FreeRTOS mps2-an385 fault is named by function and line"),
+    ),
+    (
         "freertos_run_plan_runtime",
         NonCell::Secondary(
             "FreertosMps2/Rust/Zenoh/Pubsub/Example (same talker image) — answered by rtos_e2e",

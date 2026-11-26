@@ -4,8 +4,8 @@ title: "Target execution model: run, flash and monitor as separate verbs over on
 status: Draft
 area: platform-board-rtos
 since: 2026-11
-last-reviewed: 2026-11-25
-implements-tracked-by: [phase-528, phase-529, phase-533, phase-589]
+last-reviewed: 2026-11-26
+implements-tracked-by: [phase-528, phase-529, phase-533, phase-578, phase-589]
 amends: [0097, 0114, 0116]
 supersedes: []
 superseded-by: null
@@ -432,6 +432,84 @@ hang. Steps are a list, not a state machine. A bench that needs board states
   a process group led by a guard that stops the group when the runner's end
   of a pipe closes.
 
+### D9 — A fault's addresses as source lines
+
+Added 2026-11-26 by phase-578 W2. The choices below were ruled by the user on
+2026-11-26, as relayed by the 241 manager session.
+
+**What a target prints.** Every fault handler nano-ros owns prints one line,
+always on (the ruling accepts its cost, about 300 B of flash per image):
+
+    nros-fault: kind=<kind> pc=0x… lr=0x… psr=0x… sp=0x… <more key=value…>
+
+- `kind` is `hardfault` on Cortex-M, `abort` on Cortex-R.
+- `pc` is the faulting instruction and `lr` the faulting code's return
+  address, both from the frame the core stacked.
+- The other keys are context and are not looked up: the fault status
+  registers (`cfsr`, `hfsr`; `dfsr`, `dfar`, `ifar` on Cortex-R), `sp`, and
+  `task`.
+- A frame the core could not stack gets the line without `pc`, `lr` and
+  `psr`.
+
+The FreeRTOS MPS2-AN385 board is first, then the bare-metal MPS2-AN385
+board. ThreadX and NuttX follow as their handlers are touched. Before this,
+no in-tree handler printed an address: the FreeRTOS board printed
+`*** HARD FAULT ***` and exited.
+
+**What the CLI recognises.** The console of every target verb (`nros run`,
+`nros monitor`, and the console of `nros flash --monitor`) passes each line
+through one watch, `nros_cli_core::fault_lines`. It recognises:
+
+- the `nros-fault:` line;
+- Zephyr's own fatal output, which nano-ros does not own:
+  `Faulting instruction address (r15/pc): 0x…` and the `r14/lr:` field.
+  That covers Cortex-R on the FVP too;
+- the record `CONFIG_NROS_FAULT_LOG` prints (`nros:   pc     : 0x…`).
+
+A Rust panic line already names its file and line, so it gets no lookup.
+POSIX backtraces are out of scope (ruling): a native process has a debugger
+and `RUST_BACKTRACE`, and these verbs attach to boards. They are a later
+item.
+
+**The lookup.** The lookup runs in the CLI's own process, with the
+`addr2line` crate. It needs no `<triple>-addr2line` on the host, so it works
+for every architecture and from a dist CLI. Its output:
+
+- Each address gets `function at file:line` printed under the fault line.
+  An inlined function adds one `inlined into …` line per caller.
+- An image without line information still gets its function from the symbol
+  table.
+- On Arm, bit 0 of an address is the Thumb state and is cleared. A return
+  address is looked up one byte back, so it names the call site.
+- Rust names are demangled. No C++ demangler is linked, so a C++ name prints
+  mangled.
+- Compressed debug sections are refused with a message, never misread.
+
+**Where the ELF comes from**, highest first:
+
+1. `--elf <path>`, on `nros run` and `nros monitor`, for an image this
+   workspace did not build or a `--port`-only monitor;
+2. the run plan's `elf` artifact, for the image the verb selected (D3).
+
+With neither, the fault line prints as it came, plus one note naming
+`--elf`. The ELF is opened at the first fault, so a session with no fault
+reads nothing.
+
+**A wrong ELF.** A wrong ELF gives confident wrong lines, so the CLI guards
+against it in two ways:
+
+- It names the ELF it used, once, before the first lookup.
+- An address outside the ELF's executable sections is reported as
+  `not in <elf>'s code`, never matched to the nearest symbol.
+
+The stronger check is a follow-up: the GNU build-id in each image's boot
+banner, compared with the ELF's. It is not built here, because it changes
+every image's banner.
+
+The lines the watch prints go to the console and to `console.log` after the
+chunk that completed the fault line. They are not graded: `--expect` and
+`--forbid` see only what the target printed.
+
 ## Alternatives considered
 
 - **One `run` verb for every target (RFC-0116 D7 as written).** Rejected for
@@ -482,6 +560,12 @@ hang. Steps are a list, not a state machine. A bench that needs board states
   mode through `nros_runner_qemu_user`, with the host's `qemu-<arch>`. It is
   evidence for the program's user space, never for the target's kernel. A
   device deploy stays an image's `[image.<id>.run] command`.
+- 2026-11-26 -- phase-578 W2: D9. A nano-ros fault handler prints one
+  `nros-fault:` line (always on). The console of every target verb looks its
+  addresses up in the image's ELF (`--elf`, else the plan's) and prints the
+  function and line. It also recognises Zephyr's fatal output and
+  `CONFIG_NROS_FAULT_LOG`'s record. POSIX backtraces are out of scope. These
+  were user rulings of 2026-11-26.
 - 2026-11-13 -- phase-555 W2 review: `area` set to `platform-board-rtos`
   (the facts it owns are the board descriptor's `[board.run]`,
   `[board.flash]` and `[board.console]` tables and the bench file).

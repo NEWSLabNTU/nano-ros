@@ -537,10 +537,27 @@ pub enum Event {
 /// once its newline arrives, or the tail as it stood at end of stream.
 pub fn spawn_console<R>(
     from: R,
+    echo: Box<dyn Write + Send>,
+    log: Option<File>,
+    grade: Grade,
+    tx: Sender<Event>,
+) -> JoinHandle<()>
+where
+    R: Read + Send + 'static,
+{
+    spawn_console_with_faults(from, echo, log, grade, tx, None)
+}
+
+/// [`spawn_console`], with a fault watch (RFC-0118 D9): the lines it returns
+/// for a fault report are printed and logged right after the chunk that
+/// completed it. They are not graded: they are the CLI's, not the target's.
+pub fn spawn_console_with_faults<R>(
+    from: R,
     mut echo: Box<dyn Write + Send>,
     mut log: Option<File>,
     grade: Grade,
     tx: Sender<Event>,
+    mut faults: Option<crate::fault_lines::FaultLines>,
 ) -> JoinHandle<()>
 where
     R: Read + Send + 'static,
@@ -569,6 +586,14 @@ where
             // and holds a forbidden line fails, whichever came first in it.
             forbid.feed(chunk, &tx);
             grading.feed(chunk, &mut line, &tx);
+            if let Some(extra) = faults.as_mut().map(|f| f.feed(chunk))
+                && !extra.is_empty()
+            {
+                let _ = echo.write_all(extra.as_bytes()).and_then(|()| echo.flush());
+                if let Some(f) = log.as_mut() {
+                    let _ = f.write_all(extra.as_bytes()).and_then(|()| f.flush());
+                }
+            }
         }
         forbid.finish(&tx);
         if let Grading::Finishing = grading {

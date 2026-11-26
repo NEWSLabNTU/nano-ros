@@ -157,6 +157,12 @@ quick-xml = "0.41"
 # (ELF, archives and their members) itself, so no `nm` is needed. Already in
 # the lock through `ar_archive_writer`.
 object = { version = "0.32", default-features = false, features = ["read", "std"] }
+# phase-578 W2 (RFC-0118 D9) — `nros monitor` and `nros run` turn a fault
+# line's addresses into function, file and line from the image's ELF, in
+# process, so no `<triple>-addr2line` is needed on the host. 0.21 is the line
+# on the `object` 0.32 / `gimli` 0.28 already in the lock. No C++ demangler:
+# a C++ name prints mangled.
+addr2line = { version = "0.21", default-features = false, features = ["std", "rustc-demangle", "fallible-iterator", "smallvec"] }
 
 # Phase 212.M-F.20 — `synthesize_workspace_ament_prefix` lays down a
 # throwaway ament prefix (TempDir) from the pkg-index so the launch parser's

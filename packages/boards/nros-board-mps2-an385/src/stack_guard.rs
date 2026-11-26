@@ -103,10 +103,15 @@ unsafe fn HardFault(frame: &ExceptionFrame) -> ! {
               hit the guard below it. Raise NROS_BAREMETAL_STACK_KB.\n",
         );
     } else {
+        // phase-578 W2 (RFC-0118 D9): the one `nros-fault:` line every
+        // nano-ros fault handler prints; `nros run` and `nros monitor` look
+        // its `pc` and `lr` up in the image's ELF.
         crate::println!(
-            "nros: hard fault at pc={:#010x} lr={:#010x}",
+            "nros-fault: kind=hardfault pc={:#010x} lr={:#010x} psr={:#010x} sp={:#010x}",
             frame.pc(),
-            frame.lr()
+            frame.lr(),
+            frame.xpsr(),
+            sp + 32
         );
     }
     debug::exit(debug::EXIT_FAILURE);

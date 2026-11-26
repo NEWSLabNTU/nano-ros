@@ -367,7 +367,47 @@ void nros_board_task_stack_guard_arm(const void* stack_lowest) {
     __asm__ volatile("dsb" ::: "memory");
 }
 
+/* The guard's verdict for the fault handler: did this fault hit the armed
+ * guard? `psp` is the task stack pointer at the fault. */
+static int nros_board_fault_in_guard(uint32_t psp) {
+    uint32_t cfsr = SCB_CFSR;
+    uint32_t lo = nros_guard_lo;
+    uint32_t hi = lo == 0u ? 0u : lo + NROS_GUARD_BYTES;
+    if (hi == 0u) {
+        return 0;
+    }
+    if ((cfsr & CFSR_MMARVALID) && SCB_MMFAR >= lo && SCB_MMFAR < hi) {
+        return 1;
+    }
+    return (cfsr & CFSR_MSTKERR) && psp < hi;
+}
+
+#endif /* NROS_BOARD_TASK_STACK_GUARD */
+
+/* ---- The fault report (phase-578 W2, RFC-0118 D9) ----------------------
+ *
+ * Every fault prints one `nros-fault:` line, always (the user's ruling of
+ * 2026-11-26: about 300 B of flash in every image). `nros run` and
+ * `nros monitor` look its `pc` and `lr` up in the image's ELF and print the
+ * function, file and line under it. The line is `key=value`, the same on
+ * every board nano-ros owns:
+ *
+ *   nros-fault: kind=hardfault pc=0x… lr=0x… sp=0x… psr=0x… cfsr=0x… hfsr=0x… task=…
+ *
+ * `pc` is the faulting instruction and `lr` the faulting code's return
+ * address, both from the frame the core stacked; `sp` is the stack pointer
+ * before that frame. The stack is the task's (PSP) or, for a fault in a
+ * handler or before the scheduler starts, the main stack (MSP); EXC_RETURN
+ * bit 2 says which, so `HardFault_Handler` is a naked entry that passes the
+ * frame on. A frame that cannot be read (the stacking itself faulted) still
+ * gets its line, from the registers alone. */
+
 void semihosting_write0(const char* s); /* freertos_hooks.c */
+
+#define SCB_CFSR_REG (*(volatile uint32_t*)0xE000ED28u)
+#define SCB_HFSR_REG (*(volatile uint32_t*)0xE000ED2Cu)
+/* CFSR bits that say the core could not stack the frame. */
+#define CFSR_STACKING_FAILED ((1u << 4) | (1u << 12))
 
 static void nros_semihost_exit_failure(void) {
     /* SYS_EXIT with ADP_Stopped_RunTimeErrorUnknown: QEMU exits non-zero. */
@@ -376,37 +416,84 @@ static void nros_semihost_exit_failure(void) {
     __asm__ volatile("bkpt #0xAB" : : "r"(op), "r"(reason) : "memory");
 }
 
-void HardFault_Handler(void) {
-    uint32_t cfsr = SCB_CFSR;
-    uint32_t psp;
-    __asm__ volatile("mrs %0, psp" : "=r"(psp));
-    uint32_t lo = nros_guard_lo;
-    uint32_t hi = lo == 0u ? 0u : lo + NROS_GUARD_BYTES;
-    int in_guard = 0;
-    if (hi != 0u) {
-        if ((cfsr & CFSR_MMARVALID) && SCB_MMFAR >= lo && SCB_MMFAR < hi) {
-            in_guard = 1;
-        } else if ((cfsr & CFSR_MSTKERR) && psp < hi) {
-            in_guard = 1;
-        }
+/* ` <key>=0x%08x` into `out`; returns the end. */
+static char* nros_fault_put_hex(char* out, const char* key, uint32_t v) {
+    static const char digits[] = "0123456789abcdef";
+    *out++ = ' ';
+    while (*key != '\0') {
+        *out++ = *key++;
     }
-    if (in_guard) {
+    *out++ = '=';
+    *out++ = '0';
+    *out++ = 'x';
+    for (int shift = 28; shift >= 0; shift -= 4) {
+        *out++ = digits[(v >> shift) & 0xfu];
+    }
+    return out;
+}
+
+void nros_board_hardfault_report(const uint32_t* frame, uint32_t exc_return);
+__attribute__((used)) void nros_board_hardfault_report(const uint32_t* frame, uint32_t exc_return) {
+    const uint32_t cfsr = SCB_CFSR_REG;
+    const int on_task = (exc_return & 0x4u) != 0u;
+    const int stacked = (cfsr & CFSR_STACKING_FAILED) == 0u;
+    /* The stacked frame: r0 r1 r2 r3 r12 lr pc xpsr. */
+    const uint32_t pc = stacked ? frame[6] : 0u;
+    const uint32_t lr = stacked ? frame[5] : 0u;
+    const uint32_t psr = stacked ? frame[7] : 0u;
+    const uint32_t sp = (uint32_t)(uintptr_t)frame + 32u;
+
+#if defined(NROS_BOARD_TASK_STACK_GUARD) && NROS_BOARD_TASK_STACK_GUARD
+    if (on_task && nros_board_fault_in_guard((uint32_t)(uintptr_t)frame)) {
         semihosting_write0("*** STACK OVERFLOW: ");
         semihosting_write0(pcTaskGetName(NULL));
         semihosting_write0(" *** (the task's stack hit its guard)\n");
     } else {
         semihosting_write0("*** HARD FAULT ***\n");
     }
+#else
+    semihosting_write0("*** HARD FAULT ***\n");
+#endif
+
+    char line[160];
+    char* at = line;
+    const char* head = "nros-fault: kind=hardfault";
+    while (*head != '\0') {
+        *at++ = *head++;
+    }
+    if (stacked) {
+        at = nros_fault_put_hex(at, "pc", pc);
+        at = nros_fault_put_hex(at, "lr", lr);
+        at = nros_fault_put_hex(at, "psr", psr);
+    }
+    at = nros_fault_put_hex(at, "sp", sp);
+    at = nros_fault_put_hex(at, "cfsr", cfsr);
+    at = nros_fault_put_hex(at, "hfsr", SCB_HFSR_REG);
+    const char* task = on_task && xTaskGetSchedulerState() != taskSCHEDULER_NOT_STARTED
+                           ? pcTaskGetName(NULL)
+                           : "-";
+    const char* key = " task=";
+    while (*key != '\0') {
+        *at++ = *key++;
+    }
+    for (int i = 0; task != NULL && task[i] != '\0' && i < configMAX_TASK_NAME_LEN; i++) {
+        *at++ = task[i] == ' ' ? '_' : task[i];
+    }
+    *at++ = '\n';
+    *at = '\0';
+    semihosting_write0(line);
     nros_semihost_exit_failure();
     for (;;) {
     }
 }
 
-#else
-
-void HardFault_Handler(void) {
-    for (;;) {
-    }
+/* EXC_RETURN bit 2: the frame is on the process stack (a task), else on the
+ * main stack. Naked, so nothing is pushed before the stack is chosen. */
+__attribute__((naked)) void HardFault_Handler(void) {
+    __asm__ volatile("tst lr, #4\n"
+                     "ite eq\n"
+                     "mrseq r0, msp\n"
+                     "mrsne r0, psp\n"
+                     "mov r1, lr\n"
+                     "b nros_board_hardfault_report\n");
 }
-
-#endif /* NROS_BOARD_TASK_STACK_GUARD */

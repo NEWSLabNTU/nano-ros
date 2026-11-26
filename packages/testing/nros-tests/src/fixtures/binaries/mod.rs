@@ -6999,6 +6999,25 @@ pub fn build_stack_guard_freertos_mps2() -> TestResult<&'static Path> {
         .map(|p| p.as_path())
 }
 
+/// phase-578 W2 — the fault report image for FreeRTOS + MPS2-AN385.
+static FAULT_REPORT_FREERTOS_MPS2_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
+/// Resolve the prebuilt `fault-report-freertos-mps2` image, an owned-entry
+/// workspace row like the stack guard image beside it.
+pub fn build_fault_report_freertos_mps2() -> TestResult<&'static Path> {
+    FAULT_REPORT_FREERTOS_MPS2_BINARY
+        .get_or_try_init(|| {
+            const DIR: &str = "packages/testing/nros-tests/bins/fault-report-freertos-mps2";
+            migrated_leaf_binary(
+                DIR,
+                Rmw::Zenoh,
+                crate::fixtures::migrated_leaf::LeafVariant::Plain,
+            )
+            .unwrap_or_else(|| Err(not_migrated(DIR)))
+        })
+        .map(|p| p.as_path())
+}
+
 /// Issue 1906 — the condvar contract image for ThreadX Linux.
 static CONDVAR_CONTRACT_THREADX_LINUX_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
