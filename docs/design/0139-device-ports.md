@@ -20,8 +20,9 @@ implementors and device users as two distinct roles. The three questions
 raised in that review are settled below (D7, D6, D9). The user accepted the
 decisions on 2026-11-19. Tracked by phase-579.
 
-**Amendment (2026-11-26, DRAFT): the Rust shape**, both ends, with four questions
-for the user at its top (see [the amendment](#amendment-2026-11-26-draft-the-rust-shape)).
+**Amendment (2026-11-26, ACCEPTED): the Rust shape**, both ends, and the capture
+time as a monotonic and wall-clock pair in every language. The user ruled
+Q1–Q4 on 2026-11-26 (see [the amendment](#amendment-2026-11-26-the-rust-shape)).
 
 ## Summary
 
@@ -222,7 +223,11 @@ surface.
 - **Capture time travels with the data.** Every result carries the time its
   original input was captured, unchanged through any number of stages. A
   result older than the stage's `max_age` is dropped and reported, never
-  handed on.
+  handed on. (Amended 2026-11-26, ruling Q4.) The capture time is a pair,
+  both read at the same instant: `captured_at` on the monotonic clock, which
+  `max_age` is measured against, and `captured_stamp` on the wall clock
+  (RFC-0141), which a message header takes. Wherever one travels, the other
+  travels beside it, so a step of the wall clock never changes an age.
 - **Trace:** each stage records submit, device start, device done and
   continuation start, beside the existing per-callback trace.
 
@@ -371,13 +376,13 @@ static nros_device_t npu;  static nros_stage_t det;  static nros_source_t cam;
 static void on_detections(const nros_stage_result_t *r, void *ctx) {
     detections_msg_t msg;
     decode_nms(nros_slot_data(&r->output), &msg);
-    msg.stamp = r->captured_at;
+    msg.stamp = r->captured_stamp;
     rcl_publish(&pub_det, &msg, NULL);
 }
 
-static void on_frame(nros_slot_t *frame, int64_t captured_at, void *ctx) {
+static void on_frame(nros_slot_t *frame, int64_t captured_at, nros_time_t captured_stamp, void *ctx) {
     nros_inference_job_t job = { .model = &detector, .input = nros_slot_move(frame) };
-    nros_stage_submit(&det, &job, captured_at);
+    nros_stage_submit(&det, &job, captured_at, captured_stamp);
 }
 
 void app_setup(rclc_executor_t *exec) {
@@ -398,7 +403,7 @@ nros::device::Worker npu{executor, acme::npu0};
 nros::device::Stage<InferenceJob, InferenceOutput> det{npu, nros::device::critical(9ms, 50ms),
     [&](nros::device::Result<InferenceOutput>&& out) {
         auto msg = decode_nms(out.value());
-        msg.header.stamp = out.captured_at();
+        msg.header.stamp = out.captured_stamp();
         pub->publish(msg);
     }};
 nros::device::Source<Frame> cam{executor, zephyr::camera0, nros::device::keep_latest(40ms),
@@ -412,54 +417,49 @@ Output>`, which builds the vtable; the header uses no STL, so it is
 freestanding-safe. **A Rust implementor** implements the matching trait, whose
 vtable is the same ABI.
 
-## Amendment (2026-11-26, DRAFT): the Rust shape
+## Amendment (2026-11-26): the Rust shape
 
-**Status: DRAFT, awaiting the user's ruling on Q1–Q4 below.** D1 promises a
+**Status: ACCEPTED (2026-11-26, the user's rulings on Q1–Q4, below).** D1 promises a
 Rust view of the port ABI and D7 a Rust crate, and the Examples end with "a
 Rust implementor implements the matching trait"; nothing above says what
 either looks like. This amendment gives both ends, the node API (R2, R3) and
-the implementor trait (R5, R6), to match the C and C++ shapes. Nothing here
-changes D1–D11 or the C and C++ shapes. Implementation (phase-579 W4) starts
-after the ruling.
+the implementor trait (R5, R6), to match the C and C++ shapes. Ruling Q4
+also amends D5 and the C and C++ examples (the capture time is a pair);
+nothing else in D1–D11 changes. Implementation is phase-579 W4, after W2 and
+W3.
 
-### Questions for the user
+### Rulings (the user, 2026-11-26)
 
-- **Q1. One Rust user tier or two?** A Rust node is written as a component:
-  it registers entities in `register(ctx)`, names each callback with a string,
-  handles them in `on_callback`, and sends by name (`send_goal_for_name`). The
-  C++ example instead holds handles and passes closures. Proposed: the
-  **component tier (R2) is the Rust user surface**, and a **closure tier over
-  the executor (R3)** serves an image with no component, as guard conditions
-  have both a node form and an executor form. Alternative: the component tier
-  only, with the closure tier added when an image needs it.
-- **Q2. How `nros-device` reaches a component's context without adding names
-  to the mirrored types.** The component tier must register a stage from
-  `register(ctx)`, read a stage result inside `on_callback`, and submit from
-  `on_callback` or `tick`. Proposed: **(a) free functions in `nros-device`
-  that take the context** (`nros_device::submit_for_name(ctx, ...)`), reached
-  through one documented extension accessor that `NodeContext`, `CallbackCtx`
-  and `TickCtx` expose for companion packages. That accessor is D4's hook
-  surfaced to the component tier, and the phase's "no new name in the user
-  API" gate exempts it by name. Alternative: **(b) an extension trait**
-  (`use nros_device::prelude::*;` then `ctx.submit_for_name(...)`). It is
-  shorter, but it reads as a method on the mirrored type, and the gate could
-  not tell it from one.
-- **Q3. How a board names a device handle.** Proposed: a board crate exports
-  typed statics in a `devices` module, Rust's spelling for a constant:
-  `acme_board::devices::NPU0`. The C ops table stays `acme_npu0_ops` and the
-  C++ handle `acme::npu0`, so one device has three spellings, one per
-  language's convention. Alternative: a lowercase function,
-  `acme_board::devices::npu0()`, the same word as C++ but a call.
-- **Q4 (all three languages). Which clock is the capture time on?** D5 says it
-  travels with the data, and `max_age` is measured against it. The examples
-  write it into `header.stamp`, which is the wall clock. Under RFC-0141 the wall
-  clock can step (an SNTP re-sync), and an age computed across a step is
-  wrong. Proposed: the capture time is **monotonic**, which `max_age` uses.
-  Each result also carries the **wall-clock reading taken at the same
-  instant**, which `stamp()` returns for a message header. C and C++ gain the
-  same pair (`captured_at` stays monotonic; a `captured_stamp` field is
-  added). Alternative: wall clock only, and accept a wrong age across a
-  step.
+Each was put to the user as a question, with the proposal and its
+alternative; the user took every proposal.
+
+- **Q1. Two Rust user tiers.** The **component tier (R2) is the Rust user
+  surface**: a component registers in `register(ctx)`, names its callbacks,
+  handles them in `on_callback`, and submits by name, as it already sends an
+  action goal (`send_goal_for_name`). A **closure tier over the executor (R3)**
+  serves an image with no component, as guard conditions have both a node form
+  and an executor form. Not taken: the component tier alone.
+- **Q2. Free functions over one extension accessor.** `nros-device` reaches a
+  component's context through **free functions that take the context**
+  (`nros_device::submit_for_name(ctx, ...)`). They use one documented
+  extension accessor that `NodeContext`, `CallbackCtx` and `TickCtx` expose
+  for companion packages. That accessor is D4's hook surfaced to the component
+  tier, and the phase's "no new name in the user API" gate exempts it by
+  name. Not taken: an extension trait (`ctx.submit_for_name(...)` after a
+  `use`), which reads as a method on the mirrored type, so the gate could not
+  tell it from one.
+- **Q3. Board handles are statics.** A board crate exports one typed static
+  per device in a `devices` module: `<board>::devices::NPU0`. The C ops table
+  stays `acme_npu0_ops` and the C++ handle `acme::npu0`: one device, one
+  spelling per language's convention. Not taken: a lowercase `npu0()`
+  function.
+- **Q4 (all three languages). The capture time is a monotonic and
+  wall-clock pair.** `max_age` needs a clock that never steps, while a
+  message header wants the wall clock, which under RFC-0141 can step (an SNTP
+  re-sync). So `captured_at` is **monotonic** and `captured_stamp` is the
+  **wall-clock reading taken at the same instant** (D5, amended). C and C++
+  gain `captured_stamp` beside `captured_at`; Rust's `stamp()` returns it.
+  Not taken: the wall clock only, with a wrong age across a step.
 
 ### R1 — The crate, and the no_std rules it keeps
 
@@ -522,7 +522,7 @@ impl ExecutableNode for Perception {
             "on_frame" => {
                 if let Ok(frame) = nros_device::take::<Frame>(ctx) {
                     let job = InferenceJob { model: &DETECTOR, input: frame.slot };
-                    let _ = nros_device::submit_for_name::<Inference>(ctx, "detector", job, frame.captured);
+                    let _ = nros_device::submit_for_name::<Inference>(ctx, "detector", job, frame.capture);
                 }
             }
             "on_detections" => {
@@ -566,7 +566,7 @@ let det = nros_device::Stage::<Inference>::open(&mut executor, npu,
     |out: nros_device::StageResult<Inference>| { /* decode, publish */ })?;
 nros_device::Source::<Frame>::open(&mut executor, &nros_zephyr_devices::CAMERA0,
     SourceOptions::keep_latest(Duration::from_millis(40)),
-    move |frame: nros_device::Item<Frame>| { let _ = det.submit(InferenceJob { model: &DETECTOR, input: frame.slot }, frame.captured); })?;
+    move |frame: nros_device::Item<Frame>| { let _ = det.submit(InferenceJob { model: &DETECTOR, input: frame.slot }, frame.capture); })?;
 ```
 
 The closures are `FnMut + 'static`, the bound every executor callback has. A
@@ -583,8 +583,12 @@ executor backing is.
   D6's C++ and Rust rule; there is no empty state to assert on.
 - `Slot<T>` derefs to the class's view (`Frame` has width, height, format and
   stride; a tensor view has shape and element type). `data()` is the bytes.
-- An item from a source is `Item<T> { slot: Slot<T>, captured, stamp }`
-  (captured and stamp as Q4 rules).
+- An item from a source is `Item<T> { slot: Slot<T>, capture: Capture }`.
+  `Capture { at, stamp }` is ruling Q4's pair, `at` a monotonic
+  `core::time::Duration` and `stamp` the wall-clock `Time` read at the same
+  instant. A job is submitted with its input's `Capture`, and a stage result
+  returns it (`captured_at()` and `stamp()`), so the pair travels as one
+  value and never splits.
 
 ### R5 — Device handles, and how a board names one (Q3)
 
@@ -766,5 +770,7 @@ pub static acme_npu0_ops: WorkerPortOps = WorkerPortOps::of(&NPU);
 - 2026-11-18: drafted.
 - 2026-11-18: who provides what per layer (D1), and mock ports (D11).
 - 2026-11-19: ACCEPTED by the user's ruling of 2026-11-19.
-- 2026-11-26: amendment drafted: the Rust shape (R1-R7) and questions Q1-Q4,
-  awaiting the user's ruling.
+- 2026-11-26: amendment drafted: the Rust shape (R1-R7) and questions Q1-Q4.
+- 2026-11-26: amendment ACCEPTED by the user's rulings on Q1-Q4, each as
+  proposed. Q4 also amends D5 and the C and C++ examples: the capture time is
+  a monotonic `captured_at` with a wall-clock `captured_stamp`.
