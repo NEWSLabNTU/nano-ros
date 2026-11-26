@@ -99,9 +99,45 @@ same commit could read 14..27 ms on one day and 39..65 ms on another.
 **What follows for the tests.** A cell that asserts a bound on GUEST time
 must boot at the fixed `MPS2_AN385_CORE_ICOUNT`
 (`start_mps2_an385_networked_measured`), never at the board's
-`shift=auto`. The same change switches the cells that did not. At a fixed
-shift the guest clock is the instruction count of a busy guest, so the
-bound is about the code.
+`shift=auto`. At a fixed shift the guest clock is the instruction count of
+a busy guest, so the bound is about the code. The rule is narrower than
+"any guest clock reading": a guest WAIT checked against the guest's own
+deadline reads the same at any shift, and so does a ratio of two
+guest-timed rates. Only work-on-the-CPU-in-guest-time bounds move with the
+shift. A sweep of every QEMU boot in `nros-tests` against that rule
+(`git grep -nE 'start_(mps2_an385|zephyr|nuttx|riscv64|mps3_an536)[a-z_]*\(' -- packages/testing/nros-tests/tests`,
+then each site's assertions) found:
+
+- `violation_channel_e2e.rs`, the cell this issue is about: switched to
+  `start_zephyr_mps2_an385_networked_measured`. That also fixed a second defect:
+  it booted the Zephyr image through the BARE-METAL mps2 descriptor. It now makes the
+  same claim as the native_sim leg, that the provoked overrun is the ONLY latency
+  verdict. The `StraddlesBound` allowance existed only because of `shift=auto` and
+  is deleted.
+- `isr_wake_rtos.rs` on NuttX `virt`: upper bounds on a CPU path, under
+  the ladder's hard-coded `shift=auto`. Left as is, on purpose. The cell
+  already documents the shift doubling (issue 2748, 39 → 645 us in one run).
+  It asserts a 10 ms cap, ~15x over the worst reading. And NuttX's boot line
+  needs `shift=auto` for its sleeps and timeouts to run at wall rate. No NuttX
+  fixed-icount line exists. If that cap is ever tightened, a NuttX equivalent of
+  `MPS2_AN385_CORE_ICOUNT` has to come first.
+- Already fixed: `isr_wake_rtos.rs` (mps2), `emulator.rs` RTIC levels, and the
+  three `zephyr_cortex_m_qemu.rs` timing cells.
+- Not guest-CPU bounds: `freertos_libc_clock.rs` and
+  `condvar_contract_rtos.rs` (guest waits), `realtime_sched_tasks_e2e.rs`
+  (ratios), the mps3-an536 interop rate (a guest rate against a host window,
+  where `shift=auto` is the right choice), and session counts.
+- ThreadX riscv64 boots with no `-icount` at all, so its guest clock is the
+  host's. Its `isr_wake` cap is a host-jitter cap, and a shift would not change it.
+
+**No gate enforces this today.** `check-harness-qemu-literals` only keeps
+`-icount` out of literals. Proposed: make the rule a type. A `_measured`
+boot returns a `QemuProcess` that records its icount. The guest-time
+assertion helpers (the `max_us <= …`, `late_us > …` and verdict-measured
+checks) then take a `FixedIcount` witness that only those boots can hand
+out. A new guest-time bound under `shift=auto` stops compiling, instead of
+waiting for a grep to find it. Not done here: it touches every timing cell's
+helpers, which is a change of its own.
 
 **What is real: +51 µs per dispatch, about 7 %.** It is deterministic
 under the fixed shift. About +11 µs on each of `/t4/state` and `/t4/answer`, and
