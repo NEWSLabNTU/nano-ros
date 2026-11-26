@@ -24,11 +24,25 @@ list, `check::build` -> the build list, `check::default` -> both plus default's
 own dependencies) is a duplicate, unless it is in POSITIONAL below with the
 reason it is worth running twice.
 
+phase-584 W6 -- `just ci gate` no longer has a `steps=(...)` array: it runs the
+`ci` lane (`.config/gate-lanes.toml`) as one nextest run. Over that lane's own
+listing (the harness's names, `check-gate-lists.py`'s `test_names`) this also
+checks:
+
+  * DUPLICATES: no `just` target is run by two of the lane's tests. The harness
+    lists a precondition's tier entry as ignored; this holds it to that.
+  * REACH: every step the bash list ran before phase-584 (FORMER_CI_GATE_STEPS)
+    is still run by the lane. A gate whose tier moves back to `exempt`, a
+    precondition dropped from `[lane.ci]`, or a deleted recipe leaves the lane
+    silently otherwise: each lane's listing is DERIVED, so nothing else knows
+    what it used to hold.
+
 Buildless: it reads two justfiles and asks `check-gate-lists.py` for the lists.
 """
 
 from __future__ import annotations
 
+import importlib.util
 import os
 import re
 import subprocess
@@ -47,6 +61,62 @@ POSITIONAL = {
         "error in an unrelated gate."
     ),
 }
+
+# phase-584 W6 -- what `just ci gate`'s `steps=(...)` array ran before the `ci`
+# lane replaced it (phase-584 "Why"), as the lane's `just` targets. The two
+# tiers it ran whole (`check::fast`, `check::build`) are the lane's `tiers`;
+# these are the steps outside them. Removing one from `ci gate` is a decision:
+# take it out of this table, and say why, in the same change.
+FORMER_CI_GATE_STEPS = (
+    "check::cli-fresh",
+    "check::cli-noop-build",
+    "check::launch-resolve-fresh",
+    "check::pristine-checkout",
+    "check::api-parity",
+    "check::probe-workspace-caps",
+    "check::out-of-lane-deselected",
+    "test-unit",
+    "test-lane-contracts",
+)
+CI_LANE_TIERS = ("fast", "build", "gate")
+
+
+def _gate_lists():
+    spec = importlib.util.spec_from_file_location("check_gate_lists", GATE_LISTS)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def _target(test_name: str) -> str:
+    return test_name.split("::", 1)[1].split("#", 1)[0]
+
+
+def lane_problems(listing, tiers):
+    """[str] -- DUPLICATES and REACH over one lane listing.
+
+    `listing` is `[(test name, out-of-scope reason or None)]`, the harness's
+    own; `tiers` the lane's `tiers`."""
+    problems = []
+    runners: dict[str, list[str]] = {}
+    for name, why in listing:
+        if why is None and "::" in name:
+            runners.setdefault(_target(name), []).append(name)
+    for target, names in sorted(runners.items()):
+        # A `[group('units')]` gate is one target listed once per unit.
+        if len({n.split("#", 1)[0] for n in names}) > 1:
+            problems.append(f"the `ci` lane runs `{target}` twice: {', '.join(names)}")
+    for step in FORMER_CI_GATE_STEPS:
+        if step not in runners:
+            problems.append(
+                f"the `ci` lane no longer runs `{step}`, a step `just ci gate` ran before "
+                f"phase-584 (its tier left `gate`, it left `[lane.ci]`'s preconditions, or "
+                f"its recipe is gone)")
+    for tier in CI_LANE_TIERS:
+        if tier not in tiers:
+            problems.append(f"`[lane.ci]` no longer has tier `{tier}`, which `just ci gate` ran")
+    return problems
+
 
 DEFAULT_DEPS = re.compile(r"^default:\s*([^#\n]*)$", re.M)
 STEPS = re.compile(r"^\s*steps=\(\s*([^)]*?)\s*\)\s*$", re.M)
@@ -92,6 +162,25 @@ def self_test() -> None:
     assert duplicates(["check::fast", "check::build", "test-unit"], fast, build, []) == []
     assert duplicates(["check::default", "check::fmt"], fast, build, []) == \
         [("check::fmt", "check::default")]
+    # phase-584 W6: the lane listing.
+    whole = [(f"precondition::{s}", None) if s.startswith("check::cli") else
+             (f"gate::{s}", None) for s in FORMER_CI_GATE_STEPS]
+    whole.append(("fast::check::cli-fresh", "a precondition of this lane"))
+    assert lane_problems(whole, CI_LANE_TIERS) == [], lane_problems(whole, CI_LANE_TIERS)
+    # Units of one gate are one target, not a duplicate.
+    units = whole + [("build::check::c#a", None), ("build::check::c#b", None)]
+    assert lane_problems(units, CI_LANE_TIERS) == []
+    # Negative controls: a gate moved back to `exempt` (deselected, with a
+    # reason), a precondition dropped (not listed), a target run twice, a tier
+    # dropped.
+    exempt = [(n, "tier `exempt` is not in this lane") if n == "gate::check::api-parity"
+              else (n, w) for n, w in whole]
+    assert any("`check::api-parity`" in p for p in lane_problems(exempt, CI_LANE_TIERS))
+    dropped = [(n, w) for n, w in whole if n != "gate::check::launch-resolve-fresh"]
+    assert any("`check::launch-resolve-fresh`" in p for p in lane_problems(dropped, CI_LANE_TIERS))
+    twice = whole + [("fast::check::cli-fresh", None)]
+    assert any("twice" in p for p in lane_problems(twice, CI_LANE_TIERS))
+    assert any("tier `gate`" in p for p in lane_problems(whole, ("fast", "build")))
 
 
 def main() -> int:
@@ -119,6 +208,24 @@ def main() -> int:
             problems.append(f"just/ci.just `steps=({arr})` names `{name}`, which `{sib}` "
                             f"already runs")
 
+    gl = _gate_lists()
+    b, gl_problems = gl.buckets()
+    if gl_problems:
+        sys.stderr.write("check-lane-step-duplicates: the gate registry is broken:\n  "
+                         + "\n  ".join(gl_problems) + "\n")
+        return 1
+    listing = gl.test_names(b, "ci")
+    lane_found = lane_problems(listing, gl.load_lane("ci")["tiers"])
+    if lane_found:
+        sys.stderr.write("check-lane-step-duplicates: FAILED — the `ci` lane (`just ci gate`)\n")
+        for p in lane_found:
+            sys.stderr.write(f"  {p}\n")
+        sys.stderr.write(
+            "  Its listing is derived, so a step that leaves it reports nothing else.\n"
+            "  Put it back, or remove it from FORMER_CI_GATE_STEPS in\n"
+            "  scripts/check-lane-step-duplicates.py with the reason (phase-584 W6).\n")
+        return 1
+
     if problems:
         sys.stderr.write("check-lane-step-duplicates: FAILED — a gate runs twice per lane\n")
         for p in problems:
@@ -129,7 +236,9 @@ def main() -> int:
             "  it to POSITIONAL in scripts/check-lane-step-duplicates.py with the reason\n"
             "  running it first is worth running it twice (issue 1500).\n")
         return 1
-    print(f"check-lane-step-duplicates: OK ({len(arrays)} lane step list(s) + check default; "
+    print(f"check-lane-step-duplicates: OK ({len(arrays)} lane step list(s) + check default "
+          f"+ the `ci` lane's {len(listing)} listed test(s), "
+          f"{len(FORMER_CI_GATE_STEPS)} former `ci gate` step(s) reached; "
           f"{len(POSITIONAL)} positional duplicate(s) allowed)")
     return 0
 

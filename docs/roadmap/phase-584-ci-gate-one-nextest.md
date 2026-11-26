@@ -1,7 +1,14 @@
 # Phase 584 — `just ci gate` is one nextest run
 
-**Status (2026-11-20). OPEN: design approved by the user 2026-11-20; no code
-item started. Owner: nros 142.** Implements
+**Status (2026-11-26). Every work item DONE; archive once this PR merges.
+Owner: nros 142.** Design approved by the user 2026-11-20. The phase
+acceptance, measured on host 142:
+- a full `just ci gate` on a clean tree is green: 763/763 (W5's a2 and a3);
+- it writes one junit: the lane is one nextest run (W2), `test-unit` in it (W5);
+- its wall clock beats the bash list's: 1355–1393 s warm, against the 37–44
+  minute baseline below; 2874 s on a cold tree;
+- every former step appears by name in the lane's listing, checked by a test:
+  `check-lane-step-duplicates`' reach rule (W6). Implements
 [RFC-0131](../design/0131-gates-are-nextest-tests.md) D2/D3 as amended
 2026-11-20 (the `gate` tier and the `ci` lane), and the preconditions of D5.
 
@@ -184,7 +191,28 @@ Approved by the user on 2026-11-20 as sent; recorded in RFC-0131 D2 and D3.
 ### W6 — Keep the reach
 
 - **Owner:** nros 142.
-- **Status:** OPEN
+- **Status:** DONE (2026-11-26). `check-lane-step-duplicates` reads the `ci`
+  lane's own listing (`check-gate-lists.py`'s `test_names`) and holds two
+  rules over it: no `just` target is run by two of the lane's tests, and every
+  step the bash list ran outside the two whole tiers (`FORMER_CI_GATE_STEPS`,
+  the nine named in "Why") is still run by the lane, with `[lane.ci]` keeping
+  tiers `fast`, `build` and `gate`.
+- **Negative controls, measured on main `ee6dfe8ff4`:** before this item both
+  were GREEN everywhere — `api-parity` moved back to `exempt`, and
+  `launch-resolve-fresh` dropped from `[lane.ci]`'s preconditions, each left
+  `check-default-gates-run-somewhere`, `check-lane-step-duplicates` and
+  `check-gate-lists.py` at rc 0. With this item each is red, naming the step
+  that left. Both are also in the script's self-test, with a duplicate and a
+  dropped tier.
+- **Reach, as a diffed list.** The bash list ran the `dev` scope's in-scope
+  `fast::` and `build::` tests plus its nine named steps; the `ci` lane runs
+  `check-gate-lists.py --lane-steps ci`. Computed at the commit before W2
+  (`8c0e789787`) and at W2 (`56fdc8ce15`), sorted with `LC_ALL=C`: 671
+  targets each, `diff` empty, identical sha256 (`44ded4fc97013e6f…`). The 11
+  gates the raw tier lists hold beyond that (`artifact-identity-budget`,
+  `hosted-cxx-opt-in`, `tiarmclang-image`, …) need a claim neither scope has
+  (`build-tree`, `arm-gcc`, `zephyr`, `fsp`, `tiarmclang`), and were
+  deselected before as they are now.
 - `check-default-gates-run-somewhere` and `check-lane-step-duplicates` read
   `steps=(…)` from `just/ci.just` today. They move to reading `[lane.ci]`
   and its preconditions, so a gate that leaves the lane (its tier changed or
