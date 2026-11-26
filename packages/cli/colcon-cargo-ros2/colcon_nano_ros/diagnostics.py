@@ -27,6 +27,7 @@ CODES = {
     "LinkNotOnBoard": ("NROS-0018", "the image's network or link is not one the board carries", "change the image's `locator` or network to one the board carries (`nros board net <board>`), or choose a board that has the link"),
     "BoardToolMissing": ("NROS-0019", "a tool the board builds with is not installed", "run the `run:` line the reason prints; `nros setup <board>` installs everything the board needs"),
     "BoardSdkRootUnset": ("NROS-0020", "the board's vendor SDK root is not set", "export the variable the reason names, set to the vendor SDK's directory"),
+    "ImageOverMemoryBudget": ("NROS-0021", "the image needs more RAM than the board has", "lower what the image states (task stacks, heap, transient-local depth), or choose a board with more RAM"),
 }
 
 

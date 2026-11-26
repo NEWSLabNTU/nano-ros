@@ -234,6 +234,40 @@ pub fn sdk_root(board: &str, var: Option<&str>, value: Option<&str>) -> Option<R
     )
 }
 
+/// The image's stated RAM floor (RFC-0135 D8, ruled 2026-11-26) when it is
+/// more than the board's `[board.memory] ram`. A LOWER bound, worded so: only
+/// the bytes the sizing descriptor states count, and the exact verdict comes
+/// after the link, from the image's size report against the same budget.
+#[must_use]
+pub fn memory(
+    board: &str,
+    floor: &nros_sizing_descriptor::RamFloor,
+    ram: Option<u64>,
+) -> Option<Refusal> {
+    let ram = ram?;
+    let need = floor.total() as u64;
+    if need <= ram {
+        return None;
+    }
+    let parts = floor
+        .parts
+        .iter()
+        .map(|(what, b)| format!("{what} {b}"))
+        .collect::<Vec<_>>()
+        .join(" + ");
+    Some(
+        Diag::ImageOverMemoryBudget
+            .refusal(format_args!(
+                "the image needs at least {need} bytes of RAM ({parts}); board `{board}` has \
+                 {ram}"
+            ))
+            .help(
+                "lower what the image states (task stacks, heap, transient-local depth), or \
+                 choose a board with more RAM",
+            ),
+    )
+}
+
 /// The toolchain preflight's verdicts (RFC-0065 D2), one reason each.
 #[must_use]
 pub fn tools(missing: Vec<Missing>) -> Vec<Refusal> {

@@ -27,3 +27,4 @@ NROS-0017 RmwNeedsCapability live
 NROS-0018 LinkNotOnBoard live
 NROS-0019 BoardToolMissing live
 NROS-0020 BoardSdkRootUnset live
+NROS-0021 ImageOverMemoryBudget live

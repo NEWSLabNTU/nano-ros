@@ -34,6 +34,7 @@ changes its meaning, and a retired code names the one that replaced it.
 | [NROS-0018](#NROS-0018) | the image's network or link is not one the board carries |
 | [NROS-0019](#NROS-0019) | a tool the board builds with is not installed |
 | [NROS-0020](#NROS-0020) | the board's vendor SDK root is not set |
+| [NROS-0021](#NROS-0021) | the image needs more RAM than the board has |
 
 <a id="NROS-0001"></a>
 
@@ -522,5 +523,41 @@ The board package's documentation says which SDK release it supports.
 The refusal's `help` line, unless the site gives a more specific one:
 
 > export the variable the reason names, set to the vendor SDK's directory
+
+[Back to the list of codes](#diagnostic-codes)
+
+<a id="NROS-0021"></a>
+
+## NROS-0021: the image needs more RAM than the board has
+
+The image needs more RAM than its board has.
+
+A board states its memory in its `nros-board.toml`:
+
+```toml
+[board.memory]
+flash = 4194304
+ram = 4194304
+```
+
+Before anything is compiled, `nros build` adds up the RAM the image's sizing
+descriptor states in bytes: the stacks of the tasks its entry starts, the heap
+it is configured with, and the rings that keep transient-local samples for
+late joiners. That sum is a lower bound, "needs at least", because most of
+what an image uses is counted only by the linker. When even the lower bound
+does not fit, the image cannot fit, and the build stops before compiling.
+
+The exact figure comes after the link: `nros build` prints the image's size
+against the same budget.
+
+### How to fix it
+
+Read the parts the reason lists, and lower the largest: a task's stack, the
+heap, or the depth of a transient-local publisher. Or choose a board with more
+RAM; `nros board list` names them.
+
+The refusal's `help` line, unless the site gives a more specific one:
+
+> lower what the image states (task stacks, heap, transient-local depth), or choose a board with more RAM
 
 [Back to the list of codes](#diagnostic-codes)

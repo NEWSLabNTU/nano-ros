@@ -166,3 +166,27 @@ fn only_missing_tools_stay_the_preflight_refusal() {
     );
     assert!(Incompatible::new("t", "a", None).into_result().is_ok());
 }
+
+/// D8 row "memory" (ruled 2026-11-26): the stated floor against the board's
+/// RAM, worded as a lower bound; no budget, or a floor that fits, is none.
+#[test]
+fn a_stated_floor_over_the_boards_ram_is_a_reason() {
+    let floor = nros_sizing_descriptor::RamFloor {
+        parts: vec![("sched task stacks", 65536), ("heap", 131072)],
+    };
+    let r = memory("acme", &floor, Some(131072)).expect("refused");
+    assert_eq!(r.diag(), Diag::ImageOverMemoryBudget);
+    let text = r.to_string();
+    assert!(
+        text.contains(
+            "needs at least 196608 bytes of RAM (sched task stacks 65536 + heap 131072); \
+             board `acme` has 131072"
+        ),
+        "{text}"
+    );
+    assert!(memory("acme", &floor, Some(196608)).is_none());
+    assert!(
+        memory("acme", &floor, None).is_none(),
+        "no budget, no comparison"
+    );
+}

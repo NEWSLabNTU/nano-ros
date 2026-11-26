@@ -163,4 +163,16 @@ diagnostics! {
         surfaces: [Cli],
         remedy: "export the variable the reason names, set to the vendor SDK's directory",
     }
+
+    /// The bytes an image's sizing descriptor states it needs in RAM (task
+    /// stacks, heap, transient-local retention) are more than the board's
+    /// `[board.memory] ram`. A lower bound before the build; the linked
+    /// image's size is the exact figure. History: RFC-0135 D8 (ruling of
+    /// 2026-11-26), phase-577 W6.
+    0021 ImageOverMemoryBudget {
+        title: "the image needs more RAM than the board has",
+        surfaces: [Cli],
+        remedy: "lower what the image states (task stacks, heap, transient-local depth), or \
+                 choose a board with more RAM",
+    }
 }
