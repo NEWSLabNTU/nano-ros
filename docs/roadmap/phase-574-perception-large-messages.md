@@ -1,6 +1,6 @@
 # Phase 574 — Perception data and large messages: feasibility, then the fixes it names
 
-**Status (2026-11-17). OPEN: no item started. Owner: nros 241.** Opened by the
+**Status (2026-11-26). OPEN: W2 and W3 started. Owner: nros 241 (W2 and W3: nros 175).** Opened by the
 user's ruling of 2026-11-17: "Approve your study and have a phase doc. Be aware
 of the scope. The nano-ros includes a board only if it meets a support
 criteria. We may place board support package in the user project. My idea is
@@ -161,7 +161,7 @@ detection model: `class_id`, `class_name` (`"person"`), `score` and `bbox`.
 
 ### W2 — Capability matrix
 
-- **Owner:** unassigned.
+- **Owner:** nros 175.
 - **Status:** OPEN
 - For payload sizes of 1, 16, 64 and 256 KB, 1 MB and 4 MB, run publish and
   subscribe on each in-tree RMW (zenoh, XRCE, Cyclone) and each target listed
@@ -219,7 +219,7 @@ modes (the typed path), which the raw path above does not exercise.
 
 ### W3 — Memory cost and placement
 
-- **Owner:** unassigned.
+- **Owner:** nros 175.
 - **Status:** OPEN
 - Measure the RAM each message class costs per configuration in W2 with
   `just mem-report` and the sizing descriptor (RFC-0100). On the Cortex-M7
