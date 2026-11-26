@@ -49,5 +49,10 @@ census-param-store-test = ["nros/param-store"]
 name = "imperative_param_census"
 required-features = ["census-param-store-test"]
 
+# phase-566 W4 -- seeds reach the store, which needs `param-store`.
+[[test]]
+name = "probe_launch_seeds"
+required-features = ["census-param-store-test"]
+
 [lints]
 workspace = true

@@ -1786,39 +1786,54 @@ impl ExecutorSink<'_> {
         if executor.params().is_none() {
             return Ok(());
         }
-        let params = self.launch_params;
-        for (name, raw) in params.iter() {
-            // phase-446 seam: the value's type is inferred from the launch
-            // string; a type declared in the contract replaces this call.
-            // Issue 2638 -- `[a, b]` is an array; `[]` seeds nothing (ROS
-            // gives an empty sequence no value) and a list ROS refuses is
-            // refused here, never seeded as a string.
-            let mut value = nros_params::ParameterValue::NotSet;
-            match value.assign_launch_text(raw) {
-                Ok(()) => {}
-                Err(nros_params::LaunchTextError::EmptyList) => continue,
-                Err(e) => {
-                    nros_log::log_error!(
-                        nros_log::get_logger("nros"),
-                        "launch parameter '{name}' = `{raw}` has no value the store can hold \
-                         ({e:?}): refusing it"
-                    );
-                    return Err(NodeDeclError::Runtime);
-                }
-            }
-            // Issue 2969 -- declared AS a launch seed, so the code's own first
-            // declaration of the name adopts it instead of being refused.
-            if !executor.seed_launch_parameter_on_ref(node, name, &value)
-                && executor.get_parameter_on(node, name).is_none()
-            {
-                // GitHub #4018 -- the line names the store's capacity and the
-                // knob that sizes it, not only the refusal.
-                executor.report_parameter_refused(node, name);
-                return Err(NodeDeclError::ParameterRejected);
+        seed_launch_params_on(executor, node, self.launch_params)
+    }
+}
+
+/// Declare `params`, one component's launch `<param>` initials, on `node`:
+/// the seed a board's entry gives the node it builds (issue 1272), and the one
+/// the Rust metadata probe gives its node (phase-566 W4), so the two cannot
+/// type a value differently.
+///
+/// A `false` from the store is a refusal only if the name is still absent
+/// afterwards: the store also answers `false` for "already declared".
+#[cfg(feature = "param-store")]
+pub(crate) fn seed_launch_params_on(
+    executor: &mut Executor<'static>,
+    node: nros_node::executor::NodeId,
+    params: crate::node::LaunchParams<'_>,
+) -> NodeResult<()> {
+    for (name, raw) in params.iter() {
+        // phase-446 seam: the value's type is inferred from the launch
+        // string; a type declared in the contract replaces this call.
+        // Issue 2638 -- `[a, b]` is an array; `[]` seeds nothing (ROS
+        // gives an empty sequence no value) and a list ROS refuses is
+        // refused here, never seeded as a string.
+        let mut value = nros_params::ParameterValue::NotSet;
+        match value.assign_launch_text(raw) {
+            Ok(()) => {}
+            Err(nros_params::LaunchTextError::EmptyList) => continue,
+            Err(e) => {
+                nros_log::log_error!(
+                    nros_log::get_logger("nros"),
+                    "launch parameter '{name}' = `{raw}` has no value the store can hold \
+                     ({e:?}): refusing it"
+                );
+                return Err(NodeDeclError::Runtime);
             }
         }
-        Ok(())
+        // Issue 2969 -- declared AS a launch seed, so the code's own first
+        // declaration of the name adopts it instead of being refused.
+        if !executor.seed_launch_parameter_on_ref(node, name, &value)
+            && executor.get_parameter_on(node, name).is_none()
+        {
+            // GitHub #4018 -- the line names the store's capacity and the
+            // knob that sizes it, not only the refusal.
+            executor.report_parameter_refused(node, name);
+            return Err(NodeDeclError::ParameterRejected);
+        }
     }
+    Ok(())
 }
 
 /// Issue 2360 — run one `create_entity` arm in its OWN frame.

@@ -384,6 +384,8 @@ pub fn refresh_stale_sidecars(
             continue;
         }
         let sidecar = decl.source_metadata_path();
+        // phase-566 W4 -- the Rust probe is seeded by the C/C++ rule (D1/D2).
+        let node = format!("{}::{}", decl.config.package, decl.config.component);
         let key = match plan {
             ComponentPlan::RustFresh => {
                 clear_unprobeable(&sidecar);
@@ -429,12 +431,19 @@ pub fn refresh_stale_sidecars(
                 decl.config.package, decl.config.component
             );
         }
-        let opts = build_options(decl, nano_ros, &probe_root);
+        let opts = build_options(decl, nano_ros, &probe_root, &seeding);
         // Issue 2827 -- staged, so the stamp below is what puts it in place.
         match crate::orchestration::metadata_build::build_metadata_staged(&opts) {
             Ok(_staged) => {
                 clear_unprobeable(&sidecar);
-                stamp_provenance(&sidecar, key.as_deref().unwrap_or(UNKEYED))?;
+                stamp_probe(
+                    &sidecar,
+                    key.as_deref().unwrap_or(UNKEYED),
+                    seeding.record(),
+                )?;
+                if let Some(note) = seeding.unseeded_note(&node) {
+                    report.notes.push(note);
+                }
                 report.rebuilt.push(sidecar);
             }
             // #0288 — a deploy-bound standalone example degrades best-effort:
@@ -462,24 +471,26 @@ pub fn refresh_stale_sidecars(
                         decl.package_root.join("Cargo.toml").display()
                     );
                 }
+                // Issue 2640 (phase-566 D2) -- instances that disagree name
+                // both causes, as the C/C++ road does.
+                let raw = format!("{why:#}");
+                let text = seeding
+                    .refusal(&node, &first_error_line(&raw))
+                    .map_or(raw.clone(), |r| format!("{r}\n{raw}"));
                 if let Some(k) = key.as_deref() {
                     // A cargo probe path-depends on `nano_ros` itself, so that
                     // IS the compile root.
-                    mark_unprobeable_with_reason(
-                        &sidecar,
-                        k,
-                        Some(nano_ros),
-                        Some(&format!("{why:#}")),
-                    );
+                    mark_unprobeable_with_reason(&sidecar, k, Some(nano_ros), Some(&text));
                 }
-                report.degraded.push(format!(
-                    "{}::{} (deploy-bound probe failed: {why:#})",
-                    decl.config.package, decl.config.component
-                ));
+                report
+                    .degraded
+                    .push(format!("{node} (deploy-bound probe failed: {text})"));
             }
             Err(why) => {
-                return Err(why).wrap_err_with(|| {
-                    format!("refresh source metadata for `{}`", decl.config.package)
+                let refusal = seeding.refusal(&node, &first_error_line(&format!("{why:#}")));
+                return Err(why).wrap_err_with(|| match refusal {
+                    Some(r) => r,
+                    None => format!("refresh source metadata for `{}`", decl.config.package),
                 });
             }
         }
@@ -834,6 +845,7 @@ fn build_options(
     decl: &ComponentDeclaration,
     nano_ros: &Path,
     probe_root: &Path,
+    seeding: &Seeding,
 ) -> MetadataBuildOptions {
     let id = decl.config.component.clone();
     let name = id.rsplit("::").next().unwrap_or(&id).to_string();
@@ -851,6 +863,8 @@ fn build_options(
         harness_dir: probe_root
             .join("metadata-probe")
             .join(id.replace("::", "__")),
+        // phase-566 W4 -- the values D2 chose, the C/C++ probe's own.
+        seeds: seeding.params().to_vec(),
     }
 }
 
@@ -1450,6 +1464,10 @@ fn sidecar_is_fresh(sidecar: &Path, digest: &str) -> bool {
 /// the harness so the stamp is one implementation for every producer language
 /// (W3's C/C++ probe gets it for free), and so the round-trip through
 /// [`SourceMetadata`] doubles as schema validation of what the harness emitted.
+///
+/// Tests only since phase-566 W4: both probe roads stamp through
+/// [`stamp_probe`], which also writes the seeds' `probe` object.
+#[cfg(test)]
 pub(crate) fn stamp_provenance(sidecar: &Path, digest: &str) -> Result<()> {
     stamp_probe(sidecar, digest, None)
 }
@@ -1989,13 +2007,10 @@ pub fn component_probe_key(
     })
 }
 
-/// Issue 2640 -- what `decl`'s probe is seeded with (phase-566 D2). A Rust
-/// component is probed by the cargo harness, which takes no seeds yet
-/// (phase-566 W4), so it is never seeded and its key is unchanged.
+/// Issue 2640 -- what `decl`'s probe is seeded with (phase-566 D2), whichever
+/// harness probes it: the C/C++ probe project and the cargo harness take the
+/// same seeds (phase-566 W4).
 pub fn seeding_of(models: &SeedModels, decl: &ComponentDeclaration) -> Seeding {
-    if decl.config.language == ComponentLanguage::Rust {
-        return Seeding::None;
-    }
     models.seeding(
         &decl.config.package,
         &decl
@@ -2284,7 +2299,8 @@ fn plan_component(
     // component's sources, the CLI, and the nano-ros crates the probe
     // compiles. `None` (no nano-ros path, or no closure list) is never
     // fresh, so the probe re-runs rather than trusting a smaller key.
-    let key = probe_inputs_key(&decl.package_root, nano_ros);
+    // Issue 2640 -- and the launch values it is seeded with (phase-566 W4).
+    let key = component_probe_key(&decl.package_root, nano_ros, seeding);
     if key
         .as_deref()
         .is_some_and(|k| sidecar_is_fresh(&sidecar, k))
@@ -2729,6 +2745,64 @@ mod tests {
                 overrides: ComponentOverrides::default(),
             },
         }
+    }
+
+    // phase-566 W4.
+    /// A Rust component is seeded by the C/C++ rule: one launch instance seeds
+    /// it, the seed digest joins its probe key (so a param-file edit re-probes
+    /// it and the sizing join skips its old sidecar), and the cargo harness is
+    /// handed the same values. Instances that disagree take D2's path.
+    #[test]
+    fn a_rust_component_is_seeded_by_the_c_and_cpp_rule() {
+        let root = fake_nano_ros("rust-seeds-root");
+        let dir = tmp("rust-seeds-pkg");
+        let decl = probeable_decl(&dir, ComponentLanguage::Rust);
+        let exec = decl
+            .config
+            .linkage
+            .resolved_executable(&decl.config.component);
+
+        let one = SeedModels::for_test(&[("demo_pkg", &exec, "/talker", &[("period_ms", "20")])]);
+        let seeding = seeding_of(&one, &decl);
+        assert!(
+            matches!(seeding, Seeding::Seeded { .. }),
+            "one instance seeds a Rust component: {seeding:?}"
+        );
+        let unseeded = probe_inputs_key(&dir, Some(&root)).expect("keyed");
+        let seeded = component_probe_key(&dir, Some(&root), &seeding).expect("keyed");
+        assert_ne!(seeded, unseeded, "the seed digest is in the key");
+        assert!(seeded.starts_with(&unseeded), "{seeded} extends {unseeded}");
+        let opts = build_options(&decl, &root, &dir.join("probe"), &seeding);
+        assert_eq!(
+            opts.seeds,
+            vec![("period_ms".to_string(), "20".to_string())],
+            "the harness gets the values the key names"
+        );
+
+        // No instance: the key and the harness are what they were before W4.
+        let none = SeedModels::for_test(&[]);
+        assert_eq!(seeding_of(&none, &decl), Seeding::None);
+        assert_eq!(
+            component_probe_key(&dir, Some(&root), &Seeding::None).as_deref(),
+            Some(unseeded.as_str())
+        );
+        assert!(
+            build_options(&decl, &root, &dir.join("probe"), &Seeding::None)
+                .seeds
+                .is_empty()
+        );
+
+        // Disagreeing instances take D2, as a C/C++ component does.
+        let two = SeedModels::for_test(&[
+            ("demo_pkg", &exec, "/a/talker", &[("period_ms", "20")]),
+            ("demo_pkg", &exec, "/b/talker", &[("period_ms", "50")]),
+        ]);
+        let seeding = seeding_of(&two, &decl);
+        assert!(matches!(seeding, Seeding::Disagree { .. }), "{seeding:?}");
+        assert!(
+            seeding.refusal("demo_pkg::talker", "boom").is_some(),
+            "a failed probe of disagreeing instances is refused naming them"
+        );
     }
 
     /// Issue 1528 — the probe's language is decided by an exhaustive match,
