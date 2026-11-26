@@ -220,9 +220,10 @@ the user ruled; all five stand:
   defects 1-3 are fixed (#3733), defect 4 (tree-wide codegen) is
   [phase-535](phase-535-example-reorg-and-cadence-ci.md) W10, and both
   re-measures ran (43420012895 on main, 43438754804 with W10). The user ruled
-  on the linux shard (below). Remains: issues 2510 and 2511, then a re-measure
-  of the threadx_linux and zephyr shards to completion, final disk included,
-  then their move.
+  on the linux shard (below). Issues 2510 and 2511 are resolved (#4358,
+  685656d351, 2026-11-19). Remains: a re-measure of the threadx_linux and zephyr shards
+  to completion, final disk included, then their move. That move is draft
+  #4098, last updated 2026-11-18 (audited 2026-11-26).
 
   Fourth measurement, run 43551581652 (2026-11-14, main 28a9b3ebba, the
   disk balloon on): threadx_linux BUILT (105 G free after reclaim, 43 G left,
