@@ -20,6 +20,9 @@ implementors and device users as two distinct roles. The three questions
 raised in that review are settled below (D7, D6, D9). The user accepted the
 decisions on 2026-11-19. Tracked by phase-579.
 
+**Amendment (2026-11-26, DRAFT): the Rust shape**, both ends, with four questions
+for the user at its top (see [the amendment](#amendment-2026-11-26-draft-the-rust-shape)).
+
 ## Summary
 
 Hardware that does work on its own and reports completion — a neural
@@ -409,6 +412,304 @@ Output>`, which builds the vtable; the header uses no STL, so it is
 freestanding-safe. **A Rust implementor** implements the matching trait, whose
 vtable is the same ABI.
 
+## Amendment (2026-11-26, DRAFT): the Rust shape
+
+**Status: DRAFT, awaiting the user's ruling on Q1–Q4 below.** D1 promises a
+Rust view of the port ABI and D7 a Rust crate, and the Examples end with "a
+Rust implementor implements the matching trait"; nothing above says what
+either looks like. This amendment gives both ends, the node API (R2, R3) and
+the implementor trait (R5, R6), to match the C and C++ shapes. Nothing here
+changes D1–D11 or the C and C++ shapes. Implementation (phase-579 W4) starts
+after the ruling.
+
+### Questions for the user
+
+- **Q1. One Rust user tier or two?** A Rust node is written as a component:
+  it registers entities in `register(ctx)`, names each callback with a string,
+  handles them in `on_callback`, and sends by name (`send_goal_for_name`). The
+  C++ example instead holds handles and passes closures. Proposed: the
+  **component tier (R2) is the Rust user surface**, and a **closure tier over
+  the executor (R3)** serves an image with no component, as guard conditions
+  have both a node form and an executor form. Alternative: the component tier
+  only, with the closure tier added when an image needs it.
+- **Q2. How `nros-device` reaches a component's context without adding names
+  to the mirrored types.** The component tier must register a stage from
+  `register(ctx)`, read a stage result inside `on_callback`, and submit from
+  `on_callback` or `tick`. Proposed: **(a) free functions in `nros-device`
+  that take the context** (`nros_device::submit_for_name(ctx, ...)`), reached
+  through one documented extension accessor that `NodeContext`, `CallbackCtx`
+  and `TickCtx` expose for companion packages. That accessor is D4's hook
+  surfaced to the component tier, and the phase's "no new name in the user
+  API" gate exempts it by name. Alternative: **(b) an extension trait**
+  (`use nros_device::prelude::*;` then `ctx.submit_for_name(...)`). It is
+  shorter, but it reads as a method on the mirrored type, and the gate could
+  not tell it from one.
+- **Q3. How a board names a device handle.** Proposed: a board crate exports
+  typed statics in a `devices` module, Rust's spelling for a constant:
+  `acme_board::devices::NPU0`. The C ops table stays `acme_npu0_ops` and the
+  C++ handle `acme::npu0`, so one device has three spellings, one per
+  language's convention. Alternative: a lowercase function,
+  `acme_board::devices::npu0()`, the same word as C++ but a call.
+- **Q4 (all three languages). Which clock is the capture time on?** D5 says it
+  travels with the data, and `max_age` is measured against it. The examples
+  write it into `header.stamp`, which is the wall clock. Under RFC-0141 the wall
+  clock can step (an SNTP re-sync), and an age computed across a step is
+  wrong. Proposed: the capture time is **monotonic**, which `max_age` uses.
+  Each result also carries the **wall-clock reading taken at the same
+  instant**, which `stamp()` returns for a message header. C and C++ gain the
+  same pair (`captured_at` stays monotonic; a `captured_stamp` field is
+  added). Alternative: wall clock only, and accept a wrong age across a
+  step.
+
+### R1 — The crate, and the no_std rules it keeps
+
+- `nros-device` is `#![no_std]` and needs no `alloc`, like the core crates. It
+  builds wherever `nros-node` builds. Edition 2024: `unsafe extern "C"`,
+  `#[unsafe(no_mangle)]`, an explicit `unsafe {}` in every `unsafe fn`.
+- **Storage** is a `static` (a port's state, a device handle) or the executor's
+  arena (a worker, a stage, a source, sized by the generated sizes header, as
+  the Rules below require). Registration happens before the first spin; a later one
+  returns an error and changes nothing.
+- **The ABI types** are W2's committed bindgen output, re-exported as
+  `nros_device::sys`. The crate never hand-mirrors a port struct (the
+  hand-mirrored-struct drift class), and its layout checks are W2's.
+- **Errors:** `DeviceError` (`Rejected`, `Fault`, `Timeout`, `Unsupported`,
+  `AbiMismatch`) maps one to one onto `nros_device_ret_t`. "Not finished yet" is
+  `core::task::Poll::Pending`, not an error. The user tier returns the
+  `NodeResult` the rest of a component returns.
+- **Diagnostics** go through `nros_log`, never `std` stdio (it is fatal on
+  native_sim).
+- **Typed classes:** a per-class module (`inference`, `image2d`, `camera`,
+  `sensor`) defines a class marker (`Inference`) and its job and output types.
+  A class is a trait, `JobClass { type Job; type Output; }` for a worker and
+  `SourceClass { type Item; }` for a source. It converts between the typed
+  view and the type-erased job and result of D3. The type erasure stays at
+  the ABI, as D7 says.
+
+### R2 — The node API, component tier
+
+The C++ example's node, as a Rust component:
+
+```rust
+#![no_std]
+use core::time::Duration;
+use nros::{Callback, CallbackCtx, Component, ExecutableNode, NodeContext, NodeOptions, NodeResult};
+use nros_device::{camera::Frame, inference::{Inference, InferenceJob}, SourceOptions, StageOptions};
+
+pub struct Perception;
+
+impl Component for Perception {
+    const NAME: &'static str = "perception";
+
+    fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {
+        let _node = ctx.create_node(NodeOptions::new("perception"))?;
+        let npu = nros_device::worker(ctx, &acme_board::devices::NPU0)?;
+        nros_device::stage::<Inference>(ctx, npu, "detector",
+            StageOptions::critical(Duration::from_millis(9), Duration::from_millis(50)),
+            "on_detections")?;
+        nros_device::source::<Frame>(ctx, &nros_zephyr_devices::CAMERA0, "camera",
+            SourceOptions::keep_latest(Duration::from_millis(40)), "on_frame")?;
+        Ok(())
+    }
+}
+
+impl ExecutableNode for Perception {
+    type State = ();
+    fn init() {}
+
+    fn on_callback(_: &mut (), callback: Callback<'_>, ctx: &mut CallbackCtx<'_>) {
+        match callback.as_str() {
+            "on_frame" => {
+                if let Ok(frame) = nros_device::take::<Frame>(ctx) {
+                    let job = InferenceJob { model: &DETECTOR, input: frame.slot };
+                    let _ = nros_device::submit_for_name::<Inference>(ctx, "detector", job, frame.captured);
+                }
+            }
+            "on_detections" => {
+                if let Ok(out) = nros_device::result::<Inference>(ctx) {
+                    let mut msg = decode_nms(out.output().data());
+                    msg.header.stamp = out.stamp();
+                    // publish `msg` as the node publishes anything else
+                }
+            }
+            _ => {}
+        }
+    }
+}
+```
+
+- **Registration** (`worker`, `stage`, `source`) takes the context, a device
+  handle (R5) and a name; a stage and a source also take options and the name
+  of the callback that receives their results. `worker` returns a
+  `WorkerId`, which is `Copy` and borrows nothing, so the component holds no
+  lifetime.
+- **Reading** inside `on_callback` mirrors `ctx.message::<M>()`: `take::<T>`
+  yields a source's item and `result::<C>` a stage's result. Each returns
+  `Err` when the callback being dispatched is not that kind.
+- **Submitting** by stage name mirrors `send_goal_for_name`, and works from
+  `on_callback` or `tick`. It takes ownership of the job's slots (R4), and on
+  `Err` hands them back inside the error, so no buffer is lost.
+- **Options** are consts with the C++ spellings: `StageOptions::critical(device
+  time, max age)` / `::normal` / `::best_effort`, and `SourceOptions::keep_latest(max
+  age)` / `::fifo(depth, max age)`.
+
+### R3 — The node API, closure tier (Q1)
+
+For an image with no component (a bare `Executor::open` plus devices), the
+same objects are opened on the executor with closures, as
+`register_guard_condition` is:
+
+```rust
+let npu = nros_device::Worker::open(&mut executor, &acme_board::devices::NPU0)?;
+let det = nros_device::Stage::<Inference>::open(&mut executor, npu,
+    StageOptions::critical(Duration::from_millis(9), Duration::from_millis(50)),
+    |out: nros_device::StageResult<Inference>| { /* decode, publish */ })?;
+nros_device::Source::<Frame>::open(&mut executor, &nros_zephyr_devices::CAMERA0,
+    SourceOptions::keep_latest(Duration::from_millis(40)),
+    move |frame: nros_device::Item<Frame>| { let _ = det.submit(InferenceJob { model: &DETECTOR, input: frame.slot }, frame.captured); })?;
+```
+
+The closures are `FnMut + 'static`, the bound every executor callback has. A
+`Stage<'s, C>` handle is `Copy` and borrows the executor's backing for `'s`,
+as `GuardCondition<'s>` does (the backing-lifetime rule). So a closure can
+capture one only when the backing is `'static`, which the default `.bss`
+executor backing is.
+
+### R4 — Owned slots and views (D6)
+
+- `Slot<T>` is the owned handle to a large-message pool slot: move-only (no
+  `Clone`, no `Copy`), `Send`, released to its pool on `Drop`. Moving it into
+  a job is the handover. The compiler rejects a use after the move, which is
+  D6's C++ and Rust rule; there is no empty state to assert on.
+- `Slot<T>` derefs to the class's view (`Frame` has width, height, format and
+  stride; a tensor view has shape and element type). `data()` is the bytes.
+- An item from a source is `Item<T> { slot: Slot<T>, captured, stamp }`
+  (captured and stamp as Q4 rules).
+
+### R5 — Device handles, and how a board names one (Q3)
+
+A board crate exports one typed static per device:
+
+```rust
+pub mod devices {
+    pub static NPU0: nros_device::WorkerHandle<nros_device::inference::Inference> = /* R6 */;
+}
+```
+
+- `WorkerHandle<C: JobClass>` and `SourceHandle<C: SourceClass>` are
+  `#[repr(transparent)]` over `&'static` the D3 ops table, with the class as
+  a type parameter. A stage of another class cannot be bound to the device;
+  that is a compile error, not a runtime refusal.
+- Registration checks `abi_version` and returns `DeviceError::AbiMismatch`
+  for a table it does not speak, so a stale adapter fails at registration and
+  never at a job.
+- **A device whose adapter is C** is named from Rust with one `unsafe` line,
+  in which the board asserts the C table's class:
+
+  ```rust
+  unsafe extern "C" { static acme_npu0_ops: nros_device::sys::nros_worker_port_ops_t; }
+  pub static NPU0: WorkerHandle<Inference> = unsafe { WorkerHandle::from_c(&acme_npu0_ops) };
+  ```
+
+- The in-tree adapters of D9 (Zephyr video and RTIO, Linux V4L2) are named the
+  same way, from the platform layer's own module (`nros_zephyr_devices::CAMERA0`
+  above, the crate name to be settled with W8).
+
+### R6 — The implementor trait
+
+A Rust adapter implements a trait. The crate builds the D3 ops table from it,
+so an adapter written in Rust serves a C, C++ or Rust node (phase-579 W4's
+acceptance):
+
+```rust
+pub trait WorkerPort: Send + 'static {
+    type Class: JobClass;
+    /// Never blocks; called only when the device is idle (D3).
+    fn submit(&mut self, job: &<Self::Class as JobClass>::Job, done: Completion) -> Result<(), DeviceError>;
+    /// Never blocks; `Pending` while the device is still working.
+    fn take(&mut self, out: &mut ResultSink<'_, Self::Class>) -> Poll<Result<(), DeviceError>>;
+    /// Whether `cancel` is implemented; when false the table's `cancel` is NULL.
+    const CAN_CANCEL: bool = false;
+    fn cancel(&mut self) -> Result<(), DeviceError> { Err(DeviceError::Unsupported) }
+}
+
+pub trait SourcePort: Send + 'static {
+    type Class: SourceClass;
+    fn start(&mut self, ready: Completion) -> Result<(), DeviceError>;
+    fn take(&mut self, out: &mut ResultSink<'_, Self::Class>) -> Poll<Result<(), DeviceError>>;
+    fn stop(&mut self);
+}
+```
+
+The Ethos-U adapter of the Examples, in Rust:
+
+```rust
+static NPU: PortCell<AcmeNpu> = PortCell::new(AcmeNpu::new());
+static DONE: CompletionCell = CompletionCell::new();
+
+impl WorkerPort for AcmeNpu {
+    type Class = Inference;
+    fn submit(&mut self, job: &InferenceJob, done: Completion) -> Result<(), DeviceError> {
+        DONE.set(done);
+        // SAFETY: the driver handle is this port's; ethosu_invoke_async does not block.
+        match unsafe { ethosu_invoke_async(self.drv, job.command(), /* bases */) } {
+            0 => Ok(()),
+            _ => Err(DeviceError::Rejected),
+        }
+    }
+    fn take(&mut self, out: &mut ResultSink<'_, Inference>) -> Poll<Result<(), DeviceError>> {
+        // SAFETY: as above; `false` makes ethosu_wait return at once.
+        match unsafe { ethosu_wait(self.drv, false) } {
+            1 => Poll::Pending,
+            0 => Poll::Ready(out.complete()),
+            _ => Poll::Ready(Err(DeviceError::Fault)),
+        }
+    }
+}
+
+#[unsafe(no_mangle)]
+extern "C" fn NPU0_IRQHandler() {
+    // SAFETY: the vendor's handler for this interrupt.
+    unsafe { ethosu_irq_handler(NPU.driver()) };
+    DONE.signal_from_isr();
+}
+
+pub static NPU0: WorkerHandle<Inference> = WorkerHandle::new(&NPU);
+/// The same device for a C or C++ node.
+#[unsafe(no_mangle)]
+pub static acme_npu0_ops: WorkerPortOps = WorkerPortOps::of(&NPU);
+```
+
+- **`PortCell<P>`** holds a port's state in a `static`. It is `Sync` by
+  `unsafe impl`, on D3's guarantee that the runtime calls one port's
+  thread-context functions only from the executor that owns it, one at a time.
+  It is the only place the crate asserts that.
+- **The ops table** is built in a `const fn` from `extern "C"` trampolines
+  generic over the port, so it is a plain `static`, with no constructor and
+  nothing to call at boot. `WorkerPortOps` wraps the bindgen struct
+  `#[repr(transparent)]` so a `static` of it can hold `user_data`.
+- **`Completion`** is `Copy` and `Send`: `signal(self)` in thread context, and
+  `signal_from_isr(self) -> bool` from an interrupt. The bool is whether the
+  executor's wake object took the signal, the same answer
+  `GuardCondition::trigger_from_isr` gives. **`CompletionCell`** stores one
+  atomically, so an interrupt handler can reach the handle `submit` received,
+  with no lock.
+- The interrupt rule of D3 holds by convention, as in C. Only
+  `signal_from_isr` may run in an interrupt, and every other call asserts thread
+  context in a debug build. The type system cannot express this, so the
+  conformance tests (D11) check it.
+- A port implemented in Rust passes the same conformance tests as a C one:
+  `nros_device::conformance::worker(&NPU0)` and `::source(...)` run D11's
+  checks against any handle.
+
+### R7 — What this adds, and where
+
+| Name | Where | Notes |
+| --- | --- | --- |
+| `nros-device` crate: registration, `Slot`, handles, traits, per-class modules | companion package (layer 2) | none of it under `nros` |
+| the extension accessor on `NodeContext` / `CallbackCtx` / `TickCtx` | the user API's types, as D4's hook | Q2; exempted by the user-API gate by name |
+| `nros_device::sys` | W2's bindings, re-exported | generated, never hand-written |
+
 ## Rules common to both roles
 
 | Concern | Rule |
@@ -465,3 +766,5 @@ vtable is the same ABI.
 - 2026-11-18: drafted.
 - 2026-11-18: who provides what per layer (D1), and mock ports (D11).
 - 2026-11-19: ACCEPTED by the user's ruling of 2026-11-19.
+- 2026-11-26: amendment drafted: the Rust shape (R1-R7) and questions Q1-Q4,
+  awaiting the user's ruling.
