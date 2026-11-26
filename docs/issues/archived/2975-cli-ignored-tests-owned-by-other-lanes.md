@@ -53,3 +53,14 @@ root profile does. `nextest list` of the sub-workspace's ignored set goes from
 
 A new ignored cli test that another lane owns goes on that list. One with no
 owner stays in `test-ignored`, which is what keeps it from rotting unseen.
+
+## Follow-up (not for nros12)
+
+The subtraction now has two spellings: `[profile.ignored]` in the root's
+`.config/nextest.toml`, and the inline `-E` filter in `test-ignored` for the
+`packages/cli` sub-workspace, which reads its own nextest config. A
+`packages/cli/.config/nextest.toml` holding the same `[profile.ignored]`
+default-filter would make it one spelling: the recipe then sets
+`NEXTEST_PROFILE=ignored` for both runs. `check-nextest-binary-filters` would
+need to learn the second config file (its target set is the root workspace's
+today, issue 1617). Raised in review of #4880 by the release owner.
