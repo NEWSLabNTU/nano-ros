@@ -50,7 +50,8 @@ FREERTOS_CONFIG_DIR = { value = "${workspace}/packages/boards/nros-board-s32z270
 [board.entry]
 
 # RFC-0135 D8 -- the memory an image may use, in bytes, read from this
-XX
+# board's linker script (config/s32z270_rtu.ld: its RAM region; SRAM_NC is
+# not counted). `nros build` compares the image against it.
 [board.memory]
 flash = 4194304
 ram = 3670016

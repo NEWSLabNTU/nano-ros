@@ -67,6 +67,7 @@ pub mod diag;
 /// the derived inventory, one verdict per (node, kind, name). The producer is
 /// `cmd::entity_census`; this is the comparison it feeds.
 pub mod entity_census;
+pub mod compat;
 pub mod fix;
 pub mod source_file;
 // phase-403 W9 (issue 0965) — the ENTITY inventory: WHICH entities an image

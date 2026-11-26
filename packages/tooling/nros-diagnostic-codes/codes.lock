@@ -21,3 +21,9 @@ NROS-0011 RetiredKnobSpelling live
 NROS-0012 ImageEnvNamesKnob live
 NROS-0013 RetiredBoardKey live
 NROS-0014 ImageFrameworkRefused live
+NROS-0015 ImageBoardIncompatible live
+NROS-0016 BoardNoBuildRoad live
+NROS-0017 RmwNeedsCapability live
+NROS-0018 LinkNotOnBoard live
+NROS-0019 BoardToolMissing live
+NROS-0020 BoardSdkRootUnset live

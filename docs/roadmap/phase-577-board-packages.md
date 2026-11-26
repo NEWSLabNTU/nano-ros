@@ -92,7 +92,30 @@ is already a package. What is missing is measured in RFC-0135's Motivation:
 ### W6 — The pre-build compatibility check
 
 - **Owner:** nros 133 (claimed 2026-11-26).
-- **Status:** IN PROGRESS. Branch `feat/board-compat-check`.
+- **Status:** IN PROGRESS. Branch `feat/board-compat-check`, on top of
+  phase-578 W4's `RefusalGroup` and framework refusal (#4898).
+  - Landing in the first PR: the two new facts (`[board.memory]` on the four
+    boards whose linker script states it, `[rmw.needs]` on Cyclone and
+    zenoh); a collecting check on all three roads (workspace, cargo leaf,
+    CMake leaf) between board resolution and stage 3, so nothing is
+    generated first; `nros check --board <key>`; codes NROS-0015 (the
+    header) and 0016 to 0020; one unit test per reason class and an
+    end-to-end test through the preflight query.
+  - Rows reported today: framework (NROS-0014, the existing refusal), build
+    road (0016), RMW needs (0017), links and network (0018: the board's
+    `links`, the network checks, the RMW port arms), toolchain (0019, the
+    preflight), vendor SDK root (0020, a new `[board.sdk] root_env`).
+  - Only missing tools still stay the preflight's own refusal, unchanged:
+    `nros configure` reads that type as a refusal of the host (it skips the
+    image) and anything else as a refusal of the image.
+  - DEFERRED, each to the item that lands its authority: nano-ros version
+    (W3), runner package and host tool (W5), library needs (W12), and the
+    package-knob row (RFC-0140; its check exists and still stops first).
+  - Open: the memory row. Nothing turns a sizing descriptor into bytes
+    before the link. The budget will be compared after the link by
+    phase-578 W1's size report; a pre-build lower bound waits on a ruling.
+  - Open: a key found in no root does not yet list near matches and the
+    roots searched (NROS-0002 lists every name).
 - RFC-0135 D8: one check, run by `nros build` before any build step and by
   `nros check --board <key>` alone. It calls the existing checks and collects
   every verdict, then adds:
