@@ -416,6 +416,12 @@ pub struct QemuBoot {
     pub args: BTreeMap<String, String>,
     /// Words after the kernel image.
     pub passthrough: Vec<String>,
+    /// Whether the descriptor this boot came from is a Zephyr board
+    /// (`[[board]] platform = "zephyr"`), or `None` for a boot no descriptor
+    /// states. [`crate::qemu::QemuProcess::start`] refuses an image of the
+    /// other kind: a Zephyr image on the bare-metal mps2 descriptor boots, and
+    /// even runs, with that board's semihosting and `-icount` (issue 2977).
+    pub zephyr_board: Option<bool>,
 }
 
 impl QemuBoot {
