@@ -1,7 +1,7 @@
 ---
 rfc: 0137
 title: "Prebuilt per-board libraries, used only when their inputs match"
-status: Draft
+status: Stable
 since: 2026-11
 last-reviewed: 2026-11
 implements-tracked-by: [phase-578]
@@ -12,9 +12,10 @@ superseded-by: null
 
 # RFC-0137 — Prebuilt per-board libraries, used only when their inputs match
 
-**Status:** Draft (2026-11-18), for ruling. Written for phase-578 W8 ("a
-shorter first build"). Nothing here is implemented; the questions at the end
-are what a ruling settles.
+**Status:** Stable (ruled 2026-11-26). Written for phase-578 W8 ("a shorter
+first build"), drafted 2026-11-18. All four questions were ruled as drafted
+(see "Rulings" below); nothing here is implemented yet, and the work items, in
+the ruled order, are phase-578 W8.a to W8.d.
 
 ## Problem
 
@@ -142,22 +143,31 @@ once, and from then on the build directory reuses it as today.
   a prebuilt that can be silently wrong. Mutation-tested: add a `-D` to the
   build, and the digest must change.
 
-## Questions for the ruling
+## Rulings (2026-11-26)
 
-1. **Which pieces first?** Draft: zenoh-pico and nano-ros's Rust image
-   crate. They are the large compile and they are the pieces whose inputs
-   are already derived in one place. lwIP and the kernel are smaller and
-   depend on board headers users edit more often.
-2. **Fix the C image's second cargo run first?** Draft: yes, as its own
-   change. It is about 20 s of an 84 s first build, needs no prebuilt, and
-   any prebuilt design must otherwise ship two image crates per board.
-3. **Reproducibility before or after the first prebuilt ships?** Draft:
-   before. A prebuilt whose bytes CI cannot reproduce can only be trusted
-   by the release job's word, which is the trust this RFC exists to avoid.
-4. **Download size.** A prebuilt piece per board per RMW adds to `nros
-   setup`'s 1.7 GB unless the store then skips that piece's source. Draft:
-   fetch a prebuilt piece's source lazily, only when a build needs it from
-   source.
+The user ruled all four questions as drafted, relayed by the manager session.
+
+1. **Which pieces first: zenoh-pico and nano-ros's Rust image crate.** They
+   are the large compile and the pieces whose inputs are already derived in
+   one place. lwIP and the RTOS kernel come later: they are smaller and depend
+   on board headers users edit more often.
+2. **The C image's second cargo run is fixed FIRST, as its own change.** It is
+   about 20 s of an 84 s first build, needs no prebuilt, and any prebuilt
+   design would otherwise ship two image crates per board. Phase-578 W8.a.
+3. **Reproducibility comes BEFORE the first prebuilt ships.** A prebuilt whose
+   bytes CI cannot reproduce can only be trusted on the release job's word,
+   which is the trust this RFC exists to avoid. D3's weekly
+   rebuild-and-compare job runs advisory until it has been green for a
+   release, and then gates the release (D5). Phase-578 W8.b.
+4. **A prebuilt piece replaces its source download.** `nros setup` does not
+   fetch the source of a piece it installs prebuilt; the source is fetched
+   lazily, only when a build needs that piece from source (D2's mismatch
+   path). Phase-578 W8.d.
+
+Order of work, as ruled: W8.a (one cargo run for the C image), W8.b
+(reproducible pieces and the weekly comparison), W8.c (input digests and the
+first two prebuilt pieces, with D5's fixture and input-set gate), W8.d (lazy
+source fetch).
 
 ## Rejected
 
@@ -174,3 +184,11 @@ once, and from then on the build directory reuses it as today.
 - [RFC-0099: provisioning is planned once and prefers prebuilts](0099-provisioning-is-planned-once-and-prefers-prebuilts.md): `dist` rows, integrity by SHA-256.
 - [RFC-0100: RMW-agnostic sizing model](0100-rmw-agnostic-sizing-model.md): image-derived pool sizes, the inputs that make a board-only key wrong.
 - [RFC-0104: dependency pinning and the project lock](0104-dependency-pinning-and-project-lock.md) D5: content stamps, never mtimes.
+
+## Changelog
+
+- 2026-11-26 — Ruled: all four questions as drafted (Q1 zenoh-pico and the
+  Rust image crate first; Q2 the C image's second cargo run fixed first; Q3
+  reproducibility before the first prebuilt, the weekly comparison gating the
+  release once green; Q4 a prebuilt replaces its source download, source
+  fetched lazily). Draft to Stable; work items phase-578 W8.a to W8.d.
