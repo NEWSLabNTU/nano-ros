@@ -1,0 +1,73 @@
+---
+id: 2990
+title: "`just ci matrix build` configures no CMake image, so it is not tier 2's build-and-link depth"
+status: open
+type: bug
+severity: medium
+area: [ci, testing]
+related: []
+found: 2026-11-27
+---
+
+## What happened
+
+PR #4928 changes the six GNU-binutils CMake toolchain files (`ar D`). It was
+gated on host 175 with the full `just ci gate` plus `just ci matrix build`,
+because CLAUDE.md sells `just ci matrix build` as tier 2 "builds+links only"
+for a change to `cmake/`. Both exited 0.
+
+175 then read the matrix-build log. It names none of the six toolchain
+files: zero hits each for armcm3, armcr52, armcr5f, riscv32imac-nuttx-elf
+and riscv64-threadx, while armv7a-nuttx-eabihf appears only as a cargo
+target-dir path. So the green said nothing about the change it was run for.
+
+## Why
+
+`just ci matrix build` dispatches to `_matrix-build`, whose only dependency
+is `l3`. `l3` runs:
+
+- `rust-rtos-link-check`, the cargo road for the embedded RTOS Rust talkers;
+- an ELF check of three Rust images (FreeRTOS mps2, NuttX armv7a, ThreadX
+  Linux);
+- the L3 ELF and heap-free checks.
+
+It builds no fixture row and configures no CMake image. The C and C++
+images, and every image built through `cmake/toolchain/*.cmake`, are
+outside it.
+
+Three texts claim otherwise:
+
+- CLAUDE.md (Practices, `just ci gate`): "`just ci matrix` runs, `just ci
+  matrix build` builds+links only (27 s)", placed under the tier-2 entry
+  that says to run tier 2 "when the diff touches `packages/core`, codegen,
+  or `cmake/`".
+- `just/ci.just` above `matrix`: "build depth is 46 s against 20+ minutes
+  for run depth over the same tree". The two depths do not cover the same
+  tree: run depth goes through tier 2's fixture build, which does
+  configure CMake images.
+- The same comment calls the depth argument a choice between "build +
+  link" and "build + execute" of one cover.
+
+## Consequence
+
+A `cmake/` change gated with `just ci matrix build`, which is what the
+docs prescribe, has its CMake roads unbuilt. #4928 would have armed on a
+green that never configured a CMake image. 175 caught it by reading the
+log, not from any verdict.
+
+## Options (not decided here)
+
+1. Make build depth really be tier 2's cover at link depth: the
+   `build-test-fixtures lane=tier2` build that `_matrix-run` relies on,
+   without executing cells. It is slower than 27 s, and the docs' numbers
+   move with it.
+2. Keep `l3` under an honest name (a cargo-road RTOS link check), and
+   correct CLAUDE.md and the recipe comment so neither claims tier-2 build
+   depth. A `cmake/` change would then name its own CMake rows.
+3. Add a small CMake-road smoke to `_matrix-build`: one C or C++ row per
+   cross toolchain file, built and linked. This is the set #4928 needed,
+   chosen by toolchain file so a new toolchain file cannot be left out (a
+   gate could check that every `cmake/toolchain/*.cmake` has a row).
+
+Whichever is chosen, the "27 s" / "46 s" figures and the "same tree" claim
+must be re-measured against what the recipe actually builds.
