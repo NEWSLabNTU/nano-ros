@@ -167,6 +167,34 @@ fn run_listener() {
         expected_count, timeout_secs, actual_size
     );
 
+    // Phase 574 W2 -- the receive buffer is a const generic, so the listener
+    // picks the smallest class that holds the payload, and runs on a thread
+    // whose stack holds that buffer (the subscription keeps it inline).
+    let slack = 256;
+    let need = actual_size + slack;
+    let stack = 4 * need + (8 << 20);
+    let run = move || match need {
+        n if n <= 65536 => listen::<65536>(expected_count, timeout_secs, actual_size),
+        n if n <= (256 << 10) + 256 => {
+            listen::<{ (256 << 10) + 256 }>(expected_count, timeout_secs, actual_size)
+        }
+        n if n <= (1 << 20) + 256 => {
+            listen::<{ (1 << 20) + 256 }>(expected_count, timeout_secs, actual_size)
+        }
+        n if n <= (4 << 20) + 256 => {
+            listen::<{ (4 << 20) + 256 }>(expected_count, timeout_secs, actual_size)
+        }
+        _ => panic!("PAYLOAD_SIZE={actual_size} is above the largest receive class (4 MiB)"),
+    };
+    std::thread::Builder::new()
+        .stack_size(stack)
+        .spawn(run)
+        .expect("spawning the listener thread")
+        .join()
+        .expect("the listener thread panicked");
+}
+
+fn listen<const RX: usize>(expected_count: usize, timeout_secs: u64, actual_size: usize) {
     let config = ExecutorConfig::from_env().node_name("stress_listener");
     // Phase 104.A — explicit RMW backend registration. The auto-ctor
     // in `.init_array` doesn't survive Rust's archive-walk linkage
@@ -179,7 +207,7 @@ fn run_listener() {
         .expect("Failed to create node");
 
     let mut subscription = node
-        .create_polling_subscription_with_qos::<std_msgs::msg::Int32, 65536>(
+        .create_polling_subscription_with_qos::<std_msgs::msg::Int32, RX>(
             "/stress_test",
             nros::QoSProfile::RELIABLE,
         )

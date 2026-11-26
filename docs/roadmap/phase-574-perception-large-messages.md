@@ -106,6 +106,47 @@ decides only whether an MCU-class camera node is viable later.
   - the cells that must keep passing join the test lanes, so a regression is
     caught.
 
+#### W2 results so far (2026-11-26)
+
+The probe is `packages/testing/nros-tests/bins/large-msg`: one program, one
+image per RMW and target, each image stating the size knobs it needs. A cell
+sends five `std_msgs/UInt8MultiArray` samples and the listener checks every
+byte of each. The passing host cells are in `tests/large_msg.rs`
+(`large_message_is_delivered_intact_on_the_host`), from the fixture rows
+`large-msg-probe-<rmw>`.
+
+**Native POSIX host**, raw (serialized) path:
+
+| Size | zenoh | XRCE | Cyclone |
+| --- | --- | --- | --- |
+| 1 KB | pass | pass | pass |
+| 16 KB | pass | pass | pass |
+| 64 KB | pass | fail: protocol limit | pass |
+| 256 KB | pass | fail: protocol limit | pass |
+| 1 MB | pass | fail: protocol limit | pass |
+| 4 MB | pass | fail: protocol limit | pass |
+
+The configuration each needed:
+
+- **zenoh:** `frag_max_bytes` and `subscriber.buffer_bytes` both above the
+  largest sample (4,196,352 and 4,195,328 for the 4 MB cell). With the
+  defaults, 1 KB passes; 16 KB is dropped at the subscriber's buffer and
+  counted (`overflow_drops`); 64 KB and above is dropped past the reassembly
+  ceiling (65,535 on POSIX) with nothing counted, while every publish
+  returns `Ok`.
+- **XRCE:** `subscriber_buffer_bytes` above the sample, and
+  `transport_mtu x stream_history` above it too (4096 x 16 for 16 KB). With
+  the defaults, 1 KB is refused at receive (`MessageTooLarge`: the 1,024-byte
+  ring entry holds the data but not the CDR prefix) and 64 KB fails at
+  publish. 64 KB and above fails for any configuration: a sample is one DATA
+  submessage, whose length is 16 bits on the wire. Up to 65,400 bytes passes
+  with a large enough window; above 65,535 a sample is lost, or delivered cut
+  to its size modulo 65,536 with no error (issue 2978).
+- **Cyclone:** nothing; the defaults carry 4 MB.
+
+Still to measure: the embedded targets, and the `inline` and `view` storage
+modes (the typed path), which the raw path above does not exercise.
+
 ### W3 — Memory cost and placement
 
 - **Owner:** unassigned.
@@ -227,3 +268,4 @@ one is out of reach and records why.
 | issue | why it belongs here |
 | --- | --- |
 | [2696](../issues/archived/2696-executor-wake-from-interrupt-not-wired.md) | A device job's completion interrupt cannot wake the executor safely, which the accelerator and camera paths need |
+| [2978](../issues/2978-xrce-sample-over-64k-delivered-truncated.md) | W2 measured it: an XRCE sample over 64 KiB publishes without error and is lost or delivered cut, so XRCE's limit has to be refused, not met |

@@ -2524,3 +2524,12 @@ pub const LOG_DEAD_HOLDER_SERIAL_PREFIX: &str = "log-dead-holder: serialised sin
 /// (`nros-node/src/executor/arena.rs`), one-shot per process. A test that checks
 /// the one-shot counts records carrying this, never every record a sink saw.
 pub const EXECUTOR_ARENA_ADVISORY: &str = "arena larger than needed";
+
+/// Phase 574 W2 -- `bins/large-msg`'s listener, once its subscription is live.
+pub const LARGE_MSG_READY_MARKER: &str = "Ready: large-msg listener";
+/// Phase 574 W2 -- `bins/large-msg`'s talker summary line
+/// (`LARGE_PUB_DONE: size=N sent=K failed=F first_error=...`).
+pub const LARGE_MSG_PUB_DONE: &str = "LARGE_PUB_DONE:";
+/// Phase 574 W2 -- `bins/large-msg`'s listener summary line
+/// (`LARGE_RECV_DONE: size=N received=K valid=V invalid=I errors=E first_error=...`).
+pub const LARGE_MSG_RECV_DONE: &str = "LARGE_RECV_DONE:";

@@ -3387,6 +3387,41 @@ bringup = "src/native_talker_bringup"
 target_dir = "target-fixtures"
 image = "linux_cyclonedds"
 
+# Phase 574 W2 -- the large-message probe, one image per RMW. Each image
+# states the size knobs its backend needs (`src/large_msg_bringup/system.toml`):
+# zenoh and Cyclone carry 1 KiB to 4 MiB, XRCE 1 and 16 KiB (its DATA
+# submessage length is 16 bits on the wire). `tests/large_msg.rs` checks every
+# byte of every sample.
+[[workspace_fixture]]
+id = "large-msg-probe-zenoh"
+platform = "linux"
+lang = "rust"
+rmw = "zenoh"
+dir = "packages/testing/nros-tests/bins/large-msg"
+bringup = "src/large_msg_bringup"
+image = "linux"
+target_dir = "target-linux"
+
+[[workspace_fixture]]
+id = "large-msg-probe-xrce"
+platform = "linux"
+lang = "rust"
+rmw = "xrce"
+dir = "packages/testing/nros-tests/bins/large-msg"
+bringup = "src/large_msg_bringup"
+image = "linux_xrce"
+target_dir = "target-linux-xrce"
+
+[[workspace_fixture]]
+id = "large-msg-probe-cyclonedds"
+platform = "linux"
+lang = "rust"
+rmw = "cyclonedds"
+dir = "packages/testing/nros-tests/bins/large-msg"
+bringup = "src/large_msg_bringup"
+image = "linux_cyclonedds"
+target_dir = "target-linux-cyclonedds"
+
 # Bench / stress fixtures (default features).
 [[fixture]]
 platform = "linux"

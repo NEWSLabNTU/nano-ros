@@ -855,3 +855,124 @@ fn test_qemu_zenoh_large_publish(qemu_large_msg_test_binary: PathBuf) {
         output,
     );
 }
+
+// =============================================================================
+// Phase 574 W2 -- the large-message capability matrix, host cells
+// =============================================================================
+//
+// One probe (`bins/large-msg`), one image per RMW, each image sized for the
+// largest payload its backend carries here. Every cell sends five samples of
+// a `std_msgs/UInt8MultiArray` and the listener checks every byte of each, so
+// a cell passes on CONTENT, not arrival. XRCE stops at 16 KiB: its DATA
+// submessage length is 16 bits on the wire (issue 2978).
+
+/// `key=value` from a probe summary line.
+fn summary_field<'a>(line: &'a str, key: &str) -> Option<&'a str> {
+    line.split_whitespace()
+        .find_map(|kv| kv.strip_prefix(key)?.strip_prefix('='))
+}
+
+fn summary_line<'a>(output: &'a str, marker: &str) -> Option<&'a str> {
+    output.lines().find(|l| l.contains(marker))
+}
+
+#[rstest]
+#[case::zenoh_1k(nros_tests::fixtures::Rmw::Zenoh, 1 << 10)]
+#[case::zenoh_16k(nros_tests::fixtures::Rmw::Zenoh, 16 << 10)]
+#[case::zenoh_64k(nros_tests::fixtures::Rmw::Zenoh, 64 << 10)]
+#[case::zenoh_256k(nros_tests::fixtures::Rmw::Zenoh, 256 << 10)]
+#[case::zenoh_1m(nros_tests::fixtures::Rmw::Zenoh, 1 << 20)]
+#[case::zenoh_4m(nros_tests::fixtures::Rmw::Zenoh, 4 << 20)]
+#[case::xrce_1k(nros_tests::fixtures::Rmw::Xrce, 1 << 10)]
+#[case::xrce_16k(nros_tests::fixtures::Rmw::Xrce, 16 << 10)]
+#[case::cyclonedds_1k(nros_tests::fixtures::Rmw::Cyclonedds, 1 << 10)]
+#[case::cyclonedds_16k(nros_tests::fixtures::Rmw::Cyclonedds, 16 << 10)]
+#[case::cyclonedds_64k(nros_tests::fixtures::Rmw::Cyclonedds, 64 << 10)]
+#[case::cyclonedds_256k(nros_tests::fixtures::Rmw::Cyclonedds, 256 << 10)]
+#[case::cyclonedds_1m(nros_tests::fixtures::Rmw::Cyclonedds, 1 << 20)]
+#[case::cyclonedds_4m(nros_tests::fixtures::Rmw::Cyclonedds, 4 << 20)]
+fn large_message_is_delivered_intact_on_the_host(
+    #[case] rmw: nros_tests::fixtures::Rmw,
+    #[case] size: usize,
+) {
+    use nros_tests::{
+        fixtures::{RequireFixture, Rmw, build_large_msg_probe},
+        output::{LARGE_MSG_PUB_DONE, LARGE_MSG_READY_MARKER, LARGE_MSG_RECV_DONE},
+    };
+    use std::process::Command;
+
+    let probe = build_large_msg_probe(rmw)
+        .require("the large-message probe (rows `large-msg-probe-<rmw>`)")
+        .to_path_buf();
+    let topic = format!("/large_msg_{size}");
+    let domain = nros_tests::unique_ros_domain_id().to_string();
+
+    // The peer each RMW needs, held for the cell's lifetime.
+    let mut _router = None;
+    let mut _agent = None;
+    let mut locator = None;
+    match rmw {
+        Rmw::Zenoh => {
+            require_zenohd();
+            let r = or_unmet(ZenohRouter::start_unique());
+            locator = Some(r.locator());
+            _router = Some(r);
+        }
+        Rmw::Xrce => {
+            require_xrce_agent();
+            let a = XrceAgent::start_unique().expect("XRCE Agent start");
+            locator = Some(format!("udp/{}", a.addr()));
+            _agent = Some(a);
+            // The agent's accept loop settles before the first client connects.
+            std::thread::sleep(Duration::from_secs(1));
+        }
+        Rmw::Cyclonedds => {}
+    }
+    let command = |mode: &str| {
+        let mut cmd = Command::new(&probe);
+        cmd.env("MODE", mode)
+            .env("PAYLOAD_SIZE", size.to_string())
+            .env("COUNT", "5")
+            .env("LARGE_TOPIC", &topic)
+            .env("ROS_DOMAIN_ID", &domain);
+        if let Some(l) = &locator {
+            cmd.env("NROS_LOCATOR", l);
+        }
+        if rmw == Rmw::Cyclonedds {
+            nros_tests::dds_isolation::apply_to_command(&mut cmd);
+        }
+        cmd
+    };
+
+    let mut listener = ManagedProcess::spawn_image(command("listener"), "large-msg-listener")
+        .expect("spawn the large-message listener");
+    listener
+        .wait_for_output_pattern(LARGE_MSG_READY_MARKER, Duration::from_secs(15))
+        .expect("the large-message listener did not become ready");
+    let mut talker = ManagedProcess::spawn_image(command("talker"), "large-msg-talker")
+        .expect("spawn the large-message talker");
+
+    let received = listener.collect_until(LARGE_MSG_RECV_DONE, Duration::from_secs(60));
+    let published = talker.collect_until(LARGE_MSG_PUB_DONE, Duration::from_secs(60));
+    talker.kill();
+    listener.kill();
+
+    let pub_line = summary_line(&published, LARGE_MSG_PUB_DONE)
+        .unwrap_or_else(|| panic!("the talker printed no summary.\nOutput:\n{published}"));
+    let recv_line = summary_line(&received, LARGE_MSG_RECV_DONE)
+        .unwrap_or_else(|| panic!("the listener printed no summary.\nOutput:\n{received}"));
+    assert_eq!(
+        summary_field(pub_line, "failed"),
+        Some("0"),
+        "{rmw:?} {size} B: a publish failed: {pub_line}"
+    );
+    assert_eq!(
+        (
+            summary_field(recv_line, "valid"),
+            summary_field(recv_line, "invalid"),
+            summary_field(recv_line, "errors"),
+        ),
+        (Some("5"), Some("0"), Some("0")),
+        "{rmw:?} {size} B: not every sample arrived intact: {recv_line}\nOutput:\n{received}"
+    );
+}
