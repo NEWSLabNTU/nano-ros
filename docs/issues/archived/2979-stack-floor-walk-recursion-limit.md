@@ -37,11 +37,19 @@ and only 976 in a worker. So a graph near the limit failed in the first
 build and passed in the second: the verdict depended on the host's
 parallelism, not on the image.
 
-This is the measured mechanism; the reporter's first build logs are gone,
-so it is not yet confirmed against their builds (a fresh reproduction is
-under way). The evidence is the
-self-test below: the deep regression, and the walk in a fork-pool worker
-equal to the serial walk.
+Confirmed by the reporter's fresh reproduction at the same pin:
+
+- build 1, fresh: `nros build`, then `west build -p auto` under nros's
+  jobserver. It printed `nros-stack-floor: 8 walk order(s) from `main` on
+  8 job token(s)`, raised `RecursionError` in `visit` inside the pool's
+  `map`, and exited 1;
+- build 2, retry: `cmake --build` of the same directory, plain ninja with
+  no jobserver. It printed `on 1 job token(s) (no jobserver: serial)`,
+  walked in full (no `answered from the walk cache` line, and a fresh walk
+  cache directory stayed empty), and exited 0.
+
+The self-test below is the regression: the deep graph, and the walk in a
+fork-pool worker equal to the serial walk.
 
 No floor that passed was wrong: the serial retry's answer is the complete
 walk.
