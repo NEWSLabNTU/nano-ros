@@ -5,7 +5,7 @@ status: open
 type: bug
 severity: high
 area: [rmw-xrce, graph, interop]
-related: [issue-2106]
+related: [issue-2106, phase-590]
 found: 2026-11-25
 ---
 

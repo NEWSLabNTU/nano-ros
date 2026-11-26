@@ -5,7 +5,7 @@ status: open
 type: bug
 severity: high
 area: [testing, gates, scripts]
-related: [issue-1723, issue-1741, phase-488]
+related: [issue-1723, issue-1741, phase-488, phase-590]
 found: 2026-11-26
 ---
 

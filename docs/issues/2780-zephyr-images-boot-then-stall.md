@@ -6,7 +6,7 @@ type: bug
 area: [zephyr, ci, testing, params]
 severity: high
 found: 2026-11-21
-related: [2777, 1575, 1551, 2782]
+related: [2777, 1575, 1551, 2782, phase-590]
 ---
 
 ## What fails
