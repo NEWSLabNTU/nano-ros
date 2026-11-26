@@ -893,7 +893,7 @@ fn package_knob_env_row(
 ///
 /// `table` is the table the key sits under, for the errors
 /// (`image.<id>.knobs`, or a board descriptor's `knobs`).
-fn knob_env_row(
+pub(crate) fn knob_env_row(
     table: &str,
     key: &str,
     value: &nros_orchestration_ir::leaf_system::KnobValue,
@@ -1134,7 +1134,17 @@ fn write_selection_for(
     // board, picks the entry surface; the candidate order only finds the board.
     let framework = d
         .image_framework(&img.board, img.decl.framework.as_deref())
-        .map_err(|e| eyre!("`[image.{}]`: {e}", img.image_id))?;
+        .map_err(|e| {
+            // RFC-0129 D7 -- at the image's line, and the board's.
+            crate::fix::framework_refusal(
+                &[img.decl.origin_path().to_path_buf()],
+                &img.image_id,
+                &img.board,
+                d.source_file(Some(nano_ros_root)).as_deref(),
+                &e,
+            )
+            .report()
+        })?;
     let sys = system_toml(img)?;
     let spec = crate::orchestration::facade::LeafSelectionSpec {
         package: &img.package,

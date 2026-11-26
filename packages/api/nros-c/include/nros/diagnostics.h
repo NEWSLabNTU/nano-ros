@@ -22,5 +22,11 @@
 #define NROS_DIAG_UNKNOWN_DIAG_CODE "NROS-0006"
 /** a knob is spelled with its retired name */
 #define NROS_DIAG_RETIRED_KNOB_SPELLING "NROS-0011"
+/** an image's env row sets a registry knob */
+#define NROS_DIAG_IMAGE_ENV_NAMES_KNOB "NROS-0012"
+/** an image names a retired host board key */
+#define NROS_DIAG_RETIRED_BOARD_KEY "NROS-0013"
+/** an image states a framework its board does not boot */
+#define NROS_DIAG_IMAGE_FRAMEWORK_REFUSED "NROS-0014"
 
 #endif /* NROS_DIAGNOSTICS_H */

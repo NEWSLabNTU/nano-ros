@@ -25,6 +25,9 @@ changes its meaning, and a retired code names the one that replaced it.
 | [NROS-0005](#NROS-0005) | a board's platform reaches no built-in family |
 | [NROS-0006](#NROS-0006) | no diagnostic has this code |
 | [NROS-0011](#NROS-0011) | a knob is spelled with its retired name |
+| [NROS-0012](#NROS-0012) | an image's env row sets a registry knob |
+| [NROS-0013](#NROS-0013) | an image names a retired host board key |
+| [NROS-0014](#NROS-0014) | an image states a framework its board does not boot |
 
 <a id="NROS-0001"></a>
 
@@ -231,9 +234,11 @@ The refusal points at the key in the file and names the current spelling.
 
 ### How to fix it
 
-Rename the key. `nros fix` does it for every retired spelling in the
-workspace's `system.toml` files: it prints the change first, and writes it
-with `--apply`.
+Use the current spelling. `nros fix` does it for every retired spelling in
+the workspace's `system.toml` files: it prints the change first, and writes
+it with `--apply`. A retired spelling in an image's `env` table is moved to
+the image's knobs table under the knob's current name (see NROS-0012), with
+a value in an old unit converted (a `_KB` spelling's value times 1024).
 
 ```sh
 nros fix            # show what would change
@@ -247,5 +252,96 @@ by hand.
 The refusal's `help` line, unless the site gives a more specific one:
 
 > rename the key to the knob's current spelling, which the refusal names; `nros fix` does it
+
+[Back to the list of codes](#diagnostic-codes)
+
+<a id="NROS-0012"></a>
+
+## NROS-0012: an image's env row sets a registry knob
+
+An image's `env` table in `system.toml` sets a knob that the knob registry
+holds, such as `NROS_ZENOH_MAX_QUERYABLES`. A registry knob is stated in the
+image's knobs table instead, where its value is checked against the knob's
+type and range:
+
+```toml
+[image.talker.knobs.zenoh]
+max_queryables = 12
+```
+
+The env row was deprecated in release 0.6.0 and is refused since, because a
+knob that can be set two ways is set the way you did not look at.
+
+The same applies to a knob spelled with a retired name in an `env` table
+(NROS-0011): it moves to the knobs table under its current name, and a value
+in an old unit (KiB, 8-byte words) is converted.
+
+### How to fix it
+
+`nros fix` moves each such row to its knobs table and converts the value:
+it prints the change first, and writes it with `--apply`.
+
+```sh
+nros fix            # show what would change
+nros fix --apply    # write it
+```
+
+A value that the knob's type or range does not admit is not moved. The
+refusal says why; correct the value by hand.
+
+The refusal's `help` line, unless the site gives a more specific one:
+
+> move the row to the image's `[image.<id>.knobs.<group>]` table, which the refusal names; `nros fix` does it
+
+[Back to the list of codes](#diagnostic-codes)
+
+<a id="NROS-0013"></a>
+
+## NROS-0013: an image names a retired host board key
+
+An image names `native` or `posix` as its board. Both were aliases of the
+host board, whose one name is `linux`. They were retired because they claim
+more than the board supports: `native` means every general-purpose host and
+`posix` every POSIX system, while the host board uses Linux-only calls.
+
+### How to fix it
+
+```toml
+[image.talker]
+board = "linux"
+```
+
+`nros fix` makes this change: it prints it first, and writes it with
+`--apply`.
+
+The refusal's `help` line, unless the site gives a more specific one:
+
+> write `board = "linux"`; `nros fix` does it
+
+[Back to the list of codes](#diagnostic-codes)
+
+<a id="NROS-0014"></a>
+
+## NROS-0014: an image states a framework its board does not boot
+
+An image's `framework` (`[image.<id>] framework`, or `[image_defaults]`)
+names an entry framework its board cannot boot. The board definition
+(`nros-board.toml`) is the authority, and the refusal points at both lines:
+the image's `framework`, and the board's `frameworks` list.
+
+Some boards decide their entry shape from their platform (a Zephyr board,
+for example). An image on such a board states no `framework` at all.
+
+### How to fix it
+
+Choose a framework from the board's `frameworks` list, or remove the
+`framework` line so the board's first framework is used. If the image needs
+a framework this board does not list, choose another board.
+
+This needs a decision, so `nros fix` does not change it.
+
+The refusal's `help` line, unless the site gives a more specific one:
+
+> choose a framework from the board's `frameworks` list, or remove the line so the board's default is used
 
 [Back to the list of codes](#diagnostic-codes)

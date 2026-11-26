@@ -31,6 +31,7 @@ pub struct Refusal {
     diag: Diag,
     detail: String,
     at: Option<crate::source_file::Located>,
+    note_at: Option<(crate::source_file::Located, String)>,
     fixable: bool,
     help: Option<String>,
     note: Option<String>,
@@ -42,6 +43,15 @@ impl Refusal {
     #[must_use]
     pub fn at(mut self, at: crate::source_file::Located) -> Self {
         self.at = Some(at);
+        self
+    }
+
+    // RFC-0129 D7.
+    /// A second place the refusal is about (the board definition's line it
+    /// was compared with), rendered as a `note:` with its own span block.
+    #[must_use]
+    pub fn note_at(mut self, at: crate::source_file::Located, label: impl fmt::Display) -> Self {
+        self.note_at = Some((at, label.to_string()));
         self
     }
 
@@ -89,6 +99,9 @@ impl Refusal {
         if let Some(at) = &self.at {
             r = r.at(at.as_location());
         }
+        if let Some((at, label)) = &self.note_at {
+            r = r.note_at(at.as_location(), label);
+        }
         if let Some(h) = &self.help {
             r = r.help(h);
         }
@@ -125,12 +138,64 @@ impl DiagExt for Diag {
             diag: self,
             detail: detail.to_string(),
             at: None,
+            note_at: None,
             fixable: false,
             help: None,
             note: None,
         }
     }
 }
+
+// RFC-0129 D7.
+/// Several refusals about one thing (an image), rendered as one group: a
+/// header line, then each child as a full diagnostic with its own code,
+/// location and remedy. The group carries no code of its own.
+#[derive(Debug, Clone)]
+pub struct RefusalGroup {
+    header: String,
+    children: Vec<Refusal>,
+}
+
+impl RefusalGroup {
+    /// A group headed by `header` (`image `talker` cannot be configured`).
+    #[must_use]
+    pub fn new(header: impl fmt::Display) -> Self {
+        Self {
+            header: header.to_string(),
+            children: Vec::new(),
+        }
+    }
+
+    /// Add one refusal to the group.
+    #[must_use]
+    pub fn child(mut self, child: Refusal) -> Self {
+        self.children.push(child);
+        self
+    }
+
+    /// The group's refusals, in order.
+    #[must_use]
+    pub fn children(&self) -> &[Refusal] {
+        &self.children
+    }
+}
+
+impl fmt::Display for RefusalGroup {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "error: {} ({} problems)",
+            self.header,
+            self.children.len()
+        )?;
+        for c in &self.children {
+            write!(f, "\n\n{c}")?;
+        }
+        Ok(())
+    }
+}
+
+impl std::error::Error for RefusalGroup {}
 
 /// Whether `text` is a rendered refusal: it starts `error[NROS-NNNN]: `.
 #[must_use]

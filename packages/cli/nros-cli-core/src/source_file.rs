@@ -75,13 +75,39 @@ impl SourceFile {
     #[must_use]
     pub fn locate(&self, key_path: &[&str]) -> Option<Located> {
         let doc = ImDocument::parse(self.text.as_str()).ok()?;
-        let (last, tables) = key_path.split_last()?;
-        let mut table: &dyn TableLike = doc.as_table();
-        for k in tables {
-            table = table.get(k)?.as_table_like()?;
-        }
-        let (key, _) = table.get_key_value(last)?;
-        Some(self.span(key.span()?))
+        let (key, _) = find(doc.as_table(), key_path)?;
+        Some(self.span(key))
+    }
+
+    /// The VALUE at `key_path` (`"native"` in `board = "native"`), as a span,
+    /// quotes included: what a [`crate::fix::Edit::ReplaceValue`] replaces.
+    #[must_use]
+    pub fn locate_value(&self, key_path: &[&str]) -> Option<Located> {
+        let doc = ImDocument::parse(self.text.as_str()).ok()?;
+        let (_, value) = find(doc.as_table(), key_path)?;
+        Some(self.span(value?))
+    }
+
+    /// The VALUE at `key_path` inside the `[[board]]` entry that describes
+    /// `board` in a board definition (`nros-board.toml`): the entry whose
+    /// `names` lists it, else the file's only entry. A board file may hold
+    /// several boards, so a plain key path cannot reach one.
+    #[must_use]
+    pub fn locate_board_value(&self, board: &str, key_path: &[&str]) -> Option<Located> {
+        let doc = ImDocument::parse(self.text.as_str()).ok()?;
+        let boards = doc.get("board")?.as_array_of_tables()?;
+        let names = |t: &toml_edit::Table| {
+            t.get("names")
+                .and_then(toml_edit::Item::as_array)
+                .is_some_and(|a| a.iter().any(|v| v.as_str() == Some(board)))
+        };
+        let entry = match boards.iter().find(|t| names(t)) {
+            Some(t) => t,
+            None if boards.len() == 1 => boards.get(0)?,
+            None => return None,
+        };
+        let (_, value) = find(entry, key_path)?;
+        Some(self.span(value?))
     }
 
     /// A byte range of this file as a [`Located`].
@@ -104,6 +130,21 @@ impl SourceFile {
             bytes,
         }
     }
+}
+
+/// The key's span and, when it has one, the value's, at `key_path` under
+/// `table`. Descends standard, inline and dotted tables alike.
+fn find(table: &dyn TableLike, key_path: &[&str]) -> Option<(Range<usize>, Option<Range<usize>>)> {
+    let (last, tables) = key_path.split_last()?;
+    let mut table = table;
+    for k in tables {
+        table = table.get(k)?.as_table_like()?;
+    }
+    let (key, item) = table.get_key_value(last)?;
+    Some((
+        key.span()?,
+        item.as_value().and_then(toml_edit::Value::span),
+    ))
 }
 
 #[cfg(test)]
@@ -141,5 +182,34 @@ mod tests {
     fn a_missing_key_has_no_location() {
         let f = file("[image.talker]\nboard = \"linux\"\n");
         assert_eq!(f.locate(&["image", "talker", "env", "X"]), None);
+    }
+
+    #[test]
+    fn a_value_is_located_with_its_quotes() {
+        let f = file("[image.talker]\nboard = \"native\"   # host\n");
+        let at = f.locate_value(&["image", "talker", "board"]).unwrap();
+        assert_eq!((at.line, at.column, at.len), (2, 9, 8));
+        assert_eq!(&f.text[at.bytes], "\"native\"");
+    }
+
+    #[test]
+    fn a_board_entry_is_picked_by_its_names() {
+        let f = file(
+            "[[board]]\nnames = [\"a\"]\nframeworks = [\"owned-spin\"]\n\n\
+             [[board]]\nnames = [\"b\", \"b2\"]\nframeworks = [\"owned-spin\", \"rtic\"]\n",
+        );
+        let at = f.locate_board_value("b2", &["frameworks"]).unwrap();
+        assert_eq!(at.line, 7);
+        assert_eq!(&f.text[at.bytes], "[\"owned-spin\", \"rtic\"]");
+        assert_eq!(f.locate_board_value("zz", &["frameworks"]), None);
+    }
+
+    #[test]
+    fn a_single_board_entry_answers_for_any_name() {
+        let f = file("[[board]]\nnames = [\"a\"]\nframeworks = [\"owned-spin\"]\n");
+        assert_eq!(
+            f.locate_board_value("alias", &["frameworks"]).unwrap().line,
+            3
+        );
     }
 }

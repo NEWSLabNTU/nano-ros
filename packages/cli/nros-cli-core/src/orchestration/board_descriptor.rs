@@ -1797,6 +1797,22 @@ pub fn extra_board_roots() -> Vec<PathBuf> {
     }
 }
 
+impl BoardDescriptor {
+    /// The board definition this descriptor was read from, as a path a
+    /// refusal can open: [`Self::source`] is relative to the nano-ros root
+    /// for an in-tree board and absolute otherwise. `None` when the
+    /// descriptor came from no file, or an in-tree one with no root to
+    /// resolve it against.
+    #[must_use]
+    pub fn source_file(&self, nano_ros_root: Option<&Path>) -> Option<PathBuf> {
+        let src = Path::new(self.source.as_deref()?);
+        if src.is_absolute() {
+            return Some(src.to_path_buf());
+        }
+        nano_ros_root.map(|r| r.join(src))
+    }
+}
+
 impl BoardCatalog {
     /// Load every `packages/boards/*/nros-board.toml` under `workspace`,
     /// plus every root named by `$NROS_EXTRA_BOARD_PATH`.

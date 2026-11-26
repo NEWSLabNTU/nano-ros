@@ -131,13 +131,36 @@ and `nros fix` rewrites it.
   table already states, before writing anything. A file outside the
   workspace gets no fix.
 
+**Slice 2 (2026-11-26): the other three edit kinds, a second location, and
+groups.**
+- `Edit` gains `MoveKey { to_table, to_key, scale, value }`,
+  `ReplaceValue { from, to }` and `SetKey { table, key, value }`. A span edit
+  (rename, replace) edits the file's text; a structural edit (move, set) goes
+  through `toml_edit`. `nros fix` refuses, before writing anything, a key a
+  move or set would state twice (in the file, or from two fixes).
+- An `[image.<id>] env` or `[image_defaults] env` row naming a registry knob
+  is refused at its line, NROS-0012 `ImageEnvNamesKnob`, and moves to the
+  image's `knobs.<group>` table. A retired spelling there (NROS-0011) moves
+  the same way instead of being renamed, with its unit converted: slice 1
+  renamed `NROS_FREERTOS_HEAP_KB = "64"` to the bytes knob and kept `64`.
+  A value the knob's row refuses is not moved; the refusal says why.
+- `board = "native"` or `"posix"` is refused at its value, NROS-0013
+  `RetiredBoardKey`, and `nros fix` writes `"linux"`.
+- `note_at` renders a secondary location. NROS-0014 `ImageFrameworkRefused`
+  (the three `image_framework` refusal sites) points at the image's
+  `framework` and at the board definition's `frameworks` (or `platform`)
+  line in its `nros-board.toml`, which `SourceFile::locate_board_value`
+  finds in the `[[board]]` entry naming the board.
+- Several refusals about one image render as one group, `RefusalGroup`;
+  `nros fix` takes the fixes from every child.
+- Each kind's test rewrites a `system.toml` and reads it back through the
+  build's own reader (`leaf_system` and `app_rung`).
+
 Left for W4:
-- `MoveKey` (an `[image] env` row naming a registry knob, which belongs in
-  `[image.<id>.knobs.<group>]`; today `app_rung` refuses it with no line),
-  `ReplaceValue` (`native`/`posix` as the host board) and `SetKey`, each with
-  its fixture;
-- locations for `nros-board.toml`;
-- the secondary `note_at` location, and refusal groups;
+- `SetKey`'s first producer: RFC-0135 D8's transport line (phase-577 W6).
+  The edit and its apply are tested; no refusal carries one yet.
+- D9's build fixture per fix kind (refused at its line, `nros fix --apply`,
+  the rewritten image builds), on a host with build capacity;
 - D9's `check-diagnostics` rule (an entry that declares a fix kind names
   `nros fix` in its explanation);
 - the [RFC-0140](../design/0140-configuration-registry.md) D4 contract
@@ -145,7 +168,8 @@ Left for W4:
   - `RenameKey` gains `scale`, and `MoveKey` is
     `{ to_table, to_key, scale }`. The new value is the old value times the
     factor, and an edit whose result falls outside the new row's type or
-    range is refused, naming the limit.
+    range is refused, naming the limit. (`MoveKey`'s half is slice 2, for
+    the `env:` road; `RenameKey`'s `scale` comes with the `toml:` road.)
   - The edits cover the `toml:` and `env:` roads. A `kconfig:` or `cmake:`
     spelling is reported with its text and gets no edit.
   - The collector asks `retired_spelling(road, spelling)` over the merged

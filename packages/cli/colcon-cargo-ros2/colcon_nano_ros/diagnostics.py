@@ -18,6 +18,9 @@ CODES = {
     "PlatformNoFamily": ("NROS-0005", "a board's platform reaches no built-in family", "add `inherits = \"<family>\"` to the platform's nros-platform.toml"),
     "UnknownDiagCode": ("NROS-0006", "no diagnostic has this code", "check the code against the refusal that printed it"),
     "RetiredKnobSpelling": ("NROS-0011", "a knob is spelled with its retired name", "rename the key to the knob's current spelling, which the refusal names; `nros fix` does it"),
+    "ImageEnvNamesKnob": ("NROS-0012", "an image's env row sets a registry knob", "move the row to the image's `[image.<id>.knobs.<group>]` table, which the refusal names; `nros fix` does it"),
+    "RetiredBoardKey": ("NROS-0013", "an image names a retired host board key", "write `board = \"linux\"`; `nros fix` does it"),
+    "ImageFrameworkRefused": ("NROS-0014", "an image states a framework its board does not boot", "choose a framework from the board's `frameworks` list, or remove the line so the board's default is used"),
 }
 
 

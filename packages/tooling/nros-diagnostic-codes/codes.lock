@@ -18,3 +18,6 @@ NROS-0004 ImageNoBoard live
 NROS-0005 PlatformNoFamily live
 NROS-0006 UnknownDiagCode live
 NROS-0011 RetiredKnobSpelling live
+NROS-0012 ImageEnvNamesKnob live
+NROS-0013 RetiredBoardKey live
+NROS-0014 ImageFrameworkRefused live
