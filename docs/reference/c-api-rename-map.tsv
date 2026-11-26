@@ -121,14 +121,21 @@ NROS_DECLARED_RELIABILITY	NROS_DECLARED_RELIABILITY	build	build or configuration
 NROS_DEPRECATED	NROS_DEPRECATED	build	build or configuration fact
 NROS_DIAGNOSTICS_H	NROS_DIAGNOSTICS_H	build	build or configuration fact
 NROS_DIAG_AMENT_PREFIX_UNSET	NROS_DIAG_AMENT_PREFIX_UNSET	build	a diagnostic code, generated from the code list (RFC-0129 D4)
+NROS_DIAG_BOARD_NO_BUILD_ROAD	NROS_DIAG_BOARD_NO_BUILD_ROAD	build	a diagnostic code, generated from the code list (RFC-0129 D4)
+NROS_DIAG_BOARD_SDK_ROOT_UNSET	NROS_DIAG_BOARD_SDK_ROOT_UNSET	build	a diagnostic code, generated from the code list (RFC-0129 D4)
+NROS_DIAG_BOARD_TOOL_MISSING	NROS_DIAG_BOARD_TOOL_MISSING	build	a diagnostic code, generated from the code list (RFC-0129 D4)
 NROS_DIAG_BOARD_UNKNOWN	NROS_DIAG_BOARD_UNKNOWN	build	a diagnostic code, generated from the code list (RFC-0129 D4)
+NROS_DIAG_IMAGE_BOARD_INCOMPATIBLE	NROS_DIAG_IMAGE_BOARD_INCOMPATIBLE	build	a diagnostic code, generated from the code list (RFC-0129 D4)
 NROS_DIAG_IMAGE_ENV_NAMES_KNOB	NROS_DIAG_IMAGE_ENV_NAMES_KNOB	build	a diagnostic code, generated from the code list (RFC-0129 D4)
 NROS_DIAG_IMAGE_FRAMEWORK_REFUSED	NROS_DIAG_IMAGE_FRAMEWORK_REFUSED	build	a diagnostic code, generated from the code list (RFC-0129 D4)
 NROS_DIAG_IMAGE_NO_BOARD	NROS_DIAG_IMAGE_NO_BOARD	build	a diagnostic code, generated from the code list (RFC-0129 D4)
+NROS_DIAG_IMAGE_OVER_MEMORY_BUDGET	NROS_DIAG_IMAGE_OVER_MEMORY_BUDGET	build	a diagnostic code, generated from the code list (RFC-0129 D4)
+NROS_DIAG_LINK_NOT_ON_BOARD	NROS_DIAG_LINK_NOT_ON_BOARD	build	a diagnostic code, generated from the code list (RFC-0129 D4)
 NROS_DIAG_NO_IMAGE_DECLARED	NROS_DIAG_NO_IMAGE_DECLARED	build	a diagnostic code, generated from the code list (RFC-0129 D4)
 NROS_DIAG_PLATFORM_NO_FAMILY	NROS_DIAG_PLATFORM_NO_FAMILY	build	a diagnostic code, generated from the code list (RFC-0129 D4)
 NROS_DIAG_RETIRED_BOARD_KEY	NROS_DIAG_RETIRED_BOARD_KEY	build	a diagnostic code, generated from the code list (RFC-0129 D4)
 NROS_DIAG_RETIRED_KNOB_SPELLING	NROS_DIAG_RETIRED_KNOB_SPELLING	build	a diagnostic code, generated from the code list (RFC-0129 D4)
+NROS_DIAG_RMW_NEEDS_CAPABILITY	NROS_DIAG_RMW_NEEDS_CAPABILITY	build	a diagnostic code, generated from the code list (RFC-0129 D4)
 NROS_DIAG_UNKNOWN_DIAG_CODE	NROS_DIAG_UNKNOWN_DIAG_CODE	build	a diagnostic code, generated from the code list (RFC-0129 D4)
 NROS_DOMAIN_ID_EXPLICIT_ZERO	NROS_DOMAIN_ID_EXPLICIT_ZERO	build	build or configuration fact
 NROS_DOMAIN_ID_INHERIT	NROS_DOMAIN_ID_INHERIT	build	build or configuration fact
