@@ -247,6 +247,7 @@ cat > "$wrapper" << 'EOF'
 #include <nros/rmw_event.h>
 #include <nros/rmw_vtable.h>
 #include <nros/rmw_transport.h>
+#include <nros/device_port.h>
 EOF
 
 {
@@ -271,7 +272,7 @@ EOF
         --ctypes-prefix core::ffi \
         --default-enum-style moduleconsts \
         --default-macro-constant-type signed \
-        --allowlist-item 'rmw_.*|RMW_.*|nros_rmw_.*|NROS_RMW_.*|nros_transport_.*|NROS_TRANSPORT_.*' \
+        --allowlist-item 'rmw_.*|RMW_.*|nros_rmw_.*|NROS_RMW_.*|nros_transport_.*|NROS_TRANSPORT_.*|nros_device_.*|NROS_DEVICE_.*|nros_completion_.*|nros_worker_port_.*|nros_source_port_.*' \
         --no-layout-tests \
         --sort-semantically \
         -- -I"$RMW_ABI/include"
