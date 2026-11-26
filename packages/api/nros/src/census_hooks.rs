@@ -209,6 +209,34 @@ pub fn on_guard_condition_create() {
     }
 }
 
+/// A device event source was registered on the executor. One callback slot,
+/// as a guard condition.
+///
+/// Recorded as `TimerKind::Device`: a `timers[]` row (which every sizing
+/// consumer counts as one slot) with `kind: "device"`, so a census does not
+/// read it as a timer of period 0. Called by the C layer-1 registration, which
+/// the companion package's C and C++ routes reach; a Rust route registering on
+/// the executor directly calls it itself.
+#[inline]
+pub fn on_device_create() {
+    #[cfg(any(
+        feature = "metadata-mode",
+        all(feature = "profile-mode", feature = "rmw-cffi")
+    ))]
+    {
+        let id = synthetic_id("device");
+        #[cfg(feature = "metadata-mode")]
+        record(
+            crate::node_metadata::EntityKind::Timer,
+            crate::node_metadata::TimerKind::Device,
+            &id,
+            None,
+        );
+        #[cfg(all(feature = "profile-mode", feature = "rmw-cffi"))]
+        profile::label_last(&id);
+    }
+}
+
 /// A node declared a parameter, with the type and default the code passed.
 ///
 /// Called BEFORE the store answers: an adopted launch seed is still a

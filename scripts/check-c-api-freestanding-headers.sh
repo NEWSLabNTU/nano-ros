@@ -39,8 +39,12 @@ if [ ! -f "$builtin_include/stddef.h" ]; then
     exit 1
 fi
 
+# The include path `nros_c-static` exports (packages/api/nros-c/CMakeLists.txt):
+# its own headers, and the device port ABI that <nros/device_hook.h> includes.
+rmw_abi_include="packages/core/nros-rmw-abi/include"
 flags=(-x c -std=c11 -ffreestanding -nostdinc -isystem "$builtin_include"
-       -DNROS_CONFIG_BUILDLESS -I "$repo/$include" -fsyntax-only -Wall -Werror)
+       -DNROS_CONFIG_BUILDLESS -I "$repo/$include" -I "$repo/$rmw_abi_include"
+       -fsyntax-only -Wall -Werror)
 
 probe() { # <header spelling as included>
     printf '#include <%s>\n' "$1" | "$cc" "${flags[@]}" - 2>&1

@@ -2389,6 +2389,12 @@ mod guest_failure_tests {
 pub const ISR_WAKE_SAMPLE: &str = "ISR_WAKE ";
 /// See [`ISR_WAKE_SAMPLE`].
 pub const ISR_WAKE_DONE: &str = "ISR_WAKE_DONE ";
+/// What `isr-wake-freertos-mps2` prints after its device phase:
+/// `DEVICE_PRIO_DONE <rounds> <device_first> <low_first> <refused>`. Each
+/// round the timer interrupt readied a best-effort guard and then signalled a
+/// device bound to a critical sched context; `device_first` counts the rounds
+/// whose device continuation ran before the guard's callback.
+pub const DEVICE_PRIO_DONE: &str = "DEVICE_PRIO_DONE ";
 /// `ISR_WAKE_READY period_us=<n>`: the interrupt period an interrupt-wake image
 /// states when it arms. The hosted ThreadX image's wakes are held to arriving
 /// within it (issue 2745).

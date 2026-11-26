@@ -152,6 +152,7 @@ fn kind_name(kind: EntryKind) -> &'static str {
         EntryKind::ActionServer => "action_server",
         EntryKind::ActionClient => "action_client",
         EntryKind::GuardCondition => "guard_condition",
+        EntryKind::Device => "device",
     }
 }
 

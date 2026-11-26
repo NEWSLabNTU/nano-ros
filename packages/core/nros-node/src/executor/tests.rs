@@ -22201,3 +22201,158 @@ mod reentry_bands {
         drop(unsafe { Box::from_raw(shared.ptr()) });
     }
 }
+
+// ====================================================================
+// Phase 579 W3a -- a device as an event source
+// ====================================================================
+
+/// A completion runs the device's continuation once, at the next spin, and is
+/// consumed by it.
+#[test]
+fn device_completion_runs_its_continuation_once() {
+    let mut executor: Executor = executor_with_clock(MockSession::new());
+    let runs = alloc::sync::Arc::new(core::sync::atomic::AtomicU32::new(0));
+    let r = runs.clone();
+    let (_h, done) = executor
+        .register_device(move || {
+            r.fetch_add(1, core::sync::atomic::Ordering::SeqCst);
+        })
+        .unwrap();
+
+    executor.spin_once(core::time::Duration::from_millis(0));
+    assert_eq!(
+        runs.load(core::sync::atomic::Ordering::SeqCst),
+        0,
+        "not signalled yet"
+    );
+
+    done.signal();
+    assert!(done.is_signalled());
+    executor.spin_once(core::time::Duration::from_millis(0));
+    assert_eq!(runs.load(core::sync::atomic::Ordering::SeqCst), 1);
+    assert!(!done.is_signalled(), "the dispatch consumed the completion");
+
+    executor.spin_once(core::time::Duration::from_millis(0));
+    assert_eq!(
+        runs.load(core::sync::atomic::Ordering::SeqCst),
+        1,
+        "one signal, one run"
+    );
+}
+
+/// An empty cell signals nothing; a filled one reaches the completion.
+#[test]
+fn completion_cell_signals_only_when_filled() {
+    let mut executor: Executor = executor_with_clock(MockSession::new());
+    let (_h, done) = executor.register_device(|| {}).unwrap();
+    let cell = crate::executor::CompletionCell::new();
+    assert!(!cell.signal(), "an empty cell has nothing to signal");
+    assert!(!cell.signal_from_isr());
+    assert!(!done.is_signalled());
+    cell.set(done);
+    assert!(cell.signal());
+    assert!(done.is_signalled());
+}
+
+/// The completion handle round-trips through the raw pointer the C handle
+/// carries.
+#[test]
+fn completion_round_trips_through_its_raw_pointer() {
+    let mut executor: Executor = executor_with_clock(MockSession::new());
+    let (_h, done) = executor.register_device(|| {}).unwrap();
+    let back = unsafe { crate::executor::Completion::from_raw(done.as_raw()) };
+    back.signal();
+    assert!(done.is_signalled());
+}
+
+/// The W3 acceptance on the host: a device completed from an interrupt (here
+/// a POSIX signal handler, the host's interrupt context) runs its continuation
+/// at its bound priority, ahead of a lower-priority callback that was ready
+/// first and registered first.
+#[test]
+fn device_completed_from_a_signal_handler_runs_ahead_of_a_lower_priority_ready_callback() {
+    use crate::executor::sched_context::{Priority, SchedClass, SchedContext};
+
+    static DONE: crate::executor::CompletionCell = crate::executor::CompletionCell::new();
+    static HANDLER_RAN: core::sync::atomic::AtomicBool = core::sync::atomic::AtomicBool::new(false);
+    extern "C" fn on_signal(_sig: i32) {
+        // The one call allowed in an interrupt handler.
+        DONE.signal_from_isr();
+        HANDLER_RAN.store(true, core::sync::atomic::Ordering::SeqCst);
+    }
+    unsafe extern "C" {
+        fn signal(sig: i32, handler: extern "C" fn(i32)) -> usize;
+        fn raise(sig: i32) -> i32;
+    }
+    // SIGUSR2 on Linux (x86_64 and aarch64 agree).
+    const SIGUSR2: i32 = 12;
+
+    let mut executor: Executor = executor_with_clock(MockSession::new());
+    let order = alloc::sync::Arc::new(std::sync::Mutex::new(alloc::vec::Vec::<&str>::new()));
+    let (o_low, o_dev) = (order.clone(), order.clone());
+
+    // Registered first, so it would run first on registration order alone.
+    let (h_low, guard) = executor
+        .register_guard_condition(move || o_low.lock().unwrap().push("low"))
+        .unwrap();
+    let (h_dev, done) = executor
+        .register_device(move || o_dev.lock().unwrap().push("device"))
+        .unwrap();
+
+    let sc_low = executor
+        .create_sched_context(SchedContext {
+            class: SchedClass::Fifo,
+            priority: Priority::BestEffort,
+            ..Default::default()
+        })
+        .unwrap();
+    let sc_dev = executor
+        .create_sched_context(SchedContext {
+            class: SchedClass::Fifo,
+            priority: Priority::Critical,
+            ..Default::default()
+        })
+        .unwrap();
+    executor
+        .bind_handle_to_sched_context(h_low, sc_low)
+        .unwrap();
+    executor
+        .bind_handle_to_sched_context(h_dev, sc_dev)
+        .unwrap();
+
+    // The low-priority callback is ready BEFORE the device completes.
+    guard.trigger();
+    DONE.set(done);
+    unsafe {
+        signal(SIGUSR2, on_signal);
+        assert_eq!(raise(SIGUSR2), 0);
+    }
+    assert!(HANDLER_RAN.load(core::sync::atomic::Ordering::SeqCst));
+    assert!(
+        done.is_signalled(),
+        "the handler's signal reached the entry"
+    );
+
+    executor.spin_once(core::time::Duration::from_millis(0));
+    assert_eq!(*order.lock().unwrap(), alloc::vec!["device", "low"]);
+}
+
+/// LET mode samples a completion at the start of the spin and dispatches the
+/// sample; a second signal before the dispatch is left for the next spin.
+#[test]
+fn device_completion_is_sampled_in_let_mode() {
+    let mut executor: Executor = executor_with_clock(MockSession::new());
+    executor.set_semantics(ExecutorSemantics::LogicalExecutionTime);
+    let runs = alloc::sync::Arc::new(core::sync::atomic::AtomicU32::new(0));
+    let r = runs.clone();
+    let (_h, done) = executor
+        .register_device(move || {
+            r.fetch_add(1, core::sync::atomic::Ordering::SeqCst);
+        })
+        .unwrap();
+
+    done.signal();
+    executor.spin_once(core::time::Duration::from_millis(0));
+    assert_eq!(runs.load(core::sync::atomic::Ordering::SeqCst), 1);
+    assert!(!done.is_signalled());
+}

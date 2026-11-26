@@ -25,6 +25,9 @@
 pub mod action_core;
 #[cfg(any(has_rmw, test))]
 mod arena;
+// Phase 579 W3a -- a device as an event source, and its completion handle.
+#[cfg(any(has_rmw, test))]
+mod device;
 // phase-412 #4 — the compile-time half of "is the arena big enough?". Not
 // `has_rmw`-gated: it reads only `config`, and the check it carries must run in
 // every compilation of this crate, whatever the backend.
@@ -198,6 +201,8 @@ pub use action_core::{ActionClientCore, ActionServerCore, RawActiveGoal, action_
 pub use crate::timer::{TimerCallInfo, TimerClockSource};
 #[cfg(any(has_rmw, test))]
 pub use arena::TimerOverrunPolicy;
+#[cfg(any(has_rmw, test))]
+pub use device::{Completion, CompletionCell};
 #[cfg(any(has_rmw, test))]
 pub use handles::*;
 #[cfg(any(has_rmw, test))]

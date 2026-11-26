@@ -77,6 +77,7 @@ CLASSIFY = [
     ("timer", "timer"),
     ("service", "service_server"),
     ("guard", "guard_condition"),
+    ("device", "device"),
     ("publisher", "publisher"),
 ]
 
@@ -92,6 +93,7 @@ KINDS = [
     "action_server",
     "action_client",
     "guard_condition",
+    "device",
 ]
 
 
@@ -291,7 +293,8 @@ impl EntityKind {{
             | EntityKind::ServiceClient
             | EntityKind::ActionServer
             | EntityKind::ActionClient
-            | EntityKind::GuardCondition => 1,
+            | EntityKind::GuardCondition
+            | EntityKind::Device => 1,
         }}
     }}
 }}
@@ -312,6 +315,9 @@ impl Executor {{
         let slot = self.next_entry_slot()?;
     }}
     pub fn register_guard_condition(&mut self) {{
+        let slot = self.next_entry_slot()?;
+    }}
+    pub fn register_device_on(&mut self) {{
         let slot = self.next_entry_slot()?;
     }}
 {extra}

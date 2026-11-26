@@ -311,12 +311,13 @@ pub use executor::{
 #[cfg(any(has_rmw, test))]
 pub use executor::{
     ActionClient, ActionClientCore, ActionServer, ActionServerCore, ActionServerHandle,
-    ActionServerRawHandle, ActiveGoal, CallbackGroup, CompletedGoal, EmbeddedPublisher,
-    EmbeddedRawPublisher, EmbeddedServiceClient, EmbeddedServiceServer, Executor, FeedbackStream,
-    GoalFeedbackStream, LoanError, Node, NodeHandle, Promise, PublishLoan, RawActionClientSpec,
-    RawActionServerSpec, RawActiveGoal, RawServiceClient, RawServiceServer, RawSubscription,
-    RecvView, RemapRefused, SessionHandle, Subscription, action_channel_type,
-    executor_storage_layout, executor_storage_layout_with, executor_storage_u64_len,
+    ActionServerRawHandle, ActiveGoal, CallbackGroup, CompletedGoal, Completion, CompletionCell,
+    EmbeddedPublisher, EmbeddedRawPublisher, EmbeddedServiceClient, EmbeddedServiceServer,
+    Executor, FeedbackStream, GoalFeedbackStream, LoanError, Node, NodeHandle, Promise,
+    PublishLoan, RawActionClientSpec, RawActionServerSpec, RawActiveGoal, RawServiceClient,
+    RawServiceServer, RawSubscription, RecvView, RemapRefused, SessionHandle, Subscription,
+    action_channel_type, executor_storage_layout, executor_storage_layout_with,
+    executor_storage_u64_len,
 };
 #[cfg(any(has_rmw, test))]
 pub use executor::{

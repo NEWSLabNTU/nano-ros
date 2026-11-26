@@ -46,12 +46,12 @@ device. RFC-0139's Motivation has the measurements and the driver survey.
 
 ### W1b — The C and C++ interrupt-safe wake
 
-- **Owner:** unassigned (with W3).
+- **Owner:** nros 142 (with W3a).
 - **Status:** OPEN
 - W1 gave Rust `GuardCondition::trigger_from_isr`. C and C++ get no method
   on the ROS-mirrored types: `rcl_guard_condition_t` and
   `rclcpp::GuardCondition` stay thread-only, as stock ROS has them (RFC-0139
-  D1). Their interrupt wake is W3's device completion handle
+  D1). Their interrupt wake is W3a's device completion handle
   (`nros_completion_t`, an interrupt-safe "mark slot ready and wake"), on W1's
   plumbing (`WakeCtx::signal_from_isr`).
 - **Acceptance:** a C image's interrupt handler wakes a parked executor
@@ -78,21 +78,54 @@ device. RFC-0139's Motivation has the measurements and the driver survey.
 - **Acceptance:** the layout check fails when a field is reordered on one side
   only (mutation-tested). `check-abi-bindings` covers the new header.
 
-### W3 — The executor hook and owned slots
+### W3a — The executor hook
 
-- **Owner:** unassigned.
-- **Status:** OPEN
+- **Owner:** nros 142.
+- **Status:** OPEN (W3 was split on 2026-11-26: the slot handle needs a pool
+  with per-slot claim and release, and none exists yet)
 - The `Device` entry kind beside `GuardCondition`, registered before the first
-  spin into a fixed slot; completion through `WakeCtx::mark_ready`; priority
-  through the bound sched context; sampling in LET mode; a completion handle
-  as a park handle (file descriptor, Zephyr `k_poll_signal`) through the
-  existing park (RFC-0139 D4).
-- The owned slot handle over the large-message pool (D6), with `move` and
-  release.
+  spin into a fixed slot; completion through `WakeCtx::mark_ready`, with an
+  interrupt-safe `mark_ready_from_isr`; priority through the bound sched
+  context; sampling in LET mode (RFC-0139 D4). The Rust `Completion` and
+  `CompletionCell` (R6), and the C `nros_completion_signal` and
+  `nros_completion_signal_from_isr` that W2 declares (D3).
+- A completion handle as a park handle (file descriptor, Zephyr
+  `k_poll_signal`) through the existing park, if it stays small; otherwise a
+  follow-up item.
 - **Acceptance:** with a fake device whose completion is fired from a timer
   interrupt, a continuation runs at its bound priority, ahead of a
   lower-priority ready callback, on the host and on the MPS2 FreeRTOS QEMU
-  image. A slot used after `move` asserts in a debug build.
+  image. W1b's acceptance (a C image's interrupt handler wakes a parked
+  executor through `nros_completion_t`) is met by the same handle.
+- Declared entities count a device's slot (the `device` entity kind). The
+  census and the metadata probe do not yet; W4's registration routes add that
+  ([issue 2984](../issues/2984-device-registration-uncounted-by-census.md)).
+
+### W3p — The large-message pool, with per-slot claim and release
+
+- **Owner:** nros 142.
+- **Status:** OPEN
+- **After:** W3a.
+- The pool [RFC-0038](../design/0038-zero-copy-data-transport.md) D1
+  designs, built in core: fixed slots per message class, claimed and released
+  one at a time, from any thread. No other item builds it: phase 574 W3
+  measures the classes and designs where a board places the pools, and this
+  pool takes that placement. If D1 is too thin for per-slot claim and
+  release, an amendment to RFC-0038 comes first.
+- **Acceptance:** claim, release and exhaustion behaviour are each tested
+  (exhaustion refuses, never blocks or allocates), and a stress test of
+  concurrent claim and release from several threads loses and duplicates no
+  slot.
+
+### W3b — Owned slots
+
+- **Owner:** nros 142.
+- **Status:** OPEN
+- **After:** W3p.
+- The owned slot handle over W3p's pool (RFC-0139 D6): `nros_slot_t` with
+  `nros_slot_move()`, and the move-only C++ and Rust types, released on drop.
+- **Acceptance:** a slot used after `move` asserts in a debug build; a slot
+  moved into a job and released by it returns to the pool.
 
 ### W4 — The companion package, in three languages
 
@@ -107,6 +140,9 @@ device. RFC-0139's Motivation has the measurements and the driver survey.
   sensor batch. The C++ implementor base and the Rust implementor trait.
 - The mock worker and mock source (RFC-0139 D11), and the port conformance
   tests that any adapter, real or mock, must pass.
+- Every device registration route calls a census hook, so the census and the
+  metadata probe count a device's callback slot
+  ([issue 2984](../issues/2984-device-registration-uncounted-by-census.md)).
 - **Acceptance:** one fake device adapter written in C is driven by a C node,
   a C++ node and a Rust node, and one written in Rust by a C node. That proves
   the ABI is the one seam in both directions.

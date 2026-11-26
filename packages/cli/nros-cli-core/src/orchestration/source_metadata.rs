@@ -203,6 +203,8 @@ pub enum SourceTimerKind {
     Oneshot,
     InGroup,
     GuardCondition,
+    /// A device event source: one callback slot and no period, like a guard.
+    Device,
 }
 
 /// phase-463 W1 -- the declared `type` of a `parameters[]` row (schema v2).

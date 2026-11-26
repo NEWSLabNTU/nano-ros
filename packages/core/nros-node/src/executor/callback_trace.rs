@@ -278,6 +278,9 @@ fn wire_kind(kind: EntryKind) -> u32 {
         EntryKind::Service | EntryKind::ServiceClient => 2,
         EntryKind::ActionServer | EntryKind::ActionClient => 3,
         EntryKind::GuardCondition => 4,
+        // A device's continuation (phase 579). Appended after the guard, and
+        // read the same way by a decoder that predates it: `kind 5`.
+        EntryKind::Device => 5,
     }
 }
 
