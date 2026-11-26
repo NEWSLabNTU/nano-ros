@@ -477,7 +477,13 @@ def worst_path(g: Graph, root: str, *, indirect_charge: int | None,
     cycles: list[list[str]] = []
     refused_indirect: list[str] = []
 
-    def visit(fn: str) -> Path_:
+    # The walk is a depth-first search as deep as the call graph, and a real
+    # image's graph is deeper than CPython's recursion limit (an S32Z Zephyr
+    # image's ran past 1000 frames). So `step` is a generator that YIELDS the
+    # callee it needs and receives that callee's path, and `visit` drives the
+    # generators from an explicit stack: the same search, in the same order,
+    # with the same memo and on-stack state, and no Python recursion.
+    def step(fn: str):
         if fn in memo:
             return memo[fn]
         if fn in on_stack:
@@ -502,7 +508,7 @@ def worst_path(g: Graph, root: str, *, indirect_charge: int | None,
                 cycles.append([fn, fn])
                 sub = Path_(recursion_allowance or 0, [fn + " (recursion)"], 0)
             else:
-                sub = visit(callee)
+                sub = yield callee
             if sub.depth > best.depth:
                 best = sub
         n_ind = g.indirect_sites.get(fn, 0)
@@ -515,6 +521,21 @@ def worst_path(g: Graph, root: str, *, indirect_charge: int | None,
         p = Path_(frame + best.depth, [fn] + best.chain, best.indirect + (n_ind if indirect_charge else 0))
         memo[fn] = p
         return p
+
+    def visit(fn: str) -> Path_:
+        frames = [step(fn)]
+        sent = None
+        while True:
+            try:
+                callee = frames[-1].send(sent)
+            except StopIteration as done:
+                frames.pop()
+                sent = done.value
+                if not frames:
+                    return sent
+                continue
+            frames.append(step(callee))
+            sent = None
 
     if root not in g.frames and root not in g.functions:
         raise WalkRefused(f"root `{root}` is not a function in any input")
@@ -4674,6 +4695,34 @@ def self_test() -> int:
               functions={"root", "a", "b", "c"})
     p = worst_path(g, "root", indirect_charge=None, recursion_allowance=None)
     check("deepest of two branches", p.depth == 500 and p.chain == ["root", "b"])
+
+    # A call graph deeper than CPython's recursion limit (the S32Z Zephyr
+    # image's walk raised RecursionError): a 5000-deep chain, each link also
+    # calling back to the root, so the cycle bookkeeping runs at depth too.
+    # The walk is iterative, so it neither raises nor loses a frame.
+    deep = 5000
+    names = [f"f{i}" for i in range(deep)]
+    gd = Graph(frames={n: 8 for n in names},
+               edges={n: ({names[i + 1], names[0]} if i + 1 < deep else {names[0]})
+                      for i, n in enumerate(names)},
+               functions=set(names))
+    try:
+        pd = worst_path(gd, "f0", indirect_charge=None, recursion_allowance=16)
+        deep_ok = pd.depth == 8 * deep + 16 and len(pd.chain) == deep + 1
+    except RecursionError:
+        deep_ok = False
+    check(f"a {deep}-deep call graph walks without recursion", deep_ok)
+    # ... and the same in a walk-order worker. With a jobserver the orders run
+    # in fork-pool workers, whose stack starts deeper than the serial walk's,
+    # so a recursive walk near the limit failed under `nros build` and passed
+    # on a bare `cmake --build` retry: the verdict hung on the host's
+    # parallelism. The iterative walk answers the same in both.
+    import multiprocessing
+    with multiprocessing.get_context("fork").Pool(1) as pool:
+        pw = pool.apply(worst_path, (gd, "f0"),
+                        {"indirect_charge": None, "recursion_allowance": 16})
+    check("a deep walk in a walk-order worker equals the serial walk",
+          deep_ok and pw.depth == pd.depth and pw.chain == pd.chain)
 
     # phase-557 W9b -- the builtins table: its decoder, depth rules and lookup
     for name, ok in stack_builtins.self_checks():
