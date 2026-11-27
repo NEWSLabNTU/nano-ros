@@ -388,3 +388,20 @@ by what the record states (image id, env, cargo args, board). A wrong guess
 costs parallelism, never correctness. On the linux lane: 95 cargo rows in 46
 stand-in classes, and 40 of 190 units wait for a leader (the largest class,
 `linux`, has 36 rows).
+
+## Next step (2026-11-27)
+
+Re-measure the tier-1 fixture build's PEAK end to end, with (c2) in
+(`35e36102ab`, the shared class build dir; `81330b960e`, one unit per class
+first, both on main since 2026-11-26), on a host with the disk. Not 118
+(no gates there), and not 241 (68 GB free). The manager slots it on 142 or
+243 after the nros12 dispatch.
+
+#4959 (the runner sweep evicting `fixture-classes`) does not change this
+measurement. The sweep runs between CI jobs on a persistent runner, never
+inside one local `just ci` build, so it keeps the class dirs from
+accumulating on a runner but does not lower a single build's peak.
+
+If the peak is still over about 100 GB, the next mitigations, in this doc's
+order: prune the Corrosion and probe trees (`nros_prune_cargo_intermediates`,
+issue 2702), then split the lane.
