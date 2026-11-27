@@ -38,6 +38,17 @@ export NROS_HOME="${NROS_HOME:-$HOME/.nros-box}"
 export CARGO_INSTALL_ROOT="${CARGO_INSTALL_ROOT:-$HOME/.local-box}"
 export PATH="$CARGO_INSTALL_ROOT/bin:$PATH"
 
+# Issue 2991 -- the retired ~~`nros_box_publish`~~ copied the box CLI here, and
+# `$HOME` is shared with the host, so that copy outlives every box rebuild at
+# whatever age it was published, first on PATH. A checkout's scripts use its
+# own CLI, so the copy only ever answers for a checkout that has not built
+# one, with a binary from another tree. Say so; deleting it is the operator's.
+if [ -x "$CARGO_INSTALL_ROOT/bin/nros" ]; then
+    echo "ros2-box-env: $CARGO_INSTALL_ROOT/bin/nros is a CLI the retired nros_box_publish left" >&2
+    echo "  ($("$CARGO_INSTALL_ROOT/bin/nros" --version 2>/dev/null || echo 'version unknown')); a checkout uses its own" >&2
+    echo "  (just setup-cli). Remove it when nothing else needs it." >&2
+fi
+
 # A host-built binary cannot run here (different glibc), and the failure is a
 # loader error naming a symbol version, which reads like a code bug. Say so once,
 # at the point where it is still cheap to notice.
