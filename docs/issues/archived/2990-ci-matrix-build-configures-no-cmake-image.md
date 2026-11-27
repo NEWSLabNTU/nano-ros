@@ -1,7 +1,9 @@
 ---
 id: 2990
 title: "`just ci matrix build` configures no CMake image, so it is not tier 2's build-and-link depth"
-status: open
+status: resolved
+resolved: 2026-11-27
+resolved_in: "the change that archives this issue"
 type: bug
 severity: medium
 area: [ci, testing]
@@ -76,6 +78,37 @@ depth.
   figures are corrected to what the recipe then builds.
 
 Implementation follows #4931.
+
+## Second ruling (2026-11-27): where it runs
+
+With the measured price (host 175, sccache off: 893 s cold, 337 s warm,
++12 GB peak), the user ruled that the smoke runs in the scheduled tier-2
+nightly and in local `just ci matrix build`, NOT per merge. The merge queue
+keeps its "no fixture build" contract. Full Cortex-R5F coverage stays,
+since nightly time is not the constraint.
+
+## Resolution
+
+- `scripts/ci/cmake-toolchain-smoke.py` derives the plan: a toolchain file
+  sets `CMAKE_SYSTEM_NAME`; it maps to boards whose `toolchain_file` names
+  it, then to images on those boards, then to the first C/C++ fixture row.
+  - An include-only file is credited through its include.
+  - `NO_ROW` covers cr5f and TI, with reasons, and is refused when stale.
+  - A recipe needing a capability no lane claims (TI's `tiarmclang`) is
+    reported out of scope, never run and never a pass.
+- `just ci cmake-toolchain-smoke` builds it. `just ci matrix build` runs
+  `_matrix-build`, then the smoke. `queue.yml` calls `just ci::_matrix-build`
+  directly, so the queue never runs the smoke. The tier-2 nightly job runs
+  it as its own step.
+- `just check cmake-toolchain-smoke-plan` (fast, buildless) refuses a
+  toolchain file with no smoke. Its selftest checks:
+  - a new file is refused;
+  - an alias is credited;
+  - an alias with its own flag is refused;
+  - a stale NO_ROW entry is refused;
+  - an unclaimed capability is reported out of scope.
+- CLAUDE.md and the `matrix` recipe comment now say what build depth
+  builds.
 
 ## Options considered
 

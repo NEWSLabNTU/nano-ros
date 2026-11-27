@@ -693,6 +693,16 @@ jobs:
         run: |
           source ./activate.sh
           just ci matrix-nightly
+      # Issue 2990 (user ruling 2026-11-27) -- one CMake-road image per
+      # cross-toolchain file, configured and linked, here and in local
+      # `just ci matrix build`, never per merge. Independent of the cells, so it
+      # runs after a red build or cell step too, and a red names its toolchain
+      # file. Measured on host 175: 893 s cold, 337 s warm.
+      - name: just ci cmake-toolchain-smoke
+        if: ${{ !cancelled() }}
+        run: |
+          source ./activate.sh
+          just ci cmake-toolchain-smoke
       # Issue 1991 — the same step run-matrix's tier-1 and tier-2 jobs carry.
       # Without it this lane counted its real failures ("Real failures: 14")
       # and named none: `test-all` runs nextest with `--failure-output never`,
