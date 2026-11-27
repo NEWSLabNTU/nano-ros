@@ -65,3 +65,47 @@ The method and the run command are in issue 2971's Resolution.
 A benchmark cell that publishes under a fixed shift and records the per-publish
 guest time would turn this from an accident into a measured series. That cell
 would be the durable fix, more than the bisect.
+
+## Bisect plan, prepared (2026-11-27)
+
+Ready to run on host 241 once nros12 is published, beside the gate chain at
+nice 19 and two jobs, one step at a time.
+
+**Step.** One commit per step:
+
+1. Check the commit out in a dedicated worktree.
+2. Re-apply issue 2971's instrumentation. It wraps the three publishes in
+   `on_timer` with `k_cycle_get_32()`, anchored on lines that are identical
+   at both ends of the range, and a step whose anchors are missing is
+   skipped, never measured.
+3. Build the one west leaf fresh
+   (`NROS_ZEPHYR_FIXTURE_FILTER=build-cortex-m-ws-cpp-violation-entry-zenoh`).
+4. Run it three times under `-icount shift=5,sleep=off`, with a router on
+   the image's baked port, 10885.
+5. Report the median of the ordinary ticks (2 to 15, minus 3 and 6) per
+   publish, and the spread between the runs.
+
+At a fixed shift the runs should agree to the microsecond, so the spread
+is a determinism check rather than a noise budget.
+
+**Order.** First both ends, to reproduce the 405 to 431 µs on `/t4/avail`.
+Then each ranked suspect, its parent against itself, stopping at the first
+step of 8 µs or more. Only if none accounts for it, `git bisect run` over the
+whole range, with "bad" meaning `/t4/avail` at or above 418 µs, the midpoint.
+
+**Ranked suspects**, among the range's 2,347 first-parent commits (85 touch
+`packages/rmw/zenoh`, 14 move the zenoh-pico pin):
+
+| # | commit | why |
+| --- | --- | --- |
+| 1 | `59f236fce6` (issue 2824) | a publisher's source stamp moved to the WALL clock, a wall-clock read on every publish; a locally delivered sample may pay a second read for its receive stamp, which fits the local path growing twice as much |
+| 2 | `c10f95d259` (issue 2596) | zenoh-pico bump: a send holds a transport use, a refcount per send |
+| 3 | `145bb2d8b5` (issue 2614) | zenoh-pico bump: no send waits for the link holding the tx mutex |
+| 4 | `ca657d15d0` (issue 2366) | a transient-local subscription re-reads a publisher cache: local-delivery bookkeeping |
+| 5 | `1a896a6722` (issue 2760) | the shim's durations moved to the monotonic clock: 2824's pair |
+| 6 | `4d5052bf07` | the Zephyr wall clock resolves after registration, which changes what a wall-clock read costs |
+| 7 | `a5e0439885` (issue 2575) | zenoh-pico bump: batching before fragments |
+
+The scripts are kept out of the tree, since the instrumentation is scratch by
+2971's rule. Their location and the driver's three modes (`ends`,
+`suspects`, `bisect`) are with the session that runs it.
