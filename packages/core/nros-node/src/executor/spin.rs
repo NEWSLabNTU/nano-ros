@@ -16496,6 +16496,25 @@ impl<'s> Executor<'s> {
         true
     }
 
+    // Issue 2992.
+    /// [`seed_launch_parameter_on_ref`](Self::seed_launch_parameter_on_ref)
+    /// from the launch file's TEXT, parsed straight into the store's slot
+    /// (`ParameterServer::seed_launch_text`), so the seeding caller holds no
+    /// ~8 KiB `ParameterValue` in its frame. `None` when there is no store.
+    pub(crate) fn seed_launch_text_on(
+        &mut self,
+        node: super::node_record::NodeId,
+        name: &str,
+        text: &str,
+    ) -> Option<Result<bool, nros_params::LaunchSeedError>> {
+        Some(
+            self.params
+                .as_deref_mut()?
+                .server
+                .seed_launch_text(node.into(), name, text),
+        )
+    }
+
     // Issue 2969.
     /// The code declares `name` on `node` as `param_type`: adopt its launch
     /// seed if it has one (see `ParameterServer::adopt_launch_seed`). `None`

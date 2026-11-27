@@ -114,6 +114,17 @@ pub enum DeclarationError {
     LaunchValueTypeMismatch,
 }
 
+// Issue 2992.
+/// Why a launch seed given as text declared nothing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LaunchSeedError {
+    /// The text has no value the store can hold.
+    Text(crate::LaunchTextError),
+    /// The store refused the declaration (the name taken, no free slot, or
+    /// the name too long).
+    Declare(DeclarationError),
+}
+
 /// What each refusal means, for a caller that prints the `Err` it got back. A
 /// full store names the knob that sizes it ([`crate::STORE_SIZE_REMEDY`]).
 // GitHub #4018 -- `StorageFull` was the one refusal whose fix is a build
@@ -1010,6 +1021,60 @@ impl<'s> ParameterServer<'s> {
             return false;
         }
         self.declare_into(node, name, None, fill).is_ok()
+    }
+
+    // Issue 2992.
+    /// Declare `name` on `node` from a LAUNCH file's text, parsed straight
+    /// into its slot, and mark it as a launch seed
+    /// ([`mark_launch_seed`](Self::mark_launch_seed)).
+    ///
+    /// Parsing into a `ParameterValue` first and declaring it by reference
+    /// puts that ~8 KiB value in the seeding caller's frame; here the only
+    /// value is the slot's. A text the store cannot hold leaves the slot
+    /// empty again, with no `New` event and no count: the table is as it was.
+    ///
+    /// `Ok(true)` when seeded; `Ok(false)` for `[]`, which ROS gives no value
+    /// (nothing is declared, so the declaration's default stands).
+    pub(crate) fn seed_launch_text(
+        &mut self,
+        node: NodeKey,
+        name: &str,
+        text: &str,
+    ) -> Result<bool, LaunchSeedError> {
+        if self.find_index(node, name).is_some() {
+            return Err(LaunchSeedError::Declare(DeclarationError::AlreadyDeclared));
+        }
+        let Some(slot) = self.find_empty_slot() else {
+            return Err(LaunchSeedError::Declare(DeclarationError::StorageFull));
+        };
+        let mut stored_name = String::new();
+        if stored_name.push_str(name).is_err() {
+            return Err(LaunchSeedError::Declare(DeclarationError::NameTooLong));
+        }
+        let cell = &mut self.table.entries[slot];
+        *cell = Some(ParameterEntry {
+            node,
+            param: Parameter {
+                name: stored_name,
+                value: ParameterValue::NotSet,
+            },
+            descriptor: None,
+            launch_seed: true,
+        });
+        let parsed = match cell {
+            Some(entry) => entry.param.value.assign_launch_text(text),
+            None => Ok(()),
+        };
+        if let Err(e) = parsed {
+            *cell = None;
+            return match e {
+                crate::LaunchTextError::EmptyList => Ok(false),
+                e => Err(LaunchSeedError::Text(e)),
+            };
+        }
+        self.count += 1;
+        self.note_event(node, ParameterEventKind::New, name);
+        Ok(true)
     }
 
     /// The slot write shared by every declare: an empty slot, the name, then

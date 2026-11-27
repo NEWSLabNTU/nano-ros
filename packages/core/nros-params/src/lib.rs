@@ -92,9 +92,9 @@ pub use declared::{DeclaredParamMismatch, DeclaredParams};
 pub use launch_text::{LaunchTextError, LaunchTextType, launch_text_extent, launch_text_type};
 pub use ops::ParameterServerOps;
 pub use server::{
-    DeclarationError, LegacyParameterBuilder, MAX_ON_SET_CALLBACKS, OnSetContext, OnSetParameterFn,
-    OnSetParameterHandle, PARAMETER_EVENT_LOG_LEN, ParameterEventKind, ParameterServer,
-    ParameterSlot, ParameterStorage, ParameterTable, PendingParameterEvent,
+    DeclarationError, LaunchSeedError, LegacyParameterBuilder, MAX_ON_SET_CALLBACKS, OnSetContext,
+    OnSetParameterFn, OnSetParameterHandle, PARAMETER_EVENT_LOG_LEN, ParameterEventKind,
+    ParameterServer, ParameterSlot, ParameterStorage, ParameterTable, PendingParameterEvent,
 };
 #[allow(deprecated)]
 pub use typed::UndeclaredParameters;

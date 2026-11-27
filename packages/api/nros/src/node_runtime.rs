@@ -1795,8 +1795,7 @@ impl ExecutorSink<'_> {
 /// the Rust metadata probe gives its node (phase-566 W4), so the two cannot
 /// type a value differently.
 ///
-/// A `false` from the store is a refusal only if the name is still absent
-/// afterwards: the store also answers `false` for "already declared".
+/// A name the store already holds keeps its value: that is not a refusal.
 #[cfg(feature = "param-store")]
 pub(crate) fn seed_launch_params_on(
     executor: &mut Executor<'static>,
@@ -1809,11 +1808,17 @@ pub(crate) fn seed_launch_params_on(
         // Issue 2638 -- `[a, b]` is an array; `[]` seeds nothing (ROS
         // gives an empty sequence no value) and a list ROS refuses is
         // refused here, never seeded as a string.
-        let mut value = nros_params::ParameterValue::NotSet;
-        match value.assign_launch_text(raw) {
-            Ok(()) => {}
-            Err(nros_params::LaunchTextError::EmptyList) => continue,
-            Err(e) => {
+        // Issue 2969 -- declared AS a launch seed, so the code's own first
+        // declaration of the name adopts it instead of being refused.
+        // Issue 2992 -- parsed straight into the store's slot: a
+        // `ParameterValue` here is ~8 KiB in this frame (8,728 B on
+        // Cortex-M3, over the 4 KiB frame cap).
+        match executor.seed_launch_text_on(node, name, raw) {
+            Some(Ok(_)) => {}
+            Some(Err(nros_params::LaunchSeedError::Declare(
+                nros_params::DeclarationError::AlreadyDeclared,
+            ))) => {}
+            Some(Err(nros_params::LaunchSeedError::Text(e))) => {
                 nros_log::log_error!(
                     nros_log::get_logger("nros"),
                     "launch parameter '{name}' = `{raw}` has no value the store can hold \
@@ -1821,16 +1826,12 @@ pub(crate) fn seed_launch_params_on(
                 );
                 return Err(NodeDeclError::Runtime);
             }
-        }
-        // Issue 2969 -- declared AS a launch seed, so the code's own first
-        // declaration of the name adopts it instead of being refused.
-        if !executor.seed_launch_parameter_on_ref(node, name, &value)
-            && executor.get_parameter_on(node, name).is_none()
-        {
-            // GitHub #4018 -- the line names the store's capacity and the
-            // knob that sizes it, not only the refusal.
-            executor.report_parameter_refused(node, name);
-            return Err(NodeDeclError::ParameterRejected);
+            Some(Err(nros_params::LaunchSeedError::Declare(_))) | None => {
+                // GitHub #4018 -- the line names the store's capacity and the
+                // knob that sizes it, not only the refusal.
+                executor.report_parameter_refused(node, name);
+                return Err(NodeDeclError::ParameterRejected);
+            }
         }
     }
     Ok(())
