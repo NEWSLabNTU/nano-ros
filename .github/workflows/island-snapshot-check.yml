@@ -1,0 +1,110 @@
+# Issue 2957 -- the on-demand live check of the island-shaped Zephyr snapshot.
+#
+# `just check island-snapshot-inputs` refuses a branch that edits a file the
+# island-shaped Zephyr image's configure reads and leaves the committed
+# snapshot as it was, unless a commit on the branch carries
+# `Island-Snapshot: checked <digest>`. This workflow is how an author with no
+# west workspace gets that line: dispatch it on the branch,
+#
+#     gh workflow run island-snapshot-check.yml --ref <branch>
+#
+# and it configures and builds the image live on a self-hosted runner that
+# keeps a Zephyr 3.7 workspace (`just check island-shaped-zephyr`, ~132 s
+# measured on host 118). On a pass it prints the trailer in the job summary;
+# paste it into a commit on the branch. On a stale snapshot it fails and
+# names the regen.
+#
+# ON DEMAND ONLY (user ruling 2026-11-25): never on pull_request, push or a
+# cron. A live Zephyr check on every pull request would overturn the
+# 2026-11-13 ruling that keeps Zephyr builds daily.
+#
+# RUNNER LOAD: it runs on the scheduled lanes' self-hosted runners, so the
+# hosted `window` job refuses first, before any runner is taken:
+#   - inside the lanes' cron quiet window (derived from the lane workflows by
+#     scripts/ci/lane-fix-dispatch.py, 03:00-07:00Z today), and
+#   - while the release owner has declared a quiet window by setting the
+#     repository variable NROS_RUNNER_QUIET to `true`
+#     (`gh variable set NROS_RUNNER_QUIET --body true`, and `--body false`
+#     or `gh variable delete NROS_RUNNER_QUIET` when it ends).
+name: island-snapshot-check
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One at a time: each run takes a self-hosted runner for a Zephyr build.
+concurrency:
+  group: island-snapshot-check
+  cancel-in-progress: false
+
+jobs:
+  window:
+    name: island-snapshot-check / runner quiet window
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout nano-ros
+        uses: actions/checkout@v4
+
+      - name: Refuse inside a quiet window
+        env:
+          NROS_RUNNER_QUIET: ${{ vars.NROS_RUNNER_QUIET }}
+        run: python3 scripts/check/check-island-snapshot-inputs.py --dispatch-window
+
+  live:
+    name: island-snapshot-check / live island-shaped Zephyr check
+    needs: window
+    runs-on: [self-hosted, linux, nros-qemu, nros-sdk-zephyr, nros-big]
+    # The check measured 132 s warm on 118 and 324 s on a cold hosted runner;
+    # the CLI build and the workspace check add a few minutes. Generous, so a
+    # stalled runner still fails rather than holding a runner for hours.
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash
+    env:
+      NROS_ZEPHYR_VERSION: "3.7"
+    steps:
+      - name: Checkout nano-ros
+        uses: actions/checkout@v4
+
+      - name: Start from a clean tree (self-hosted only)
+        run: scripts/ci/self-hosted-clean-tree.sh
+
+      - name: Build the in-tree nros CLI
+        uses: ./.github/actions/setup-nros-cli
+        with:
+          launch-resolve: 'true'
+
+      # On the self-hosted runner the workspace and the pinned SDK are kept,
+      # so this resolves what is there; it fetches only on a fresh runner.
+      - name: Set up the Zephyr 3.7 west workspace and its pinned SDK
+        env:
+          NROS_ZEPHYR_CREATE_VENV: "1"
+          NROS_ZEPHYR_SKIP_XRCE_AGENT: "1"
+        run: |
+          source ./activate.sh
+          just setup zephyr
+
+      - name: just check island-shaped-zephyr (live), and the trailer
+        run: |
+          source ./activate.sh
+          set -o pipefail
+          just check island-shaped-zephyr 2>&1 | tee "$RUNNER_TEMP/island.log"
+          if ! line="$(grep -E '^ +Island-Snapshot: checked [0-9a-f]+$' "$RUNNER_TEMP/island.log" | tail -1 | sed 's/^ *//')" || [ -z "$line" ]; then
+            echo "island-snapshot-check: the check passed but printed no trailer" >&2
+            exit 1
+          fi
+          {
+            echo "### Island-shaped Zephyr snapshot: checked live"
+            echo
+            echo "The committed snapshot equals a live configure of \`${GITHUB_REF_NAME}\` at \`${GITHUB_SHA}\`."
+            echo "Add this line to a commit message on the branch (for example \`git commit --fixup=reword:<sha>\`):"
+            echo
+            echo '```'
+            echo "$line"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "::notice title=island-snapshot-check::$line"

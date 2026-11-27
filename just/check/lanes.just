@@ -5531,6 +5531,18 @@ island-shaped-workspace:
 island-shaped-zephyr:
     ./tests/island-shaped-zephyr-tests.sh
 
+# Issue 2957 -- the merge queue checks the island-shaped Zephyr image over a
+# snapshot only the daily lane compares with a live configure. A branch that
+# edits a file the configure reads (the snapshot's inputs.txt, written by the
+# regen from build.ninja's RERUN_CMAKE edge) regenerates the snapshot or
+# carries the `Island-Snapshot: checked <digest>` trailer that
+# `island-shaped-zephyr` prints. Reads the branch from its merge base with
+# origin/main; passes on merge_group and push. Buildless, ~1 s.
+[private]
+[group('needs:git-history')]
+island-snapshot-inputs:
+    @python3 scripts/check/check-island-snapshot-inputs.py
+
 # phase-567 W4 -- rewrite the committed snapshot from a live build of the
 # island-shaped Zephyr image. Run it when `island-shaped-zephyr` reports the
 # snapshot stale, and commit the result.

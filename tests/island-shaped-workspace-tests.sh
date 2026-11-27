@@ -6,6 +6,7 @@
 # queue (`check-workspace-all`) and not a downstream build:
 #
 #   (K runs first: it needs no build.)
+#   D  the snapshot's NROS_DERIVED_* counts equal this census (issue 2957)
 #   M  the model records both sibling-package param files (absolute and
 #      $(dirname)-relative) as absolute inputs, and every consumer reads it
 #      (issue 2615: model_gate refused every absolute input)
@@ -65,6 +66,24 @@ cd "$WS" || fail "no workspace at $WS"
 step "C: configure + census (island_bringup:freertos)"
 nros configure --census island_bringup:freertos ||
     fail "configure --census refused the workspace (see the output above)"
+
+# Issue 2957 -- the census half of the Zephyr snapshot, with no west
+# workspace. The Zephyr image's configure takes its NROS_DERIVED_* counts from
+# this same census (measured equal on 2026-11-25), so a change that moves a
+# derived count (issue 2886) fails here, on the pull request, instead of in
+# the next nightly.
+step "D: the snapshot's derived counts equal this census"
+# The census build dir is the one configured dir under build/ with a derived
+# inventory, the metadata probe's aside (it counts a different program).
+mapfile -t inventories < <(find "$WS/build" -path "$WS/build/nros-metadata" -prune -o \
+    -path '*/nros/entity_inventory.cmake' -print)
+wait $! || fail "could not list the inventories under $WS/build"
+[ "${#inventories[@]}" -eq 1 ] ||
+    fail "expected one census inventory under $WS/build, found ${#inventories[@]}: ${inventories[*]:-none}"
+census_dir="$(dirname "$(dirname "${inventories[0]}")")"
+printf 'census build dir: %s\n' "$census_dir"
+python3 "$PROJECT_ROOT/scripts/knob-delivery-fixture.py" diff-derived "$census_dir" "$FIXTURE" ||
+    fail "the Zephyr snapshot's derived counts differ from this tree's census"
 
 step "M: the sibling param files are absolute model inputs"
 [ -f "$MODEL" ] || fail "no model at $MODEL"
