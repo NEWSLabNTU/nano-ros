@@ -389,6 +389,20 @@ costs parallelism, never correctness. On the linux lane: 95 cargo rows in 46
 stand-in classes, and 40 of 190 units wait for a leader (the largest class,
 `linux`, has 36 rows).
 
+## The class root needs a sweep area (2026-11-27)
+
+(c2)'s shared class root, `build/fixture-classes/<root>/<key>/`, was in no
+`runner-sweep` area. Two runs after it landed it held 60.4 GiB on
+newslab-118's runner (112 class keys, about 0.5 GiB each), and the manager
+reports the same dir on 241. The sweep reported it as unbudgeted every run and
+never evicted any of it, so the runner volume drained by it. Each key is now a
+unit of the `fixtures` area, as `sizes-probe/<slug>/<key>` is, evicted
+coldest-first under the same budget. The budget was sized before (c2) moved
+cargo intermediates out of the leaf dirs, so the leaf build units it already
+covers should shrink as the classes grow; re-read the tier-1/tier-2 sweep
+lines after a run with this in. Test: `runner-sweep-eviction-order`'s
+class-key case, mutation-checked against the script without the change.
+
 ## Next step (2026-11-27)
 
 Re-measure the tier-1 fixture build's PEAK end to end, with (c2) in
