@@ -640,15 +640,17 @@ fn main() {
     // Measured (issue 1198): 1,224 B a slot on thumbv7m-none-eabi, because it
     // multiplies SEVEN tables, so a single-node talker was paying 3,672 B for
     // three node slots it can never fill.
-    let max_nodes = env_usize_described(
-        "NROS_EXECUTOR_MAX_NODES",
-        described_image_count(
-            sizing.as_ref(),
-            "node_count",
-            nros_sizing_descriptor::Image::node_count,
-        ),
-        4,
+    // Issue 2739 -- the image's node COUNT, where the descriptor STATES it. A
+    // refused or absent field is `None` ("unstated"), never a guess: it decides
+    // whether `$NROS_NODE_NAME` may rename a node, and only a count of one can
+    // name a single node without a collision. `MAX_NODES` below is a capacity
+    // and is not this: an env override or the builtin 4 is headroom.
+    let stated_node_count = described_image_count(
+        sizing.as_ref(),
+        "node_count",
+        nros_sizing_descriptor::Image::node_count,
     );
+    let max_nodes = env_usize_described("NROS_EXECUTOR_MAX_NODES", stated_node_count, 4);
     // issue 0790 — shutdown-hook slots, PER PHASE: the executor keeps one table
     // this size for pre-shutdown hooks and a second for on-shutdown hooks.
     //
@@ -1384,6 +1386,12 @@ fn main() {
          /// Maximum number of Nodes attached to a single Executor \
          (set via NROS_EXECUTOR_MAX_NODES, default 4).\n\
          pub const MAX_NODES: usize = {max_nodes};\n\
+         \n\
+         /// How many nodes the image creates, where the sizing \
+         descriptor STATES `[image] node_count`; `None` when it is absent or \
+         refused. Decides whether `$NROS_NODE_NAME` renames the node \
+         (`executor::env_identity`).\n\
+         pub const STATED_NODE_COUNT: Option<usize> = {stated_node_count:?};\n\
          \n\
          /// Shutdown-hook slots PER PHASE -- one table this size for \
          pre-shutdown hooks and a second for on-shutdown hooks \

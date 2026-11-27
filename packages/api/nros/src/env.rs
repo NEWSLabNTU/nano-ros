@@ -407,6 +407,9 @@ pub fn try_resolve_hosted<'a>(
     baked: BootConfig<'a>,
 ) -> Result<ExecutorConfig<'a>, BootConfigError> {
     let env = env_rung()?;
+    // Issue 2739 -- every node this process creates answers to these, not
+    // only the executor's default (`nros_node::executor::env_identity`).
+    nros_node::executor::env_identity::install(env.node_name, env.namespace);
     let cfg = ExecutorConfig::try_resolve_with(baked, Some(env))?;
     report(&env, &baked, &cfg);
     Ok(cfg)
@@ -855,9 +858,20 @@ mod tests {
             Ok(c) => c,
             Err(e) => panic!("resolve failed: {e}"),
         };
+        // Issue 2739 -- `$NROS_NODE_NAME` names the executor only in an image
+        // that states one node; with an unstated count (this test build has no
+        // sizing descriptor) or two or more nodes, the stated name stands and a
+        // once-per-process notice says why (`env_identity`).
+        let want = if nros_node::config::STATED_NODE_COUNT == Some(1) {
+            "env_node"
+        } else {
+            "baked_node"
+        };
         assert_eq!(
-            cfg.node_name, "env_node",
-            "env rung must override baked with its own value"
+            cfg.node_name,
+            want,
+            "STATED_NODE_COUNT = {:?}",
+            nros_node::config::STATED_NODE_COUNT
         );
     }
 
