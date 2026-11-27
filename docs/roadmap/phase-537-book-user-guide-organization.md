@@ -429,7 +429,7 @@ deliverable as W5, a lab series, so it moved here. W5 carries these as well:
 - **Labs W5's chapter list lacks.** QoS (523 lab 2), lifecycle (lab 4), and
   two tiers with the real-time promise measured (lab 5). Each is a W5 chapter
   or a level-2 lab beside it, on the same probe-track rule. Issue
-  [2269](../issues/2269-no-emulator-chapters-for-lab-topics.md) is the round-one
+  [2269](../issues/archived/2269-no-emulator-chapters-for-lab-topics.md) is the round-one
   education stop that measured the gap.
 - **A grading command per chapter.** It is the chapter's own
   `nros run --expect '<line>'`, the line an instructor runs per seat. A chapter

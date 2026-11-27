@@ -1,0 +1,1 @@
+The Tutorial has a new lab, "A managed node waits for its cue": it makes the talker a managed (lifecycle) node, boots it silent on the emulated board, and drives it with stock `ros2 lifecycle` commands from the host.

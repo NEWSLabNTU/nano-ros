@@ -7,7 +7,7 @@ ROS 2 does it, one machine per managed node under the node's own name. Every
 question was ruled on 2026-11-12 ("Take your advice on lifecycle questions",
 "Hide the node as default"). Phase B (W1-W9: machines and gating) comes first
 and unblocks the lifecycle lab of
-[issue 2269](../issues/2269-no-emulator-chapters-for-lab-topics.md). Phase C
+[issue 2269](../issues/archived/2269-no-emulator-chapters-for-lab-topics.md). Phase C
 (W10-W14) adds the callbacks.
 
 RFC-0128 becomes Stable only after W0's three upstream verifications (W15).

@@ -900,6 +900,57 @@
       "variant": "",
       "weekly": true,
       "lang": "cpp"
+    },
+    {
+      "track": "lab-lifecycle",
+      "chapter": "tutorial/lifecycle.md",
+      "variant": "qemu",
+      "weekly": true,
+      "row": "nros-board-mps2-an385-freertos@FreertosMps2",
+      "lang": "rust",
+      "after": [
+        "tutorial/run-a-talker.md",
+        "tutorial/what-you-just-built.md",
+        "tutorial/add-a-second-node.md",
+        "tutorial/pick-the-rmw.md",
+        "tutorial/your-own-message.md",
+        "tutorial/services-and-actions.md",
+        "tutorial/parameters-and-launch-files.md"
+      ]
+    },
+    {
+      "track": "lab-lifecycle-c",
+      "chapter": "tutorial/lifecycle.md",
+      "variant": "qemu",
+      "weekly": true,
+      "row": "nros-board-mps2-an385-freertos@FreertosMps2",
+      "lang": "c",
+      "after": [
+        "tutorial/run-a-talker.md",
+        "tutorial/what-you-just-built.md",
+        "tutorial/add-a-second-node.md",
+        "tutorial/pick-the-rmw.md",
+        "tutorial/your-own-message.md",
+        "tutorial/services-and-actions.md",
+        "tutorial/parameters-and-launch-files.md"
+      ]
+    },
+    {
+      "track": "lab-lifecycle-cpp",
+      "chapter": "tutorial/lifecycle.md",
+      "variant": "qemu",
+      "weekly": true,
+      "row": "nros-board-mps2-an385-freertos@FreertosMps2",
+      "lang": "cpp",
+      "after": [
+        "tutorial/run-a-talker.md",
+        "tutorial/what-you-just-built.md",
+        "tutorial/add-a-second-node.md",
+        "tutorial/pick-the-rmw.md",
+        "tutorial/your-own-message.md",
+        "tutorial/services-and-actions.md",
+        "tutorial/parameters-and-launch-files.md"
+      ]
     }
   ]
 }

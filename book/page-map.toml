@@ -1873,3 +1873,10 @@ path = "guide/build/find-what-nano-ros-offers.md"
 action = "new phase-569"
 batch = "p569-w10"
 note = "Find what nano-ros offers (W10): every discovery verb's list and show with real output, `--json` and completion; replayed by the find-offers tracks. Each later item (W2c's reference, W9's search) adds its rows"
+
+[[page]]
+book = "user"
+path = "tutorial/lifecycle.md"
+action = "new phase-537"
+batch = "p537-w5"
+note = "Lab: a managed node waits for its cue (issue 2269's last topic): the talker made managed by its launch file, driven from the host with stock ros2 lifecycle; replayed by the lab-lifecycle tracks"
