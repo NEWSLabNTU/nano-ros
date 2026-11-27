@@ -320,3 +320,41 @@ Acceptance: `a_session_pointer_survives_its_owner_spinning` passes under Miri
 without `alloc`; every derived backing size (the C and C++ sizes headers,
 `NROS_EXECUTOR_BACKING_U64S`, the Zephyr arena pairing) moves with
 `ExecutorSizing::u64_len`, and a C executor's does not.
+
+**Planned design (2026-11-27, for review before code).**
+
+- **Sizing.** `ExecutorSizing` gains `session: usize`, either 0 or 1. It is
+  the owned-session slots the backing carves. `ExecutorSizing::DEFAULT`
+  carves one, because the Rust entry, the `alloc` conveniences and every sched
+  task's owner OWN their session. The region is placed by
+  `nros-executor-layout`'s `Counts`, like every other table, so a host build
+  script that evaluates the layout for a cross target gets the same total.
+  The unit (`concrete_session`) is already in `RegionUnits`.
+- **Store.** `SessionStore` gains `Carved(NonNull<ConcreteSession>)`. Its
+  pointer is derived from the backing, not from `&mut self`, so it survives
+  the owner's writes. It replaces `Heap` under `alloc` too, giving one owned
+  path in every build. The session is written into the slot at open and
+  dropped in place when the executor drops. `Owned` (inline) remains only for
+  an owner whose sizing carved no slot, and `session_handle` refuses to share
+  it, as it does today for a failed `Heap` allocation.
+- **C borrows; C++ owns.** Today both read one `ExecutorInlineStorage` at
+  `INLINE_SIZING`. They split:
+  - C (`rclc_executor_t`, `from_session_ptr_in`, session borrowed from
+    `rclc_support_t`) keeps today's sizing with `session: 0`, so its
+    `_opaque` size and the C sizes header do not move.
+  - C++ (`open_multi_in`, which owns) carves `session: 1`. Its inline storage
+    and `CPP_EXECUTOR_BACKING_U64S` grow by one session (536 B on x86_64).
+  - Two inline-storage types and two inline sizings, each measured by the
+    sizes probe as today.
+- **Derived sizes.** These move with `u64_len`:
+  - `NROS_EXECUTOR_BACKING_U64S`;
+  - the C++ sizes header;
+  - the Zephyr arena pairing;
+  - the two committed NuttX buildless snapshot headers, regenerated, with
+    `check-config-fallback-macros` and a clean-checkout NuttX C and C++ image
+    build as acceptance (issue 1115's trap).
+  The C header does not move.
+
+Open question for review: whether `Heap` goes in this item or stays until a
+later one. Keeping it costs a second owned path under `alloc` that no test
+reaches once `Carved` exists.
