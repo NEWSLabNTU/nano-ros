@@ -567,8 +567,12 @@ pub fn qemu_nic(args: QemuNicArgs) -> Result<()> {
         .as_deref()
         .and_then(|r| BoardCatalog::load(r).ok())
         .ok_or_else(|| eyre!("no nano-ros checkout to read the board catalog from"))?;
-    let descriptor = crate::cmd::board_facts::resolve_board(&catalog, &board)
-        .ok_or_else(|| eyre!("{}", crate::cmd::board_facts::unresolved_board(&board)))?;
+    let descriptor = crate::cmd::board_facts::resolve_board(&catalog, &board).ok_or_else(|| {
+        eyre!(
+            "{}",
+            crate::cmd::board_facts::unresolved_board(&catalog, &board)
+        )
+    })?;
     let net = crate::cmd::build::leaf_image_net(descriptor, &board, root.as_deref(), &leaf)
         .map_err(|e| eyre!("{}: {e}", leaf.origin_path().display()))?
         .ok_or_else(|| eyre!("{}: resolved no interface", leaf.origin_path().display()))?;
@@ -856,8 +860,13 @@ pub fn run(args: LeafSystemArgs) -> Result<()> {
                 leaf.origin_path().display()
             )
         })?;
-        let descriptor = crate::cmd::board_facts::resolve_board(catalog, &board)
-            .ok_or_else(|| eyre!("{}", crate::cmd::board_facts::unresolved_board(&board)))?;
+        let descriptor =
+            crate::cmd::board_facts::resolve_board(catalog, &board).ok_or_else(|| {
+                eyre!(
+                    "{}",
+                    crate::cmd::board_facts::unresolved_board(catalog, &board)
+                )
+            })?;
         let net = crate::cmd::build::leaf_image_net(descriptor, &board, root.as_deref(), &leaf)
             .map_err(|e| eyre!("{}: {e}", leaf.origin_path().display()))?;
         // The same file the cargo road writes, so a launcher finds a C/C++

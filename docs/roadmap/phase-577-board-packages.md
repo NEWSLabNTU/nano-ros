@@ -83,6 +83,9 @@ is already a package. What is missing is measured in RFC-0135's Motivation:
 - Add the runner packages `nros_runner_openocd`, `nros_runner_probe_rs` and
   `nros_runner_picotool` (RFC-0119 shape). Give each in-tree hardware board
   definition a `[board.flash]` and a `[board.console]`.
+- RFC-0135 D8's "flash method's runner package and host tool installed" row
+  joins W6's check (`nros_cli_core::compat`) as one more reason, with its
+  own diagnostic code.
 - **Acceptance:**
   - each runner's command line is checked with `nros flash --dry-run` against
     a board definition that names it;
@@ -92,35 +95,30 @@ is already a package. What is missing is measured in RFC-0135's Motivation:
 ### W6 — The pre-build compatibility check
 
 - **Owner:** nros 133 (claimed 2026-11-26).
-- **Status:** OPEN. In progress on branch `feat/board-compat-check`. Built on
-  phase-578 W4's `RefusalGroup` and framework refusal.
-  - Landing in the first PR: the two new facts (`[board.memory]` on the four
-    boards whose linker script states it, `[rmw.needs]` on Cyclone and
-    zenoh); a collecting check on all three roads (workspace, cargo leaf,
-    CMake leaf) between board resolution and stage 3, so nothing is
-    generated first; `nros check --board <key>`; codes NROS-0015 (the
-    header) and 0016 to 0021; one unit test per reason class and an
-    end-to-end test through the preflight query.
-  - Rows reported today: framework (NROS-0014, the existing refusal), build
-    road (0016), RMW needs (0017), links and network (0018: the board's
-    `links`, the network checks, the RMW port arms), toolchain (0019, the
-    preflight), vendor SDK root (0020, a new `[board.sdk] root_env`), memory
-    lower bound (0021).
-  - Only missing tools still stay the preflight's own refusal, unchanged:
-    `nros configure` reads that type as a refusal of the host (it skips the
-    image) and anything else as a refusal of the image.
-  - DEFERRED, each to the item that lands its authority: nano-ros version
-    (W3), runner package and host tool (W5), library needs (W12), and the
-    package-knob row (RFC-0140; its check exists and still stops first).
-  - Memory (NROS-0021), per the user's ruling of 2026-11-26 (option b,
-    recorded in RFC-0135's Changelog): before the build, the bytes the
-    sizing descriptor states (spawned task stacks, configured heap,
-    transient-local retention) are a lower bound against `[board.memory]
-    ram`, worded "needs at least N"; the exact verdict is phase-578 W1's size
-    report after the link, against the same budget, in its own small PR. No
-    cost model.
-  - Open: a key found in no root does not yet list near matches and the
-    roots searched (NROS-0002 lists every name).
+- **Status:** DONE (2026-11-27, #4922 and its near-match follow-up)
+  - The check: one collecting pass on all three roads (workspace, cargo
+    leaf, CMake leaf), between board resolution and stage 3, so nothing is
+    generated first; `nros check --board <key>` runs it alone. Built on
+    phase-578 W4's `RefusalGroup` and framework refusal.
+  - New facts: `[board.memory]` (the four boards whose linker script states
+    it), `[rmw.needs]` (Cyclone, zenoh), `[board.sdk] root_env`.
+  - Reasons and codes: framework (NROS-0014, the existing refusal), build
+    road (0016), RMW needs (0017), links and network (0018), toolchain
+    (0019, the preflight; missing tools alone stay its own refusal, which
+    `nros configure` reads as a refusal of the host), vendor SDK root
+    (0020), memory lower bound (0021), all under one NROS-0015 header that
+    names the board's descriptor file.
+  - Memory, per the user's ruling of 2026-11-26 (RFC-0135 Changelog): the
+    bytes the sizing descriptor states are a lower bound before the build;
+    the exact verdict is phase-578 W1's size report against the same
+    budget. No cost model.
+  - A key found in no root lists its nearest keys and every root searched
+    (`BoardCatalog::unknown_board`, NROS-0002).
+  - Rows whose authority lands with another item join this check there,
+    each as one more reason: nano-ros version range (W3), flash runner
+    package and host tool (W5), library needs (W12), and every package knob
+    belonging to a package the image uses (RFC-0140, phase-581: its check
+    exists and still stops first).
 - RFC-0135 D8: one check, run by `nros build` before any build step and by
   `nros check --board <key>` alone. It calls the existing checks and collects
   every verdict, then adds:

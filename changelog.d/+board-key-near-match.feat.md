@@ -1,0 +1,1 @@
+A board key that no board definition claims is now refused with the keys nearest to it ("did you mean …?") and every place a board definition was looked for, including the `$NROS_EXTRA_BOARD_PATH` roots and the workspace's packages, instead of a list of every known board.

@@ -1547,21 +1547,8 @@ pub fn resolve_board_id<'c>(
             if let Some(hint) = nros_entry_lower::retired_board_key_hint(board) {
                 return Err(format!("`{origin} = \"{board}\"`: {hint}"));
             }
-            let mut known: Vec<&str> = catalog
-                .descriptors()
-                .iter()
-                .flat_map(|d| d.names.iter().map(String::as_str))
-                .collect();
-            known.sort_unstable();
-            known.dedup();
-            use crate::diag::{Diag, DiagExt};
-            Err(Diag::BoardUnknown
-                .refusal(format_args!("`{origin} = \"{board}\"` matches no board"))
-                .help(format_args!(
-                    "check the spelling; the known boards are {}. Out-of-tree boards are \
-                     added through `$NROS_EXTRA_BOARD_PATH`",
-                    known.join(", ")
-                ))
+            Err(catalog
+                .unknown_board(&format!("`{origin} = \"{board}\"`"), board)
                 .to_string())
         }
     }

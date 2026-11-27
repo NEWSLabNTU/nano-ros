@@ -1741,6 +1741,10 @@ impl BoardFile {
 #[derive(Debug, Default)]
 pub struct BoardCatalog {
     descriptors: Vec<BoardDescriptor>,
+    /// Where the descriptors were looked for, in search order, as a reader
+    /// would name each place: a key found in none of them is refused naming
+    /// these (RFC-0135 D8), so a user can see where a board was not found.
+    roots: Vec<String>,
 }
 
 /// Where a board's out-of-tree platform is looked up, and the lookup
@@ -1882,7 +1886,13 @@ impl BoardCatalog {
             // `NROS_BOARD_TOML` consumers keep working unchanged.
             Self::load_root(root, None, families, &mut descriptors)?;
         }
-        Ok(Self { descriptors })
+        let mut roots = vec![boards_dir.display().to_string()];
+        roots.extend(
+            extra_roots
+                .iter()
+                .map(|r| format!("{} (from $NROS_EXTRA_BOARD_PATH)", r.display())),
+        );
+        Ok(Self { descriptors, roots })
     }
 
     /// [`Self::load`] plus board descriptors carried by the USER's own
@@ -1914,6 +1924,12 @@ impl BoardCatalog {
         let families = PlatformFamilies::for_catalog(workspace, extra, pkg_dirs);
         let mut catalog = Self::load_with_families(workspace, extra, &families)?;
         catalog.absorb_packages(pkg_dirs, &families)?;
+        if !pkg_dirs.is_empty() {
+            catalog.roots.push(format!(
+                "the workspace's {} package(s), each one's nros-board.toml",
+                pkg_dirs.len()
+            ));
+        }
         Ok(catalog)
     }
 
@@ -2138,7 +2154,61 @@ impl BoardCatalog {
     /// A catalog over descriptors already in memory (tests, and callers that
     /// built them some other way).
     pub fn from_descriptors(descriptors: Vec<BoardDescriptor>) -> Self {
-        Self { descriptors }
+        Self {
+            descriptors,
+            roots: Vec::new(),
+        }
+    }
+
+    /// Where the descriptors were looked for, in search order.
+    pub fn roots(&self) -> &[String] {
+        &self.roots
+    }
+
+    /// Every board key a descriptor claims, sorted, once each.
+    pub fn keys(&self) -> Vec<&str> {
+        let mut known: Vec<&str> = self
+            .descriptors
+            .iter()
+            .flat_map(|d| d.names.iter().map(String::as_str))
+            .collect();
+        known.sort_unstable();
+        known.dedup();
+        known
+    }
+
+    /// The refusal for a board key no descriptor claims (NROS-0002, RFC-0135
+    /// D8): the keys nearest to it, and every place a descriptor was looked
+    /// for. Switching boards is where a misspelled key happens, so the reader
+    /// gets the likely fix first rather than the whole list. `what` says what
+    /// named the key (`` `[image.talker] board = "acme"` ``).
+    pub fn unknown_board(&self, what: &str, board: &str) -> crate::diag::Refusal {
+        use crate::diag::{Diag, DiagExt};
+        let keys = self.keys();
+        let near = crate::cmd::frame::nearest(board, keys.iter().copied(), 3);
+        let mut help = if near.is_empty() {
+            format!(
+                "no board key is close to `{board}`; `nros board list` names all {}",
+                keys.len()
+            )
+        } else {
+            format!(
+                "did you mean {}? (`nros board list` names all {})",
+                near.iter()
+                    .map(|k| format!("`{k}`"))
+                    .collect::<Vec<_>>()
+                    .join(", "),
+                keys.len()
+            )
+        };
+        if !self.roots.is_empty() {
+            help.push_str("; searched: ");
+            help.push_str(&self.roots.join(", "));
+        }
+        help.push_str(". An out-of-tree board's root goes on `$NROS_EXTRA_BOARD_PATH`.");
+        Diag::BoardUnknown
+            .refusal(format_args!("{what} matches no board"))
+            .help(help)
     }
 
     pub fn descriptors(&self) -> &[BoardDescriptor] {
@@ -3027,6 +3097,45 @@ mod tests {
     }
 
     /// An empty / unset extra list is exactly the old behavior.
+    #[test]
+    fn an_unknown_key_names_its_near_matches_and_the_roots_searched() {
+        // RFC-0135 D8: switching boards is where a misspelled key happens, so
+        // the refusal leads with the likely fix and says where it looked.
+        let root = repo_root_for_tests();
+        let extra = std::env::temp_dir().join("nros-near-match-extra-root");
+        std::fs::create_dir_all(&extra).unwrap();
+        let cat = BoardCatalog::load_with_extra(&root, std::slice::from_ref(&extra)).expect("load");
+        let text = cat
+            .unknown_board(
+                "`[image.talker] board = \"mps2-an385-freertoss\"`",
+                "mps2-an385-freertoss",
+            )
+            .to_string();
+        assert!(
+            text.starts_with("error[NROS-0002]: `[image.talker] board"),
+            "{text}"
+        );
+        assert!(
+            text.contains("did you mean `mps2-an385-freertos`"),
+            "{text}"
+        );
+        assert!(
+            text.contains("packages/boards"),
+            "names the in-tree root: {text}"
+        );
+        assert!(
+            text.contains(&format!(
+                "{} (from $NROS_EXTRA_BOARD_PATH)",
+                extra.display()
+            )),
+            "names the extra root: {text}"
+        );
+        // Nothing near: no guess, still the roots and the full listing's verb.
+        let far = cat.unknown_board("board key `zzzz`", "zzzz").to_string();
+        assert!(far.contains("no board key is close to `zzzz`"), "{far}");
+        assert!(far.contains("nros board list"), "{far}");
+    }
+
     #[test]
     fn no_extra_roots_is_the_plain_in_tree_catalog() {
         let root = repo_root_for_tests();

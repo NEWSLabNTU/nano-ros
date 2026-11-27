@@ -280,7 +280,7 @@ fn leaf_image_from_decl(
         bail!(
             "{}: {} under {}",
             decl.origin_path().display(),
-            crate::cmd::board_facts::unresolved_board(&board),
+            crate::cmd::board_facts::unresolved_board(&catalog, &board),
             nano_ros_root.display()
         );
     };
@@ -1123,7 +1123,10 @@ fn write_selection_for(
     let catalog = BoardCatalog::load(nano_ros_root)
         .map_err(|e| eyre!("board catalog under {}: {e}", nano_ros_root.display()))?;
     let Some(d) = crate::cmd::board_facts::resolve_board(&catalog, &img.board) else {
-        bail!("{}", crate::cmd::board_facts::unresolved_board(&img.board));
+        bail!(
+            "{}",
+            crate::cmd::board_facts::unresolved_board(&catalog, &img.board)
+        );
     };
     let candidates = crate::builder::entry::deploy_candidates(
         &img.board,
