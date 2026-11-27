@@ -1,11 +1,12 @@
 ---
 id: 2780
 title: "merge-runtime zephyr shard, 2cfe9f0094..b13a5d4b18: two Zephyr realtime rows stall (unconfirmed solo); the shim cell is load"
-status: open
+status: resolved
 type: bug
 area: [zephyr, ci, testing, params]
 severity: high
 found: 2026-11-21
+resolved: 2026-11-27
 related: [2777, 1575, 1551, 2782, phase-590]
 ---
 
@@ -234,3 +235,21 @@ above and publishes nothing.
 
 Item 3 is either shown to pass solo (and recorded as load-sensitive) or
 fixed. Item 2 is closed (issue 2768).
+
+## Resolved (2026-11-27)
+
+Item 3 is fixed by fix (b), the derived heap floor
+(`zephyr/cmake/nros_heap_floor.cmake`), with no stopgap row left. The tier-2
+nightly run 45868144195 (main `52fcb58126`, 2026-11-26) ran
+`realtime_sched_tasks_e2e::realtime_sched_tasks`: 22 rows executed, 22
+passed. Both rows this issue tracked boot on the derived heap with room at
+their peak:
+
+| row | heap peak | arena (derived) | free at the peak |
+| --- | --- | --- | --- |
+| `zephyr/cpp-derived` | 137,744 | 262,656 | 124,912 |
+| `zephyr/cpp-levels` | 103,904 | 213,504 | 109,600 |
+
+Read from that run's `tier2-nightly-junit` artifact (the cell's
+`nros: heap peak` lines). Item 1 was load (passes solo) and item 2 is issue
+2768, fixed by `9fecdfd146`.
