@@ -791,6 +791,15 @@ host-send-nosignal:
 nsos-single-source:
     @python3 scripts/check-nsos-single-source.py
 
+# issue 3014 -- `nros run` on the west road boots Zephyr's own run line, whose
+# network is one Kconfig choice: a west-road QEMU board with networking states
+# CONFIG_NET_QEMU_USER=y (QEMU's user network) or an explicit
+# CONFIG_NET_QEMU_ETHERNET=y TAP opt-in, never Zephyr's default (on
+# qemu_cortex_a53 a TAP that needs root).
+[group("checks")]
+west-qemu-user-net:
+    @python3 scripts/check-west-qemu-user-net.py
+
 # issue 2359 -- a Rust entry registers its nodes on Zephyr's main thread, and a
 # Rust talker peaked at 28,280 bytes there: every Rust-capable, non-native_sim
 # Zephyr board package must give main at least its board's measured floor

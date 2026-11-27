@@ -1,12 +1,14 @@
 ---
 id: 3014
 title: "`nros run` of a qemu-cortex-a53 Zephyr image boots Zephyr's TAP line (`ifname=zeth`), which an unprivileged host cannot open, while the board states a user-mode network"
-status: open
+status: resolved
 type: bug
 severity: medium
 area: [zephyr, cli, boards]
-related: [issue-2846]
+related: [issue-2846, issue-3015]
 found: 2026-11-28
+resolved: 2026-11-28
+resolved_in: "fix-3014-qemu-user-net"
 ---
 
 ## What happens
@@ -71,3 +73,36 @@ one image, not the class.
 - The gate refuses a west-road QEMU board with networking and no
   `NET_QEMU_USER`, with a negative control.
 - The 2846 image's `run.method` workaround is dropped.
+
+## Fixed (2026-11-28, host 139)
+
+- **The board takes the user network.** `nros-board-qemu-cortex-a53/prj.conf`
+  states `CONFIG_NET_QEMU_USER=y`, so Zephyr's own run line is
+  `-nic user,model=e1000`. The same file documents the TAP opt-in: an image
+  `os_config` fragment with `CONFIG_NET_QEMU_ETHERNET=y` and its own
+  addresses.
+- **The gate covers every west-road QEMU board.**
+  `just check west-qemu-user-net` (`scripts/check-west-qemu-user-net.py`):
+  a board package with a `west_board`, a `qemu:` emulator and
+  `CONFIG_NETWORKING=y` must state `CONFIG_NET_QEMU_USER=y` or an explicit
+  `CONFIG_NET_QEMU_ETHERNET=y`. Today it finds 2 boards, mps2-an385-zephyr and
+  qemu-cortex-a53, and both pass. Negative control: with the new line removed
+  from the a53 board, it refuses that board. Its self-test covers the
+  out-of-scope boards (Renode, off the west road, no networking) and a
+  `[[board]]` list descriptor.
+
+## Acceptance
+
+- **Met:** a scaffolded image boots unprivileged. `nros new a53ws --template
+  talker --lang c --board qemu-cortex-a53`, then `nros run a53ws_node
+  --expect "Publishing:"`, matched `Publishing: 'Hello World: 1'` after
+  4.1 s, on Zephyr's own line (`-nic user,model=e1000`), with the router
+  `nros run` started on `tcp/127.0.0.1:7447`. Before the fix, the same road
+  failed at `run_qemu` on the TAP line.
+- **Met:** the gate and its negative control, above.
+- **Not met, by a different cause:** issue 2846's image keeps
+  `[run] method = "qemu"`. The TAP is gone, but the stack-floor twin turns
+  `CONFIG_QEMU_ICOUNT` on, and Zephyr's line then fixes `-icount shift=4`,
+  under which this 2-CPU guest loses its session over slirp. That is
+  issue 3015's, and the image's comment now says so.
+
