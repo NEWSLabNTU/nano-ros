@@ -133,8 +133,16 @@ fn generate_config(
     // (`CppContext::seed_next`: a 64-byte name, its length, the index and a
     // flag), rounded up to a word.
     let seed_next: usize = 72;
-    let cpp_context_overhead: usize =
-        16 + probe_publisher_for_diag.next_multiple_of(8) + 16 + c_executor_header + seed_next;
+    // Issue 2845 -- plus the context's owned-session slot (`CppContext::
+    // session_slot`), beside the C executor and not in its `_opaque`. PROBED,
+    // so a backend whose session grows moves this with it.
+    let owned_session_slot = probed.get("OWNED_SESSION_SLOT_SIZE").copied().unwrap_or(0) as usize;
+    let cpp_context_overhead: usize = 16
+        + probe_publisher_for_diag.next_multiple_of(8)
+        + 16
+        + c_executor_header
+        + seed_next
+        + owned_session_slot.next_multiple_of(8);
     let probe_executor_pre = probed.get("EXECUTOR_SIZE").copied().unwrap_or(0) as usize;
     // issue 0961 — the bare `Executor` value, which is what a caller's stack
     // pays. Deliberately NOT `EXECUTOR_SIZE`: that one includes the carved

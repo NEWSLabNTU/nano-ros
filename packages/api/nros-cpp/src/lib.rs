@@ -730,6 +730,13 @@ pub(crate) struct CppContext {
     /// from a callback returns REENTRANT instead of aliasing `&mut Executor`
     /// (issue 0290).
     pub(crate) c: nros_c::rclc_executor_t,
+    // Issue 2845.
+    /// The executor's own session, OUTSIDE `c`: the C executor's `_opaque`
+    /// stays the size C sizes it, and the session a sched task borrows is
+    /// derived from this slot by raw projection, not from the executor.
+    /// Written by the owning open; only ever reached through
+    /// `addr_of_mut!((*ctx_ptr).session_slot)`.
+    pub(crate) session_slot: nros_node::OwnedSessionSlot,
 }
 
 /// phase-509 P9b -- the last launch seed's node and the index it landed on
@@ -1642,9 +1649,16 @@ unsafe fn init_rmw_over(
             }
         },
     };
+    // Issue 2845 -- the session goes into the context's own slot, by raw field
+    // projection from `ctx_ptr` (never through a reference).
+    let session_slot = nros_node::OwnedSessionSlot::as_raw(unsafe {
+        core::ptr::addr_of_mut!((*ctx_ptr).session_slot)
+    });
     // SAFETY: `backing` is sized/aligned for `sizing` and lives for the program
-    // (caller owns the buffer, or the block is leaked); `open_in`'s contract is met.
-    match unsafe { CppExecutor::open_in(&config, backing, sizing) } {
+    // (caller owns the buffer, or the block is leaked); `open_in`'s contract is
+    // met, and `session_slot` is a raw projection as it requires.
+    match unsafe { CppExecutor::open_in_with_session_slot(&config, backing, sizing, session_slot) }
+    {
         Ok(executor) => {
             // Write directly into caller-provided storage — no heap allocation.
             // Issue 1635 — the one constructor body (tag stamped last).
@@ -2180,8 +2194,16 @@ pub unsafe extern "C" fn nros_cpp_init_multi(
         return NROS_CPP_RET_NOT_INIT;
     };
     let backing: &'static mut [core::mem::MaybeUninit<u64>] = unsafe { inline_backing(ctx_ptr) };
-    // SAFETY: as `nros_cpp_init` — caller-owned, correctly sized/aligned buffer.
-    match unsafe { CppExecutor::open_multi_in(owned, backing, inline_sizing) } {
+    // Issue 2845 -- the session goes into the context's own slot, reached by
+    // raw field projection from `ctx_ptr` (never through a reference).
+    let session_slot = nros_node::OwnedSessionSlot::as_raw(unsafe {
+        core::ptr::addr_of_mut!((*ctx_ptr).session_slot)
+    });
+    // SAFETY: as `nros_cpp_init` — caller-owned, correctly sized/aligned buffer;
+    // `session_slot` as `open_multi_in_with_session_slot` requires.
+    match unsafe {
+        CppExecutor::open_multi_in_with_session_slot(owned, backing, inline_sizing, session_slot)
+    } {
         Ok(executor) => {
             unsafe {
                 write_context(

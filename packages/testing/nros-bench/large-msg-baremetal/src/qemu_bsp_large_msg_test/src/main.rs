@@ -38,6 +38,9 @@ const EXEC_SIZING: nros::ExecutorSizing = nros::ExecutorSizing {
     // Issue 1971 -- the build's runtime remap table (0 on bare metal), kept
     // rather than restated.
     remaps: nros::ExecutorSizing::DEFAULT.remaps,
+    // Issue 2845 -- this executor owns its session and shares it with no sched
+    // task, so it carves no owned-session slot (the session stays inline).
+    session: 0,
 };
 // phase-412 #4 — this is the image's ONE executor, so its caller-supplied arena
 // must hold everything the image declares. Held at compile time against the

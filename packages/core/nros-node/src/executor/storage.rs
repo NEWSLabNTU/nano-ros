@@ -340,6 +340,12 @@ pub(crate) struct ExecutorSlices<'s> {
     /// `params`; `ParamHome::init_in` builds the state in it the first time
     /// something asks for the store.
     pub(crate) param_home: &'s mut [MaybeUninit<ParamHome>],
+    /// The executor's own session's slot, when its sizing carves one
+    /// ([`ExecutorSizing::session`]): a raw pointer into the backing,
+    /// UNINITIALISED until the owning open writes the session there. Raw, never
+    /// a reference, so a pointer the executor shares to it is derived from the
+    /// backing and not from the executor.
+    pub(crate) owned_session: Option<core::ptr::NonNull<MaybeUninit<ConcreteSession>>>,
 }
 
 /// Byte offsets of each field within the backing + total size/align. Computed
@@ -366,6 +372,7 @@ struct FieldOffsets {
     slot_tags: usize,
     params: usize,
     param_home: usize,
+    owned_session: usize,
     size: usize,
     align: usize,
 }
@@ -481,7 +488,16 @@ const fn counts_for(sizing: ExecutorSizing) -> RegionCounts {
         alloc: cfg!(feature = "alloc"),
         params: sizing.params,
         param_home: param_homes(sizing),
+        owned_session: owned_session_slots(sizing),
     }
+}
+
+// Issue 2845.
+/// The owned-session slots `sizing` carves: one when its executor
+/// opens its own session, none when it borrows one. Capped at one here, for
+/// both the layout and the carve.
+pub(crate) const fn owned_session_slots(sizing: ExecutorSizing) -> usize {
+    if sizing.session > 0 { 1 } else { 0 }
 }
 
 /// Issue 1812 — how many parameter-service homes a `sizing` carves: one exactly
@@ -525,6 +541,7 @@ const fn compute_offsets_with(sizing: ExecutorSizing, units: &RegionUnits) -> Fi
         slot_tags: o.slot_tags,
         params: o.params,
         param_home: o.param_home,
+        owned_session: o.owned_session,
         size: o.size,
         align: o.align,
     }
@@ -612,6 +629,13 @@ pub struct ExecutorSizing {
     /// arguments, 0 on bare metal), the same for every tier. A full or absent table is `declare_remap`'s named refusal, never
     /// a silently dropped rule.
     pub remaps: usize,
+    /// Owned-session slots: 1 when the executor OPENS its own session, so the
+    /// session lives in the backing and a pointer shared to it stays valid
+    /// while the owner spins; 0 when it borrows a session (a C executor's,
+    /// from `rclc_support_t`; a spawned sched task's, from the boot task).
+    /// A fact about the entry, never a default: [`DEFAULT`](Self::DEFAULT)
+    /// carves none, and an owning entry asks with [`owning`](Self::owning).
+    pub session: usize,
 }
 
 impl ExecutorSizing {
@@ -625,7 +649,15 @@ impl ExecutorSizing {
         nodes: crate::config::MAX_NODES,
         params: nros_params::IMPLIED_STORE_SLOTS,
         remaps: MAX_REMAPS,
+        session: 0,
     };
+
+    // Issue 2845.
+    /// This sizing for an executor that OPENS its own session: one
+    /// owned-session slot carved.
+    pub const fn owning(self) -> Self {
+        Self { session: 1, ..self }
+    }
 
     /// `u64` words a backing must hold for this sizing (see
     /// [`executor_storage_u64_len`]).
@@ -673,6 +705,25 @@ impl ExecutorSizing {
 /// `exec` to `backing` and leaves this total roughly where it was; what changes
 /// is the STACK, because the header is what `open_in` builds and returns by
 /// value.
+/// An owning executor's session slot kept OUTSIDE its backing: the C++
+/// context's, whose executor's backing is the C executor's `_opaque` and does
+/// not grow for it. Uninitialised until the owning open writes the session.
+///
+/// A caller reaches it only by raw field projection from a raw pointer to its
+/// container, never through a reference: that is what keeps the session
+/// pointer the executor shares valid when a reference to the container is
+/// later made.
+#[repr(transparent)]
+pub struct OwnedSessionSlot(MaybeUninit<ConcreteSession>);
+
+impl OwnedSessionSlot {
+    /// The slot's address, by raw cast: `slot` must come from a raw field
+    /// projection (`addr_of_mut!`), never from a reference.
+    pub fn as_raw(slot: *mut Self) -> Option<core::ptr::NonNull<MaybeUninit<ConcreteSession>>> {
+        core::ptr::NonNull::new(slot.cast())
+    }
+}
+
 #[repr(C)]
 pub struct ExecutorInlineStorage {
     /// The executor, written in place (offset 0) by `from_session_ptr_in`.
@@ -709,6 +760,10 @@ pub const INLINE_BACKING_U64S: usize = match INLINE_SIZING {
 /// image's scheduling-context count. A sched task that declares parameters on an
 /// image that carves no store carves none either (the store is built from
 /// the heap there, as it is for the image's one executor).
+// Issue 2845 -- every sched task executor sized here carves no owned-session
+// slot: a spawned task borrows the boot task's session, the Rust boot level
+// opens over the entry's own backing (which carves it), and a C++ owner keeps
+// its session's slot in `CppContext`, beside the executor.
 pub const fn sched_task_executor_sizing(t: &crate::config::SchedTaskSizing) -> ExecutorSizing {
     let store = nros_params::IMPLIED_STORE_SLOTS;
     ExecutorSizing {
@@ -724,6 +779,7 @@ pub const fn sched_task_executor_sizing(t: &crate::config::SchedTaskSizing) -> E
         // Issue 1971 -- the runtime table is the image's, per executor: the
         // launch's rules are the shared flash table, not a per-sched-task count.
         remaps: MAX_REMAPS,
+        session: 0,
     }
 }
 
@@ -788,6 +844,7 @@ pub const fn levels_executor_sizing() -> Option<ExecutorSizing> {
         nodes,
         params: if params < store { params } else { store },
         remaps: MAX_REMAPS,
+        session: 0,
     })
 }
 
@@ -833,6 +890,7 @@ pub(crate) unsafe fn carve<'s>(
         nodes: node_slots,
         params: param_slots,
         remaps: remap_slots,
+        session: _,
     } = sizing;
     let cbs = callback_slots(sizing);
     let extra_slots = extra_session_slots(sizing);
@@ -971,6 +1029,15 @@ pub(crate) unsafe fn carve<'s>(
             slot_tags: tags_s,
             params: params_s,
             param_home: home_s,
+            // Issue 2845 -- derived from `base`, the backing's raw pointer, and
+            // handed over raw: never a slice or a reference over the slot.
+            owned_session: if owned_session_slots(sizing) > 0 {
+                core::ptr::NonNull::new(
+                    base.add(o.owned_session) as *mut MaybeUninit<ConcreteSession>
+                )
+            } else {
+                None
+            },
         }
     }
 }
@@ -1039,6 +1106,7 @@ mod tests {
             nodes: 0,
             params: 0,
             remaps: MAX_REMAPS,
+            session: 0,
         };
         let native = executor_storage_layout_with(sizing, NATIVE_UNITS);
 
@@ -1088,6 +1156,7 @@ mod tests {
                 nodes: 4,
                 params: 3,
                 remaps: MAX_REMAPS,
+                session: 0,
             },
             zeroed,
         );
@@ -1566,6 +1635,7 @@ mod tests {
                 nodes: 1,
                 params: 0,
                 remaps: MAX_REMAPS,
+                session: 0,
             };
             if !compute_offsets(sizing).params.is_multiple_of(align) {
                 misaligned += 1;
@@ -1696,6 +1766,7 @@ mod tests {
             nodes: 1,
             params: PARAMS,
             remaps: MAX_REMAPS,
+            session: 0,
         };
         const WORDS: usize = executor_storage_u64_len(TINY);
         static mut BACKING: [MaybeUninit<u64>; WORDS] = [MaybeUninit::uninit(); WORDS];

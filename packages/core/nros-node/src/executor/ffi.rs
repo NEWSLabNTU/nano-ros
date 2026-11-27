@@ -401,6 +401,24 @@ pub trait ExecutorFfi<'s>: sealed::Sealed + Sized {
         sizing: super::storage::ExecutorSizing,
     ) -> Self;
 
+    /// The FFI entry point; see `Executor::open_in_with_session_slot` in `spin.rs`.
+    #[cfg(feature = "rmw-cffi")]
+    unsafe fn open_in_with_session_slot(
+        config: &ExecutorConfig<'_>,
+        backing: &'s mut [MaybeUninit<u64>],
+        sizing: super::storage::ExecutorSizing,
+        session_slot: Option<core::ptr::NonNull<MaybeUninit<session::ConcreteSession>>>,
+    ) -> Result<Self, NodeError>;
+
+    /// The FFI entry point; see `Executor::open_multi_in_with_session_slot` in `spin.rs`.
+    #[cfg(feature = "rmw-cffi")]
+    unsafe fn open_multi_in_with_session_slot(
+        specs: &[SessionSpec<'_>],
+        backing: &'s mut [MaybeUninit<u64>],
+        sizing: super::storage::ExecutorSizing,
+        session_slot: Option<core::ptr::NonNull<MaybeUninit<session::ConcreteSession>>>,
+    ) -> Result<Self, NodeError>;
+
     /// The FFI entry point; see `Executor::open_multi_in` in `spin.rs`.
     #[cfg(feature = "rmw-cffi")]
     unsafe fn open_multi_in(
@@ -1291,6 +1309,28 @@ impl<'s> ExecutorFfi<'s> for Executor<'s> {
         sizing: super::storage::ExecutorSizing,
     ) -> Result<Self, NodeError> {
         unsafe { Executor::open_multi_in(specs, backing, sizing) }
+    }
+
+    #[cfg(feature = "rmw-cffi")]
+    #[inline]
+    unsafe fn open_multi_in_with_session_slot(
+        specs: &[SessionSpec<'_>],
+        backing: &'s mut [MaybeUninit<u64>],
+        sizing: super::storage::ExecutorSizing,
+        session_slot: Option<core::ptr::NonNull<MaybeUninit<session::ConcreteSession>>>,
+    ) -> Result<Self, NodeError> {
+        unsafe { Executor::open_multi_in_with_session_slot(specs, backing, sizing, session_slot) }
+    }
+
+    #[cfg(feature = "rmw-cffi")]
+    #[inline]
+    unsafe fn open_in_with_session_slot(
+        config: &ExecutorConfig<'_>,
+        backing: &'s mut [MaybeUninit<u64>],
+        sizing: super::storage::ExecutorSizing,
+        session_slot: Option<core::ptr::NonNull<MaybeUninit<session::ConcreteSession>>>,
+    ) -> Result<Self, NodeError> {
+        unsafe { Executor::open_in_with_session_slot(config, backing, sizing, session_slot) }
     }
 
     #[inline]
