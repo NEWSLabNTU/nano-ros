@@ -673,6 +673,11 @@ pub struct ListArgs {
     #[arg(short = 'p', long)]
     pub paths_only: bool,
 
+    /// Print one JSON object: each package `nros build` would discover and
+    /// select, with its path and build type (the `colcon list` view).
+    #[arg(long, conflicts_with_all = ["names_only", "paths_only"])]
+    pub json: bool,
+
     /// Which packages, as `nros build` selects them.
     #[command(flatten)]
     pub selection: crate::cmd::build::SelectionArgs,
@@ -7821,8 +7826,23 @@ fn scan_for_query(
 
 // --- list ---------------------------------------------------------------------
 
+/// The `--json` schema of `nros list` (RFC-0133 D1, phase-569 W5c). Adding a
+/// key keeps the version; removing or renaming one is a new version.
+pub const LIST_SCHEMA: &str = "nros.list.v1";
+
+/// One package, as `nros list --json` reports it.
+#[derive(Debug, Clone, serde::Serialize, PartialEq, Eq)]
+pub struct ListItem {
+    /// The package's name.
+    pub name: String,
+    /// Its directory, relative to the workspace.
+    pub path: String,
+    /// `cargo`, `ros.<build_type>` or `ros`, as the table's third column.
+    pub build_type: String,
+}
+
 fn run_list(args: ListArgs) -> Result<()> {
-    if args.colcon_shape() {
+    if args.json || args.colcon_shape() {
         return run_list_colcon(&args);
     }
     // build_dir doesn't matter for list; use the default for the scan
@@ -7881,25 +7901,43 @@ fn run_list_colcon(args: &ListArgs) -> Result<()> {
     }
     let found =
         discover::select(&found, &args.selection.selection()).map_err(|e| eyre::eyre!("{e}"))?;
-    let mut out: Vec<String> = Vec::new();
-    for p in &found.packages {
-        let path = p
-            .dir
-            .strip_prefix(&root)
-            .unwrap_or(&p.dir)
-            .display()
-            .to_string();
-        out.push(if args.names_only {
-            p.name.clone()
-        } else if args.paths_only {
-            path
-        } else {
-            let kind = match (&p.build_type, found.cargo_only.contains(&p.dir)) {
+    let mut items: Vec<ListItem> = found
+        .packages
+        .iter()
+        .map(|p| ListItem {
+            name: p.name.clone(),
+            path: p
+                .dir
+                .strip_prefix(&root)
+                .unwrap_or(&p.dir)
+                .display()
+                .to_string(),
+            build_type: match (&p.build_type, found.cargo_only.contains(&p.dir)) {
                 (_, true) => "cargo".to_string(),
                 (Some(bt), false) => format!("ros.{bt}"),
                 (None, false) => "ros".to_string(),
-            };
-            format!("{}\t{path}\t({kind})", p.name)
+            },
+        })
+        .collect();
+    if args.json {
+        if !args.topological_order {
+            items.sort_by(|a, b| a.name.cmp(&b.name));
+        }
+        return crate::cmd::frame::print_json(
+            LIST_SCHEMA,
+            "items",
+            &items,
+            &[("workspace", serde_json::json!(root))],
+        );
+    }
+    let mut out: Vec<String> = Vec::new();
+    for i in items {
+        out.push(if args.names_only {
+            i.name
+        } else if args.paths_only {
+            i.path
+        } else {
+            format!("{}\t{}\t({})", i.name, i.path, i.build_type)
         });
     }
     if !args.topological_order {
@@ -11005,5 +11043,36 @@ mod multi_bringup_facade_tests {
             })
             .collect();
         assert!(leftovers.is_empty(), "the scratch root is removed");
+    }
+}
+
+#[cfg(test)]
+mod list_json_tests {
+    use super::*;
+
+    #[test]
+    fn list_json_schema_is_pinned() {
+        // Renaming a key or the schema name is a new version (RFC-0133 D1).
+        assert_eq!(LIST_SCHEMA, "nros.list.v1");
+        let item = ListItem {
+            name: "talker".into(),
+            path: "src/talker".into(),
+            build_type: "ros.ament_cmake".into(),
+        };
+        let doc = crate::cmd::frame::json_doc(
+            LIST_SCHEMA,
+            "items",
+            &[item],
+            &[("workspace", serde_json::json!("/ws"))],
+        )
+        .unwrap();
+        assert_eq!(
+            doc,
+            serde_json::json!({
+                "schema": "nros.list.v1",
+                "workspace": "/ws",
+                "items": [{"name": "talker", "path": "src/talker", "build_type": "ros.ament_cmake"}],
+            })
+        );
     }
 }

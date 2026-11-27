@@ -18,7 +18,14 @@ use clap::{Args as ClapArgs, Subcommand};
 use eyre::{Result, WrapErr, bail, eyre};
 use rosidl_bindgen::ament::AmentIndex;
 
-use crate::cmd::generate;
+use serde::Serialize;
+
+use crate::cmd::{frame, generate};
+
+/// The `--json` schema names (RFC-0133 D1, phase-569 W5c). Adding a key keeps
+/// the version; removing or renaming one is a new version.
+pub const LIST_SCHEMA: &str = "nros.interface.list.v1";
+pub const SHOW_SCHEMA: &str = "nros.interface.show.v1";
 
 #[derive(Debug, Subcommand)]
 pub enum Args {
@@ -45,6 +52,9 @@ pub struct ListArgs {
     /// directory.
     #[arg(long)]
     pub workspace: Option<PathBuf>,
+    /// Print one JSON object instead of the list
+    #[arg(long)]
+    pub json: bool,
 }
 
 #[derive(Debug, ClapArgs)]
@@ -56,6 +66,34 @@ pub struct ShowArgs {
     /// directory.
     #[arg(long)]
     pub workspace: Option<PathBuf>,
+    /// Print one JSON object instead of the definition
+    #[arg(long)]
+    pub json: bool,
+}
+
+/// One interface type, as `list --json` reports it.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct InterfaceItem {
+    /// `<package>/<msg|srv|action>/<Name>`.
+    pub name: String,
+    pub package: String,
+    /// `msg`, `srv` or `action`.
+    pub kind: &'static str,
+}
+
+/// One interface type, as `show --json` reports it.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct InterfaceShow {
+    pub name: String,
+    pub package: String,
+    pub kind: String,
+    /// The definition file the search path resolved it to.
+    pub path: PathBuf,
+    /// The file as written.
+    pub definition: String,
+    /// The definition with each nested message type expanded beneath its
+    /// field, indented by a tab: what `show` prints.
+    pub expanded: String,
 }
 
 pub fn run(args: Args) -> Result<()> {
@@ -63,11 +101,22 @@ pub fn run(args: Args) -> Result<()> {
         Args::Generate(a) => generate::run(a),
         Args::List(a) => {
             let index = load_index(a.workspace.as_deref())?;
+            if a.json {
+                return frame::print_json(LIST_SCHEMA, "items", &list_items(&index, &a), &[]);
+            }
             print!("{}", render_list(&index, &a));
             Ok(())
         }
         Args::Show(a) => {
             let index = load_index(a.workspace.as_deref())?;
+            if a.json {
+                return frame::print_json(
+                    SHOW_SCHEMA,
+                    "item",
+                    &show_item(&index, &a.type_name)?,
+                    &[],
+                );
+            }
             print!("{}", render_show(&index, &a.type_name)?);
             Ok(())
         }
@@ -92,21 +141,21 @@ fn load_index(workspace: Option<&Path>) -> Result<AmentIndex> {
     Ok(index)
 }
 
-/// `ros2 interface list`'s layout: a heading per kind, one indented
-/// `<package>/<kind>/<Name>` per line, sorted.
-pub fn render_list(index: &AmentIndex, args: &ListArgs) -> String {
+/// The interface types `args` selects, sorted within each kind, messages
+/// first, then services, then actions.
+pub fn list_items(index: &AmentIndex, args: &ListArgs) -> Vec<InterfaceItem> {
     let all = !(args.only_msgs || args.only_srvs || args.only_actions);
-    let mut out = String::new();
-    let kinds: [(&str, &str, bool); 3] = [
-        ("Messages", "msg", all || args.only_msgs),
-        ("Services", "srv", all || args.only_srvs),
-        ("Actions", "action", all || args.only_actions),
+    let kinds: [(&'static str, bool); 3] = [
+        ("msg", all || args.only_msgs),
+        ("srv", all || args.only_srvs),
+        ("action", all || args.only_actions),
     ];
-    for (heading, kind, wanted) in kinds {
+    let mut out = Vec::new();
+    for (kind, wanted) in kinds {
         if !wanted {
             continue;
         }
-        let mut names: Vec<String> = index
+        let mut items: Vec<InterfaceItem> = index
             .packages()
             .values()
             .flat_map(|p| {
@@ -115,15 +164,38 @@ pub fn render_list(index: &AmentIndex, args: &ListArgs) -> String {
                     "srv" => &p.interfaces.services,
                     _ => &p.interfaces.actions,
                 };
-                list.iter().map(move |n| format!("{}/{kind}/{n}", p.name))
+                list.iter().map(move |n| InterfaceItem {
+                    name: format!("{}/{kind}/{n}", p.name),
+                    package: p.name.clone(),
+                    kind,
+                })
             })
             .collect();
-        names.sort();
+        items.sort_by(|a, b| a.name.cmp(&b.name));
+        out.extend(items);
+    }
+    out
+}
+
+/// `ros2 interface list`'s layout: a heading per kind, one indented
+/// `<package>/<kind>/<Name>` per line, sorted.
+pub fn render_list(index: &AmentIndex, args: &ListArgs) -> String {
+    let all = !(args.only_msgs || args.only_srvs || args.only_actions);
+    let items = list_items(index, args);
+    let mut out = String::new();
+    for (heading, kind, wanted) in [
+        ("Messages", "msg", all || args.only_msgs),
+        ("Services", "srv", all || args.only_srvs),
+        ("Actions", "action", all || args.only_actions),
+    ] {
+        if !wanted {
+            continue;
+        }
         out.push_str(heading);
         out.push_str(":\n");
-        for n in names {
+        for i in items.iter().filter(|i| i.kind == kind) {
             out.push_str("    ");
-            out.push_str(&n);
+            out.push_str(&i.name);
             out.push('\n');
         }
     }
@@ -150,6 +222,12 @@ fn interface_path(index: &AmentIndex, pkg: &str, kind: &str, name: &str) -> Opti
 /// that type's definition indented one tab deeper, as `ros2 interface show`
 /// prints it.
 pub fn render_show(index: &AmentIndex, type_name: &str) -> Result<String> {
+    Ok(show_item(index, type_name)?.expanded)
+}
+
+/// `show`'s item: the type, the file it resolved to, and its definition as
+/// written and expanded.
+pub fn show_item(index: &AmentIndex, type_name: &str) -> Result<InterfaceShow> {
     let parts: Vec<&str> = type_name.split('/').collect();
     let [pkg, kind, name] = parts[..] else {
         bail!("`{type_name}` is not an interface type; write `<package>/<msg|srv|action>/<Name>`");
@@ -161,9 +239,18 @@ pub fn render_show(index: &AmentIndex, type_name: &str) -> Result<String> {
              environment and the bundled interfaces)"
         )
     })?;
-    let mut out = String::new();
-    expand(index, pkg, &path, 0, &mut out)?;
-    Ok(out)
+    let definition =
+        std::fs::read_to_string(&path).wrap_err_with(|| format!("read {}", path.display()))?;
+    let mut expanded = String::new();
+    expand(index, pkg, &path, 0, &mut expanded)?;
+    Ok(InterfaceShow {
+        name: type_name.to_string(),
+        package: pkg.to_string(),
+        kind: kind.to_string(),
+        path,
+        definition,
+        expanded,
+    })
 }
 
 fn expand(
@@ -263,6 +350,7 @@ mod tests {
             only_srvs: false,
             only_actions: false,
             workspace: None,
+            json: false,
         };
         assert_eq!(
             render_list(&index, &all),
@@ -279,5 +367,46 @@ mod tests {
         );
         assert!(render_show(&index, "a/msg/Missing").is_err());
         assert!(render_show(&index, "Outer").is_err());
+    }
+
+    #[test]
+    fn json_schemas_are_pinned() {
+        // Renaming a key or the schema name is a new version (RFC-0133 D1).
+        assert_eq!(LIST_SCHEMA, "nros.interface.list.v1");
+        assert_eq!(SHOW_SCHEMA, "nros.interface.show.v1");
+        let (_d, index) = index_with(&[
+            ("a/msg/Inner.msg", "int32 x\n"),
+            ("a/msg/Outer.msg", "Inner in\n"),
+            ("a/srv/Ask.srv", "---\nbool r\n"),
+        ]);
+        let args = ListArgs {
+            only_msgs: false,
+            only_srvs: true,
+            only_actions: false,
+            workspace: None,
+            json: true,
+        };
+        let doc = frame::json_doc(LIST_SCHEMA, "items", &list_items(&index, &args), &[]).unwrap();
+        assert_eq!(
+            doc,
+            serde_json::json!({
+                "schema": "nros.interface.list.v1",
+                "items": [{"name": "a/srv/Ask", "package": "a", "kind": "srv"}],
+            })
+        );
+        let show = serde_json::to_value(show_item(&index, "a/msg/Outer").unwrap()).unwrap();
+        let mut keys: Vec<&str> = show
+            .as_object()
+            .unwrap()
+            .keys()
+            .map(String::as_str)
+            .collect();
+        keys.sort_unstable();
+        assert_eq!(
+            keys,
+            ["definition", "expanded", "kind", "name", "package", "path"]
+        );
+        assert_eq!(show["definition"], "Inner in\n");
+        assert_eq!(show["expanded"], "Inner in\n\tint32 x\n");
     }
 }

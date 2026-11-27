@@ -52,6 +52,74 @@ pub struct ListArgs {
     /// reads every file in the store, which takes minutes on a large one
     #[arg(long)]
     pub usage: bool,
+    /// Print one JSON object instead of a table
+    #[arg(long)]
+    pub json: bool,
+}
+
+/// The `--json` schema of `nros toolchain list` (RFC-0133 D1, phase-569
+/// W5c). Adding a key keeps the version; removing or renaming one is a new
+/// version.
+pub const LIST_SCHEMA: &str = "nros.toolchain.list.v1";
+
+/// One store entry, as `list --json` reports it. The three measured keys
+/// (`size_bytes`, `last_used`, `evidence`) are present only with `--usage`,
+/// which is what reads every file of the entry (issue 2999).
+#[derive(Debug, Clone, serde::Serialize, PartialEq, Eq)]
+pub struct EntryItem {
+    /// `<category>[/<name>][/<version>]`, as the table's ENTRY column and
+    /// `nros toolchain remove` spell it.
+    pub entry: String,
+    pub category: &'static str,
+    pub name: Option<String>,
+    pub version: String,
+    pub path: PathBuf,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub size_bytes: Option<u64>,
+    /// Seconds since the Unix epoch.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_used: Option<u64>,
+    /// `read` or `install`: what `last_used` is evidence of.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub evidence: Option<&'static str>,
+    /// `installed`, `legacy-flat`, `source-tree` or `unmanaged`.
+    pub state: &'static str,
+}
+
+impl EntryItem {
+    /// A measured entry (`--usage`).
+    fn of(e: &Entry) -> Self {
+        Self {
+            entry: e.display_id(),
+            category: e.category.label(),
+            name: e.name.clone(),
+            version: e.version.clone(),
+            path: e.path.clone(),
+            size_bytes: Some(e.size_bytes),
+            last_used: Some(
+                e.last_used
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map_or(0, |d| d.as_secs()),
+            ),
+            evidence: Some(e.evidence.label()),
+            state: e.state.label(),
+        }
+    }
+
+    /// An unmeasured entry: what directory names alone say.
+    fn of_head(h: &store::EntryHead) -> Self {
+        Self {
+            entry: h.display_id(),
+            category: h.category.label(),
+            name: h.name.clone(),
+            version: h.version.clone(),
+            path: h.path.clone(),
+            size_bytes: None,
+            last_used: None,
+            evidence: None,
+            state: h.state.label(),
+        }
+    }
 }
 
 #[derive(Debug, ClapArgs)]
@@ -139,6 +207,27 @@ fn resolve_root(explicit: Option<PathBuf>) -> (PathBuf, String) {
 
 fn list(args: ListArgs) -> Result<()> {
     let (root, origin) = resolve_root(args.root);
+    if args.json {
+        let items: Vec<EntryItem> = if !root.is_dir() {
+            Vec::new()
+        } else if args.usage {
+            store::scan(&root).iter().map(EntryItem::of).collect()
+        } else {
+            store::scan_heads(&root)
+                .iter()
+                .map(EntryItem::of_head)
+                .collect()
+        };
+        return crate::cmd::frame::print_json(
+            LIST_SCHEMA,
+            "items",
+            &items,
+            &[
+                ("root", serde_json::json!(root)),
+                ("root_from", serde_json::json!(origin)),
+            ],
+        );
+    }
     println!("store root: {}   (from {origin})", root.display());
     if !root.is_dir() {
         println!("  (no store here yet — nothing is provisioned)");
@@ -427,5 +516,46 @@ mod tests {
         let entries = store::scan(root.path());
         assert_eq!(store::MEASURED.with(std::cell::Cell::get), entries.len());
         assert!(entries.len() >= 2);
+    }
+
+    use crate::orchestration::store::{Category, EntryState, UseEvidence};
+
+    #[test]
+    fn json_schema_is_pinned() {
+        // Renaming a key or the schema name is a new version (RFC-0133 D1).
+        assert_eq!(LIST_SCHEMA, "nros.toolchain.list.v1");
+        let e = Entry {
+            category: Category::Sdk,
+            name: Some("corrosion".into()),
+            version: "0.6.1".into(),
+            path: PathBuf::from("/store/sdk/corrosion/0.6.1"),
+            size_bytes: 42,
+            last_used: std::time::UNIX_EPOCH + std::time::Duration::from_secs(7),
+            evidence: UseEvidence::Read,
+            state: EntryState::Installed,
+            provenance_version: None,
+        };
+        let v = serde_json::to_value(EntryItem::of(&e)).unwrap();
+        assert_eq!(
+            v,
+            serde_json::json!({
+                "entry": "sdk/corrosion/0.6.1",
+                "category": "sdk",
+                "name": "corrosion",
+                "version": "0.6.1",
+                "path": "/store/sdk/corrosion/0.6.1",
+                "size_bytes": 42,
+                "last_used": 7,
+                "evidence": "read",
+                "state": "installed",
+            })
+        );
+        // Without `--usage` the three measured keys are absent, not zero.
+        let root = store_with_entries();
+        let heads = store::scan_heads(root.path());
+        let v = serde_json::to_value(EntryItem::of_head(&heads[0])).unwrap();
+        for key in ["size_bytes", "last_used", "evidence"] {
+            assert!(v.get(key).is_none(), "{key} in {v}");
+        }
     }
 }
