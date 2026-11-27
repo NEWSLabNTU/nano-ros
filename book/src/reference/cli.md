@@ -75,6 +75,7 @@ Find what nano-ros offers:
   rmw          List the RMW backends, or show one: its host side and its boards
   runner       List the runners and extension commands this workspace reaches, or show one
   knob         List the knobs a project can state, or show one: where to state it, the values it takes and its default
+  profile      List the build profiles an image can name, or show one: the CMake build type it maps to and its cargo settings
   interface    Generate message bindings, list the interfaces the workspace can reach, or show one interface's definition
   template     List the node roles `nros new --template` scaffolds, or show one
   code         List the diagnostic codes a refusal prints, or show one: what it reports and how to fix it
@@ -1546,6 +1547,52 @@ Options:
       --out <FILE>         Write here instead of stdout
   -h, --help               Print help
   -V, --version            Print version
+```
+
+### `nros profile`
+
+```text
+List the build profiles an image can name, or show one: the CMake build type it maps to and its cargo settings
+
+Usage: nros profile <COMMAND>
+
+Commands:
+  list  List the build profiles an image can name, each with the CMake build type it maps to
+  show  Show one build profile: the CMake build type it maps to and the cargo settings nano-ros defines for it
+  help  Print this message or the help of the given subcommand(s)
+
+Options:
+  -h, --help     Print help
+  -V, --version  Print version
+```
+
+#### `nros profile list`
+
+```text
+List the build profiles an image can name, each with the CMake build type it maps to
+
+Usage: nros profile list [OPTIONS]
+
+Options:
+      --json     Print one JSON object instead of text
+  -h, --help     Print help
+  -V, --version  Print version
+```
+
+#### `nros profile show`
+
+```text
+Show one build profile: the CMake build type it maps to and the cargo settings nano-ros defines for it
+
+Usage: nros profile show [OPTIONS] <PROFILE>
+
+Arguments:
+  <PROFILE>  The profile, as an image names it (`nros-minsizerel`), or the CMake build type it maps from (`MinSizeRel`)
+
+Options:
+      --json     Print one JSON object instead of text
+  -h, --help     Print help
+  -V, --version  Print version
 ```
 
 ### `nros interface`

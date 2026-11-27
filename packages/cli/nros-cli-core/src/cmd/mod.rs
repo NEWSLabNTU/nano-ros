@@ -359,14 +359,13 @@ pub enum Cmd {
     // phase-485 W7 (RFC-0104 D7).
     Update(update::Args),
 
-    /// Print the cargo build-profile table.
-    ///
-    /// The table holds the CMAKE_BUILD_TYPE mapping, flags, artifact dir and
-    /// env-injected definitions. The bridge cmake/bash use so the derivations
-    /// are not re-spelled per language.
-    // phase-336.
-    #[command(subcommand_negates_reqs = true, hide = true)]
-    Profile(profile::Args),
+    /// List the build profiles an image can name, or show one: the CMake build
+    /// type it maps to and its cargo settings
+    // phase-336 put the cargo build-profile table here as plumbing; that now
+    // lives at `nros dev profile`, and its verbs stay here hidden as the old
+    // spellings (RFC-0133 D3, phase-569 W6).
+    #[command(subcommand)]
+    Profile(profile::UserVerb),
 
     /// Collect component source metadata for orchestration planning
     #[command(hide = true)]

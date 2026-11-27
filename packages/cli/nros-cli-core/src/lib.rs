@@ -410,7 +410,7 @@ pub fn run(cmd: cmd::Cmd) -> Result<()> {
         cmd::Cmd::Toolchain(args) => cmd::toolchain::run(args),
         cmd::Cmd::Pin(args) => cmd::pin::run(args),
         cmd::Cmd::Update(args) => cmd::update::run(args),
-        cmd::Cmd::Profile(args) => cmd::profile::run(args),
+        cmd::Cmd::Profile(verb) => cmd::profile::run_user(verb),
         cmd::Cmd::Metadata(args) => cmd::metadata::run(args),
         cmd::Cmd::Plan(args) => cmd::plan::run(args),
         cmd::Cmd::Check(args) => cmd::check::run(args),

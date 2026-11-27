@@ -72,6 +72,7 @@ pub const GROUPS: &[(&str, &[&str])] = &[
             "rmw",
             "runner",
             "knob",
+            "profile",
             "interface",
             "template",
             "code",

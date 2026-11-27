@@ -1,0 +1,1 @@
+`nros profile list` lists the build profiles an image's `profile` (and `nros build --profile=`) can name, each with the CMake build type it maps to and what it is for. `nros profile show <profile>` adds the cargo settings nano-ros defines for it, and takes either name (`MinSizeRel` finds `nros-minsizerel`).
