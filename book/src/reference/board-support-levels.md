@@ -114,7 +114,7 @@ CAVEAT: only ever built for native_sim/native/64. No real Zephyr hardware board 
 | Test-matrix platform | — |
 | Runs on | `qemu:mps3-an536` (twin) |
 | Cadence | — |
-| Breadth | inherited from FreertosMps2 — Runtime: Pubsub, Port, PortSmoke, PortMonitor, PortWorkspace, Service, Action, Logging, EntryPubsub, RealtimeSchedTasks in Rust, C, C++, Mixed over zenoh, cyclonedds |
+| Breadth | inherited from FreertosMps2 — Runtime: Lifecycle, Pubsub, Port, PortSmoke, PortMonitor, PortWorkspace, Service, Action, Logging, EntryPubsub, RealtimeSchedTasks in C, C++, Rust, Mixed over zenoh, cyclonedds |
 | Book | — |
 | Book probe tracks | — |
 
@@ -132,7 +132,7 @@ CAVEAT: only ever built for native_sim/native/64. No real Zephyr hardware board 
 | Test-matrix platform | FreertosMps2 |
 | Runs on | `qemu:mps2-an385` |
 | Cadence | daily |
-| Breadth | witness — Runtime: Pubsub, Port, PortSmoke, PortMonitor, PortWorkspace, Service, Action, Logging, EntryPubsub, RealtimeSchedTasks in Rust, C, C++, Mixed over zenoh, cyclonedds |
+| Breadth | witness — Runtime: Lifecycle, Pubsub, Port, PortSmoke, PortMonitor, PortWorkspace, Service, Action, Logging, EntryPubsub, RealtimeSchedTasks in C, C++, Rust, Mixed over zenoh, cyclonedds |
 | Book | Run: [mps2 an385 freertos](../starters/mps2-an385-freertos.md#run-it-in-qemu) |
 | Book probe tracks | `first-project`, `tutorial-2`, `tutorial-3`, `tutorial-4`, `tutorial-5`, `tutorial-6`, `tutorial-7`, `tutorial-8`, `tutorial-9`, `tutorial-10`, `tutorial-c` (weekly), `tutorial-cpp` (weekly), `lab-qos` (weekly), `lab-qos-c` (weekly), `lab-qos-cpp` (weekly), `lab-tiers` (weekly), `lab-tiers-c` (weekly), `lab-tiers-cpp` (weekly), `freertos` (weekly), `freertos-c` (weekly), `freertos-cpp` (weekly), `platform-freertos`, `own-library`, `lab-lifecycle` (weekly), `lab-lifecycle-c` (weekly), `lab-lifecycle-cpp` (weekly) |
 
@@ -150,7 +150,7 @@ CAVEAT: only ever built for native_sim/native/64. No real Zephyr hardware board 
 | Test-matrix platform | — |
 | Runs on | `s32z270` (target) |
 | Cadence | — |
-| Breadth | inherited from FreertosMps2 — Runtime: Pubsub, Port, PortSmoke, PortMonitor, PortWorkspace, Service, Action, Logging, EntryPubsub, RealtimeSchedTasks in Rust, C, C++, Mixed over zenoh, cyclonedds |
+| Breadth | inherited from FreertosMps2 — Runtime: Lifecycle, Pubsub, Port, PortSmoke, PortMonitor, PortWorkspace, Service, Action, Logging, EntryPubsub, RealtimeSchedTasks in C, C++, Rust, Mixed over zenoh, cyclonedds |
 | Book | — |
 | Book probe tracks | — |
 
@@ -170,7 +170,7 @@ S32Z270 RTU Cortex-R52 (ASI phase-4 W5.b consumer). No matrix_platform: no witne
 | Test-matrix platform | — |
 | Runs on | `s32z270` (target) |
 | Cadence | — |
-| Breadth | inherited from FreertosMps2 — Runtime: Pubsub, Port, PortSmoke, PortMonitor, PortWorkspace, Service, Action, Logging, EntryPubsub, RealtimeSchedTasks in Rust, C, C++, Mixed over zenoh, cyclonedds |
+| Breadth | inherited from FreertosMps2 — Runtime: Lifecycle, Pubsub, Port, PortSmoke, PortMonitor, PortWorkspace, Service, Action, Logging, EntryPubsub, RealtimeSchedTasks in C, C++, Rust, Mixed over zenoh, cyclonedds |
 | Book | — |
 | Book probe tracks | — |
 
@@ -227,7 +227,7 @@ S32Z270 RTU Cortex-R52 on NXP's ARM_CR52_GIC FreeRTOS port, built against a prov
 | Test-matrix platform | FreertosPosix |
 | Runs on | host executable |
 | Cadence | daily |
-| Breadth | inherited from FreertosMps2 — Runtime: Pubsub, Port, PortSmoke, PortMonitor, PortWorkspace, Service, Action, Logging, EntryPubsub, RealtimeSchedTasks in Rust, C, C++, Mixed over zenoh, cyclonedds. Board-specific: Runtime: EntryPubsub in C, C++ over cyclonedds, zenoh; build-only: Port |
+| Breadth | inherited from FreertosMps2 — Runtime: Lifecycle, Pubsub, Port, PortSmoke, PortMonitor, PortWorkspace, Service, Action, Logging, EntryPubsub, RealtimeSchedTasks in C, C++, Rust, Mixed over zenoh, cyclonedds. Board-specific: Runtime: EntryPubsub in C, C++ over cyclonedds, zenoh; build-only: Port |
 | Book | Run: [freertos posix](../starters/freertos-posix.md#run-it-on-this-machine) |
 | Book probe tracks | `freertos-posix` (weekly), `freertos-posix-rust` (weekly), `freertos-posix-cpp` (weekly), `freertos-posix-zenoh-rust` (weekly), `freertos-posix-zenoh` (weekly), `freertos-posix-zenoh-cpp` (weekly), `platform-freertos-posix` |
 

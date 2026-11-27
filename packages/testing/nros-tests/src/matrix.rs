@@ -1009,6 +1009,9 @@ pub enum Consumer {
     LinuxExampleCustomLink,
     PortTemplates,
     ZephyrCortexM,
+    /// `tests/freertos_lifecycle_e2e.rs` -- a managed node on FreeRTOS QEMU is
+    /// silent until active (issue 2428).
+    FreertosLifecycle,
     /// `tests/zephyr_renode_twin.rs` -- the Nucleo-F767ZI's Renode smoke cell
     /// (phase-524 W4c).
     ZephyrRenodeTwin,
@@ -1089,6 +1092,7 @@ impl Consumer {
         Consumer::LinuxExampleCustomLink,
         Consumer::PortTemplates,
         Consumer::ZephyrCortexM,
+        Consumer::FreertosLifecycle,
         Consumer::ZephyrRenodeTwin,
         Consumer::Zephyr,
         Consumer::RtosE2e,
@@ -1137,6 +1141,7 @@ impl Consumer {
             Consumer::LinuxExampleCustomLink => "linux_example_custom_link_e2e",
             Consumer::PortTemplates => "port_templates_e2e",
             Consumer::ZephyrCortexM => "zephyr_cortex_m_qemu",
+            Consumer::FreertosLifecycle => "freertos_lifecycle_e2e",
             Consumer::ZephyrRenodeTwin => "zephyr_renode_twin",
             Consumer::Zephyr => "zephyr",
             Consumer::RtosE2e => "rtos_e2e",
@@ -1754,6 +1759,10 @@ pub fn consumer_of(cell: &Cell) -> Option<Consumer> {
         }
         // Issue 2780.
         (P::ZephyrQemuCortexM, L::C, R::Xrce, W::Lifecycle, K::Workspace) => Some(ZephyrCortexM),
+        // Issue 2428.
+        (P::FreertosMps2, L::C | L::Cpp | L::Rust, R::Zenoh, W::Lifecycle, K::Workspace) => {
+            Some(FreertosLifecycle)
+        }
         // phase-544 W2 (issue 2273).
         (_, _, _, W::ViolationChannel, _) => Some(ViolationChannel),
         // issue 2389.

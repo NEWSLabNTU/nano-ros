@@ -6995,6 +6995,51 @@ pub fn build_isr_wake_freertos_c_mps2() -> TestResult<&'static Path> {
         .map(|p| p.as_path())
 }
 
+/// Issue 2428 -- one image of `lifecycle-freertos-mps2`: a managed talker in
+/// `lang` (`"c"`, `"cpp"` or `"rust"`) on FreeRTOS QEMU, booting unconfigured.
+pub fn build_lifecycle_freertos_mps2(lang: &str) -> TestResult<&'static Path> {
+    static C: OnceCell<PathBuf> = OnceCell::new();
+    static CPP: OnceCell<PathBuf> = OnceCell::new();
+    static RUST: OnceCell<PathBuf> = OnceCell::new();
+    let (cell, image, binary) = match lang {
+        "c" => (&C, "freertos_c", "freertos_c_entry"),
+        "cpp" => (&CPP, "freertos_cpp", "freertos_cpp_entry"),
+        "rust" => (&RUST, "freertos_rust", "freertos_rust_entry"),
+        other => {
+            return Err(TestError::BuildFailed(format!(
+                "no lifecycle-freertos-mps2 image for language `{other}`"
+            )));
+        }
+    };
+    cell.get_or_try_init(|| {
+        const DIR: &str = "packages/testing/nros-tests/bins/lifecycle-freertos-mps2";
+        migrated_leaf_binary_named(
+            DIR,
+            Rmw::Zenoh,
+            crate::fixtures::migrated_leaf::LeafVariant::Image(image),
+            binary,
+        )
+        .unwrap_or_else(|| Err(not_migrated(DIR)))
+    })
+    .map(|p| p.as_path())
+}
+
+/// Issue 2428 -- the native nano-ros lifecycle client that drives
+/// `lifecycle-freertos-mps2` through its transitions.
+pub fn build_lifecycle_driver() -> TestResult<&'static Path> {
+    static BIN: OnceCell<PathBuf> = OnceCell::new();
+    BIN.get_or_try_init(|| {
+        const DIR: &str = "packages/testing/nros-tests/bins/lifecycle-driver";
+        migrated_leaf_binary(
+            DIR,
+            Rmw::Zenoh,
+            crate::fixtures::migrated_leaf::LeafVariant::Plain,
+        )
+        .unwrap_or_else(|| Err(not_migrated(DIR)))
+    })
+    .map(|p| p.as_path())
+}
+
 /// Resolve the prebuilt `condvar-contract-freertos-mps2` image. Built in the
 /// `freertos rust` fixture lane at the `freertos-qemu` profile, like the
 /// logging smoke beside it.

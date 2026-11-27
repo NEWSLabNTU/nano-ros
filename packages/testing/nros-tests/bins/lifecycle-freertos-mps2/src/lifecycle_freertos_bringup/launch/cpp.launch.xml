@@ -1,0 +1,7 @@
+<?xml version="1.0"?>
+<!-- One managed cpp talker. `<lifecycle_node>` marks it managed, so the
+     generated entry registers its own REP-2002 machine under `/talker`, and
+     the bringup's `[lifecycle] autostart = "none"` leaves it unconfigured. -->
+<launch>
+  <lifecycle_node pkg="lc_cpp_talker" exec="cpp_talker" name="talker"/>
+</launch>

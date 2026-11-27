@@ -2951,6 +2951,26 @@ lang = "rust"
 rmw = "cyclonedds"
 dir = "packages/testing/nros-tests/bins/advertised-state-probe"
 
+# Issue 2428 -- drives one managed node through configure, activate and
+# deactivate with nano-ros lifecycle_msgs clients and counts its /chatter in
+# each state, so an embedded managed node's lifecycle is checked with no ROS 2
+# install (a baked cell, not an interop one). `serves` names the FreeRTOS
+# lifecycle cells that spawn it.
+[[workspace_fixture]]
+id = "lifecycle-driver-zenoh"
+platform = "linux"
+lang = "rust"
+rmw = "zenoh"
+dir = "packages/testing/nros-tests/bins/lifecycle-driver"
+bringup = "src/lifecycle_driver_bringup"
+image = "linux"
+serves = [
+    "freertos,c,zenoh",
+    "freertos,cpp,zenoh",
+    "freertos,rust,zenoh",
+]
+target_dir = "target-linux"
+
 # Generic Int32 sink (phase-277 W4 — was the example listener's
 # `NROS_SUB_TOPIC` escape hatch; the example flipped to the official
 # std_msgs/String chatter, so the Int32 side-topic observer role moved here).
@@ -4705,6 +4725,42 @@ dir = "examples/linux/cpp/logging"
 bringup = "src/cpp_logging_bringup"
 image = "linux"
 build_subdir = "build/posix-zenoh-linux-cpp_logging_bringup-linux/cmake"
+
+# Issue 2428's embedded acceptance -- a managed node that boots unconfigured
+# (`[lifecycle] autostart = "none"`) publishes nothing until a client
+# configures and activates it, and nothing after it deactivates. One image per
+# language; `bins/lifecycle-driver` drives the transitions from the host, so
+# the cell needs no ROS 2. Ports: `alloc::port_of(FreertosMps2, <lang>, Lifecycle)`.
+[[workspace_fixture]]
+id = "freertos-c-lifecycle-mps2"
+platform = "freertos"
+lang = "c"
+rmw = "zenoh"
+dir = "packages/testing/nros-tests/bins/lifecycle-freertos-mps2"
+bringup = "src/lifecycle_freertos_bringup"
+image = "freertos_c"
+build_subdir = "build/freertos-zenoh-mps2-an385-freertos-lifecycle_freertos_bringup-freertos_c/cmake"
+
+[[workspace_fixture]]
+id = "freertos-cpp-lifecycle-mps2"
+platform = "freertos"
+lang = "cpp"
+rmw = "zenoh"
+dir = "packages/testing/nros-tests/bins/lifecycle-freertos-mps2"
+bringup = "src/lifecycle_freertos_bringup"
+image = "freertos_cpp"
+build_subdir = "build/freertos-zenoh-mps2-an385-freertos-lifecycle_freertos_bringup-freertos_cpp/cmake"
+
+[[workspace_fixture]]
+id = "freertos-rust-lifecycle-mps2"
+platform = "freertos"
+lang = "rust"
+rmw = "zenoh"
+dir = "packages/testing/nros-tests/bins/lifecycle-freertos-mps2"
+bringup = "src/lifecycle_freertos_bringup"
+image = "freertos_rust"
+target_dir = "target"
+target = "thumbv7m-none-eabi"
 
 # ===========================================================================
 # freertos — C / C++ (cmake). Zenoh only (no DDS C/C++ siblings pre-collapse).

@@ -363,6 +363,24 @@ status = 'Runtime'
 
 [[cell]]
 comment = '''
+// Issue 2428's embedded acceptance -- a managed talker on FreeRTOS QEMU
+// (zenoh) that boots unconfigured publishes nothing until configured and
+// activated, and nothing after it deactivates. Driven by
+// `bins/lifecycle-driver`, a nano-ros lifecycle client, so it needs no ROS 2.
+'''
+at = ["FreertosMps2", "C", "Zenoh", "Lifecycle", "Workspace"]
+status = 'Runtime'
+
+[[cell]]
+at = ["FreertosMps2", "Cpp", "Zenoh", "Lifecycle", "Workspace"]
+status = 'Runtime'
+
+[[cell]]
+at = ["FreertosMps2", "Rust", "Zenoh", "Lifecycle", "Workspace"]
+status = 'Runtime'
+
+[[cell]]
+comment = '''
 // phase-544 W2 (issue 2273) -- the contract-violation channel on an emulated
 // Cortex-M: `violation-cpp`'s handler overruns once before arming and once
 // after, and the one stored `max-latency-runtime` verdict is measured on the

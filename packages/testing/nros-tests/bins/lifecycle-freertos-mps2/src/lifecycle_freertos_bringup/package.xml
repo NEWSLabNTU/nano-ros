@@ -1,0 +1,14 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>lifecycle_freertos_bringup</name>
+  <version>0.1.0</version>
+  <description>Three FreeRTOS images, each one managed talker (C, C++ or Rust) that boots unconfigured.</description>
+  <maintainer email="you@example.com">Your Name</maintainer>
+  <license>Apache-2.0</license>
+  <exec_depend>lc_c_talker</exec_depend>
+  <exec_depend>lc_cpp_talker</exec_depend>
+  <exec_depend>lc_rust_talker</exec_depend>
+  <export>
+    <build_type>nros_cmake</build_type>
+  </export>
+</package>
