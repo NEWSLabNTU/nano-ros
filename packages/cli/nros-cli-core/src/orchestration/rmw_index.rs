@@ -68,11 +68,8 @@ pub fn for_sdk_root_path(root: &Path) -> Result<Arc<RmwIndex>> {
 ///
 /// As [`for_workspace`], or no SDK root resolves when there is no workspace.
 pub fn for_dir(dir: &Path) -> Result<Arc<RmwIndex>> {
-    if let Some(ws) = crate::cmd::image_facts::workspace_root_from(dir) {
+    if let Some(ws) = crate::cmd::image_facts::enclosing_workspace(dir) {
         return for_workspace(&ws);
-    }
-    if dir.join("system.toml").is_file() {
-        return for_workspace(dir);
     }
     let root = super::nano_ros_root::resolve(None, dir)
         .ok_or_else(|| eyre::eyre!("{}", super::nano_ros_root::not_found_help()))?;

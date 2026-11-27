@@ -182,6 +182,18 @@ pub struct Ladder {
     pub warnings: Vec<String>,
 }
 
+/// The workspace `config explain` and `knob list --platform` search: the one
+/// `--workspace` names, else the one the current directory is in. `None`
+/// outside any, so only nano-ros's own packages are searched (issue 3002).
+pub fn explain_workspace(args: &ExplainArgs) -> Result<Option<PathBuf>> {
+    Ok(match &args.workspace {
+        Some(w) => Some(w.clone()),
+        None => crate::cmd::image_facts::enclosing_workspace(
+            &std::env::current_dir().wrap_err("resolve cwd")?,
+        ),
+    })
+}
+
 /// Resolve every ladder knob for `args.platform` (phase-569 W2: shared by
 /// `config explain` and `nros knob list --platform`).
 pub fn resolve_ladder(args: &ExplainArgs) -> Result<Ladder> {
@@ -189,6 +201,7 @@ pub fn resolve_ladder(args: &ExplainArgs) -> Result<Ladder> {
         BoardKnobsFile, KnobSource, PlatformsTree, registry_env,
     };
 
+    let ws = explain_workspace(args)?;
     // phase-400 W1 — a search path. An explicit --platforms-dir still pins one
     // root, because that is what it is for; otherwise the path is
     // $NROS_PLATFORMS_DIR (if set), then the workspace's platform packages,
@@ -198,14 +211,17 @@ pub fn resolve_ladder(args: &ExplainArgs) -> Result<Ladder> {
         Some(d) => vec![d.clone()],
         None => {
             let repo = find_repo_root()?;
-            let ws = match &args.workspace {
-                Some(w) => w.clone(),
-                None => std::env::current_dir().wrap_err("resolve cwd")?,
+            let env = std::env::var("NROS_PLATFORMS_DIR").ok();
+            // Issue 3002: the workspace rung only when there is a workspace.
+            let entries = match &ws {
+                Some(ws) => crate::cmd::board_facts::platforms_dir_entries(env.as_deref(), ws),
+                None => env
+                    .iter()
+                    .flat_map(|v| v.split(':'))
+                    .filter(|s| !s.is_empty())
+                    .map(str::to_string)
+                    .collect(),
             };
-            let entries = crate::cmd::board_facts::platforms_dir_entries(
-                std::env::var("NROS_PLATFORMS_DIR").ok().as_deref(),
-                &ws,
-            );
             PlatformsTree::default_search_path(&repo, Some(&entries.join(":")))
         }
     };
@@ -244,12 +260,12 @@ pub fn resolve_ladder(args: &ExplainArgs) -> Result<Ladder> {
     // platform / board states its table; the others have no such tenant.
     let plat_knobs = tree.knobs_for(&args.platform).map_err(|e| eyre!("{e}"))?;
     let mut warnings = Vec::new();
-    // RFC-0071 D14 — the backends the workspace's provider scan announces.
-    let ws = match &args.workspace {
-        Some(w) => w.clone(),
-        None => std::env::current_dir().wrap_err("resolve cwd")?,
+    // RFC-0071 D14 — the backends the workspace's provider scan announces;
+    // outside a workspace, nano-ros's own.
+    let rmws = match &ws {
+        Some(ws) => crate::orchestration::rmw_index::for_dir(ws)?,
+        None => crate::orchestration::rmw_index::for_sdk_root_path(&find_repo_root()?)?,
     };
-    let rmws = crate::orchestration::rmw_index::for_dir(&ws)?;
     for rmw in rmws.known() {
         let rmw = rmw.as_str();
         let declared = plat_knobs.backends.contains_key(rmw)

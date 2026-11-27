@@ -164,8 +164,7 @@ fn cached() -> Option<Cache> {
 
 /// [`cached`] for the workspace `dir` is in.
 fn cached_in(dir: &std::path::Path) -> Option<Cache> {
-    let ws = crate::cmd::image_facts::workspace_root_from(dir)
-        .or_else(|| dir.join("system.toml").is_file().then(|| dir.to_path_buf()))?;
+    let ws = crate::cmd::image_facts::enclosing_workspace(dir)?;
     let bytes = std::fs::read(cache_path(&ws)).ok()?;
     accept(&bytes, &search_key(&ws).ok()?)
 }
