@@ -419,7 +419,7 @@ calls `stack_stated::emit` and its platform is added to `STATING_PLATFORMS`:
 The FreeRTOS sched tasks (`[tasks.*.freertos] stack_bytes`) are one more
 role: W5 checks the boot app task only. No RTOS checks a sched task's stack
 (FreeRTOS, NuttX, Zephyr or ThreadX): tracked as
-[issue 2784](../issues/2784-sched-task-stacks-unchecked.md).
+[issue 2784](../issues/archived/2784-sched-task-stacks-unchecked.md).
 
 Acceptance: each platform's image is walked after cargo and checked against
 its board's stated stack, with the same measured/unmeasured rule as W5.
