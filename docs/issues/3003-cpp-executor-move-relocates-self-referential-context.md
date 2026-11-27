@@ -73,3 +73,58 @@ pointer a sched task has already taken all hold the old addresses.
   `rclcpp::Executor b = std::move(a);` fails to compile.
 - Any in-tree code that moved one, if a sweep finds some, holds it by
   reference instead.
+
+## Plan (2026-11-28, for review before code)
+
+**Sweep, done first.** Nothing in the tree needs `rclcpp::Executor` to be
+movable:
+
+- `Executor::create` and `create_with_rmw` write through an `Executor&`
+  out-parameter, and `rclcpp::init` uses static storage.
+- Every C++ TU that names the type (the nros-cpp compile tests, examples,
+  templates, the codegen'd entries) constructs it in place.
+- No `std::move` of one, no by-value return, and no container or
+  `optional` of one.
+
+That matters because the FreeRTOS Cortex-M3, NuttX and ThreadX riscv64
+toolchains build with `-std=c++14`. Before C++17, even an elided
+`Executor e = f();` needs an accessible move constructor, so deleting it
+breaks any such factory. The sweep found none.
+
+**Change.**
+
+1. Declare the move constructor and move assignment `= delete`, beside the
+   copy operations. The type becomes pinned, which its contract already
+   says it is. Re-pointing the self-references after a byte move is
+   rejected, for the reason under Fix above. `MultiExecutor` moves a handle
+   pointer and keeps its move operations.
+2. Add a negative probe,
+   `packages/api/nros-cpp/tests/compile/executor_move_probe.cpp`, which
+   writes `rclcpp::Executor b = std::move(a);`. The probe is compiled by
+   `just check cpp` at `-std=c++14`, the lowest standard any toolchain
+   uses. The check requires the compile to FAIL and requires its stderr to
+   name the deleted move constructor. That is the same shape as the
+   `ros2_refuse_*` probes, and it means a TU that breaks for some other
+   reason proves nothing.
+
+**Choice for the reviewer: the diagnostic.** The `ros2_refuse_*` probes
+carry a "REFUSED by nano-ros" reason through a `static_assert`, and a
+deleted function cannot carry one (`= delete("reason")` is C++26). The
+two options:
+
+- **(a) plain `= delete`, recommended.** The compiler says "use of deleted
+  function `Executor(Executor&&)`", and the doc comment on the deleted
+  operations gives the reason. Upstream `rclcpp::Executor` cannot be moved
+  either (it holds atomics and mutexes), so a port from upstream never
+  relied on a move, and the plain diagnostic is enough.
+- **(b) a refusal with a reason.** A constrained template constructor for
+  rvalue `Executor`s whose body is `static_assert(detail::refuse<T>::value,
+  …)`. Because the deleted, non-template move constructor is the better
+  match, (b) also needs the move constructor left undeclared rather than
+  deleted. That leaves the type's copy/move story spread across a trick,
+  which is a worse trade for a mistake no port makes.
+
+**Acceptance (amended).** Replace "a `*-verdict` fixture row" with the
+`just check cpp` negative probe above. nros-cpp's expected-failure compiles
+already live there, run on every PR. A fixture row would build one TU
+through the whole fixture stage to assert the same verdict.
