@@ -35,6 +35,7 @@ pub const CORE_OWNERS: &[&str] = &[
     "runtime",
     "service",
     "session",
+    "slot",
     "sntp",
     "subscriber",
     "trace",

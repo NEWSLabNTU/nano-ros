@@ -116,6 +116,9 @@ mod publisher;
 pub mod ros_args;
 #[cfg(any(has_rmw, test))]
 pub mod session;
+// RFC-0038 D5.
+/// The core slot pool a device job claims a slot from and releases it to.
+pub mod slot_pool;
 mod subscriber;
 /// The `/clock` time source. Feature-gated: an image that will
 /// never see a simulator should not carry the subscription or the message crate.

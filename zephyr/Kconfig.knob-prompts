@@ -131,6 +131,18 @@ config NROS_PUBSUB_QOS_DEPTH
 config NROS_RMW_SUBSCRIBER_SLOTS
     int "Static subscription-handle slots (no_std targets) (-1 = derive)"
 
+config NROS_SLOT_LARGE_COUNT
+    int "Slots in the `large` class."
+
+config NROS_SLOT_LARGE_SLOT_BYTES
+    int "Bytes in each slot of the `large` class."
+
+config NROS_SLOT_SMALL_COUNT
+    int "Slots in the `small` class."
+
+config NROS_SLOT_SMALL_SLOT_BYTES
+    int "Bytes in each slot of the `small` class."
+
 config NROS_SNTP_SERVER
     string "SNTP server (host or IP)"
 
