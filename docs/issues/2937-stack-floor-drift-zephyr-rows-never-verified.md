@@ -5,7 +5,7 @@ status: open
 type: bug
 severity: high
 area: [ci, stack-floor, zephyr]
-related: [issue-2688, issue-2772, issue-1043]
+related: [phase-591, issue-2688, issue-2772, issue-1043]
 found: 2026-11-24
 ---
 

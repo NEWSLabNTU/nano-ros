@@ -1,9 +1,7 @@
 # Phase 591 -- CI feedback latency: a merged fix is proven in hours, not days
 
-**Status (2026-11-24). OPEN: W1 and W8 done; W4's targets met on the release dispatch,
-to confirm on the re-cut; W3 in review (#4781); W2, W5, W6 and W7 as their sections say.
-W2's evidence rule is decided (a green dispatch on `main` at the release commit counts) and
-is being applied by the phase-590 owner.**
+**Status (2026-11-27). OPEN: W1, W2, W3, W4, W6 and W8 done (W2, W3 and W4 confirmed
+2026-11-27 from the runs named in their sections); W5 and W7 as their sections say.**
 
 ## Why
 
@@ -63,7 +61,14 @@ summary names each failed row; the lane is still red.
 
 ### W2 -- evidence from a dispatch, and automatic re-runs (owners: nros 243 rule, nros 118 automation)
 
-- **Status:** OPEN -- the run the re-run dispatched, 45422927491, FAILED
+- **Status:** DONE (2026-11-27 audit). The next lane fix after #4790 met the
+  acceptance's second half: `02e6cfaf68` (issue 2937, `Fixes-Lane: nightly`) reached
+  `main` in the push of `d5e7486a9a` at 08:07:53Z on 2026-11-26, outside the
+  03:00-07:00 window, so the push run 45780577883 printed "Dispatched nightly.yml on
+  main." and `nightly` 45780611528 (workflow_dispatch at `d5e7486a9a`, 08:08:07Z)
+  finished green at 10:24:53Z: 2 h 17 min after the merge, inside 6 h. The history
+  that follows is the first attempt.
+- **First attempt:** the run the re-run dispatched, 45422927491, FAILED
   (completed 2026-11-24 19:04Z, 3 h 52 min after dispatch), so the
   acceptance's second half is not met (audited 2026-11-26). The automatic
   re-run fired live: #4790 (phase-590 B24, carrying a
@@ -85,7 +90,10 @@ lands is proven within 6 hours of its merge.
 
 ### W3 -- `live-peer` host job time (owner: nros 118)
 
-- **Status:** OPEN -- #4781 merged 2026-11-24 (4d1015b708). The first scheduled
+- **Status:** DONE (2026-11-27 audit). Two consecutive scheduled runs carry #4781 and
+  both are under 120 min: 45545116210 (2026-11-25, 85 min) and 45753606904
+  (2026-11-26, 04:11:20-05:36:57Z, 86 min), each green. The history follows.
+- **History:** #4781 merged 2026-11-24 (4d1015b708). The first scheduled
   run that carries it, 45545116210 (2026-11-25), was green in 85 min. The
   second, 45753606904 (2026-11-26), was still running at the audit. W3 is
   done when that run is also under 120 min (audited 2026-11-26). The
@@ -110,7 +118,19 @@ Acceptance: the host job under 120 min on two consecutive scheduled runs.
 
 ### W4 -- tier 2 in parallel (owner: nros 118)
 
-- **Status:** OPEN -- acceptance met on the release dispatch; confirm on the re-cut's run.
+- **Status:** DONE (2026-11-27 audit), confirmed on the re-cut's scheduled run
+  45767321390 (2026-11-26, at `d92c369a14`, all green): tier 2 63.1 min and the
+  pairwise cover 67.1 min, in parallel with tier 1 on 241, so tier 2 plus the cover took
+  about 2 h 10 min (target under 5 h). The sweep step took 0.9 min (tier 2) and 1.1 min
+  (cover). The tier-1 job's sweep on 241 took 20.5 min that run and 17.8 min in
+  45868144195. That is outside W4's tier-2 target but over its 10-min figure. On 241 it
+  is two cold metadata walks: the fixtures area (280 GiB) for 10.7 min, then the
+  unbudgeted report's `du -d6` over the whole checkout, which walked those same bytes
+  again, for 9.2 min. The same sweep on 118's NVMe tree (368 GiB, 2.2 M entries) takes
+  34 s. #4949 makes the unbudgeted report walk only the frontier outside every area,
+  measured on 118 at 34 s -> 20 s with the same report. The rest is
+  241's volume (W7's territory). The release-dispatch evidence follows.
+- **Release dispatch:** acceptance met there first.
   `run-matrix` 45351389552 (2026-11-24): tier 1 ran on newslab-241 in parallel with tier 2
   on newslab-118, both starting 07:52. Tier 2 job 1 h 17 min (07:52-09:10), the pairwise
   cover after it 1 h 35 min, so tier 2 plus the cover took 2 h 53 min (target under 5 h).
