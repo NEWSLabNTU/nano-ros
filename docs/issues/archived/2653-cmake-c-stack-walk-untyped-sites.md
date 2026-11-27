@@ -1,7 +1,9 @@
 ---
 id: 2653
 title: "The FreeRTOS C tutorial's stack walk types 73 of its 242 indirect C call sites; the other 169 are each charged every function C can hold, so the walk is twice the stack the tutorial ships"
-status: open
+status: resolved
+resolved: 2026-11-27
+resolved_in: "the change that adds this line"
 type: tech-debt
 severity: medium
 area: [memory, tooling, freertos, build]
@@ -90,10 +92,17 @@ the listing exists now:
   - Run under QEMU with the router up: app task stack peak **11,584** of
     65,536 B.
 
-**Still open: the third acceptance item, which is a decision.** The walk is
-now within reach of the shipped stack, so the acceptance says the row
-becomes `[[observed]]` with that peak. But this walk is an upper bound, and
-an `[[observed]]` row with `upper_bound` is stamped from its peak (issue
-2783's ruling): `nros new` would give the C tutorial an app stack of about
-12.8 KB (11,584 B + 10 %) instead of 64 KiB. That changes what every new C
-FreeRTOS project ships, so it waits on a ruling; the row stays `[[drift]]`.
+## Resolution (ruled 2026-11-27)
+
+The user ruled option (b): the `[[drift]]` row and the tutorial's 65,536 B
+app stack stay, and this issue resolves on its first two acceptance items:
+the untyped sites are listed by TU, and every one has a reason (all 35 are
+in functions the link dropped, so none is on a path). Whether to shrink a
+tutorial's stack from its measured peak is a separate sizing-policy
+decision, not this issue's.
+
+What the third item would have done, for that decision: the walk is now
+within reach of the shipped stack, but it is an upper bound, and an
+`[[observed]]` row with `upper_bound` is stamped from its peak (issue
+2783's ruling), so `nros new` would give the C tutorial an app stack of
+about 12.8 KB (11,584 B + 10 %) instead of 64 KiB.
