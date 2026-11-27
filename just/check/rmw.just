@@ -461,6 +461,29 @@ zenoh-feature-off-compile:
     printf '%s\n' "$out"
     exit "$rc"
 
+# B46 -- a signal is not a failed connect. Compiles the zenoh-pico fork's shared
+# BSD-socket connect helper with `connect()` and `poll()` wrapped to report one
+# EINTR each (the real call still runs) and connects to a loopback listener.
+# Before the fix the FreeRTOS POSIX tick (SIGALRM, no SA_RESTART) failed a
+# one-attempt open this way: on that helper 4 of the 7 cases fail. A refused
+# port must still fail. Needs the zenoh-pico source and a C compiler: a
+# recorded skip where neither is provisioned, as `zenoh-feature-off-compile`.
+[private]
+[group('needs:submodules')]
+zpico-connect-eintr:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    rc=0
+    out="$(bash tests/zpico-connect-eintr-tests.sh 2>&1)" || rc=$?
+    if [ "$rc" -eq 78 ]; then
+        # shellcheck source=scripts/build/check-skip.sh
+        source scripts/build/check-skip.sh
+        nros_check_skip zpico-connect-eintr "$out"
+        exit 0
+    fi
+    printf '%s\n' "$out"
+    exit "$rc"
+
 zenohd-flag-invocations:
     @python3 scripts/check-zenohd-flag-invocations.py
 

@@ -36,8 +36,8 @@ which fits the 136 s seen.
 
 ## Why it matters
 
-The connect budget is a stated knob (`[knobs.zenoh.limits] connect_timeout_ms`
-/ `connect_forever`). It is supposed to bound how long an open can take, and
+The connect budget is a stated knob (`[knobs.zenoh] connect_timeout_ms` /
+`connect_forever`; an image states it in `[image.<id>.knobs.zenoh]`). It is supposed to bound how long an open can take, and
 its builtin 0 promises that an unreachable router "says so at once". On
 native_sim it bounds nothing:
 - a test cell that dials a wrong address idles to its own timeout with an
