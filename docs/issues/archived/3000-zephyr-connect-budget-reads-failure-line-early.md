@@ -1,12 +1,14 @@
 ---
 id: 3000
 title: "The Zephyr connect-budget cells assert a line they may not have read yet"
-status: open
+status: resolved
 type: bug
 severity: low
 area: [tests, zephyr, zenoh]
 related: [2437, 2950]
 found: 2026-11-27
+resolved: 2026-11-27
+resolved_in: "fix-connect-budget-no-listener-race"
 ---
 
 ## What happened
@@ -36,9 +38,9 @@ assertions are unchanged. It then waits, up to 10 s, until the failure line
 is read too, and returns that output. The output it returns is cumulative, so
 the budget line is still in it.
 
-## Closes when
+## Acceptance (2026-11-27)
 
-The three cells pass on a Zephyr host with the fix. 139 cannot build the
-fixture, so the run is asked of a host that can. The original red was one run
-in a loaded lane, so a pass does not prove much alone; the fix is argued from
-the code: nothing is asserted that the helper has not waited for.
+On host 241 (a Zephyr host), with the fix, the fixture build
+`zephyr-rust-talker-connect-budget-zenoh` returned 0. Then `cargo nextest
+run -p nros-tests --test zephyr_connect_budget` passed 4 of 4, three runs in
+a row (6.2 s, 5.6 s, 5.6 s), the no-listener cell included.
