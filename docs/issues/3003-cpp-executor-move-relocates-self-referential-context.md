@@ -107,7 +107,9 @@ breaks any such factory. The sweep found none.
    `ros2_refuse_*` probes, and it means a TU that breaks for some other
    reason proves nothing.
 
-**Choice for the reviewer: the diagnostic.** The `ros2_refuse_*` probes
+**Diagnostic: plain `= delete`** (review 2026-11-28, option (a) below).
+
+The reviewer's choice was between two diagnostics. The `ros2_refuse_*` probes
 carry a "REFUSED by nano-ros" reason through a `static_assert`, and a
 deleted function cannot carry one (`= delete("reason")` is C++26). The
 two options:
@@ -126,5 +128,13 @@ two options:
 
 **Acceptance (amended).** Replace "a `*-verdict` fixture row" with the
 `just check cpp` negative probe above. nros-cpp's expected-failure compiles
-already live there, run on every PR. A fixture row would build one TU
-through the whole fixture stage to assert the same verdict.
+already live there, and a fixture row would build one TU through the whole
+fixture stage to assert the same verdict.
+
+**When the probe runs.** `check cpp` is part of `check-build`, which CI
+runs on schedule and dispatch only, not on a pull request or the merge
+queue. So a change that re-adds a move operation is caught by the nightly
+run, not before it merges. That is the same as every other nros-cpp
+expected-failure compile, and it is accepted here. Moving the probe to
+`check compile-smoke` would make it gate merges, but it would be the only
+expected-failure compile there, so it stays with its siblings.
