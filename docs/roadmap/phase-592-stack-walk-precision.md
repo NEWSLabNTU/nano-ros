@@ -13,6 +13,12 @@ alongside W2 (ruled 2026-11-27, RFC-0143 Q2).
 
 Recorded before W1, so each item's effect is a measured delta:
 
+- [issue 2998](../issues/2998-stack-floor-aarch64-c-untyped-mabi-lp64.md)
+  (aarch64 C typed 4 of 387 TUs, because clang rejects GCC's `-mabi=lp64`)
+  lands on its own, before W2/W3; its fix is measured on the qemu_cortex_a53
+  fixture (387 of 387 typed, floors 20-23 % lower), so the baseline is taken
+  after it.
+
 - the reachable SCC size, and the 8-order and 64-order walks, of the two
   issue-2658 images (Nucleo Rust action server; realtime-c `[image.freertos]`
   OPEN and TASK_HIGH) and of every `[[observed]]` row in
