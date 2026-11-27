@@ -1723,6 +1723,9 @@ cpp: cpp-fmt cpp-runtime cpp-runtime-scoped cpp-headers cpp-clippy
 cpp-runtime:
     #!/usr/bin/env bash
     set -e
+    # issue 3016 -- the C++ compiler, selectable so a clang lane runs the
+    # same TUs (`NROS_CHECK_CXX=clang++`); `c++` when unset.
+    _cxx="${NROS_CHECK_CXX:-c++}"
     # Writes only into the dir it creates, so a fresh tree holds (read from
     # the recipe, not the disk).
     python3 scripts/lib/cpp_gate_own_dirs.py cpp-runtime
@@ -1805,7 +1808,7 @@ cpp-runtime:
     # the header is placed from this build, so that reason is gone; linking an
     # archive here is now possible and not yet done.
     echo "  - a failed create aborts (runtime, c++14)"
-    c++ -std=c++14 -fno-exceptions -fno-rtti \
+    "$_cxx" -std=c++14 -fno-exceptions -fno-rtti \
         -I"$cppgen" \
         -I"$cgen" \
         -Ipackages/api/nros-cpp/include \
@@ -1823,7 +1826,7 @@ cpp-runtime:
         exit 1; \
     }
     echo "  - shared_ptr service handlers: answered from the frame, retention aborts (runtime, phase-488)"
-    c++ -std=c++14 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
+    "$_cxx" -std=c++14 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
         -I"$cppgen" \
         -I"$cgen" \
         -Ipackages/api/nros-cpp/include \
@@ -1843,7 +1846,7 @@ cpp-runtime:
         exit 1; \
     }
     echo "  - pointer-shaped subscription callbacks: heap copy per delivery, retention is legal (runtime, issue 1995)"
-    c++ -std=c++14 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
+    "$_cxx" -std=c++14 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
         -I"$cppgen" \
         -I"$cgen" \
         -Ipackages/api/nros-cpp/include \
@@ -1862,7 +1865,7 @@ cpp-runtime:
     # shellcheck source=scripts/lib/grep-q.sh
     source scripts/lib/grep-q.sh
     mkdir -p tmp
-    if c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti \
+    if "$_cxx" -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti \
         -I"$cppgen" -I"$cgen" \
         -Ipackages/api/nros-cpp/include -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
@@ -1889,7 +1892,7 @@ cpp-runtime:
         exit 1; \
     }
     echo "  - callback groups agree with CALLBACK_GROUPS (runtime, c++14)"
-    c++ -std=c++14 -fno-exceptions -fno-rtti \
+    "$_cxx" -std=c++14 -fno-exceptions -fno-rtti \
         -I"$cppgen" \
         -I"$cgen" \
         -Ipackages/api/nros-cpp/include \
@@ -1919,7 +1922,7 @@ cpp-runtime:
         exit 1; \
     }
     echo "  - publish refuses an uninitialised publisher (runtime, c++14)"
-    c++ -std=c++14 -fno-exceptions -fno-rtti \
+    "$_cxx" -std=c++14 -fno-exceptions -fno-rtti \
         -I"$cppgen" \
         -I"$cgen" \
         -Ipackages/api/nros-cpp/include \
@@ -1941,7 +1944,7 @@ cpp-runtime:
         exit 1; \
     }
     echo "  - init(argc, argv) honours --ros-args (runtime, c++14)"
-    c++ -std=c++14 -fno-exceptions -fno-rtti \
+    "$_cxx" -std=c++14 -fno-exceptions -fno-rtti \
         -I"$cppgen" \
         -I"$cgen" \
         -Ipackages/api/nros-cpp/include \
@@ -1968,7 +1971,7 @@ cpp-runtime:
         exit 1; \
     }
     echo "  - RCLCPP_* reach nros_log at the right severity; spin_once(-1) is refused (runtime)"
-    c++ -std=c++17 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
+    "$_cxx" -std=c++17 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
         -I"$cppgen" \
         -I"$cgen" \
         -Ipackages/api/nros-cpp/include \
@@ -1990,7 +1993,7 @@ cpp-runtime:
     echo "  - RCLCPP_*_STREAM formats builtins identically with and without NROS_CPP_STD (runtime, phase-476 W4)"
     for _std_arm in "-DNROS_CPP_STD=1" ""; do
         # shellcheck disable=SC2086
-        c++ -std=c++17 $_std_arm -fno-exceptions -fno-rtti \
+        "$_cxx" -std=c++17 $_std_arm -fno-exceptions -fno-rtti \
             -I"$cppgen" \
             -I"$cgen" \
             -Ipackages/api/nros-cpp/include \
@@ -2013,7 +2016,7 @@ cpp-runtime:
     echo "  - RCLCPP_*_THROTTLE / _ONCE / _SKIPFIRST per call site, on the clock argument (runtime)"
     for _std_arm in "-DNROS_CPP_STD=1" ""; do
         # shellcheck disable=SC2086
-        c++ -std=c++14 $_std_arm -Wall -Wextra -Werror -fno-exceptions -fno-rtti \
+        "$_cxx" -std=c++14 $_std_arm -Wall -Wextra -Werror -fno-exceptions -fno-rtti \
             -I"$cppgen" \
             -I"$cgen" \
             -Ipackages/api/nros-cpp/include \
@@ -2038,7 +2041,7 @@ cpp-runtime:
         "-DRCLC_LOG_MIN_SEVERITY=RCLC_LOG_MIN_SEVERITY_WARN"; do
         for _std_arm in "-DNROS_CPP_STD=1" ""; do
             # shellcheck disable=SC2086
-            c++ -std=c++14 $_std_arm $_floor_arm -Wall -Wextra -Werror -fno-exceptions -fno-rtti \
+            "$_cxx" -std=c++14 $_std_arm $_floor_arm -Wall -Wextra -Werror -fno-exceptions -fno-rtti \
                 -I"$cppgen" \
                 -I"$cgen" \
                 -Ipackages/api/nros-cpp/include \
@@ -2084,7 +2087,7 @@ cpp-runtime:
     # a no-op -> 1 failure plus a FATAL (the loop never returns); cancel made
     # to call `shutdown()` -> 6 failures.
     echo "  - cancel() stops a C++ spin and leaves the session open (runtime, phase-417 W4.c)"
-    c++ -std=c++17 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
+    "$_cxx" -std=c++17 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
         -I"$cppgen" \
         -I"$cgen" \
         -Ipackages/api/nros-cpp/include \
@@ -2104,7 +2107,7 @@ cpp-runtime:
     # refused. Negative control, measured: the helper's loop condition made
     # `rclcpp::ok()` (false without rclcpp::init) -> 4 failures.
     echo "  - rclcpp::Executor spin_until_future_complete / add_node / spin_node_* / spin_all (runtime, phase-515 P1/P2)"
-    c++ -std=c++17 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
+    "$_cxx" -std=c++17 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
         -I"$cppgen" \
         -I"$cgen" \
         -Ipackages/api/nros-cpp/include \
@@ -2125,7 +2128,7 @@ cpp-runtime:
         exit 1; \
     }
     echo "  - rclcpp::Clock::sleep_until / sleep_for (runtime, phase-515 P5)"
-    c++ -std=c++17 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
+    "$_cxx" -std=c++17 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
         -I"$cppgen" \
         -I"$cgen" \
         -Ipackages/api/nros-cpp/include \
@@ -2166,7 +2169,7 @@ cpp-runtime:
         exit 1; \
     }
     echo "  - rclcpp generic publisher / subscription by name + hash (runtime, phase-515 P4)"
-    c++ -std=c++17 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
+    "$_cxx" -std=c++17 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
         -I"$cppgen" \
         -I"$cgen" \
         -Ipackages/api/nros-cpp/include \
@@ -2187,7 +2190,7 @@ cpp-runtime:
     # measured: a `set_level` that redirects a null handle to the catch-all ->
     # 2 failures.
     echo "  - two C++ nodes log under distinct names; set_level moves one (runtime, W4.d)"
-    c++ -std=c++17 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
+    "$_cxx" -std=c++17 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
         -I"$cppgen" \
         -I"$cgen" \
         -Ipackages/api/nros-cpp/include \
@@ -2205,7 +2208,7 @@ cpp-runtime:
     # `get_clock` answering the node's clock); the question is what a created
     # node, timer, publisher and logger ANSWER.
     echo "  - NodeOptions::clock_type reaches the node clock; Timer::get_clock answers the timer's clock (runtime, issue 1975)"
-    c++ -std=c++17 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
+    "$_cxx" -std=c++17 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
         -I"$cppgen" \
         -I"$cgen" \
         -Ipackages/api/nros-cpp/include \
@@ -2223,7 +2226,7 @@ cpp-runtime:
     # reads); the ROS-clock half asserts equalities on the time this test wrote,
     # the wall half the lower bound actual >= expected.
     echo "  - TimerInfo callbacks get expected/actual call time; autostart=false waits for reset() (runtime, issue 1974)"
-    c++ -std=c++17 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
+    "$_cxx" -std=c++17 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
         -I"$cppgen" \
         -I"$cgen" \
         -Ipackages/api/nros-cpp/include \
@@ -2246,7 +2249,7 @@ cpp-runtime:
         exit 1; \
     }
     echo "  - client future shape: async_send_request(shared_ptr) / get() / wait_for / remove_pending_request (runtime, issue 1996)"
-    c++ -std=c++17 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
+    "$_cxx" -std=c++17 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
         -I"$cppgen" \
         -I"$cgen" \
         -Ipackages/api/nros-cpp/include \
@@ -2269,7 +2272,7 @@ cpp-runtime:
         exit 1; \
     }
     echo "  - client futures keyed by sequence id: out-of-order replies, late replies dropped, full / id-less (runtime, issue 2009)"
-    c++ -std=c++17 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
+    "$_cxx" -std=c++17 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
         -I"$cppgen" \
         -I"$cgen" \
         -Ipackages/api/nros-cpp/include \
@@ -2290,7 +2293,7 @@ cpp-runtime:
         exit 1; \
     }
     echo "  - PollClient::take_response hands out each reply's request header (runtime, issue 2148)"
-    c++ -std=c++17 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti -Wall -Wextra -Werror \
+    "$_cxx" -std=c++17 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti -Wall -Wextra -Werror \
         -I"$cppgen" \
         -I"$cgen" \
         -Ipackages/api/nros-cpp/include \
@@ -2312,7 +2315,7 @@ cpp-runtime:
         exit 1; \
     }
     echo "  - client FutureAndRequestId: .future / .request_id / share(), removal by id (runtime, issue 2037)"
-    c++ -std=c++17 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
+    "$_cxx" -std=c++17 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
         -I"$cppgen" \
         -I"$cgen" \
         -Ipackages/api/nros-cpp/include \
@@ -2335,7 +2338,7 @@ cpp-runtime:
         exit 1; \
     }
     echo "  - client per-request callback: Client<S>::SharedPtr + async_send_request(req, cb) (runtime, issue 2055)"
-    c++ -std=c++17 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
+    "$_cxx" -std=c++17 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
         -I"$cppgen" \
         -I"$cgen" \
         -Ipackages/api/nros-cpp/include \
@@ -2360,7 +2363,7 @@ cpp-runtime:
         exit 1; \
     }
     echo "  - subscription callbacks taking rclcpp::MessageInfo get the sample's metadata (runtime, issue 2036)"
-    c++ -std=c++17 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
+    "$_cxx" -std=c++17 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
         -I"$cppgen" \
         -I"$cgen" \
         -Ipackages/api/nros-cpp/include \
@@ -2384,7 +2387,7 @@ cpp-runtime:
     echo "  - PollSubscription::take(M&, MessageInfo&), hosted + freestanding, with and without a metadata channel (runtime, issue 2074)"
     for _ptmi in hosted freestanding; do \
         if [ "$_ptmi" = hosted ]; then _ptmi_flags="-std=c++17 -DNROS_CPP_STD=1"; else _ptmi_flags="-std=c++14"; fi; \
-        c++ $_ptmi_flags -fno-exceptions -fno-rtti \
+        "$_cxx" $_ptmi_flags -fno-exceptions -fno-rtti \
             -I"$cppgen" \
             -I"$cgen" \
             -Ipackages/api/nros-cpp/include \
@@ -2406,7 +2409,7 @@ cpp-runtime:
     _smi=packages/api/nros-cpp/tests/compile/subscription_message_info_freestanding_probe.cpp
     test -f "$_smi" || { echo "ERROR: $_smi is MISSING -- this check would pass on absence." >&2; exit 1; }
     echo "  - a (const M&, MessageInfo) subscription callback compiles WITHOUT NROS_CPP_STD (issue 2717)"
-    c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti \
+    "$_cxx" -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti \
         -I"$cppgen" -I"$cgen" \
         -Ipackages/api/nros-cpp/include -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
@@ -2416,7 +2419,7 @@ cpp-runtime:
         exit 1; \
     }
     echo "  - ...and its callback gets the sample's metadata, freestanding (runtime, issue 2717)"
-    c++ -std=c++14 -fno-exceptions -fno-rtti \
+    "$_cxx" -std=c++14 -fno-exceptions -fno-rtti \
         -I"$cppgen" \
         -I"$cgen" \
         -Ipackages/api/nros-cpp/include \
@@ -2441,7 +2444,7 @@ cpp-runtime:
         exit 1; \
     }
     echo "  - rclcpp_action upstream drop-ins: goal handles, create_server/client, SendGoalOptions (runtime, issue 2015)"
-    c++ -std=c++17 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
+    "$_cxx" -std=c++17 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
         -I"$cppgen" \
         -I"$cgen" \
         -Ipackages/api/nros-cpp/include \
@@ -2463,7 +2466,7 @@ cpp-runtime:
     _ap_n=0
     for _ap in packages/api/nros-cpp/tests/compile/action_*_freestanding_probe.cpp; do
         _ap_log="tmp/refuse-$(basename "$_ap" .cpp).log"
-        if c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti \
+        if "$_cxx" -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti \
             -I"$cppgen" -I"$cgen" \
             -Ipackages/api/nros-cpp/include -Ipackages/api/nros-c/include \
             -Ipackages/platform/nros-platform-api/include \
@@ -2493,7 +2496,7 @@ cpp-runtime:
         exit 1; \
     }
     echo "  - action futures keyed by goal: out-of-order, executor dispatch, two clients, late / full (runtime, issue 2011)"
-    c++ -std=c++17 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
+    "$_cxx" -std=c++17 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
         -I"$cppgen" \
         -I"$cgen" \
         -Ipackages/api/nros-cpp/include \
@@ -2534,7 +2537,7 @@ cpp-runtime:
     echo "  - action feedback decodes to payload + goal id on the polling and callback clients (runtime, issue 2027)"
     echo "  - action cancel replies taken by the spin: slots freed, futures + callbacks fed, stash kept (runtime, issue 2034)"
     for _tu in action_goal_handle_api_runtime action_feedback_decode_runtime action_cancel_reply_spin_runtime; do
-        c++ -std=c++17 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
+        "$_cxx" -std=c++17 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
             -I"$cppgen" \
             -I"$cgen" \
             -Ipackages/api/nros-cpp/include \
@@ -2557,7 +2560,7 @@ cpp-runtime:
         exit 1; \
     }
     echo "  - polling action client: get_result payload decoded from byte 8 (runtime, issue 2014)"
-    c++ -std=c++17 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
+    "$_cxx" -std=c++17 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
         -I"$cppgen" \
         -I"$cgen" \
         -Ipackages/api/nros-cpp/include \
@@ -2579,7 +2582,7 @@ cpp-runtime:
     # shellcheck source=scripts/lib/grep-q.sh
     source scripts/lib/grep-q.sh
     mkdir -p tmp
-    if c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti \
+    if "$_cxx" -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti \
         -I"$cppgen" -I"$cgen" \
         -Ipackages/api/nros-cpp/include -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
@@ -2600,7 +2603,7 @@ cpp-runtime:
     _cfg=packages/api/nros-cpp/tests/compile/client_share_freestanding_probe.cpp
     test -f "$_cfg" || { echo "ERROR: $_cfg is MISSING -- this check would pass on absence." >&2; exit 1; }
     echo "  - FutureAndRequestId::share() is REFUSED without NROS_CPP_STD (issue 2037)"
-    if c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti \
+    if "$_cxx" -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti \
         -I"$cppgen" -I"$cgen" \
         -Ipackages/api/nros-cpp/include -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
@@ -2630,7 +2633,7 @@ cpp-runtime:
     echo "  - stock rclcpp examples: edit counts, compile + link + boot on the stub backend (phase-488)"
     python3 "$_rx/edit_count.py" --check
     mkdir -p "$gen/nros-cpp-tests-runtime/rclcpp-examples"
-    c++ -std=c++17 -c \
+    "$_cxx" -std=c++17 -c \
         -I"$cgen" \
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
@@ -2641,7 +2644,7 @@ cpp-runtime:
     for _src in "$_rx"/ported/*.cpp; do
         _ex="$(basename "$_src" .cpp)"
         _bin="$gen/nros-cpp-tests-runtime/rclcpp-examples/$_ex"
-        c++ -std=c++17 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
+        "$_cxx" -std=c++17 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
             -I"$cppgen" \
             -I"$cgen" \
             -I"$_rx/msgs" \
@@ -2676,7 +2679,7 @@ cpp-runtime:
         -Ipackages/core/nros-rmw-abi/include -Ipackages/platform/nros-platform-api/include
         -Ipackages/api/nros-c/tests/run -Ipackages/api/nros-diagnostic-updater/include
         -Ipackages/api/nros-cpp/tests/compile/port-surface-msgs)
-    c++ "${_ps_flags[@]}" -o "$gen/nros-cpp-tests-runtime"/ament_port_surface_runtime "$_ps" \
+    "$_cxx" "${_ps_flags[@]}" -o "$gen/nros-cpp-tests-runtime"/ament_port_surface_runtime "$_ps" \
         "$gen/nros-cpp-tests-runtime"/stub_rmw_backend.o "$nros_cpp_lib" -lpthread -ldl -lm
     "$gen/nros-cpp-tests-runtime"/ament_port_surface_runtime
     # issue 2081 -- the three-argument handler's request header carries the
@@ -2687,12 +2690,12 @@ cpp-runtime:
     _rh=packages/api/nros-cpp/tests/compile/service_request_header_runtime.cpp
     test -f "$_rh" || { echo "ERROR: $_rh is MISSING -- this check would pass on absence." >&2; exit 1; }
     echo "  - rclcpp's three-argument service handler gets the request id (runtime, issue 2081)"
-    c++ "${_ps_flags[@]}" -o "$gen/nros-cpp-tests-runtime"/service_request_header_runtime "$_rh" \
+    "$_cxx" "${_ps_flags[@]}" -o "$gen/nros-cpp-tests-runtime"/service_request_header_runtime "$_rh" \
         "$gen/nros-cpp-tests-runtime"/stub_rmw_backend.o "$nros_cpp_lib" -lpthread -ldl -lm
     "$gen/nros-cpp-tests-runtime"/service_request_header_runtime
     cmake -DPLUGIN=demo::Selector -DEXECUTABLE=selector \
         -DOUT="$gen/nros-cpp-tests-runtime/selector_component_main.cpp" -P cmake/NanoRosComponentMain.cmake
-    c++ "${_ps_flags[@]}" -DNROS_PORT_SURFACE_COMPONENT_ONLY=1 \
+    "$_cxx" "${_ps_flags[@]}" -DNROS_PORT_SURFACE_COMPONENT_ONLY=1 \
         -o "$gen/nros-cpp-tests-runtime"/selector_component \
         "$gen/nros-cpp-tests-runtime/selector_component_main.cpp" "$_ps" \
         "$gen/nros-cpp-tests-runtime"/stub_rmw_backend.o "$nros_cpp_lib" -lpthread -ldl -lm
@@ -2705,7 +2708,7 @@ cpp-runtime:
     _dt=packages/api/nros-cpp/tests/compile/diagnostic_tasks_runtime.cpp
     test -f "$_dt" || { echo "ERROR: $_dt is MISSING -- this check would pass on absence." >&2; exit 1; }
     echo "  - diagnostic_updater's FrequencyStatus / TimeStampStatus / Heartbeat report upstream's levels (runtime, issue 2053)"
-    c++ "${_ps_flags[@]}" -o "$gen/nros-cpp-tests-runtime"/diagnostic_tasks_runtime "$_dt" \
+    "$_cxx" "${_ps_flags[@]}" -o "$gen/nros-cpp-tests-runtime"/diagnostic_tasks_runtime "$_dt" \
         "$gen/nros-cpp-tests-runtime"/stub_rmw_backend.o "$nros_cpp_lib" -lpthread -ldl -lm
     "$gen/nros-cpp-tests-runtime"/diagnostic_tasks_runtime
     # issue 2054 -- upstream's `rmw_qos_profile_t` on the std surface: named,
@@ -2714,7 +2717,7 @@ cpp-runtime:
     _rq=packages/api/nros-cpp/tests/compile/rmw_qos_profile_type.cpp
     test -f "$_rq" || { echo "ERROR: $_rq is MISSING -- this check would pass on absence." >&2; exit 1; }
     echo "  - rmw_qos_profile_t has upstream's fields and values, and converts to and from QoS (issue 2054)"
-    c++ "${_ps_flags[@]}" -fsyntax-only "$_rq"
+    "$_cxx" "${_ps_flags[@]}" -fsyntax-only "$_rq"
     # issue 1456 — an `rclcpp`-shape component's IDENTITY. The shape constructs
     # its own node, so the launch-declared name and namespace reach it only
     # through the `NodeHandle` the entry hands it; before the fix they reached
@@ -2725,7 +2728,7 @@ cpp-runtime:
     # say. Same stub backend, same reason — a node needs an executor and an
     # executor needs a session; no router, no wire.
     echo "  - an rclcpp-shape component takes the launch identity, and keeps its class's default without one (runtime, issue 1456)"
-    c++ -std=c++17 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
+    "$_cxx" -std=c++17 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
         -I"$cppgen" \
         -I"$cgen" \
         -Ipackages/api/nros-cpp/include \
@@ -2744,7 +2747,7 @@ cpp-runtime:
     # be on the node by the time the derived constructor body runs. A RUN for
     # 1456's reason: every shape of the defect compiles.
     echo "  - an rclcpp-shape component holds its handle's QoS override table before its constructor body runs (runtime, issue 1854)"
-    c++ -std=c++17 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
+    "$_cxx" -std=c++17 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
         -I"$cppgen" \
         -I"$cgen" \
         -Ipackages/api/nros-cpp/include \
@@ -2763,7 +2766,7 @@ cpp-runtime:
     # inherit and root are the same value and every shape of this defect
     # passes. Same stub backend, same reason.
     echo "  - an unset namespace inherits the executor's through BOTH node-create entry points, and an explicit \"/\" still reaches the root (runtime, issue 1473)"
-    c++ -std=c++17 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
+    "$_cxx" -std=c++17 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
         -I"$cppgen" \
         -I"$cgen" \
         -Ipackages/api/nros-cpp/include \
@@ -2781,7 +2784,7 @@ cpp-runtime:
     # node's `this`, so an entry that outlived its node dispatched into freed
     # memory. Observed as the stub backend's live-entity count falling.
     echo "  - destroying a C++ node releases its own arena entries and no other node's (runtime, phase-476 W0)"
-    c++ -std=c++17 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
+    "$_cxx" -std=c++17 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
         -I"$cppgen" \
         -I"$cgen" \
         -Ipackages/api/nros-cpp/include \
@@ -2799,7 +2802,7 @@ cpp-runtime:
     # entity's storage (the NEW storage after a move), refuse without backend
     # support, and a late fire after destroy is a no-op.
     echo "  - the five Tier-1 C++ status-event setters reach the backend (runtime, issue 1993)"
-    c++ -std=c++17 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
+    "$_cxx" -std=c++17 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
         -I"$cppgen" \
         -I"$cgen" \
         -Ipackages/api/nros-cpp/include \
@@ -2820,7 +2823,7 @@ cpp-runtime:
     # (`properties: &[]` restored) -> 5 failures; every spec handed the FIRST
     # spec's rows -> 3 failures.
     echo "  - nros_cpp_init_multi gives each session its own RMW properties (runtime, issue 2123)"
-    c++ -std=c++17 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
+    "$_cxx" -std=c++17 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
         -I"$cppgen" \
         -I"$cgen" \
         -Ipackages/api/nros-cpp/include \
@@ -2845,6 +2848,9 @@ cpp-runtime:
 cpp-runtime-scoped:
     #!/usr/bin/env bash
     set -e
+    # issue 3016 -- the C++ compiler, selectable so a clang lane runs the
+    # same TUs (`NROS_CHECK_CXX=clang++`); `c++` when unset.
+    _cxx="${NROS_CHECK_CXX:-c++}"
     # Writes only into the dir it creates, so a fresh tree holds (read from
     # the recipe, not the disk).
     python3 scripts/lib/cpp_gate_own_dirs.py cpp-runtime-scoped
@@ -2924,7 +2930,7 @@ cpp-runtime-scoped:
     # profile-literal-ok: unprofiled: a plain `cargo build`, so `<dir>/debug/` IS
     # its derived output dir.
     trc_lib="$trc_dir/debug/libnros_cpp.a"
-    c++ -std=c++14 -fno-exceptions -fno-rtti -Wall -Wextra -Werror \
+    "$_cxx" -std=c++14 -fno-exceptions -fno-rtti -Wall -Wextra -Werror \
         -I"$(nros_locate_artifact cpp-include --placed-dir "$trc_dir/placed")" \
         -I"$(nros_locate_artifact c-include --placed-dir "$trc_dir/placed")" \
         -Ipackages/api/nros-cpp/include \
@@ -2958,7 +2964,7 @@ cpp-runtime-scoped:
     # profile-literal-ok: unprofiled: a plain `cargo build`, so `<dir>/debug/` IS
     # its derived output dir.
     pe_lib="$pe_dir/debug/libnros_cpp.a"
-    c++ -std=c++17 -fno-exceptions -fno-rtti \
+    "$_cxx" -std=c++17 -fno-exceptions -fno-rtti \
         -I"$(nros_locate_artifact cpp-include --placed-dir "$pe_dir/placed")" \
         -I"$(nros_locate_artifact c-include --placed-dir "$pe_dir/placed")" \
         -Ipackages/api/nros-cpp/include \
@@ -2986,7 +2992,7 @@ cpp-runtime-scoped:
         exit 1; \
     }
     echo "  - ParameterValue / Parameter / a vector on-set callback vote on local and remote writes (runtime, issue 2056)"
-    c++ -std=c++17 -fno-exceptions -fno-rtti -Wall -Wextra -Werror \
+    "$_cxx" -std=c++17 -fno-exceptions -fno-rtti -Wall -Wextra -Werror \
         -I"$(nros_locate_artifact cpp-include --placed-dir "$pe_dir/placed")" \
         -I"$(nros_locate_artifact c-include --placed-dir "$pe_dir/placed")" \
         -Ipackages/api/nros-cpp/include \
@@ -3006,7 +3012,7 @@ cpp-runtime-scoped:
     _psf=packages/api/nros-cpp/tests/compile/param_store_full_runtime.cpp
     test -f "$_psf" || { echo "ERROR: $_psf is MISSING -- this check would pass on absence." >&2; exit 1; }
     echo "  - declare_parameter past a full store refuses the boot, naming its knob (runtime, #4018)"
-    c++ -std=c++17 -fno-exceptions -fno-rtti -Wall -Wextra -Werror \
+    "$_cxx" -std=c++17 -fno-exceptions -fno-rtti -Wall -Wextra -Werror \
         -I"$(nros_locate_artifact cpp-include --placed-dir "$pe_dir/placed")" \
         -I"$(nros_locate_artifact c-include --placed-dir "$pe_dir/placed")" \
         -Ipackages/api/nros-cpp/include \
@@ -3026,7 +3032,7 @@ cpp-runtime-scoped:
     _me=packages/api/nros-cpp/tests/compile/message_equality_runtime.cpp
     test -f "$_me" || { echo "ERROR: $_me is MISSING -- this check would pass on absence." >&2; exit 1; }
     echo "  - a generated message compares field-wise by value (runtime, phase-488)"
-    c++ -std=c++17 -fno-exceptions -fno-rtti -Wall -Wextra -Werror \
+    "$_cxx" -std=c++17 -fno-exceptions -fno-rtti -Wall -Wextra -Werror \
         -I"$cppgen" -I"$cgen" \
         -Ipackages/cli/rosidl-codegen/tests/fixtures/fingerprint-corpus/expected/configured \
         -Ipackages/api/nros-cpp/include -Ipackages/api/nros-c/include \
@@ -3040,7 +3046,7 @@ cpp-runtime-scoped:
     # this runtime. Negative control, measured: the constructor's call made
     # dead -> "the node serves its parameters with no call of ours" fails.
     echo "  - an ament-built node serves its parameters with no call of ours (runtime, phase-488)"
-    c++ -std=c++17 -DNROS_CPP_STD=1 -DNROS_AMENT_START_PARAMETER_SERVICES=1 \
+    "$_cxx" -std=c++17 -DNROS_CPP_STD=1 -DNROS_AMENT_START_PARAMETER_SERVICES=1 \
         -fno-exceptions -fno-rtti -Wall -Wextra -Werror \
         -I"$(nros_locate_artifact cpp-include --placed-dir "$pe_dir/placed")" \
         -I"$(nros_locate_artifact c-include --placed-dir "$pe_dir/placed")" \
@@ -3063,7 +3069,7 @@ cpp-runtime-scoped:
         exit 1; \
     }
     echo "  - NodeOptions::start_parameter_event_publisher(false) silences one node (runtime, issue 2035)"
-    c++ -std=c++17 -fno-exceptions -fno-rtti \
+    "$_cxx" -std=c++17 -fno-exceptions -fno-rtti \
         -I"$(nros_locate_artifact cpp-include --placed-dir "$pe_dir/placed")" \
         -I"$(nros_locate_artifact c-include --placed-dir "$pe_dir/placed")" \
         -Ipackages/api/nros-cpp/include \
@@ -3088,7 +3094,7 @@ cpp-runtime-scoped:
         exit 1; \
     }
     echo "  - rclcpp::ParameterEventHandler: parameter + event callbacks, handles, truncation (runtime, issue 2024)"
-    c++ -std=c++17 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
+    "$_cxx" -std=c++17 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
         -I"$cppgen" \
         -I"$cgen" \
         -Ipackages/api/nros-cpp/include \
@@ -3111,7 +3117,7 @@ cpp-runtime-scoped:
         exit 1; \
     }
     echo "  - rclcpp::ParameterEventHandler::get_parameter(s)_from_event over a generated event (runtime, issue 2080)"
-    c++ -std=c++17 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
+    "$_cxx" -std=c++17 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
         -I"$cppgen" \
         -I"$cgen" \
         -Ipackages/api/nros-cpp/include \
@@ -3129,7 +3135,7 @@ cpp-runtime-scoped:
     _peh=packages/api/nros-cpp/tests/compile/parameter_event_handler_freestanding_probe.cpp
     test -f "$_peh" || { echo "ERROR: $_peh is MISSING -- this check would pass on absence." >&2; exit 1; }
     echo "  - rclcpp::ParameterEventHandler is REFUSED without NROS_CPP_STD (issue 2024)"
-    if c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti \
+    if "$_cxx" -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti \
         -I"$cppgen" -I"$cgen" \
         -Ipackages/api/nros-cpp/include -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
@@ -3151,7 +3157,7 @@ cpp-runtime-scoped:
     # and `timer_.reset()` stay distinct, and a stale copy of a released handle
     # cannot reach the timer that took its slot.
     echo "  - a C++ timer's capture lives in the arena and is destroyed exactly once; stale handles are safe (runtime, phase-476 W2)"
-    c++ -std=c++17 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
+    "$_cxx" -std=c++17 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
         -I"$cppgen" \
         -I"$cgen" \
         -Ipackages/api/nros-cpp/include \
@@ -3176,6 +3182,9 @@ cpp-runtime-scoped:
 cpp-headers:
     #!/usr/bin/env bash
     set -e
+    # issue 3016 -- the C++ compiler, selectable so a clang lane runs the
+    # same TUs (`NROS_CHECK_CXX=clang++`); `c++` when unset.
+    _cxx="${NROS_CHECK_CXX:-c++}"
     # Writes only into the dir it creates, so a fresh tree holds (read from
     # the recipe, not the disk).
     python3 scripts/lib/cpp_gate_own_dirs.py cpp-headers
@@ -3209,7 +3218,7 @@ cpp-headers:
         # issue #52 — `nros-platform-api/include` carries `<nros/platform.h>`, pulled
         # by `heap_sequence.hpp` (Phase 229.5); without it the probe fails
         # `fatal error: nros/platform.h: No such file or directory`.
-        c++ -fsyntax-only -std=c++14 $free -fno-exceptions -fno-rtti \
+        "$_cxx" -fsyntax-only -std=c++14 $free -fno-exceptions -fno-rtti \
             -I"$cppgen" \
             -I"$cgen" \
             -Ipackages/api/nros-cpp/include \
@@ -3221,7 +3230,7 @@ cpp-headers:
     # parses templates). Compiles a TU that instantiates `nros::bind_service`
     # against a generated-shape service type, so the template body is checked.
     echo "  - typed bind_service instantiation (c++14)"
-    c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti \
+    "$_cxx" -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti \
         -I"$cppgen" \
         -I"$cgen" \
         -Ipackages/api/nros-cpp/include \
@@ -3233,7 +3242,7 @@ cpp-headers:
     # cbindgen does not expand macros — a macro-generated `#[no_mangle]` gets no
     # declaration and is uncallable while the Rust side stays green. Method
     # POINTERS make that a build failure here.
-    c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti \
+    "$_cxx" -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti \
         -I"$cppgen" \
         -I"$cgen" \
         -Ipackages/api/nros-cpp/include \
@@ -3245,7 +3254,7 @@ cpp-headers:
         echo "ERROR: matched_events_entry_points.cpp is MISSING -- issue 1972 is unpinned." >&2; \
         exit 1; \
     }
-    c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti \
+    "$_cxx" -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti \
         -I"$cppgen" \
         -I"$cgen" \
         -Ipackages/api/nros-cpp/include \
@@ -3268,7 +3277,7 @@ cpp-headers:
         echo "ERROR: lifecycle_transition_ids.cpp is MISSING -- issue 1099 is unpinned." >&2; \
         exit 1; \
     }
-    c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti \
+    "$_cxx" -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti \
         -I"$cppgen" \
         -I"$cgen" \
         -Ipackages/api/nros-cpp/include \
@@ -3287,7 +3296,7 @@ cpp-headers:
         echo "ERROR: lifecycle_surface.cpp is MISSING -- phase-417 W4.f is unpinned." >&2; \
         exit 1; \
     }
-    c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti \
+    "$_cxx" -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti \
         -I"$cppgen" \
         -I"$cgen" \
         -Ipackages/api/nros-cpp/include \
@@ -3304,7 +3313,7 @@ cpp-headers:
             echo "ERROR: rclcpp_lifecycle_ported_node.cpp is MISSING -- phase-482 W4 is unpinned." >&2; \
             exit 1; \
         }; \
-        c++ -fsyntax-only -std=c++17 $_lc_std -Werror=deprecated-declarations -fno-exceptions -fno-rtti \
+        "$_cxx" -fsyntax-only -std=c++17 $_lc_std -Werror=deprecated-declarations -fno-exceptions -fno-rtti \
             -I"$cppgen" \
             -I"$cgen" \
             -Ipackages/api/nros-cpp/include \
@@ -3320,7 +3329,7 @@ cpp-headers:
     # `Executor::open_with_rmw` and `NodeBuilder().rmw(...)`; the one-liner the
     # examples use could not reach it. Surface probe, including the defaults
     # that make it a one-liner.
-    c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti \
+    "$_cxx" -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti \
         -I"$cppgen" \
         -I"$cgen" \
         -Ipackages/api/nros-cpp/include \
@@ -3331,7 +3340,7 @@ cpp-headers:
     # phase-421 W6 — codegen specialises `nros::format_of<M>` per message and the
     # typed creators `static_assert` on it. The positive TU proves the assertion
     # is reachable; the probe proves it fires.
-    c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti \
+    "$_cxx" -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti \
         -I"$cppgen" \
         -I"$cgen" \
         -Ipackages/api/nros-cpp/include \
@@ -3347,7 +3356,7 @@ cpp-headers:
         echo "       check below would PASS on a missing file." >&2; \
         exit 1; \
     }
-    if c++ -fsyntax-only -std=c++17 \
+    if "$_cxx" -fsyntax-only -std=c++17 \
         -I"$cppgen" \
         -I"$cgen" \
         -Ipackages/api/nros-cpp/include \
@@ -3366,7 +3375,7 @@ cpp-headers:
         echo "       check below would PASS on a missing file." >&2; \
         exit 1; \
     }
-    if c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti \
+    if "$_cxx" -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti \
         -I"$cppgen" \
         -I"$cgen" \
         -Ipackages/api/nros-cpp/include \
@@ -3382,7 +3391,7 @@ cpp-headers:
     # defect was the shape of the API, so a compile-time assertion on which
     # arities exist is what catches a regression.
     echo "  - spin verb shape (c++14)"
-    c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti \
+    "$_cxx" -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti \
         -I"$cppgen" \
         -I"$cgen" \
         -Ipackages/api/nros-cpp/include \
@@ -3394,7 +3403,7 @@ cpp-headers:
     # and the create_polling_subscription factory path are type-checked against
     # a generated-shape message type.
     echo "  - PollingSubscription instantiation (c++14)"
-    c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti \
+    "$_cxx" -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti \
         -I"$cppgen" \
         -I"$cgen" \
         -Ipackages/api/nros-cpp/include \
@@ -3412,7 +3421,7 @@ cpp-headers:
     # — if a transmit buffer ever appears in `Publisher<M>`, the arena question
     # is worth re-opening and this fails first.
     echo "  - Owned<Publisher<M>> ported shape + type-independent size (c++14)"
-    c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti \
+    "$_cxx" -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti \
         -I"$cppgen" \
         -I"$cgen" \
         -Ipackages/api/nros-cpp/include \
@@ -3433,7 +3442,7 @@ cpp-headers:
     # second column is the point: a blanket switch to `rx_size_bound<M>` would
     # be a compile error for 81 of 120 stock Humble types.
     echo "  - rx_size_bound / rx_buffer_capacity / receive sites (c++14)"
-    c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti \
+    "$_cxx" -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti \
         -I"$cppgen" \
         -I"$cgen" \
         -Ipackages/api/nros-cpp/include \
@@ -3445,7 +3454,7 @@ cpp-headers:
     # (serialize -> nros_cpp_service_client_call_raw(..., timeout_ms) ->
     # deserialize) is type-checked against a generated-shape service type.
     echo "  - Client::call_polling instantiation (c++14)"
-    c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti \
+    "$_cxx" -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti \
         -I"$cppgen" \
         -I"$cgen" \
         -Ipackages/api/nros-cpp/include \
@@ -3459,7 +3468,7 @@ cpp-headers:
     # static-asserts that the per-goal `CancelResponse` and the RPC
     # `CancelReturnCode` stay distinct types.
     echo "  - action callback tier instantiation (c++14)"
-    c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti \
+    "$_cxx" -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti \
         -I"$cppgen" \
         -I"$cgen" \
         -Ipackages/api/nros-cpp/include \
@@ -3481,7 +3490,7 @@ cpp-headers:
         packages/api/nros-c/tests/compile/sched_task_tier_aliases.c 2>&1)"
     test "$(grep -c 'renamed nros_board_.*_run_sched_tasks' <<<"$_w")" -eq 6 \
         || { printf '%s\n' "$_w" >&2; echo "ERROR: the C tier aliases do not warn once per call" >&2; exit 1; }
-    _w="$(c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti \
+    _w="$("$_cxx" -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti \
         -I"$cppgen" \
         -I"$cgen" \
         -Ipackages/api/nros-cpp/include \
@@ -3543,7 +3552,7 @@ cpp-headers:
         # it is excluded above.
         case "$hdr" in *main.hpp) continue ;; esac
         printf '#include <%s>\n' "${hdr#packages/api/nros-cpp/include/}" > "$_nostd_tu"
-        c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti -ffreestanding \
+        "$_cxx" -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti -ffreestanding \
             -nostdinc++ -isystem "$_threadx_shim" \
             -I"$cppgen" \
             -I"$cgen" \
@@ -3570,7 +3579,7 @@ cpp-headers:
     echo "  - phase-438 W4: rclcpp::Node's unconditional surface instantiates (no NROS_CPP_STD; hosted + -nostdinc++)"
     for _w4_arm in "" "-nostdinc++ -isystem $_threadx_shim"; do
         # shellcheck disable=SC2086
-        c++ -fsyntax-only -std=c++14 -ffreestanding -fno-exceptions -fno-rtti $_w4_arm \
+        "$_cxx" -fsyntax-only -std=c++14 -ffreestanding -fno-exceptions -fno-rtti $_w4_arm \
             -I"$cppgen" \
             -I"$cgen" \
             -Ipackages/api/nros-cpp/include \
@@ -3594,7 +3603,7 @@ cpp-headers:
         for hdr in $(git ls-files 'packages/api/nros-cpp/include/*.hpp'); do
             case "$hdr" in *main.hpp) continue ;; esac
             printf '#include <%s>\n' "${hdr#packages/api/nros-cpp/include/}" > "$_nostd_tu"
-            c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti -ffreestanding \
+            "$_cxx" -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti -ffreestanding \
                 -nostdinc++ -isystem zephyr/cxx-compat -isystem "$_zephyr_min" \
                 -I"$cppgen" \
                 -I"$cgen" \
@@ -3630,7 +3639,7 @@ cpp-headers:
     # regression. The freestanding half has its own probe below and correctly
     # takes no flag.
     echo "  - one node type: hosted shape + both create families (c++14, -DNROS_CPP_STD)"
-    c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti -DNROS_CPP_STD=1 \
+    "$_cxx" -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti -DNROS_CPP_STD=1 \
         -I"$cppgen" \
         -I"$cgen" \
         -Ipackages/api/nros-cpp/include \
@@ -3638,7 +3647,7 @@ cpp-headers:
         -Ipackages/platform/nros-platform-api/include \
         packages/api/nros-cpp/tests/compile/one_node_type.cpp
     echo "  - one node type: FREESTANDING construct + create_publisher (-nostdinc++)"
-    c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti -ffreestanding \
+    "$_cxx" -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti -ffreestanding \
         -nostdinc++ -isystem "$_threadx_shim" \
         -I"$cppgen" \
         -I"$cgen" \
@@ -3665,7 +3674,7 @@ cpp-headers:
     source scripts/lib/grep-q.sh
     for _refusal in "1:failed create (abort_failed_create)" "2:--ros-args (apply_ros_args)"; do
         _obj="$gen/nros-cpp-tests-headers/refusal_reaches_nros_log_${_refusal%%:*}.o"
-        c++ -c -std=c++14 -fno-exceptions -fno-rtti -ffreestanding \
+        "$_cxx" -c -std=c++14 -fno-exceptions -fno-rtti -ffreestanding \
             -nostdinc++ -isystem "$_threadx_shim" \
             -DREFUSAL="${_refusal%%:*}" \
             -I"$cppgen" \
@@ -3694,7 +3703,7 @@ cpp-headers:
     # `shared_ptr` must be a compile error (it would dangle), and it must fail
     # for THAT reason: a `deleted` diagnostic, not some other breakage.
     echo "  - phase-482 W2: Node::SharedPtr from a temporary shared_ptr is refused (expected failure)"
-    _nh_out="$(c++ -fsyntax-only -std=c++17 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
+    _nh_out="$("$_cxx" -fsyntax-only -std=c++17 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
         -I"$cppgen" \
         -I"$cgen" \
         -Ipackages/api/nros-cpp/include \
@@ -3738,7 +3747,7 @@ cpp-headers:
     }
     echo "  - one node type: a ported create_publisher<M>(topic, depth) COMPILES freestanding"
     mkdir -p tmp
-    if ! c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti -ffreestanding \
+    if ! "$_cxx" -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti -ffreestanding \
         -nostdinc++ -isystem "$_threadx_shim" \
         -I"$cppgen" \
         -I"$cgen" \
@@ -3797,7 +3806,7 @@ cpp-headers:
     # the lane reports a compile error instead of the collision it exists to
     # measure.
     echo "  - one node type: the ours-only family answers to _in names (c++17, -DNROS_CPP_STD)"
-    c++ -fsyntax-only -std=c++17 -fno-exceptions -fno-rtti -DNROS_CPP_STD \
+    "$_cxx" -fsyntax-only -std=c++17 -fno-exceptions -fno-rtti -DNROS_CPP_STD \
         -I"$cppgen" \
         -I"$cgen" \
         -Ipackages/api/nros-cpp/include \
@@ -3813,7 +3822,7 @@ cpp-headers:
     # retirement rots: the free function keeps compiling because it is still
     # parsed, and the member its 22 call sites moved to is never built.
     echo "  - timer binding paths instantiate through the MEMBER overload (c++17)"
-    c++ -fsyntax-only -std=c++17 -fno-exceptions -fno-rtti \
+    "$_cxx" -fsyntax-only -std=c++17 -fno-exceptions -fno-rtti \
         -I"$cppgen" \
         -I"$cgen" \
         -Ipackages/api/nros-cpp/include \
@@ -3840,7 +3849,7 @@ cpp-headers:
     # W2 made that surface a request. Without the flag this TU fails on the
     # chrono overload, which says nothing about the hierarchy it probes.
     echo "  - rclcpp::TimerBase is a NAME for the flat rclcpp::Timer, not a hierarchy (c++17, -DNROS_CPP_STD)"
-    c++ -fsyntax-only -std=c++17 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
+    "$_cxx" -fsyntax-only -std=c++17 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
         -I"$cppgen" \
         -I"$cgen" \
         -Ipackages/api/nros-cpp/include \
@@ -3849,7 +3858,7 @@ cpp-headers:
         packages/api/nros-cpp/tests/compile/timer_base_is_a_name_not_a_hierarchy.cpp
 
     echo "  - QoS policy accessors + ms boundary (c++14)"
-    c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti \
+    "$_cxx" -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti \
         -I"$cppgen" \
         -I"$cgen" \
         -Ipackages/api/nros-cpp/include \
@@ -3903,7 +3912,7 @@ cpp-headers:
     # (`cmake/NanoRosAmentSurface.cmake` sets it for exactly these files).
     for probe in ros2_api_adoption node_graph_forwarders ros2_api_adoption_stage2 ros2_one_dispatch_path \
                  ros2_init_argv_refusal action_goal_uuid executor_cancel entity_name_accessors; do \
-        c++ -fsyntax-only -std=c++14 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
+        "$_cxx" -fsyntax-only -std=c++14 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
             -I"$cppgen" \
             -I"$cgen" \
             -Ipackages/api/nros-cpp/include \
@@ -3916,7 +3925,7 @@ cpp-headers:
     # no other probe compiled; phase-426 W4 deleted that helper (one store now,
     # nothing to adopt across), so what this pins today is the parameter surface
     # at the standard the component lane actually builds with.
-    c++ -fsyntax-only -std=c++17 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
+    "$_cxx" -fsyntax-only -std=c++17 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
         -I"$cppgen" \
         -I"$cgen" \
         -Ipackages/api/nros-cpp/include \
@@ -3944,7 +3953,7 @@ cpp-headers:
     echo "  - phase-417 W4.a: parameter descriptors, listing, undeclare and the on-set hook (hosted + -nostdinc++)"
     for _w4a_arm in "" "-nostdinc++ -isystem $_threadx_shim"; do
         # shellcheck disable=SC2086
-        c++ -fsyntax-only -std=c++14 -ffreestanding -fno-exceptions -fno-rtti $_w4a_arm \
+        "$_cxx" -fsyntax-only -std=c++14 -ffreestanding -fno-exceptions -fno-rtti $_w4a_arm \
             -I"$cppgen" \
             -I"$cgen" \
             -Ipackages/api/nros-cpp/include \
@@ -3956,7 +3965,7 @@ cpp-headers:
         }
     done
     echo "  - hosted parameter overloads: std::string + std::vector<T> on both node types (c++17)"
-    c++ -fsyntax-only -std=c++17 -fno-exceptions -fno-rtti \
+    "$_cxx" -fsyntax-only -std=c++17 -fno-exceptions -fno-rtti \
         -I"$cppgen" \
         -I"$cgen" \
         -Ipackages/api/nros-cpp/include \
@@ -3978,7 +3987,7 @@ cpp-headers:
     echo "  - issue 1678: every integer / floating parameter type binds (LP64 hosted + -nostdinc++, ILP32)"
     for _w1678_arm in "" "-DNROS_CPP_STD=1" "-ffreestanding -nostdinc++ -isystem $_threadx_shim"; do
         # shellcheck disable=SC2086
-        c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti $_w1678_arm \
+        "$_cxx" -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti $_w1678_arm \
             -I"$cppgen" \
             -I"$cgen" \
             -Ipackages/api/nros-cpp/include \
@@ -4042,7 +4051,7 @@ cpp-headers:
         exit 1; }
     for _gc_arm in "" "-nostdinc++ -isystem $_threadx_shim"; do
         # shellcheck disable=SC2086
-        c++ -fsyntax-only -std=c++14 -ffreestanding -fno-exceptions -fno-rtti $_gc_arm \
+        "$_cxx" -fsyntax-only -std=c++14 -ffreestanding -fno-exceptions -fno-rtti $_gc_arm \
             -I"$cppgen" \
             -I"$cgen" \
             -Ipackages/api/nros-cpp/include \
@@ -4065,7 +4074,7 @@ cpp-headers:
                  subscription_callback remove_node generic_by_name; do \
         f="packages/api/nros-cpp/tests/compile/ros2_refuse_${probe}_probe.cpp"; \
         test -f "$f" || { echo "ERROR: $f is MISSING -- this check passes on absence." >&2; exit 1; }; \
-        if c++ -fsyntax-only -std=c++14 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
+        if "$_cxx" -fsyntax-only -std=c++14 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
                -I"$cppgen" -I"$cgen" \
                -Ipackages/api/nros-cpp/include -Ipackages/api/nros-c/include \
                -Ipackages/platform/nros-platform-api/include "$f" 2>"tmp/refuse-$probe.log"; then \
@@ -4102,7 +4111,7 @@ cpp-headers:
     fi
 
     echo "  - declared QoS depth: the three cases COMPILE (c++17)"
-    c++ -fsyntax-only -std=c++17 -fno-exceptions -fno-rtti \
+    "$_cxx" -fsyntax-only -std=c++17 -fno-exceptions -fno-rtti \
         -Ipackages/api/nros-cpp/tests/compile/declared-qos-fixture \
         -I"$cppgen" \
         -I"$cgen" \
@@ -4122,7 +4131,7 @@ cpp-headers:
         exit 1; \
     }
     echo "  - declared QoS depth: a MISMATCH fails the build (c++17, expected failure)"
-    _dq_out="$(c++ -fsyntax-only -std=c++17 -fno-exceptions -fno-rtti \
+    _dq_out="$("$_cxx" -fsyntax-only -std=c++17 -fno-exceptions -fno-rtti \
         -Ipackages/api/nros-cpp/tests/compile/declared-qos-fixture \
         -I"$cppgen" \
         -I"$cgen" \
@@ -4158,7 +4167,7 @@ cpp-headers:
         exit 1; \
     }
     echo "  - declared parameters: the boot check's lookups agree with the table (c++17)"
-    c++ -fsyntax-only -std=c++17 -fno-exceptions -fno-rtti \
+    "$_cxx" -fsyntax-only -std=c++17 -fno-exceptions -fno-rtti \
         -Ipackages/api/nros-cpp/tests/compile/declared-params-fixture \
         -I"$cppgen" \
         -I"$cgen" \
@@ -4172,7 +4181,7 @@ cpp-headers:
     # forwarders were deleted by phase-482 W6). The header `-fsyntax-only`
     # loop above only PARSES the templates; this TU INSTANTIATES them.
     echo "  - receive verbs instantiate (c++14)"
-    c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti \
+    "$_cxx" -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti \
         -I"$cppgen" \
         -I"$cgen" \
         -Ipackages/api/nros-cpp/include \
@@ -4194,7 +4203,7 @@ cpp-headers:
         }; \
     done
     echo "  - phase-427 W8: a CHECKED result compiles clean (c++14, -Werror=unused-result)"
-    c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti \
+    "$_cxx" -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti \
         -Werror=unused-result -Werror=deprecated-declarations \
         -I"$cppgen" \
         -I"$cgen" \
@@ -4208,7 +4217,7 @@ cpp-headers:
     # template and on its `void` specialization separately, and an attribute
     # lost from either one is exactly the silence this asserts against.
     echo "  - phase-427 W8: a DISCARDED result fails the build (expected failure, both halves)"
-    _nd_out="$(c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti -Werror=unused-result \
+    _nd_out="$("$_cxx" -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti -Werror=unused-result \
         -I"$cppgen" \
         -I"$cgen" \
         -Ipackages/api/nros-cpp/include \
@@ -4233,7 +4242,7 @@ cpp-headers:
     # across dtor / move-assign / clear / reserve-relocation of a two-level
     # heap element shape).
     echo "  - HeapSequence element-lifetime runtime probe (c++14)"
-    c++ -std=c++14 -fno-exceptions -fno-rtti \
+    "$_cxx" -std=c++14 -fno-exceptions -fno-rtti \
         -Ipackages/api/nros-cpp/include \
         -Ipackages/platform/nros-platform-api/include \
         -o "$gen/nros-cpp-tests-headers"/heap_sequence_lifetime \

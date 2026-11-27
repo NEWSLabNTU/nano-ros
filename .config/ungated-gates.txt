@@ -65,9 +65,6 @@ census-hooks-complete
 # `cpp` gate this list held, split in four for the build tier's per-test
 # timeout (issue 2683): the same coverage in the same lane, not new gates.
 cpp-clippy
-cpp-headers
-cpp-runtime
-cpp-runtime-scoped
 nros-log-riscv32
 staticlib-symbols
 test-targets

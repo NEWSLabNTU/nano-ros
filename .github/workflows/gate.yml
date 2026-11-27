@@ -1686,7 +1686,10 @@ jobs:
     runs-on: ${{ vars.NROS_GATE_SELF_HOSTED == 'true' && contains(fromJSON('["merge_group","workflow_dispatch"]'), github.event_name) && fromJSON('["self-hosted","linux","nros-sdk-zephyr","nros-big"]') || 'ubuntu-22.04' }}
     # Longest successful run measured 2026-11-12: 9 min (n=15). Twice that, so a
     # stalled runner fails fast instead of holding the merge queue for 6 h.
-    timeout-minutes: 20
+    # Issue 3016 added the two-compiler `check cpp` lanes (92 s each warm, plus
+    # one cold nros-c / nros-cpp cargo build, not yet measured in CI), so the
+    # ceiling moves to 30 until a run measures the new longest.
+    timeout-minutes: 30
     permissions:
       contents: read
       packages: read
@@ -1825,6 +1828,47 @@ jobs:
         run: |
           source ./activate.sh
           just test-unit
+      # Issue 3016 -- the C++ runtime, scoped and header lanes of `check cpp`,
+      # under BOTH compilers, once per merge-queue batch. Until this step they
+      # ran only inside `check build` (schedule / dispatch), so no merge-gating
+      # event compiled a C++ test, and a clang-only defect (an ISO ambiguity
+      # gcc accepts, a test constant clang's `-Wall -Werror` refuses) could not
+      # surface at all: `c++` is gcc on every runner. Measured warm, 92 s per
+      # compiler; the nros-c / nros-cpp cargo build is shared between the two
+      # passes. LANE CONTRACT: the three recipes build their own cargo target
+      # dirs and resolve no fixture stamp. One step per recipe and compiler,
+      # each `!cancelled()`: in one `run:` block an early red would hide the
+      # rest (issue 1040).
+      - name: just check cpp-runtime (gcc)
+        if: ${{ contains(fromJSON('["merge_group","workflow_dispatch"]'), github.event_name) && !cancelled() }}
+        run: |
+          source ./activate.sh
+          NROS_CHECK_CXX=c++ just check cpp-runtime
+      - name: just check cpp-runtime-scoped (gcc)
+        if: ${{ contains(fromJSON('["merge_group","workflow_dispatch"]'), github.event_name) && !cancelled() }}
+        run: |
+          source ./activate.sh
+          NROS_CHECK_CXX=c++ just check cpp-runtime-scoped
+      - name: just check cpp-headers (gcc)
+        if: ${{ contains(fromJSON('["merge_group","workflow_dispatch"]'), github.event_name) && !cancelled() }}
+        run: |
+          source ./activate.sh
+          NROS_CHECK_CXX=c++ just check cpp-headers
+      - name: just check cpp-runtime (clang)
+        if: ${{ contains(fromJSON('["merge_group","workflow_dispatch"]'), github.event_name) && !cancelled() }}
+        run: |
+          source ./activate.sh
+          NROS_CHECK_CXX=clang++ just check cpp-runtime
+      - name: just check cpp-runtime-scoped (clang)
+        if: ${{ contains(fromJSON('["merge_group","workflow_dispatch"]'), github.event_name) && !cancelled() }}
+        run: |
+          source ./activate.sh
+          NROS_CHECK_CXX=clang++ just check cpp-runtime-scoped
+      - name: just check cpp-headers (clang)
+        if: ${{ contains(fromJSON('["merge_group","workflow_dispatch"]'), github.event_name) && !cancelled() }}
+        run: |
+          source ./activate.sh
+          NROS_CHECK_CXX=clang++ just check cpp-headers
       - name: sccache stats (compile tier)
         if: ${{ contains(fromJSON('["pull_request","merge_group","workflow_dispatch"]'), github.event_name) && always() }}
         run: |

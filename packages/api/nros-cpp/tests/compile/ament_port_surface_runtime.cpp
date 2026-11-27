@@ -114,9 +114,7 @@ struct Select {
         using ConstSharedPtr = ::std::shared_ptr<const Request>;
 #endif
         int32_t mode = 0;
-        static constexpr const char* TYPE_NAME = "demo_msgs::srv::dds_::Select_Request_";
         static constexpr const char* TYPE_HASH = "RIHS01_stub_select";
-        static constexpr size_t SERIALIZED_SIZE_MAX = 8;
         static int ffi_serialize(const void* m, uint8_t* buf, size_t cap, size_t* out) {
             return write_i32(static_cast<const Request*>(m)->mode, buf, cap, out);
         }
@@ -130,9 +128,6 @@ struct Select {
         using ConstSharedPtr = ::std::shared_ptr<const Response>;
 #endif
         int32_t previous = 0;
-        static constexpr const char* TYPE_NAME = "demo_msgs::srv::dds_::Select_Response_";
-        static constexpr const char* TYPE_HASH = "RIHS01_stub_select";
-        static constexpr size_t SERIALIZED_SIZE_MAX = 8;
         static int ffi_serialize(const void* m, uint8_t* buf, size_t cap, size_t* out) {
             return write_i32(static_cast<const Response*>(m)->previous, buf, cap, out);
         }

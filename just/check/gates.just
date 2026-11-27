@@ -77,6 +77,16 @@ baseline-shape:
 gate-visibility:
     @python3 scripts/check-gate-visibility.py
 
+# Issue 3016 -- a `check cpp` lane compiles with the compiler it was GIVEN
+# (`NROS_CHECK_CXX`, bound to `_cxx`), never a literal `c++`: the merge
+# queue runs those lanes with gcc AND clang, and a literal compile is gcc in
+# both passes, so the clang pass would read green over a TU it never built.
+# Also: every recipe a workflow runs under `NROS_CHECK_CXX` binds `_cxx`.
+# Self-testing.
+[private]
+cpp-lane-compiler:
+    @python3 scripts/check-cpp-lane-compiler.py
+
 # Forbid `find` scans for git-tracked files (7m36s -> 0.8s, measured).
 # Ratchet: no NEW `grep -q` conditional that reads a tool error as a
 # non-match (issue 0726). Existing sites are baselined per file.
