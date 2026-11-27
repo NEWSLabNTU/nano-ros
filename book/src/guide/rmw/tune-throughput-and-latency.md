@@ -26,18 +26,21 @@ embedded image has no run-time configuration.
 ## Steps
 
 1. Read the values your platform resolves, and the rung that set each one
-   (`builtin`, `platform`, `board` or `env`):
+   (`builtin`, `platform`, `board` or `env`). A knob the ladder does not
+   resolve shows its default, set by `-`. The list has a row for
+   every knob; the transmit path's are the `zenoh.tx_` rows:
 
    ```bash
    nros knob list --platform zephyr
    ```
 
    ```text
-   knob                     value      set by
-   ----                     -----      ------
-   zenoh.tx_batch                     true       platform  [no env knob on this platform]
-   zenoh.tx_split_lock                true       platform  [no env knob on this platform]
-   zenoh.tx_batch_flush_ms            50         platform  [no env knob on this platform]
+   KNOB                                       SCOPE  VALUE                SET BY    WHAT IT IS
+   …
+   zenoh.tx_batch                             image  true                 platform  zenoh-pico tx batching (one send per executor spin)
+   zenoh.tx_batch_flush_ms                    image  50                   platform  zenoh-pico tx batch flush cadence (ms)
+   zenoh.tx_split_lock                        image  true                 platform  zenoh-pico split tx locking (append while sending)
+   …
    ```
 
 2. Turn on transmit batching for an image that publishes many small or
