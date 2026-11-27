@@ -72,6 +72,9 @@ claim_submodules() {
             incomplete:* | diverged)
                 broken=$((broken + 1))
                 echo "  [BROKEN]  $p is ${state%%:*} ($state): an interrupted or redirected checkout."
+                case "$state" in
+                    incomplete:*) echo "            $(nros_submodule_incomplete_reason "$state")." ;;
+                esac
                 echo "            NOT repaired - that would discard what it holds. When it holds nothing:"
                 echo "                $(nros_submodule_state_remedy "$state" "$p")"
                 ;;
@@ -93,7 +96,10 @@ claim_submodules() {
                 echo "                git submodule update $p"
                 ;;
             not-submodule) echo "  [UNKNOWN] $p is not a submodule of this checkout." ;;
-            *) echo "  [OK]      $p already checked out." ;;
+            ok) echo "  [OK]      $p already checked out." ;;
+            *)
+                broken=$((broken + 1))
+                echo "  [BROKEN]  $p: unrecognised provisioning state '$state'." ;;
         esac
     done
     if [ "${#want[@]}" -gt 0 ]; then

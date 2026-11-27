@@ -32,6 +32,17 @@
 #   incomplete:<n>   initialised, but <n> tracked files are absent   RED
 #                    from its working tree or staged as deleted: an
 #                    interrupted checkout. Nothing here can build.
+#   incomplete:<why> initialised, but the checkout cannot prove      RED
+#                    itself (issue 3009). <why> is one of
+#                    no-checkout  no `.git` of its own, or git resolves
+#                                 it to another repository (the
+#                                 superproject);
+#                    no-head      its HEAD names no commit: an unborn
+#                                 branch, the checkout never ran;
+#                    no-index     it has no index;
+#                    empty-index  its index lists nothing its HEAD has.
+#                    Each of these also makes every count below read 0, so
+#                    without this row they read as `ok`.
 #   diverged         HEAD shares no line with the pin (neither is an  RED
 #                    ancestor of the other): checked out at some other
 #                    branch, e.g. upstream `main`.
@@ -76,6 +87,39 @@ nros_submodule_provision_state() {
         echo missing
         return 0
     fi
+    # Issue 3009 -- the checkout must PROVE itself before anything below reads
+    # it. Every probe after this one fails quietly on a checkout that never
+    # happened: `git -C` on a directory with no `.git` answers for the
+    # SUPERPROJECT, `diff --cached HEAD` on an unborn HEAD errors to an empty
+    # list, and `ls-files` with no index lists nothing to be missing. So a
+    # gitdir holding the objects, `HEAD` on an unborn `main` and no index read
+    # as `ok`, and `just setup-worktree` printed "already checked out" over an
+    # empty directory. Measured 2026-11-27 on zenoh-pico in a linked worktree.
+    local top here gitlink
+    if [ ! -e "$p/.git" ]; then
+        echo incomplete:no-checkout
+        return 0
+    fi
+    top="$(git -C "$p" rev-parse --show-toplevel 2>/dev/null || true)"
+    here="$(cd "$p" 2>/dev/null && pwd -P || true)"
+    if [ -z "$top" ] || [ "$(cd "$top" 2>/dev/null && pwd -P || true)" != "$here" ]; then
+        echo incomplete:no-checkout
+        return 0
+    fi
+    current="$(git -C "$p" rev-parse --verify -q 'HEAD^{commit}' 2>/dev/null || true)"
+    if [ -z "$current" ]; then
+        echo incomplete:no-head
+        return 0
+    fi
+    if [ ! -e "$(git -C "$p" rev-parse --path-format=absolute --git-path index 2>/dev/null)" ]; then
+        echo incomplete:no-index
+        return 0
+    fi
+    if [ -z "$(git -C "$p" ls-files 2>/dev/null | head -n 1)" ] \
+        && [ -n "$(git -C "$p" ls-tree --name-only HEAD 2>/dev/null | head -n 1)" ]; then
+        echo incomplete:empty-index
+        return 0
+    fi
     # Tracked files the working tree lacks, and files the index has staged
     # for deletion against the submodule's own HEAD. The second is the
     # interrupted-checkout signature (an index emptied, a tree with only
@@ -86,12 +130,15 @@ nros_submodule_provision_state() {
         echo "incomplete:$((deleted + staged))"
         return 0
     fi
-    if [ "$mark" = " " ]; then
+    # `ok` is a measured equality, never the mark alone: the mark is what
+    # `status` concluded, and it concluded ` ` over the unborn HEAD above.
+    gitlink="$(git ls-files -s -- "$p" 2>/dev/null | awk '$1 == "160000" {print $2; exit}')"
+    if [ "$mark" = " " ] && [ -n "$gitlink" ] && [ "$current" = "$gitlink" ]; then
         echo ok
         return 0
     fi
     recorded="$(git ls-tree HEAD -- "$p" | awk '{print $3}')"
-    current="$(git -C "$p" rev-parse HEAD 2>/dev/null || true)"
+    [ -n "$recorded" ] || recorded="$gitlink"
     if [ -z "$recorded" ] || [ -z "$current" ] \
         || ! git -C "$p" cat-file -e "${recorded}^{commit}" 2>/dev/null; then
         echo unknown-pin
@@ -122,6 +169,17 @@ nros_submodule_state_is_red() {
     esac
 }
 
+# What an `incomplete:<x>` <state> means, in one phrase, or nothing.
+nros_submodule_incomplete_reason() {
+    case "$1" in
+        incomplete:no-checkout) echo "it has no checkout of its own (no .git, or git resolves it to another repository)" ;;
+        incomplete:no-head) echo "its HEAD names no commit (an unborn branch: the checkout never ran)" ;;
+        incomplete:no-index) echo "it has no index" ;;
+        incomplete:empty-index) echo "its index lists none of its HEAD's files" ;;
+        incomplete:*) echo "${1#incomplete:} tracked file(s) absent or staged as deleted" ;;
+    esac
+}
+
 # The one-line repair for a red <state> of <path>, or nothing.
 nros_submodule_state_remedy() {
     local state="$1" p="$2"
@@ -131,6 +189,11 @@ nros_submodule_state_remedy() {
             echo "git submodule init -- $p   (re-registers it; its checkout is untouched. Another worktree's \`git submodule deinit\` unregistered it: remove a finished worktree with \`just worktree-prune\` or \`git worktree remove --force\`, never deinit)"
             ;;
         not-submodule) echo "fix its [[provision.submodule]] row in .config/gate-lanes.toml (renamed?)" ;;
+        incomplete:no-head)
+            # `git submodule update` reads the current revision first, and an
+            # unborn HEAD has none ("Unable to find current revision").
+            echo "git -C $p checkout --detach -f $(git ls-files -s -- "$p" 2>/dev/null | awk '$1 == "160000" {print $2; exit}')   (the checkout never ran, so there is nothing in it to keep)"
+            ;;
         incomplete:*)
             echo "git submodule update --init --force $p   (an interrupted checkout; first check git -C $p status holds nothing you need)"
             ;;

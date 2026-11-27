@@ -7,7 +7,9 @@
 # upstream `main`). Both used to read as provisioned. `behind` and `ahead` are
 # asserted NOT red, because a developer's un-updated or mid-fork submodule must
 # not refuse a lane. Issue 2505 adds the linked-worktree shape: a checkout
-# whose shared registration another worktree's deinit removed.
+# whose shared registration another worktree's deinit removed. Issue 3009 adds
+# the checkouts that cannot prove themselves: an unborn HEAD, a missing or
+# empty index, no `.git` of their own.
 set -euo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # shellcheck source=scripts/lib/git-hook-env.sh
@@ -42,7 +44,10 @@ expect() {
     local what="$1" want="$2" got red=no
     got="$(nros_submodule_provision_state sub)"
     nros_submodule_state_is_red "$got" && red=yes
-    if [ "${got%%:*}" != "${want%% *}" ] || [ "$red" != "${want##* }" ]; then
+    # A wanted word with a `:` names the whole state; without, its kind.
+    local cmp="${got%%:*}"
+    case "${want%% *}" in *:*) cmp="$got" ;; esac
+    if [ "$cmp" != "${want%% *}" ] || [ "$red" != "${want##* }" ]; then
         echo "[FAIL] $what: got $got (red=$red), want ${want%% *} (red=${want##* })"
         fails=$((fails + 1))
     else
@@ -74,6 +79,44 @@ g -C sub checkout -q "$pin"
 g -C sub checkout -q main; g add sub; g commit -qm bump; g -C sub checkout -q "$pin"
 expect "behind the pin (left un-updated)" "behind no"
 g -C sub checkout -q main
+
+# Issue 3009 -- checkouts that cannot prove themselves. Each made every probe
+# above read 0, so each read `ok`. The first is the shape measured on
+# zenoh-pico: the gitdir holds the objects, HEAD is an unborn `main`, there is
+# no index, and the working tree holds only `.git`.
+subgit="$(g -C sub rev-parse --path-format=absolute --git-dir)"
+rm -f sub/f1 sub/f2 sub/f3
+rm -f "$subgit/index"
+g -C sub symbolic-ref HEAD refs/heads/never-born
+expect "unborn HEAD, no index, empty tree (the zenoh-pico row)" "incomplete:no-head yes"
+# Each state's own remedy must repair it: a remedy the state names and that
+# does not work is the next "already checked out".
+repair() {
+    local fix
+    fix="$(nros_submodule_state_remedy "$(nros_submodule_provision_state sub)" sub)"
+    eval "${fix%%   (*}" >/dev/null 2>&1 || { echo "[FAIL] $1: remedy failed: $fix"; fails=$((fails + 1)); }
+    expect "$1, repaired by its own remedy" "ok no"
+}
+repair "the zenoh-pico row"
+
+g -C sub symbolic-ref HEAD refs/heads/never-born
+expect "unborn HEAD over a complete tree" "incomplete:no-head yes"
+repair "unborn HEAD over a complete tree"
+
+rm -f "$subgit/index"
+expect "HEAD on the pin, no index" "incomplete:no-index yes"
+repair "no index"
+
+g -C sub read-tree --empty
+expect "HEAD on the pin, an empty index" "incomplete:empty-index yes"
+repair "an empty index"
+
+# No `.git` at all: `status` already marks it uninitialised, so it is
+# `missing` (red), and `git -C` never gets to answer for the superproject.
+mv sub/.git "$work/sub.gitfile"
+expect "no .git of its own" "missing yes"
+mv "$work/sub.gitfile" sub/.git
+expect "the .git restored" "ok no"
 
 echo modified >"sub/f2"
 expect "a modified file is someone's work, not a broken checkout" "ok no"
