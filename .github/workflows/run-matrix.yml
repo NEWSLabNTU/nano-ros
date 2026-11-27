@@ -98,6 +98,14 @@ jobs:
       # plus a `ci matrix` step, i.e. the lane vocabulary spelled twice with the
       # reader left to know they must agree. `just test tier2` builds what that
       # scope needs and runs exactly it.
+      # Issue 2997 (RFC-0114 D13.3) -- every fixture resolution appends one
+      # ledger line (test, row, coordinate), so this run's cells are evidence
+      # for their boards: before, the matrix lanes ran most boards' cells and
+      # kept none of it, and three boards read no verdict every night. In
+      # RUNNER_TEMP, under the reports dir: the fixture tree persists across
+      # runs, and a ledger there would carry an earlier run's lines.
+      - name: Point the evidence ledger at this run's reports
+        run: echo "NROS_TEST_EVIDENCE_DIR=$RUNNER_TEMP/nros-run-reports/nros-evidence" >> "$GITHUB_ENV"
       - name: just setup tier2
         id: setup
         run: |
@@ -359,6 +367,14 @@ jobs:
         id: tree
         working-directory: ${{ github.workspace }}
         run: scripts/ci/fixture-tree.sh sync
+      # Issue 2997 (RFC-0114 D13.3) -- every fixture resolution appends one
+      # ledger line (test, row, coordinate), so this run's cells are evidence
+      # for their boards: before, the matrix lanes ran most boards' cells and
+      # kept none of it, and three boards read no verdict every night. In
+      # RUNNER_TEMP, under the reports dir: the fixture tree persists across
+      # runs, and a ledger there would carry an earlier run's lines.
+      - name: Point the evidence ledger at this run's reports
+        run: echo "NROS_TEST_EVIDENCE_DIR=$RUNNER_TEMP/nros-run-reports/nros-evidence" >> "$GITHUB_ENV"
       - name: just setup tier1
         id: setup
         run: |
@@ -602,6 +618,14 @@ jobs:
       - name: Check out the persistent fixture tree at this commit
         working-directory: ${{ github.workspace }}
         run: scripts/ci/fixture-tree.sh sync
+      # Issue 2997 (RFC-0114 D13.3) -- every fixture resolution appends one
+      # ledger line (test, row, coordinate), so this run's cells are evidence
+      # for their boards: before, the matrix lanes ran most boards' cells and
+      # kept none of it, and three boards read no verdict every night. In
+      # RUNNER_TEMP, under the reports dir: the fixture tree persists across
+      # runs, and a ledger there would carry an earlier run's lines.
+      - name: Point the evidence ledger at this run's reports
+        run: echo "NROS_TEST_EVIDENCE_DIR=$RUNNER_TEMP/nros-run-reports/nros-evidence" >> "$GITHUB_ENV"
       - name: just setup tier2-nightly
         run: |
           source ./activate.sh
@@ -716,6 +740,54 @@ jobs:
       - name: Sweep orphans and disk
         if: always()
         run: ./scripts/ci/runner-sweep.sh --provision || true
+
+  # Issue 2997 (RFC-0114 D13.3) -- this run's results per registry board,
+  # from the tier jobs' junit and evidence ledgers, as nightly.yml's
+  # `board-results` does. Each tier job's artifact is read as ITS job, so a
+  # cell lane-skipped in one tier never erases its verdict in another. A
+  # SEPARATE job, in no required check, never `continue-on-error`.
+  board-results:
+    name: board results
+    needs: [matrix, tier1, matrix-nightly]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            scripts/ci
+            scripts/lib
+            packages/boards/board-support-status.json
+            packages/testing/nros-tests/src/matrix.rs
+          sparse-checkout-cone-mode: false
+      - name: Download the tier jobs' junit and evidence ledgers
+        uses: actions/download-artifact@v4
+        with:
+          pattern: "*-junit"
+          path: board-artifacts
+      - name: Read this run's jobs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh run view "${{ github.run_id }}" --repo "${{ github.repository }}" --json jobs > jobs.json
+      - name: Collect the board results
+        run: |
+          python3 scripts/ci/board-results.py --jobs jobs.json --artifacts board-artifacts \
+            --out board-results.json --summary "$GITHUB_STEP_SUMMARY" \
+            --run-meta workflow=run-matrix.yml event="${{ github.event_name }}" \
+              run="${{ github.run_id }}" sha="${{ github.sha }}" date="$(date -u +%F)" \
+              url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+      - name: Upload board-results.json
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: board-results
+          path: board-results.json
+          if-no-files-found: error
+          retention-days: 90
 
   coverage-matrix-nightly:
     # issue 1790 — `report-interlock-coverage.sh` reads the gated job's

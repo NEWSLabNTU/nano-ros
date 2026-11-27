@@ -905,6 +905,11 @@ jobs:
           if [ "${n:-0}" -gt 0 ]; then
             echo "::warning title=$n lane(s) on main produce no signal::$(sed -n 's/^lane-health: [0-9]* of [0-9]* lane(s) on main produce no signal: //p' /tmp/lanes.md)"
           fi
+          # Issue 2997 -- a board no lane gave a verdict to, lately.
+          b="$(sed -n 's/^lane-health: \([0-9][0-9]*\) board(s) with no verdict.*/\1/p' /tmp/lanes.md | head -1)"
+          if [ "${b:-0}" -gt 0 ]; then
+            echo "::warning title=$b board(s) with no verdict in their recent results::$(sed -n 's/^lane-health: [0-9]* board(s) with no verdict in their recent results: //p' /tmp/lanes.md)"
+          fi
 
       # Issue 1629: the queue ejects an entry `checks_timed_out` while its gate
       # is still running once the lane outgrows `check_response_timeout_minutes`.

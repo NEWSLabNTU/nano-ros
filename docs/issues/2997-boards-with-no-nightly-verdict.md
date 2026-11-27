@@ -76,15 +76,35 @@ run there are not evidence for any board's status.
   junit. Over nightly 45868131204's real artifacts, NuttxArm now reads
   "passed 10/10". The self-test gains the cross-job collision; it fails
   without the fix (mutation-checked).
-- **The evidence the matrix lanes already produce:** `run-matrix.yml`'s tier
-  jobs set the ledger and upload it beside their junit, and a `board-results`
-  job collects them. That covers QemuBaremetal's emulator cells and the other
-  boards' unlisted consumers with no new test execution.
-- **Report the class:** a board that has a registry row and a scheduled lane
-  but had NO verdict in its recent runs across the scheduled lanes is named,
-  in the daily lane-health report (`scripts/ci/lane-health.py`, phase-591
-  W8), never left to read "Builds".
-- **(3):** NuttxRiscv's scope coordinates include the coordinates of the
+- **Here: the evidence the matrix lanes already produce.** `run-matrix.yml`'s
+  three tier jobs set the ledger under this run's reports dir, so it uploads
+  with their junit; the fixture tree persists, and a ledger there would carry
+  an earlier run's lines. A `board-results` job collects them. That covers
+  QemuBaremetal's emulator cells and the other boards' unlisted consumers
+  with no new test execution. Its first scheduled run is the measurement.
+- **Here: the class is reported.** `scripts/lib/board_history.py` is the one
+  reader of the boards' recent results across the scheduled lanes. Its
+  `silent_boards` names every registry row a scheduled lane owes a verdict
+  (a nightly job or a scheduled cadence; `manual` rows excluded) whose
+  recent results hold none. The daily `lane-health` report prints them, and
+  automation's triage raises a warning. Measured against the repository on
+  2026-11-27, it names exactly the three boards:
+
+  ```
+  lane-health: 3 board(s) with no verdict in their recent results: nros-board-nuttx-qemu@NuttxArm, nros-board-mps2-an385@QemuBaremetal, nros-board-nuttx-qemu@NuttxRiscv.
+  ```
+
+  The first cut also named `nros-board-zephyr@Fvp`, a `manual` board no lane
+  owes a verdict, which is why that exclusion is in the rule and the
+  self-test. The release recorder (phase-585 W5, #4969) moves onto the same
+  reader once both land. Mutation: with the no-verdict branch disabled, the
+  self-test fails.
+- **Open, (2):** QemuBaremetal's own nightly job still runs only shell
+  harnesses. With run-matrix's evidence it gets verdicts from tier 2; whether
+  its nightly job should also run its consumers (and the other boards' hand
+  lists be derived from `consumer_of`) is a lane-time decision for the lane
+  owner.
+- **Open, (3):** NuttxRiscv's scope coordinates include the coordinates of the
   peer fixtures its cells resolve, or the cell moves to a lane that has them.
   To be decided with the lane-scope owner.
 

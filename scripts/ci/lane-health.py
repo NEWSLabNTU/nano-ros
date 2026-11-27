@@ -85,6 +85,12 @@ import subprocess
 import sys
 
 REPO = os.environ.get("NROS_QUEUE_REPO", "NEWSLabNTU/nano-ros")
+
+# Issue 2997 -- the one reader of the boards' recent results (also the
+# release recorder's), from scripts/lib.
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "lib"))
+import board_history  # noqa: E402
+
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 WORKFLOWS = ROOT / ".github" / "workflows"
 EVENTS = {"schedule", "push", "workflow_dispatch"}
@@ -287,6 +293,9 @@ def selftest(verbose: bool = False) -> int:
     def r(c, d="2026-10-03"):
         return {"conclusion": c, "createdAt": d + "T00:00:00Z", "databaseId": 1}
 
+    for f in board_history.self_test():
+        chk(f"board history: {f}", False)
+    chk("board history: its self-test runs", True)
     chk("no runs is `no runs`, not a failure", assess([], 3)["state"] == "no runs")
     chk("a green newest verdict is OK", assess([r("success"), r("failure")], 3)["state"] == "OK")
     chk("one red under the threshold is `red`",
@@ -469,6 +478,29 @@ def main() -> int:
                 print(f"  {wf} {d}: {detail}")
         print("No cell ran on either day, so a new regression in that lane is invisible\n"
               "behind the old one (phase-591 W8). Fix what stops it before its cells.")
+    # Issue 2997 -- a lane can be green and still verify no board: its job
+    # passes and its tests resolve none of the board's fixtures. Judged across
+    # every scheduled lane's recent results, so a board another lane covers
+    # is not named. Not on a replay or a single-lane run: the window is "now",
+    # across all of them.
+    if not args.as_of and not args.lane:
+        status_file = pathlib.Path(__file__).resolve().parents[2] / \
+            "packages/boards/board-support-status.json"
+        try:
+            hist = board_history.histories(REPO)
+            quiet = board_history.silent_boards(json.loads(status_file.read_text()), hist)
+        except (RuntimeError, OSError, ValueError) as e:
+            quiet = None
+            print(f"\nlane-health: could not read the boards' results: {e}", file=sys.stderr)
+        if quiet is not None:
+            print()
+            print(f"lane-health: {len(quiet)} board(s) with no verdict in their recent results"
+                  + (f": {', '.join(k for k, _ in quiet)}" if quiet else "") + ".")
+            for key, why in quiet:
+                print(f"  {key}: {why}")
+            if quiet:
+                print("Each reads \"Builds\" or \"Not run since\" while its lanes look green:\n"
+                      "no cell of it ran, or none reached the evidence (issue 2997).")
     silent = [row[0] for row in rows
               if row[1] in ("NO VERDICT 2d", "NO SIGNAL", "NEVER FINISHES", "RARELY FINISHES")]
     print()
