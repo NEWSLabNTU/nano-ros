@@ -248,7 +248,8 @@ pub fn explain(token: &str) -> eyre::Result<String> {
     Err(Diag::UnknownDiagCode
         .refusal(format_args!("no diagnostic has the code `{token}`"))
         .help(format_args!(
-            "the nearest codes are {}; check the code against the refusal that printed it",
+            "the nearest codes are {}; check the code against the refusal that printed it \
+             (`nros code list` names every one)",
             near.join(", ")
         ))
         .report())
@@ -391,7 +392,7 @@ mod tests {
             format!(
                 "error[NROS-0006]: no diagnostic has the code `NROS-0099`\n  \
                  help: the nearest codes are {}; check the code \
-                 against the refusal that printed it\n  \
+                 against the refusal that printed it (`nros code list` names every one)\n  \
                  explain: nros code show NROS-0006",
                 near.join(", ")
             )
