@@ -1,12 +1,14 @@
 ---
 id: 2941
 title: "Seven native_sim example images state a QEMU slirp locator (tcp/10.0.2.2), which no native_sim image can reach; the fixtures' own locator define hid it"
-status: open
+status: resolved
 type: bug
 severity: medium
 area: [examples, zephyr]
 related: []
 found: 2026-11-24
+resolved: 2026-11-28
+resolved_in: "fa6b48e1f1"
 ---
 
 ## What is wrong
@@ -76,3 +78,20 @@ it.
   guest's boot line). That build needs a host with the Zephyr SDK.
 - Not done: the converse, refusing `127.0.0.1` on a QEMU user-mode board.
   The rule would need the set of QEMU boards, which no descriptor states yet.
+
+## Acceptance met (2026-11-28, host 139)
+
+`nros build zephyr_rust_params` in examples/workspaces/features (one of the
+seven images; main fa6b48e1f1), with no fixture define:
+- `zephyr/.config` reads `CONFIG_NROS_LOCATOR="tcp/127.0.0.1:7461"`;
+- the build dir's `CMakeCache.txt` holds no `CONFIG_NROS_LOCATOR`, so the
+  value is the image's own;
+- the guest dials it at boot. With no router listening the host answers RST
+  at once: `zenoh open: no session with tcp/127.0.0.1:7461 in one attempt
+  (connect_timeout_ms=0)` at 2.001 s.
+
+The gate half (rule 6, with its negative control) landed with the fix. The
+converse rule, refusing `127.0.0.1` on a QEMU user-mode board, is still not
+written: no descriptor states which boards are QEMU user-mode. It is a
+separate class and not part of this issue's acceptance.
+
