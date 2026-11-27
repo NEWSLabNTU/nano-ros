@@ -1510,7 +1510,7 @@ Usage: nros knob list [OPTIONS]
 
 Options:
       --json                 Print one JSON object instead of a table
-      --platform <PLATFORM>  Resolve each knob's value for this platform, and say which rung of the platform/board ladder set it (`builtin`, `platform`, `board`, `env`)
+      --platform <PLATFORM>  Resolve each knob's value for this platform, and say which rung of the platform/board ladder set it (`builtin`, `platform`, `board`, `env`). A knob that ladder does not resolve shows its default, set by `-`
       --board-toml <FILE>    With `--platform`: the board's `nros-board.toml`, for its rung
       --workspace <DIR>      The workspace whose packages are searched for their knobs (and, with `--platform`, its platform packages). Default: the current directory
   -h, --help                 Print help
