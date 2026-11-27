@@ -7,7 +7,6 @@ use crate::{
     process::{graceful_kill_process_group, kill_process_group},
 };
 use std::{
-    io::Read,
     net::TcpStream,
     process::{Child, Stdio},
     time::{Duration, Instant},
@@ -298,7 +297,12 @@ fn router_exit_hint(stderr: &str) -> Option<&'static str> {
         )
 }
 
-fn wait_for_router_ready(handle: &mut Child, locator: &str, port: u16) -> TestResult<()> {
+fn wait_for_router_ready(
+    handle: &mut Child,
+    locator: &str,
+    port: u16,
+    log: &std::path::Path,
+) -> TestResult<()> {
     // Issue 2457 -- every test that starts a router opens a session on it, and
     // a failed open says why only through `nros_log`. Without a sink that
     // line is dropped and the test prints a bare `ConnectionFailed`.
@@ -338,11 +342,8 @@ fn wait_for_router_ready(handle: &mut Child, locator: &str, port: u16) -> TestRe
         }
 
         if let Some(status) = handle.try_wait()? {
-            let mut stderr = String::new();
-            if let Some(mut pipe) = handle.stderr.take() {
-                let _ = pipe.read_to_string(&mut stderr);
-            }
-            let stderr = stderr.trim();
+            let stderr = router_log_tail(log);
+            let stderr = stderr.as_str();
             let detail = if stderr.is_empty() {
                 String::new()
             } else {
@@ -438,6 +439,80 @@ pub struct ZenohRouter {
     /// How to start this router again, for [`restart`](Self::restart).
     /// `None` for the serial and TLS routers, which do not support it.
     respawn: Option<Respawn>,
+    /// Issue 2993 -- where this router's stdout and stderr go.
+    log: RouterLog,
+    /// Issue 2993 -- the host's load when this router started.
+    load_at_start: Option<String>,
+}
+
+// Issue 2993.
+/// Where a router's stdout and stderr go: ALWAYS a file. Before, an
+/// un-opted-in router wrote stdout to /dev/null and stderr to a pipe read only
+/// if it died during startup, so a test that failed later lost the router's
+/// side for good (B46: "accepting" 117 ms after spawn, then the image's open
+/// refused, and nothing the router said survived). An undrained pipe was a
+/// hazard too: a router that writes 64 KiB to it blocks on its own logging.
+///
+/// With `ZENOHD_LOG` / a caller's filter / `NROS_TEST_LOGS` the file is the
+/// opt-in one in `test-logs/fixtures/`, at the level asked for; otherwise it
+/// sits in a temporary directory this router owns, at zenohd's default level,
+/// and is kept only when the test fails ([`ZenohRouter`]'s `Drop`).
+struct RouterLog {
+    path: std::path::PathBuf,
+    _dir: Option<tempfile::TempDir>,
+}
+
+/// Point `cmd`'s stdout and stderr at `name`'s log. `prior` is the log of the
+/// router this one restarts: the same file, appended to.
+fn route_router_output(
+    cmd: &mut std::process::Command,
+    name: &str,
+    log_filter: Option<&str>,
+    prior: Option<RouterLog>,
+) -> TestResult<RouterLog> {
+    let append = prior.is_some();
+    let log = match prior {
+        Some(l) => l,
+        None => {
+            let filter = resolve_router_log_filter(log_filter);
+            if filter.is_some() || crate::fixtures::fixture_logs_enabled() {
+                cmd.env("RUST_LOG", filter.as_deref().unwrap_or("info"));
+                RouterLog {
+                    path: crate::fixtures::fixture_log_path(name),
+                    _dir: None,
+                }
+            } else {
+                let dir = tempfile::Builder::new()
+                    .prefix("nros-zenohd-")
+                    .tempdir()
+                    .map_err(TestError::ProcessStart)?;
+                RouterLog {
+                    path: dir.path().join(format!("{name}.log")),
+                    _dir: Some(dir),
+                }
+            }
+        }
+    };
+    let file = std::fs::OpenOptions::new()
+        .create(true)
+        .write(true)
+        .append(append)
+        .truncate(!append)
+        .open(&log.path)
+        .map_err(TestError::ProcessStart)?;
+    let out = file.try_clone().map_err(TestError::ProcessStart)?;
+    cmd.stdout(Stdio::from(out)).stderr(Stdio::from(file));
+    Ok(log)
+}
+
+/// The end of a router's log, for a refusal that names why it exited.
+fn router_log_tail(path: &std::path::Path) -> String {
+    let text = std::fs::read_to_string(path).unwrap_or_default();
+    let start = text.len().saturating_sub(4096);
+    let start = (start..text.len())
+        .find(|&i| text.is_char_boundary(i))
+        .unwrap_or(text.len());
+    text[start..].trim().to_string()
 }
 
 // Issue 2774.
@@ -449,37 +524,16 @@ struct Respawn {
 }
 
 /// Spawn `zenohd` with `overrides` and wait until it accepts on `locator`.
-/// `append_log` keeps a restarted router's log in the same file.
+/// `prior` is the log of the router this one restarts, appended to.
 fn spawn_router(
     overrides: &[String],
     locator: &str,
     port: u16,
     log_filter: Option<&str>,
-    append_log: bool,
-) -> TestResult<(Child, String)> {
+    prior: Option<RouterLog>,
+) -> TestResult<(Child, String, RouterLog)> {
     let mut cmd = router_command(overrides)?;
-    // Diagnostic log capture per port — opt-in, unified dir. Enabled by
-    // ZENOHD_LOG=trace|debug (also sets RUST_LOG level), by a caller-named
-    // filter, or by NROS_TEST_LOGS; the file lands in test-logs/fixtures/
-    // (see fixtures::fixture_log_path). Defaults to null sinks so a normal
-    // run leaves nothing behind.
-    let zenohd_log = resolve_router_log_filter(log_filter);
-    if zenohd_log.is_some() || crate::fixtures::fixture_logs_enabled() {
-        let log_path = crate::fixtures::fixture_log_path(&format!("zenohd-{port}"));
-        let log = std::fs::OpenOptions::new()
-            .create(true)
-            .write(true)
-            .append(append_log)
-            .truncate(!append_log)
-            .open(&log_path)
-            .map_err(TestError::ProcessStart)?;
-        let log_stdout = log.try_clone().map_err(TestError::ProcessStart)?;
-        cmd.env("RUST_LOG", zenohd_log.as_deref().unwrap_or("info"))
-            .stdout(Stdio::from(log_stdout))
-            .stderr(Stdio::from(log));
-    } else {
-        cmd.stdout(Stdio::null()).stderr(Stdio::piped());
-    }
+    let log = route_router_output(&mut cmd, &format!("zenohd-{port}"), log_filter, prior)?;
     #[cfg(unix)]
     crate::process::set_new_process_group(&mut cmd);
     let launch = describe_router(&cmd);
@@ -487,8 +541,8 @@ fn spawn_router(
 
     // Wait for zenohd to be ready (TCP port accepting connections)
     // 10s allows for slow startup under concurrent test load
-    wait_for_router_ready(&mut handle, locator, port)?;
-    Ok((handle, launch))
+    wait_for_router_ready(&mut handle, locator, port, &log.path)?;
+    Ok((handle, launch, log))
 }
 
 impl ZenohRouter {
@@ -602,7 +656,8 @@ impl ZenohRouter {
             .join(",");
         let mut overrides = vec![format!("listen/endpoints=[{endpoints}]")];
         overrides.extend_from_slice(extra);
-        let (handle, launch) = spawn_router(&overrides, &locator, port, log_filter, false)?;
+        let load_at_start = crate::run::host_load_sample();
+        let (handle, launch, log) = spawn_router(&overrides, &locator, port, log_filter, None)?;
 
         Ok(Self {
             handle,
@@ -615,6 +670,8 @@ impl ZenohRouter {
                 locator,
                 log_filter: log_filter.map(str::to_owned),
             }),
+            log,
+            load_at_start,
         })
     }
 
@@ -635,18 +692,8 @@ impl ZenohRouter {
             .join(",");
         let mut cmd = router_command(&[format!("listen/endpoints=[{endpoints}]")])?;
 
-        let zenohd_log = resolve_router_log_filter(None);
-        if zenohd_log.is_some() || crate::fixtures::fixture_logs_enabled() {
-            let log_path = crate::fixtures::fixture_log_path("zenohd-serial");
-            let log = std::fs::File::create(&log_path).map_err(TestError::ProcessStart)?;
-            let log_stdout = log.try_clone().map_err(TestError::ProcessStart)?;
-            cmd.env("RUST_LOG", zenohd_log.as_deref().unwrap_or("info"))
-                .stdout(Stdio::from(log_stdout))
-                .stderr(Stdio::from(log));
-        } else {
-            cmd.stdout(std::process::Stdio::null())
-                .stderr(std::process::Stdio::piped());
-        }
+        let load_at_start = crate::run::host_load_sample();
+        let log = route_router_output(&mut cmd, "zenohd-serial", None, None)?;
         #[cfg(unix)]
         crate::process::set_new_process_group(&mut cmd);
         let launch = describe_router(&cmd);
@@ -678,6 +725,8 @@ impl ZenohRouter {
             launch,
             _lease: None,
             respawn: None,
+            log,
+            load_at_start,
         })
     }
 
@@ -733,7 +782,8 @@ impl ZenohRouter {
             cert_cfg,
             key_cfg,
         ])?;
-        cmd.stdout(Stdio::null()).stderr(Stdio::piped());
+        let load_at_start = crate::run::host_load_sample();
+        let log = route_router_output(&mut cmd, &format!("zenohd-tls-{port}"), None, None)?;
         #[cfg(unix)]
         crate::process::set_new_process_group(&mut cmd);
         let launch = describe_router(&cmd);
@@ -742,7 +792,7 @@ impl ZenohRouter {
         // Readiness probes the loopback IPv4 address: the dual-stack listener
         // accepts it, and it is what `kill_listeners_on_port` reasons about.
         let probe = format!("tls/127.0.0.1:{}", port);
-        wait_for_router_ready(&mut handle, &probe, port)?;
+        wait_for_router_ready(&mut handle, &probe, port, &log.path)?;
 
         Ok(Self {
             handle,
@@ -751,6 +801,8 @@ impl ZenohRouter {
             launch,
             _lease: lease,
             respawn: None,
+            log,
+            load_at_start,
         })
     }
 
@@ -834,15 +886,20 @@ impl ZenohRouter {
                 "this router kind cannot be restarted".to_string(),
             ));
         };
-        let (handle, launch) = spawn_router(
+        let prior = RouterLog {
+            path: self.log.path.clone(),
+            _dir: self.log._dir.take(),
+        };
+        let (handle, launch, log) = spawn_router(
             &r.overrides,
             &r.locator,
             self.port,
             r.log_filter.as_deref(),
-            true,
+            Some(prior),
         )?;
         self.handle = handle;
         self.launch = launch;
+        self.log = log;
         Ok(())
     }
 
@@ -854,6 +911,44 @@ impl ZenohRouter {
 impl Drop for ZenohRouter {
     fn drop(&mut self) {
         graceful_kill_process_group(&mut self.handle);
+        if std::thread::panicking() {
+            self.keep_on_failure(&crate::build_dir(crate::kind::FAILED_RUN_LOGS, &[]));
+        }
+    }
+}
+
+impl ZenohRouter {
+    // Issue 2993.
+    /// A failing test's router side outlives the test: its last lines on
+    /// stderr (into the junit, as the XRCE Agent's are, issue 2416), and its
+    /// log's tail plus the host load at its start and at the failure in
+    /// `dest`, beside the image's console log ([`crate::run::keep_peer_failure`]).
+    fn keep_on_failure(&self, dest: &std::path::Path) -> Vec<std::path::PathBuf> {
+        let who = match (self.port, self.tls) {
+            (0, _) => "zenohd-serial".to_string(),
+            (p, true) => format!("zenohd-tls-{p}"),
+            (p, false) => format!("zenohd-{p}"),
+        };
+        let tail = router_log_tail(&self.log.path);
+        eprintln!(
+            "{who}: its last output ({}):\n{}",
+            self.log.path.display(),
+            if tail.is_empty() {
+                "  [zenohd] (no output)".to_string()
+            } else {
+                tail.lines()
+                    .map(|l| format!("  [zenohd] {l}"))
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            }
+        );
+        crate::run::keep_peer_failure(
+            dest,
+            &who,
+            &self.log.path,
+            &self.launch,
+            self.load_at_start.as_deref(),
+        )
     }
 }
 
@@ -924,12 +1019,18 @@ mod tests {
     fn a_listener_the_router_does_not_hold_is_port_taken_not_ready() {
         let stranger = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let port = stranger.local_addr().unwrap().port();
+        let log = tempfile::NamedTempFile::new().unwrap();
         let mut fake = std::process::Command::new("sleep")
             .arg("1")
             .stderr(Stdio::piped())
             .spawn()
             .unwrap();
-        let got = wait_for_router_ready(&mut fake, &format!("tcp/127.0.0.1:{port}"), port);
+        let got = wait_for_router_ready(
+            &mut fake,
+            &format!("tcp/127.0.0.1:{port}"),
+            port,
+            log.path(),
+        );
         let _ = fake.kill();
         let _ = fake.wait();
         assert!(matches!(got, Err(TestError::PortTaken(_))), "got {got:?}");
@@ -942,7 +1043,12 @@ mod tests {
             .stderr(Stdio::piped())
             .spawn()
             .unwrap();
-        let got = wait_for_router_ready(&mut fake, &format!("tcp/127.0.0.1:{port}"), port);
+        let got = wait_for_router_ready(
+            &mut fake,
+            &format!("tcp/127.0.0.1:{port}"),
+            port,
+            log.path(),
+        );
         assert!(
             matches!(got, Err(TestError::ProcessFailed(_))),
             "got {got:?}"
@@ -1098,5 +1204,120 @@ mod tests {
             None,
             "a caller that names no filter and no ZENOHD_LOG leaves logging off"
         );
+    }
+
+    // Issue 2993 -- a router that dies during startup is explained from its
+    // LOG, which is where its stderr goes now (no pipe nobody drains).
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn an_early_exit_is_explained_from_the_router_log() {
+        let mut cmd = std::process::Command::new("sh");
+        cmd.args(["-c", "echo 'Address already in use: boom' >&2; exit 3"]);
+        let log = route_router_output(&mut cmd, "zenohd-early-exit-test", None, None).unwrap();
+        let mut fake = cmd.spawn().unwrap();
+        let port = std::net::TcpListener::bind("127.0.0.1:0")
+            .unwrap()
+            .local_addr()
+            .unwrap()
+            .port();
+        let got =
+            wait_for_router_ready(&mut fake, &format!("tcp/127.0.0.1:{port}"), port, &log.path);
+        match got {
+            Err(TestError::ProcessFailed(m)) => assert!(m.contains("boom"), "{m}"),
+            other => panic!("got {other:?}"),
+        }
+    }
+
+    /// A stand-in router: its own process group, as a real one has, so the
+    /// drop's group kill reaches it.
+    fn sleeper(log: RouterLog) -> ZenohRouter {
+        let mut cmd = std::process::Command::new("sleep");
+        cmd.arg("30");
+        crate::process::set_new_process_group(&mut cmd);
+        ZenohRouter {
+            handle: cmd.spawn().unwrap(),
+            port: 4242,
+            tls: false,
+            launch: "zenohd (test stand-in)".to_string(),
+            _lease: None,
+            respawn: None,
+            log,
+            load_at_start: crate::run::host_load_sample(),
+        }
+    }
+
+    fn temp_log(text: &str) -> RouterLog {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("zenohd-4242.log");
+        std::fs::write(&path, text).unwrap();
+        RouterLog {
+            path,
+            _dir: Some(dir),
+        }
+    }
+
+    // Issue 2993 -- the router's side of a failed cell is kept: its log's tail
+    // and the host load at start and at failure, named for the cell.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_failed_cell_keeps_the_router_log_and_the_host_load() {
+        let dest = tempfile::tempdir().unwrap();
+        let router = sleeper(temp_log(
+            "zenohd: New transport link\nzenohd: refused InitSyn\n",
+        ));
+        let kept = router.keep_on_failure(dest.path());
+        assert_eq!(kept.len(), 2, "{kept:?}");
+        let log = std::fs::read_to_string(&kept[0]).unwrap();
+        assert!(log.contains("refused InitSyn"), "{log}");
+        assert!(
+            kept[0]
+                .file_name()
+                .unwrap()
+                .to_string_lossy()
+                .ends_with("--zenohd-4242.log")
+        );
+        let load = std::fs::read_to_string(&kept[1]).unwrap();
+        assert!(load.contains("at start:   unix="), "{load}");
+        assert!(load.contains("at failure: unix="), "{load}");
+        assert!(load.contains("procs_running="), "{load}");
+    }
+
+    // Issue 2993 -- and ONLY a failed one: a passing test's drop keeps nothing,
+    // while a panicking one keeps it in build/failed-run-logs, named for the cell.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn only_a_panicking_drop_keeps_the_router_side() {
+        let dest = crate::build_dir(crate::kind::FAILED_RUN_LOGS, &[]);
+        let cell = format!("issue2993_drop_probe_{}", std::process::id());
+        let named = |c: &str| dest.join(format!("{c}--zenohd-4242.log"));
+
+        let c = cell.clone() + "_pass";
+        std::thread::Builder::new()
+            .name(c.clone())
+            .spawn(|| drop(sleeper(temp_log("passing\n"))))
+            .unwrap()
+            .join()
+            .unwrap();
+        assert!(
+            !named(&c).exists(),
+            "a passing drop kept {}",
+            named(&c).display()
+        );
+
+        let c = cell + "_fail";
+        let r = std::thread::Builder::new()
+            .name(c.clone())
+            .spawn(|| {
+                let _router = sleeper(temp_log("the router side\n"));
+                panic!("the cell fails");
+            })
+            .unwrap()
+            .join();
+        assert!(r.is_err());
+        let kept = named(&c);
+        let text = std::fs::read_to_string(&kept).unwrap_or_default();
+        let _ = std::fs::remove_file(&kept);
+        let _ = std::fs::remove_file(dest.join(format!("{c}--zenohd-4242--host-load.txt")));
+        assert!(text.contains("the router side"), "kept: {text:?}");
     }
 }
