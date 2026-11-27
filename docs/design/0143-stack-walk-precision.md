@@ -12,7 +12,7 @@ superseded-by: null
 
 # RFC-0143 — Stack-floor walk precision: narrower indirect binding and an exact search
 
-**Status:** Draft. Four questions below wait on a ruling; no code before it.
+**Status:** Draft. Ruled 2026-11-27 (Q1, Q3, Q4 as drafted; Q2 changed: D1 and D2 run together). Work: phase-592.
 
 ## Summary
 
@@ -75,7 +75,8 @@ reads. A vtable nothing live references contributes nothing.
 
 ### D2 — C function pointers bind through the field or parameter they travel in
 
-Reopens phase-557 W7f's design, which stopped at its checkpoint because
+Runs alongside D1 (ruled 2026-11-27, Q2). Reopens phase-557 W7f's design,
+which stopped at its checkpoint because
 under half of the sites bound through a trusted channel (37-43 % on Nucleo,
 about 0 % on mps2 bare metal for lack of C IR). Two of its three
 prerequisites have since landed (C IR for cc-rs builds through
@@ -111,22 +112,26 @@ which is an upper bound on the thread's stack exactly when the binding is
 sound (D1/D2 keep a coarse binding wherever precision is not proven). The
 docs and the report drop "heuristic floor, order-dependent" once D3 lands.
 
-## Open questions (for the ruling)
+## Questions, ruled 2026-11-27
 
 - **Q1 — D1's reach.** Bind `dyn` sites by live vtables (as drafted), or by a
   full points-to analysis over MIR? Drafted: live vtables. It uses inputs
   the walk already has and needs no compiler plugin; points-to is far more
   work for a gain not yet measured.
+  **Ruled: live vtables, from the IR and relocations; no MIR points-to.**
 - **Q2 — D2's order against D1.** Measure D1 alone first, on the two 2658
   images and realtime-c, and decide on D2 from that number? Drafted: yes.
   D2 was stopped once already; it reopens only if D1 leaves the SCC too
   large for D3.
+  **Ruled: both together, not the drafted order.** D1 and D2 are parallel
+  work items; D2 does not wait on D1's measurement.
 - **Q3 — A spent budget.** When the exact search runs out: (a) refuse on an
   image with an `[[observed]]` row and warn on an unmeasured one, as issue
   2550's fix text says; or (b) fall back to the sound SCC bound (the sum of
   the SCC's frames), which is a true upper bound but often more than the
   board's RAM. Drafted: (a), with the budget and the SCC size reported, so a
   refusal says what to narrow.
+  **Ruled: (a), as drafted.**
 - **Q4 — Acceptance.** Issue 2658 asks for a floor "within the lane's margin
   of the measured peak, or a stated reason why the gap is the price of
   soundness". The bind ceiling shows the Nucleo image cannot reach its peak
@@ -134,6 +139,7 @@ docs and the report drop "heuristic floor, order-dependent" once D3 lands.
   frames). Drafted: acceptance is the walk finishing (D3) on every
   `[[observed]]` row, order-independent, with a floor at or above its peak;
   the gap to the peak is reported, and closing it is the frame-size work's.
+  **Ruled: as drafted.**
 
 ## Not in this RFC
 
@@ -149,3 +155,6 @@ docs and the report drop "heuristic floor, order-dependent" once D3 lands.
 
 - 2026-11-27: Draft, from the batch study of the stack-floor issues
   (2550, 2658, 2517, 2784, 2653). Four questions for a ruling.
+- 2026-11-27: Ruled by the user. Q1 live vtables; Q2 changed to D1 and D2
+  in parallel; Q3 refuse on a measured image and warn on an unmeasured one,
+  reporting budget and cycle size; Q4 as drafted.
