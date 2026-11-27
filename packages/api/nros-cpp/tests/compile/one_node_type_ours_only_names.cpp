@@ -27,10 +27,14 @@
 //       parameter, so ours is not better in every argument and does not win.
 //
 //   create_publisher<M>("chatter", rclcpp::QoS(10))  -> OURS (by value).
-//       Here upstream needs a user-defined conversion on the topic AND ours is
-//       exact on it, so ours wins the first argument; gcc accepts the call with
-//       only a note that ISO calls it ambiguous. THIS is the silent one, and it
-//       is the spelling a ported rclcpp file is most likely to carry.
+//       Here upstream needs a user-defined conversion on the topic, so ours
+//       wins the first argument, while upstream is exact on the QoS and ours
+//       needs a derived-to-base conversion, so upstream wins the second.
+//       Neither is better on every argument: under ISO the call is AMBIGUOUS,
+//       and clang rejects it. gcc accepts it, with only a note that ISO calls
+//       it ambiguous, and binds OURS. So the defect was SILENT ON GCC and
+//       ill-formed (ambiguous) under ISO, which clang enforces. It is the
+//       spelling a ported rclcpp file is most likely to carry.
 //
 // So the collision is real and it is silent, but the trigger is the explicit-QoS
 // spelling rather than the integer one. `pre_rename_negative_control` below
@@ -183,6 +187,11 @@ static_assert(sizeof(::rclcpp::NodeWithTimers<2>) > sizeof(::rclcpp::Node),
 template <typename M> struct ValuePub {};
 template <typename M> struct SharedPub {};
 
+template <class...> struct make_void_ {
+    using type = void;
+};
+template <class... Ts> using void_t_ = typename make_void_<Ts...>::type;
+
 // The two QoS classes as they were at the time: a base with an EXPLICIT `int`
 // ctor (then `nros::QoS`) and a derived class adding the implicit depth ctor
 // (then `rclcpp::QoS`). phase-483 W1 merged them into one `rclcpp::QoS`, so the
@@ -206,15 +215,42 @@ struct MergedBeforeRename {
     template <typename M> SharedPub<M> create_publisher(const ::std::string&, ::size_t);
 };
 
+// Is the explicit-QoS ported call well-formed on `N`, and what does it bind?
+template <class N, class = void> struct explicit_qos_call {
+    static constexpr bool callable = false;
+    using result = void;
+};
+template <class N>
+struct explicit_qos_call<
+    N, void_t_<decltype(::std::declval<N&>().template create_publisher<CounterMsg>(
+           "chatter", ThenPortedQoS(10)))>> {
+    static constexpr bool callable = true;
+    using result = decltype(::std::declval<N&>().template create_publisher<CounterMsg>(
+        "chatter", ThenPortedQoS(10)));
+};
+
 void pre_rename_negative_control(MergedBeforeRename& n) {
-    // THE DEFECT: a ported call with an explicit QoS silently takes the
-    // by-value, latch-reporting overload.
+    // THE DEFECT, on every compiler: the ported explicit-QoS call does NOT
+    // unambiguously reach UPSTREAM on the pre-rename shape. That is the
+    // collision the positive assertions above depend on having existed.
+    using Q = explicit_qos_call<MergedBeforeRename>;
+    static_assert(!(Q::callable && ::std::is_same<Q::result, SharedPub<CounterMsg>>::value),
+                  "NEGATIVE CONTROL: on the pre-rename shape the explicit-QoS call must not "
+                  "cleanly reach UPSTREAM. If this fires, the collision this rename exists to "
+                  "prevent no longer reproduces, and the positive assertions above have stopped "
+                  "testing anything -- re-derive them before deleting this control.");
+#if defined(__GNUC__) && !defined(__clang__)
+    // gcc: its extension over the ISO ambiguity binds OURS, silently. A direct
+    // `decltype`, not the detector: measured (gcc 11, C++14 and C++17), in a
+    // SFINAE context gcc honours the ambiguity and reports "not callable".
     using Bad = decltype(n.create_publisher<CounterMsg>("chatter", ThenPortedQoS(10)));
     static_assert(::std::is_same<Bad, ValuePub<CounterMsg>>::value,
-                  "NEGATIVE CONTROL: the pre-rename shape must bind OURS here. If this fires, the "
-                  "collision this rename exists to prevent no longer reproduces, and the positive "
-                  "assertions above have stopped testing anything -- re-derive them before "
-                  "deleting this control.");
+                  "NEGATIVE CONTROL (gcc): the pre-rename shape must silently bind OURS here");
+#else
+    // clang enforces ISO: the call is ambiguous, so it is not callable at all.
+    static_assert(!Q::callable,
+                  "NEGATIVE CONTROL (clang): the pre-rename explicit-QoS call must be ambiguous");
+#endif
 
     // And the measured correction to the work item's prediction: the INTEGER
     // depth spelling was never the silent one. Pinned so the reasoning in the
@@ -243,11 +279,6 @@ void pre_rename_negative_control(MergedBeforeRename& n) {
 // the negative controls — each detector must fire on the shape the split
 // removed, or it is reporting "absent" for the wrong reason and the assertions
 // above it are vacuous.
-
-template <class...> struct make_void_ {
-    using type = void;
-};
-template <class... Ts> using void_t_ = typename make_void_<Ts...>::type;
 
 // Does `create_publisher_in` — the SHORT name — accept a callback group first?
 template <class N, class = void> struct pub_short_name_takes_group : ::std::false_type {};

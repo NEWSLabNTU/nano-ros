@@ -62,9 +62,7 @@ int read_i32(const uint8_t* data, size_t len, int32_t* v) {
 struct Echo {
     struct Request {
         int32_t value = 0;
-        static constexpr const char* TYPE_NAME = "demo_msgs::srv::dds_::Echo_Request_";
         static constexpr const char* TYPE_HASH = "RIHS01_stub_echo";
-        static constexpr size_t SERIALIZED_SIZE_MAX = 8;
         static int ffi_serialize(const void* m, uint8_t* buf, size_t cap, size_t* out) {
             return write_i32(static_cast<const Request*>(m)->value, buf, cap, out);
         }
@@ -74,9 +72,6 @@ struct Echo {
     };
     struct Response {
         int32_t value = 0;
-        static constexpr const char* TYPE_NAME = "demo_msgs::srv::dds_::Echo_Response_";
-        static constexpr const char* TYPE_HASH = "RIHS01_stub_echo";
-        static constexpr size_t SERIALIZED_SIZE_MAX = 8;
         static int ffi_serialize(const void* m, uint8_t* buf, size_t cap, size_t* out) {
             return write_i32(static_cast<const Response*>(m)->value, buf, cap, out);
         }

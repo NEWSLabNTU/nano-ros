@@ -37,8 +37,6 @@ struct AddTwoInts {
     struct Request {
         int64_t a = 0;
         int64_t b = 0;
-        static constexpr const char* TYPE_NAME =
-            "example_interfaces::srv::dds_::AddTwoInts_Request_";
         static constexpr const char* TYPE_HASH = "RIHS01_stub";
         static const size_t SERIALIZED_SIZE_MAX = sizeof(int64_t) * 2;
         static int ffi_serialize(const void* msg, uint8_t* buf, size_t cap, size_t* out) {
@@ -55,9 +53,6 @@ struct AddTwoInts {
     };
     struct Response {
         int64_t sum = 0;
-        static constexpr const char* TYPE_NAME =
-            "example_interfaces::srv::dds_::AddTwoInts_Response_";
-        static constexpr const char* TYPE_HASH = "RIHS01_stub";
         static const size_t SERIALIZED_SIZE_MAX = sizeof(int64_t);
         static int ffi_serialize(const void* msg, uint8_t* buf, size_t cap, size_t* out) {
             if (cap < sizeof(Response)) return -1;
