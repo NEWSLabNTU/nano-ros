@@ -268,3 +268,10 @@ dispatch's tier 2; `730dfbebeb`): every `entity_wake` and `xrce_entity_wake`
 case passed, both cases of
 `an_arrival_racing_a_drain_is_never_left_undispatched` included, and no
 watchdog stage line appears. The close rule above stands.
+
+## No recurrence (2026-11-27)
+
+Checked the runs of 2026-11-25 to 2026-11-27. Host tests: 45533251762 and
+45596611184. Run-matrix: 45868144195, 45684820840, 45596628888,
+45559667114 and 45533259451. Live peer: 45596621496. None shows a hang or
+a watchdog stage line. The close rule above stands.
