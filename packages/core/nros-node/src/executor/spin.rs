@@ -3357,13 +3357,17 @@ impl<'s> Executor<'s> {
     /// session and outlives every borrower, so the pointer stays valid for the
     /// program's life.
     ///
-    /// `None` when the session may not be shared: an owned session held inline
-    /// because its own allocation failed. A pointer into the
-    /// owner would be disabled by the owner's next write, so a sched task gets
-    /// no session rather than a dangling one.
+    /// `None` unless the open carved a slot for the session outside the
+    /// executor: a session the executor holds inline may not be shared,
+    /// because a pointer into the owner would be disabled by the owner's next
+    /// write, so a sched task gets no session rather than a dangling one.
+    /// The `*_in` opens carve one only when the caller's sizing is
+    /// [`ExecutorSizing::owning`](crate::ExecutorSizing::owning); with any
+    /// other sizing this is `None`.
     ///
     /// # Safety
-    /// The returned pointer aliases `self.session`. Callers must keep `self`
+    /// The returned pointer is the carved slot's address, not the executor's
+    /// own storage. Callers must keep `self`
     /// alive (not dropped) for as long as any sched task executor uses the
     /// pointer, and must only touch the session through executor spin calls
     /// (the RMW backend serializes concurrent access through its own locks).

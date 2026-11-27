@@ -7405,7 +7405,7 @@ pub unsafe extern "C" fn nros_cpp_executor_session_handle(executor: *mut c_void)
         return core::ptr::null_mut();
     };
     // Phase-573 W3 -- NULL for a session that may not be shared (held inline
-    // because its own allocation failed); `open_over_session` refuses NULL.
+    // because no slot was carved for it); `open_over_session` refuses NULL.
     match ctx.executor.session_handle() {
         Some(h) => h.into_raw(),
         None => core::ptr::null_mut(),
