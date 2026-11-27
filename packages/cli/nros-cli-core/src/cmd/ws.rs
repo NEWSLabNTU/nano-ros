@@ -7784,6 +7784,27 @@ fn check_freshness(
 /// Run sync's scan+resolve step without codegen — for list/status/clean/
 /// doctor. Returns the workspace root + scanned pkgs + the resolved
 /// build_root. The optional `build_dir` arg defaults to `<ws_root>/build`.
+/// The packages `nros list` prints for `workspace` (or the current
+/// directory): `(name, kind, dir relative to the workspace)`.
+pub(crate) fn package_rows(
+    workspace: Option<&Path>,
+) -> Result<Vec<(String, &'static str, PathBuf)>> {
+    let (ws_root, scan, _) = scan_for_query(workspace, Path::new("build"))?;
+    Ok(scan
+        .iter()
+        .map(|p| {
+            let kind = match (p.is_msg_pkg, p.is_rust_pkg) {
+                (true, true) => "msg+rust",
+                (true, false) => "msg",
+                (false, true) => "rust",
+                (false, false) => "other",
+            };
+            let dir = p.dir.strip_prefix(&ws_root).unwrap_or(&p.dir).to_path_buf();
+            (p.name.clone(), kind, dir)
+        })
+        .collect())
+}
+
 fn scan_for_query(
     workspace: Option<&Path>,
     build_dir: &Path,

@@ -226,7 +226,7 @@ pub fn run(args: Args) -> Result<()> {
 }
 
 /// The workspace `workspace` names, or the one the current directory is in.
-fn root(workspace: Option<PathBuf>) -> Result<PathBuf> {
+pub(crate) fn root(workspace: Option<PathBuf>) -> Result<PathBuf> {
     if let Some(w) = workspace {
         return Ok(w);
     }
@@ -590,7 +590,7 @@ pub fn render_list(items: &[ImageItem]) -> String {
 
 /// The model the last `nros configure` resolved for the image, through the
 /// gate every reader uses: resolved for nothing here, and refused when stale.
-fn planned_model(d: &ImageItem) -> Result<ros_launch_manifest_model::SystemModel> {
+pub(crate) fn planned_model(d: &ImageItem) -> Result<ros_launch_manifest_model::SystemModel> {
     use nros_orchestration_ir::model_location::launch_to_model_rel;
     if let (Some(entry), None) = (&d.entry, &d.launch) {
         bail!(

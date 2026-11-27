@@ -324,6 +324,19 @@ fn render(args: RenderArgs) -> Result<()> {
     Ok(())
 }
 
+/// Every knob `nros knob list` reports: the registry's public knobs, then the
+/// ones the workspace's packages declare, sorted by name.
+pub(crate) fn collect(
+    ladder: Option<&Ladder>,
+    workspace: Option<&std::path::Path>,
+) -> Result<Vec<KnobItem>> {
+    let mut items = public_items(ladder);
+    let cat = workspace_catalog(workspace)?;
+    items.extend(package_items(&cat));
+    items.sort_by(|a, b| a.name.cmp(&b.name));
+    Ok(items)
+}
+
 fn list(args: ListArgs) -> Result<()> {
     let ladder = match &args.platform {
         Some(p) => Some(resolve_ladder(&ExplainArgs {
@@ -335,10 +348,7 @@ fn list(args: ListArgs) -> Result<()> {
         })?),
         None => None,
     };
-    let mut items = public_items(ladder.as_ref());
-    let cat = workspace_catalog(args.workspace.as_deref())?;
-    items.extend(package_items(&cat));
-    items.sort_by(|a, b| a.name.cmp(&b.name));
+    let items = collect(ladder.as_ref(), args.workspace.as_deref())?;
     if args.json {
         return frame::print_json(
             LIST_SCHEMA,

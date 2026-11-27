@@ -97,7 +97,7 @@ pub struct Sources {
 
 /// The platform tree over the SDK root's search path, the board catalog of
 /// the workspace the current directory is in, and `nros rmw list`'s RMWs.
-fn load() -> Result<Sources> {
+pub(crate) fn load() -> Result<Sources> {
     let root = crate::cmd::board::catalog_root(None)?;
     let tree = load_tree(&root)?;
     let cwd = std::env::current_dir()?;

@@ -32,7 +32,7 @@ source already exists (RFC-0133 D2), except W3's `because` field.
 | W6 | `platform`, `template`, `profile`, `code`, `runner` lists | W5 |
 | W7 | `image list` / `show`, with planned `--nodes` / `--topics` | W5 |
 | W8 | migration out of `nros dev`, aliases, old-spelling table | W1–W7 |
-| W9 | `nros search` | W5–W7 |
+| W9 | `nros search` (DONE) | W5–W7 |
 | W10 | the book: a "Find what nano-ros offers" page; CLI reference | each item adds its rows |
 
 ## Work items
@@ -527,7 +527,30 @@ Acceptance: every row of the D3 table works under both spellings;
 
 ### W9 — `nros search <word>`
 
-- **Status:** OPEN
+- **Status:** DONE (2026-11-28)
+
+Landed as `cmd/search.rs`:
+- **One table.** `SOURCES` holds one `(noun, loader)` row per noun, and each
+  loader is the noun's own `list` loader. Two of those (board and knob) were
+  inline in their `list` and are now a `collect` the `list` also calls.
+- **Matching.** Case-insensitive on name, other names and summary. Results
+  are grouped by noun, and each row names its `show` command. `--json` is
+  `nros.search.v1` (`noun`, `name`, `summary`, `show`), pinned by a test.
+- **An RMW's boards.** A matching RMW lists the boards its own row names
+  (Runtime-tested, then build-only) under `board`, so `search zenoh` answers
+  which boards support it without a second table.
+- **Plan rows.** Each image with a plan (after `nros configure`) adds its
+  planned nodes and topics.
+- **Toolchain left out.** It is the one D2 noun search skips: its loader,
+  `store::scan`, walks the whole SDK store to measure sizes, which is not a
+  cheap read.
+
+Acceptance:
+- `nros search zenoh` in the checkout returns the RMW, 34 knobs and the 18
+  boards its row names (81 rows in all).
+- A test runs every item each compiled-in noun lists back through search by
+  its own name, so an item a source gains is found with no search code
+  change.
 
 Search the name, aliases and description of every item in every cheap noun,
 plus each image's planned nodes and topics when a plan exists, by calling each noun's `list` loader.

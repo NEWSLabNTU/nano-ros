@@ -1,0 +1,1 @@
+`nros search <word>` finds a word across boards, RMWs, platforms, knobs, build profiles, templates, runners, interfaces, packages, diagnostic codes and images, and prints the command that shows each. A matching RMW also lists the boards that run it, and `--json` gives one machine-readable list.

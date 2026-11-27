@@ -49,6 +49,7 @@ user runner
 user sdk-front
 user sdk-path
 user sdk-root
+user search
 user setup
 user source-stamp
 user store

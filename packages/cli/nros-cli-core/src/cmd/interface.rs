@@ -74,7 +74,7 @@ pub fn run(args: Args) -> Result<()> {
     }
 }
 
-fn load_index(workspace: Option<&Path>) -> Result<AmentIndex> {
+pub(crate) fn load_index(workspace: Option<&Path>) -> Result<AmentIndex> {
     let ws = match workspace {
         Some(w) => w.to_path_buf(),
         None => std::env::current_dir().wrap_err("resolving cwd")?,
