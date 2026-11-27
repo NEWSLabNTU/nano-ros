@@ -533,6 +533,13 @@ XRCE cells also exposed examples that ended their `NROS_SPIN_MS` budget early
 ([issue 2910](../issues/archived/2910-example-spin-budget-counts-iterations.md),
 fixed).
 
+Landed 2026-11-27: the embedded silent-until-active cell, on FreeRTOS QEMU
+over zenoh, in C, C++ and Rust (`tests/freertos_lifecycle_e2e.rs`, rows
+`freertos-{c,cpp,rust}-lifecycle-mps2`). Each image boots one managed talker
+unconfigured. A native nano-ros lifecycle client (`bins/lifecycle-driver`)
+drives it, so the cell needs no ROS 2 install and runs in the tier lanes.
+With the publisher gate forced open, it goes red.
+
 Still open: the RAM measurement and the book's run step. The Zephyr cell's
 silence-until-active assertion waits on W7 (per-node `autostart`).
 

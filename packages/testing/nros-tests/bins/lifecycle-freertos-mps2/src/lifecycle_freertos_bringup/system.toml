@@ -1,0 +1,57 @@
+# Issue 2428's embedded acceptance: a managed node on FreeRTOS + MPS2-AN385
+# (QEMU, zenoh) publishes nothing while unconfigured or inactive, and
+# publishes once activated. One image per language, each one managed talker
+# under `/talker`. A native nano-ros client (`bins/lifecycle-driver`) drives
+# the transitions, so the cell needs no ROS 2 install.
+#
+# Its own system rather than images in `examples/workspaces/features`: every
+# managed node there boots to `autostart = "active"`, and a node cannot state
+# its own autostart until per-node autostart lands (phase-554 W7).
+
+[system]
+name = "lifecycle_freertos"
+rmw = "zenoh"
+domain_id = 0
+default_launch = "c.launch.xml"
+
+[lifecycle]
+autostart = "none"
+
+[[component]]
+pkg = "lc_c_talker"
+class = "lc_c_talker::Talker"
+name = "c_talker"
+
+[[component]]
+pkg = "lc_cpp_talker"
+class = "lc_cpp_talker::Talker"
+name = "cpp_talker"
+
+[[component]]
+pkg = "lc_rust_talker"
+class = "lc_rust_talker::Talker"
+name = "rust_talker"
+
+# Each `locator` is its cell's `nros_tests::alloc::port_of(FreertosMps2, <lang>,
+# Lifecycle)` on QEMU's SLIRP host.
+[image.freertos_c]
+board = "mps2-an385-freertos"
+launch = "c.launch.xml"
+locator = "tcp/10.0.2.2:7980"
+os_config = ["board-net-c.toml"]
+
+[image.freertos_cpp]
+board = "mps2-an385-freertos"
+launch = "cpp.launch.xml"
+locator = "tcp/10.0.2.2:8080"
+os_config = ["board-net-cpp.toml"]
+
+[image.freertos_rust]
+board = "mps2-an385-freertos"
+panic = "own"
+launch = "rust.launch.xml"
+locator = "tcp/10.0.2.2:7880"
+os_config = ["board-net-rust.toml"]
+
+[board_config."mps2-an385-freertos"]
+netstack = "lwip"
