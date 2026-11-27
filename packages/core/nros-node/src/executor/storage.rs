@@ -705,6 +705,18 @@ impl ExecutorSizing {
 /// `exec` to `backing` and leaves this total roughly where it was; what changes
 /// is the STACK, because the header is what `open_in` builds and returns by
 /// value.
+#[repr(C)]
+pub struct ExecutorInlineStorage {
+    /// The executor, written in place (offset 0) by `from_session_ptr_in`.
+    pub exec: MaybeUninit<super::spin::Executor<'static>>,
+    /// The carved backing the executor's slices borrow (the buffer's tail).
+    ///
+    /// [`INLINE_BACKING_U64S`] words: the image's whole
+    /// executor, or none at all on a sched-task image, whose sched tasks each carve a
+    /// backing of their own size ([`sched_task_sizing`]).
+    pub backing: [MaybeUninit<u64>; INLINE_BACKING_U64S],
+}
+
 /// An owning executor's session slot kept OUTSIDE its backing: the C++
 /// context's, whose executor's backing is the C executor's `_opaque` and does
 /// not grow for it. Uninitialised until the owning open writes the session.
@@ -722,18 +734,6 @@ impl OwnedSessionSlot {
     pub fn as_raw(slot: *mut Self) -> Option<core::ptr::NonNull<MaybeUninit<ConcreteSession>>> {
         core::ptr::NonNull::new(slot.cast())
     }
-}
-
-#[repr(C)]
-pub struct ExecutorInlineStorage {
-    /// The executor, written in place (offset 0) by `from_session_ptr_in`.
-    pub exec: MaybeUninit<super::spin::Executor<'static>>,
-    /// The carved backing the executor's slices borrow (the buffer's tail).
-    ///
-    /// [`INLINE_BACKING_U64S`] words: the image's whole
-    /// executor, or none at all on a sched-task image, whose sched tasks each carve a
-    /// backing of their own size ([`sched_task_sizing`]).
-    pub backing: [MaybeUninit<u64>; INLINE_BACKING_U64S],
 }
 
 /// The sizing an inline backing is carved at: the image's
