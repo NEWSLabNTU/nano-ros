@@ -99,6 +99,25 @@ def is_linked_runtime(member: str) -> bool:
     return is_compiler_builtins(member) or is_toolchain_c_runtime(member)
 
 
+# CMake (and so Zephyr's build) names an object after its source, extension
+# included: `switch.S.obj`, `reset.S.o`. An assembled source has no `.su`
+# (only the compiler writes one) and no bitcode, so the frame it has is the
+# one its instructions push (issue 2897).
+_ASSEMBLED = re.compile(r"\.(?:S|s|asm)\.(?:obj|o)$")
+
+
+def is_assembled(member: str) -> bool:
+    """A member assembled from `.S`/`.s` source, by the name CMake gives it."""
+    return bool(_ASSEMBLED.search(member))
+
+
+# The architectures whose assembled objects the linked-objects road decodes.
+# aarch64 only so far (issue 2897): an arm (Cortex-M/R) image's assembly is
+# also frameless, and decoding it moves those images' floors, which is its
+# own measured change.
+ASSEMBLED_ARCHES = ("aarch64",)
+
+
 _AR_SKIP = (b"/", b"/SYM64/", b"__.SYMDEF", b"__.SYMDEF SORTED")
 
 
@@ -965,6 +984,33 @@ def self_checks() -> list[tuple[str, bool]]:
     out.append(("builtins a64: no ret falls through, ret does not",
                 b64["falls"].next == "next" and b64["outer"].next is None
                 and b64["next"].next is None))
+    # Issue 2897: an assembled object is named by its source, and a stack
+    # switch (`mov sp, xN` after saving the old sp) is a restore, so the
+    # frame is the pushes on either side of it, which bounds both stacks.
+    out.append(("assembled: CMake's object names for .S/.s sources",
+                is_assembled("switch.S.obj") and is_assembled("reset.S.o")
+                and is_assembled("crt0.s.obj") and not is_assembled("switch.c.obj")
+                and not is_assembled("thread.o") and not is_assembled("S.obj")))
+    switch = """
+0000000000000000 <z_arm64_context_switch>:
+       0:      	stp	x19, x20, [x1, #24]
+       4:      	mov	x4, sp
+       8:      	stp	x0, x1, [sp, #-16]!
+       c:      	bl	0x0 <z_arm64_fpu_thread_context_switch>
+		000000000000000c:  R_AARCH64_CALL26	z_arm64_fpu_thread_context_switch
+      10:      	ldp	x0, x1, [sp], #16
+      14:      	mov	sp, x4
+      18:      	str	x30, [sp, #-16]!
+      1c:      	bl	0x0 <z_thread_mark_switched_in>
+		000000000000001c:  R_AARCH64_CALL26	z_thread_mark_switched_in
+      20:      	ldr	x30, [sp], #16
+      24:      	ret
+"""
+    sw = parse_member_a64(switch)["z_arm64_context_switch"]
+    out.append(("assembled a64: a stack switch's pushes on both stacks are its frame",
+                sw.frame == 32 and sw.unmeasured is None
+                and sw.calls == {"z_arm64_fpu_thread_context_switch",
+                                 "z_thread_mark_switched_in"}))
     out.append(("builtins a64: e_machine 183 is aarch64",
                 object_arch(b"\x7fELF\x02\x01" + bytes(12) + (183).to_bytes(2, "little"))
                 == "aarch64"))
