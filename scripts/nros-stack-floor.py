@@ -2480,8 +2480,62 @@ def _c_object(args: list[str]) -> str | None:
 _GCC_BUILTIN_INC = re.compile(r"/lib/gcc/[^/]+/[^/]+/include/?$")
 
 
+# Issue 2998: a target flag the allowlist keeps can still be one clang
+# rejects for that target (`-mabi=lp64` on aarch64: "unknown target ABI",
+# which left 370 of 374 C TUs untyped on a qemu_cortex_a53 image). Such a
+# flag is dropped ONLY when it is a no-op for GCC itself: GCC with and
+# without it must agree on every predefined macro that fixes a C type's
+# size or the calling convention, i.e. the flag restates GCC's default.
+# (Comparing GCC with clang instead fails on macros the two compilers spell
+# differently whatever the flags, `__ARM_FP`, `__WCHAR_UNSIGNED__`.)
+# Anything else keeps the flag, and the TU stays untyped with clang's error.
+_C_TARGET_FLAG = ("-mcpu", "-mthumb", "-mfloat-abi", "-mfpu", "-mabi", "-march",
+                  "-mlittle-endian", "-mbig-endian", "-fshort-enums", "-fno-short-enums",
+                  "-fshort-wchar", "-fsigned-char", "-funsigned-char")
+_ABI_MACROS = re.compile(
+    r"^#define (__SIZEOF_[A-Z0-9_]+__|__LP64__|_LP64|__ILP32__|__CHAR_UNSIGNED__|"
+    r"__WCHAR_UNSIGNED__|__ARM_PCS(?:_VFP)?|__ARM_FP|__ARM_SIZEOF_[A-Z_]+|"
+    r"__riscv_float_abi_[a-z]+|__riscv_xlen|__BYTE_ORDER__|__AARCH64EB__|__ARMEB__)\b(.*)$",
+    re.M)
+
+
+def _abi_macros(cmd: list[str]) -> dict[str, str] | None:
+    """The ABI-fixing predefined macros of a compiler command, or None if
+    it does not preprocess an empty file."""
+    r = subprocess.run(cmd + ["-dM", "-E", "-x", "c", "-"], input="", capture_output=True,
+                       text=True)
+    if r.returncode != 0:
+        return None
+    return {m[1]: m[2].strip() for m in _ABI_MACROS.finditer(r.stdout)}
+
+
+def clang_target_flag_drops(gcc: str, clang: str, target: str,
+                            flags: tuple[str, ...]) -> tuple[frozenset[str], str | None]:
+    """The target flags of one GCC command that clang's command must drop:
+    those clang rejects for `target`, when GCC predefines the same ABI-fixing
+    macros without them (the flag only restates GCC's default). Returns (drops, reason): an empty set
+    and the reason when a rejected flag cannot be dropped safely (the TU
+    then fails as before, untyped)."""
+    base = [clang, f"--target={target}", "-Wno-everything", "-nostdinc"]
+    rejected = [f for f in flags
+                if subprocess.run(base + [f, "-fsyntax-only", "-x", "c", "-"], input="",
+                                  capture_output=True, text=True).returncode != 0]
+    if not rejected:
+        return frozenset(), None
+    want = _abi_macros([gcc, *flags])
+    got = _abi_macros([gcc, *(f for f in flags if f not in rejected)])
+    if want is None or got is None:
+        return frozenset(), f"cannot compare the ABI without {', '.join(rejected)}"
+    diff = sorted(k for k in set(want) | set(got) if want.get(k) != got.get(k))
+    if diff:
+        return frozenset(), (f"dropping {', '.join(rejected)} changes the ABI "
+                             f"({', '.join(diff[:4])})")
+    return frozenset(rejected), None
+
+
 def clang_c_command(args: list[str], src: str, search: tuple[list[str], list[str]],
-                    target: str, out: str, resource: str | None = None) -> list[str]:
+                    target: str, out: str, resource: str | None = None,
+                    drop: frozenset[str] = frozenset()) -> list[str]:
     """The clang command that compiles `src` to bitcode the way `args` (a GCC
     command) compiled it: its defines and forced includes, its target flags,
     and GCC's own ordered include search (`search`: quote dirs, then the
@@ -2504,7 +2558,7 @@ def clang_c_command(args: list[str], src: str, search: tuple[list[str], list[str
         if a in _C_DROP_PAIR:
             i += 2
             continue
-        if a.startswith(_C_KEEP_JOINED) and a not in _C_KEEP_PAIR:
+        if a.startswith(_C_KEEP_JOINED) and a not in _C_KEEP_PAIR and a not in drop:
             keep.append(a)
         i += 1
     cmd = ["clang", f"--target={target}", "-c", "-emit-llvm", "-O0", "-Wno-everything",
@@ -2715,6 +2769,16 @@ def c_ir_texts(compile_commands: list[str], linked: set[str], target: str,
     if not entries:
         return None, set(), "no compile command produced an object the link used"
     probes: dict[tuple, tuple[list[str], list[str]]] = {}
+    drops: dict[tuple, tuple[frozenset[str], str | None]] = {}
+
+    def target_flags(args):
+        return tuple(dict.fromkeys(a for a in args[1:] if a.startswith(_C_TARGET_FLAG)))
+
+    def drop_for(args):
+        key = (args[0], target_flags(args))
+        if key not in drops:
+            drops[key] = clang_target_flag_drops(args[0], clang, target, key[1])
+        return drops[key][0]
 
     def search_for(d, args, src):
         key = (args[0], d, tuple(a for a in args[1:] if a != src and not a.startswith(("-D", "-o"))))
@@ -2729,7 +2793,7 @@ def c_ir_texts(compile_commands: list[str], linked: set[str], target: str,
         search = search_for(d, args, src)
         h = hashlib.sha256()
         h.update(ver.encode())
-        cmd = clang_c_command(args, str(sp), search, target, "-", resource)
+        cmd = clang_c_command(args, str(sp), search, target, "-", resource, drop_for(args))
         h.update("\0".join(cmd).encode())
         h.update(sp.read_bytes())
         st = op.stat() if op.exists() else None
@@ -2757,6 +2821,7 @@ def c_ir_texts(compile_commands: list[str], linked: set[str], target: str,
     for d, args, src, _ in entries:
         try:
             search_for(d, args, src)
+            drop_for(args)
         except (RuntimeError, OSError) as e:
             return None, set(), f"{src}: {e}"
     with concurrent.futures.ThreadPoolExecutor(max_workers=jobs or os.cpu_count() or 4) as ex:
@@ -2777,6 +2842,12 @@ def c_ir_texts(compile_commands: list[str], linked: set[str], target: str,
                     nm = sy["Name"]["Name"] if isinstance(sy["Name"], dict) else sy["Name"]
                     uncovered.add(nm.split(".", 1)[0])
     note = f"{len(texts)} of {len(entries)} linked C TU(s)"
+    dropped = sorted({f for d, _ in drops.values() for f in d})
+    if dropped:
+        note += f"; GCC target flag(s) clang rejects, dropped with the ABI unchanged: {', '.join(dropped)}"
+    kept = sorted({why for _, why in drops.values() if why})
+    if kept:
+        note += f"; kept (clang refuses the TU): {'; '.join(kept[:2])}"
     if fails:
         note += (f"; {len(fails)} clang cannot compile keep every function C can hold for the "
                  f"{len(uncovered)} function(s) they define ({'; '.join(e for e, _ in fails[:3])})")
@@ -5013,6 +5084,47 @@ def self_test() -> int:
         '  ret void\n}\n'
     )
     types, sites, tables, escaped, leaked = parse_ir_sites(ir)
+    # Issue 2998: a target flag clang rejects is dropped only when it is a
+    # no-op for GCC. The compilers are stubbed: `rejects` is what clang
+    # refuses, `abi` maps a GCC flag set to its ABI macros.
+    def drops_with(flags, rejects, abi):
+        real_run, real_abi = subprocess.run, globals()["_abi_macros"]
+
+        class _R:
+            def __init__(self, rc):
+                self.returncode = rc
+
+        def fake_run(cmd, **_):
+            return _R(1 if any(f in rejects for f in cmd) else 0)
+
+        def fake_abi(cmd):
+            return abi(tuple(c for c in cmd[1:] if c.startswith("-m")))
+
+        subprocess.run, globals()["_abi_macros"] = fake_run, fake_abi
+        try:
+            return clang_target_flag_drops("gcc", "clang", "t", tuple(flags))
+        finally:
+            subprocess.run, globals()["_abi_macros"] = real_run, real_abi
+
+    lp64 = {"__SIZEOF_LONG__": "8", "__LP64__": "1"}
+    ilp32 = {"__SIZEOF_LONG__": "4", "__ILP32__": "1"}
+    d, why = drops_with(["-mabi=lp64", "-mcpu=a53"], {"-mabi=lp64"}, lambda f: lp64)
+    check("clang flags: a rejected flag that is GCC's default is dropped",
+          d == {"-mabi=lp64"} and why is None)
+    d, why = drops_with(["-mabi=ilp32", "-mcpu=a53"], {"-mabi=ilp32"},
+                        lambda f: ilp32 if "-mabi=ilp32" in f else lp64)
+    check("clang flags: a rejected flag that changes the ABI is kept, with the reason",
+          d == set() and "changes the ABI" in (why or "") and "__SIZEOF_LONG__" in why)
+    d, why = drops_with(["-mcpu=a53"], set(), lambda f: lp64)
+    check("clang flags: nothing rejected, nothing dropped", d == set() and why is None)
+    keep = clang_c_command(["gcc", "-mabi=lp64", "-mcpu=a53", "-DX", "-c", "a.c"], "a.c",
+                           ([], []), "t", "-", None, frozenset({"-mabi=lp64"}))
+    check("clang flags: the command keeps the rest and drops only the named flag",
+          "-mabi=lp64" not in keep and "-mcpu=a53" in keep and "-DX" in keep)
+    check("clang flags: the ABI macros a preprocessor dump names are read",
+          {m[1]: m[2].strip() for m in _ABI_MACROS.finditer(
+              "#define __SIZEOF_LONG__ 8\n#define __LP64__ 1\n#define __FOO__ 1\n")}
+          == {"__SIZEOF_LONG__": "8", "__LP64__": "1"})
     check("bind: a packed vtable's slots sit at their byte offsets",
           {(0, "drop"), (12, "m")} <= tables)
     check("bind: a named struct table's slots sit at their field offsets",
