@@ -32,11 +32,14 @@ Options:
   --filter REGEX            select a leaf when REGEX matches ANY ONE of its
                             board, build_dir, src, conf file (each entry,
                             repo-relative) or id — per field, never a joined
-                            line (issue 1325)
-                            (default: $NROS_ZEPHYR_FIXTURE_FILTER). The same
-                            variable narrows the west [[compile_check_fixture]]
+                            line (issue 1325). No default: the Zephyr lane
+                            passes $NROS_ZEPHYR_FIXTURE_FILTER here, which
+                            also narrows the west [[compile_check_fixture]]
                             rows in west-fixtures.sh (issue 1536). Selecting no
                             leaf exits 3.
+  --fixture-id ID           select only the west leaf of fixture row ID (the
+                            lane passes $NROS_FIXTURE_ID here). An
+                            id with no west leaf selects none, which exits 3.
   --isolation-table FILE    the allocator's baked isolation values, as printed
                             by `cell-isolation` (nros-tests; issue 2251). A
                             leaf whose router port / Agent port / domain is
@@ -66,7 +69,18 @@ make_bin=""
 toolchain_cache_dir=""
 sccache_disable="${NROS_ZEPHYR_SCCACHE_DISABLE:-0}"
 pristine="${NROS_ZEPHYR_PRISTINE:-auto}"
-fixture_filter="${NROS_ZEPHYR_FIXTURE_FILTER:-}"
+# Issue 2987 -- the narrowings are FLAGS, never inherited environment. This
+# emitter is also the whole-manifest inventory that gates read
+# (fixture-filter-fields, kconfig-overridden-values, zephyr-fixture-id, the
+# fixtures-manifest checks), and it used to default `--filter` from
+# NROS_ZEPHYR_FIXTURE_FILTER and narrow on NROS_FIXTURE_ID by itself. So
+# `NROS_FIXTURE_ID=<id> just build-test-fixtures` -- the documented narrowing --
+# reached those gates through the environment, each saw one leaf or none, and
+# the build could not pass its own check-fast edge ("no records matched"). The
+# Zephyr lane, the one caller that means to narrow, reads both variables and
+# passes them as `--filter` / `--fixture-id`.
+fixture_filter=""
+fixture_id=""
 include_workspace_entry=0
 isolation_table=""
 
@@ -121,6 +135,11 @@ while [ "$#" -gt 0 ]; do
             shift
             [ "$#" -gt 0 ] || { usage; exit 2; }
             fixture_filter="$1"
+            ;;
+        --fixture-id)
+            shift
+            [ "$#" -gt 0 ] || { usage; exit 2; }
+            fixture_id="$1"
             ;;
         --include-workspace-entry)
             include_workspace_entry=1
@@ -434,8 +453,8 @@ done <<<"$ov_list"
 # through the manifest. An id with no west leaf selects none (exit 3 below),
 # which the lane treats as "only the compile-check half can match it".
 want_leaf=""
-if [ -n "${NROS_FIXTURE_ID:-}" ]; then
-    want_leaf="$(python3 "$nros_root/scripts/build/fixtures-manifest.py" west-leaf-id --id "$NROS_FIXTURE_ID")" || want_leaf=""
+if [ -n "$fixture_id" ]; then
+    want_leaf="$(python3 "$nros_root/scripts/build/fixtures-manifest.py" west-leaf-id --id "$fixture_id")" || want_leaf=""
 fi
 
 selected=0
@@ -642,7 +661,7 @@ while IFS=$'\x1f' read -r board lang lang_tag rmw role src build_name id \
             "$board" "$build_name" "$src_rel" "$conf_files" "$id"; then
         continue
     fi
-    if [ -n "${NROS_FIXTURE_ID:-}" ] && [ "$id" != "$want_leaf" ]; then
+    if [ -n "$fixture_id" ] && [ "$id" != "$want_leaf" ]; then
         continue
     fi
     if [ "$idlc_drop" = "1" ]; then
@@ -732,6 +751,6 @@ if [ "${#idlc_missing_ids[@]}" -gt 0 ]; then
     echo "NROS_ZEPHYR_IDLC_MISSING: ${#idlc_missing_ids[@]} selected cyclonedds leaf(s) not emitted: ${idlc_missing_ids[*]}" >&2
 fi
 if [ "$selected" -eq 0 ] && [ "${#idlc_missing_ids[@]}" -eq 0 ]; then
-    echo "zephyr-fixture-leaves: no records matched: $(NROS_ZEPHYR_FIXTURE_FILTER="$fixture_filter" nros_fixture_narrowing)" >&2
+    echo "zephyr-fixture-leaves: no records matched: $(NROS_ZEPHYR_FIXTURE_FILTER="$fixture_filter" NROS_FIXTURE_ID="$fixture_id" nros_fixture_narrowing)" >&2
     exit 3
 fi
