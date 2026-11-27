@@ -81,8 +81,9 @@ device. RFC-0139's Motivation has the measurements and the driver survey.
 ### W3a — The executor hook
 
 - **Owner:** nros 142.
-- **Status:** OPEN (W3 was split on 2026-11-26: the slot handle needs a pool
-  with per-slot claim and release, and none exists yet)
+- **Status:** DONE (2026-11-27, #4936)
+- W3 was split on 2026-11-26 because the slot handle needs a pool with
+  per-slot claim and release, and none existed.
 - The `Device` entry kind beside `GuardCondition`, registered before the first
   spin into a fixed slot; completion through `WakeCtx::mark_ready`, with an
   interrupt-safe `mark_ready_from_isr`; priority through the bound sched
@@ -106,12 +107,14 @@ device. RFC-0139's Motivation has the measurements and the driver survey.
 - **Owner:** nros 142.
 - **Status:** OPEN
 - **After:** W3a.
-- The pool [RFC-0038](../design/0038-zero-copy-data-transport.md) D1
-  designs, built in core: fixed slots per message class, claimed and released
-  one at a time, from any thread. No other item builds it: phase 574 W3
-  measures the classes and designs where a board places the pools, and this
-  pool takes that placement. If D1 is too thin for per-slot claim and
-  release, an amendment to RFC-0038 comes first.
+- The core slot pool [RFC-0038](../design/0038-zero-copy-data-transport.md) D5
+  specifies (amended 2026-11-27, because D1's pools are backend-internal and
+  defer claim and release): D1's size classes with per-class `slot_size` and
+  count in the sizing descriptor, lock-free claim and release from any thread,
+  release also from an interrupt handler (a bitmap changed by compare-and-swap),
+  refusal on exhaustion with a counter, and a `.bss` static until phase 574 W3's
+  placement hook is accepted. No other item builds it: phase 574 W3 measures
+  the classes and designs where a board places the pools.
 - **Acceptance:** claim, release and exhaustion behaviour are each tested
   (exhaustion refuses, never blocks or allocates), and a stress test of
   concurrent claim and release from several threads loses and duplicates no
