@@ -381,7 +381,7 @@ SNTP never re-acquires. A consumer's board hook papers over that with
   10 s interval re-queried several times a real second. Ruled 2026-11-24: it
   is paced on the server's clock (D5). Implemented; the FVP measurement is
   pending (phase-478 I44).
-- [Issue 2897](../issues/2897-a53-stack-walk-refuses-aarch64-builtins.md):
+- [Issue 2897](../issues/archived/2897-a53-stack-walk-refuses-aarch64-builtins.md):
   the stack-floor walk refuses every root on a 64-bit Arm Zephyr image (no
   aarch64 libgcc builtins row, no arm64 arch-entry frames), so W3's SNTP
   re-sync thread has no measured 64-bit floor yet; its 8,192 B default rests

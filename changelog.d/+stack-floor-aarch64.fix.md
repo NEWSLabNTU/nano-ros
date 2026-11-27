@@ -1,0 +1,1 @@
+The stack-floor check now walks a 64-bit Arm (Cortex-A53) Zephyr image to the end instead of refusing every thread: the toolchain's aarch64 libgcc routines and Zephyr's arm64 assembly get their frames from the linked objects.

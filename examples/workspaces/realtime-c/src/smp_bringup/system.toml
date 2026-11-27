@@ -164,3 +164,27 @@ socket_timeout_ms = 5
 # 1 s) until the handshake gets through, and still fails if no router is there.
 connect_timeout_ms = 10000
 
+
+
+# Issue 2897 -- the same image with SNTP re-sync, for the stack-floor walk on
+# a 64-bit Arm target: its main thread and its re-sync thread (role
+# SNTP_RESYNC) must each get a floor, not a refusal for a frameless function.
+# `workspace-zephyr-c-realtime-smp-sntp-resync` builds it;
+# `tests/zephyr_stack_floor_aarch64.rs` reads its `report.json`. Build-only:
+# the server never answers (TEST-NET-1), which the walk does not care about.
+[image.zephyr_smp_sntp_resync]
+board = "qemu-cortex-a53"
+os_config = ["prj-zenoh.conf"]
+panic = "platform"
+
+[image.zephyr_smp_sntp_resync.knobs.zenoh]
+socket_timeout_ms = 5
+
+[image.zephyr_smp_sntp_resync.knobs.clock]
+source = "sntp,platform"
+sntp_attempts = 1
+sntp_resync_interval_ms = 60000
+
+[image.zephyr_smp_sntp_resync.knobs.sntp]
+server = "192.0.2.1"
+timeout_ms = 400

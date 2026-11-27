@@ -1,12 +1,14 @@
 ---
 id: 2897
 title: "The Zephyr stack-floor walk refuses every root on a 64-bit Arm (qemu_cortex_a53) image: no aarch64 libgcc builtins row, no frames for the arm64 arch entry points"
-status: open
+status: resolved
+resolved: 2026-11-27
+resolved_in: "the change that adds this line"
 type: limitation
 area: [zephyr, build, stack]
 severity: medium
 found: 2026-11-23
-related: [phase-582]
+related: [phase-582, issue-2846, issue-2998, phase-592]
 ---
 
 ## What happens
@@ -88,3 +90,38 @@ Zephyr 3.7 image, plus the table's 10 % margin (#4632).
 
 Acceptance: the same a53 build's `report.json` has an `SNTP_RESYNC` role with a floor, and
 the main root's floor is either checked or refused for a reason other than a missing frame.
+
+## Step 2 done, acceptance met (host 133, 2026-11-27)
+
+- **Assembled aarch64 code is measured off the linked objects.** A link
+  input or archive member named for an assembled source (`switch.S.obj`,
+  CMake's name for it) is decoded by step 1's A64 decoder, in own-frame
+  mode like the walk's other loose objects (`apply_assembled_objects`). No
+  hand-typed frame: a stack switch (`z_arm64_context_switch`: save sp,
+  push, `mov sp, x4`, push) needs none, because a `mov sp` is a restore and
+  the frame is the sum of the pushes on both stacks, an upper bound for
+  each. aarch64 only: decoding Cortex-M/R assembly moves those images'
+  floors and is its own measured change.
+- **Measured**, `examples/workspaces/realtime-c` `smp_bringup`
+  (qemu_cortex_a53/smp, zephyr-sdk 0.16.9), "19 frame(s) of assembled code
+  read off the linked objects", `refused: []`:
+
+  | image | role | stack | floor (upper bound) |
+  | --- | --- | ---: | ---: |
+  | `zephyr_smp` | OPEN | 32,768 | 166,848 |
+  | `zephyr_smp` | TASK_HIGH | 16,384 | 170,128 |
+  | `zephyr_smp_sntp_resync` | OPEN | 32,768 | 169,368 |
+  | `zephyr_smp_sntp_resync` | SNTP_RESYNC | 8,192 | 173,592 |
+  | `zephyr_smp_sntp_resync` | TASK_HIGH | 16,384 | 172,744 |
+
+  Every floor is an upper bound through a loose edge (for example
+  `dns_resolve_name -> publish_trampoline`, bound "by machine"), so each
+  warns and none is a size. One cause of the looseness is aarch64-only:
+  clang typed 4 of 374 C TUs ("unknown target ABI 'lp64'", issue 2998).
+  The rest is RFC-0143's.
+- **Kept in a lane.** `[image.zephyr_smp_sntp_resync]` and fixture row
+  `workspace-zephyr-c-realtime-smp-sntp-resync` build this image, and
+  `tests/zephyr_stack_floor_aarch64.rs` asserts its `report.json`: no role
+  refused, and a floor for OPEN, TASK_HIGH and SNTP_RESYNC.
+- Step 3 (an `[[observed]]` row from a boot peak) is issue 2846's 64-bit
+  half, which stays open there.
