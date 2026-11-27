@@ -361,14 +361,24 @@ without `alloc`; every derived backing size (the C and C++ sizes headers,
   - No second `ExecutorInlineStorage` type is needed.
   - `open_over_session` (`open_with_session_handle_in`) borrows, so it
     carries no slot.
-- **Tree Borrows, by access path.** Carving the sibling pointer is sound. The
-  hazard is a reborrow that COVERS the slot:
-  - `CtxRef::deref_mut` makes a whole `&mut CppContext` on every guarded
-    call. Its implicit read would Freeze the session's Active tag, and the
-    next session write would be UB.
-  - The fix is to reach the slot only by field projection from the raw
-    context pointer, never through a `&mut CppContext` that spans it. This is
-    the existing carved tables' own rule, applied to one more field.
+- **Tree Borrows: where the pointer is derived.** `CtxRef::deref_mut` still
+  makes a whole `&mut CppContext` on every guarded call, so the slot cannot
+  avoid being spanned. What decides soundness is where the `Carved` pointer
+  comes from:
+  - It is derived by raw field projection from the raw context pointer
+    (`addr_of_mut!((*ctx_ptr).session_slot)`), never through any reference.
+    It then carries the raw pointer's own tag, every later `&mut CppContext`
+    is a CHILD of that tag, and a child's implicit read does not freeze its
+    parent.
+  - Derived through any `&mut` (a `&mut CppContext`, or `carve`'s
+    `backing: &mut` slice), it would be a SIBLING of the next
+    `&mut CppContext`. That reborrow would freeze it, and the next session
+    write would be UB.
+  - Nothing writes the slot through a `&mut CppContext`.
+  - The Rust owned path carves its slot from `carve(backing: &mut ..)`, so its
+    pointer is a child of that one reference. That is sound only while nothing
+    reborrows the whole backing again. The static `EXECUTOR_BACKING` is
+    borrowed once, and the code states that as an invariant.
 - **Derived sizes.** These move with `u64_len`:
   - `NROS_EXECUTOR_BACKING_U64S` (the Rust entry owns);
   - the C++ context size;
@@ -381,8 +391,9 @@ without `alloc`; every derived backing size (the C and C++ sizes headers,
 - `a_session_pointer_survives_its_owner_spinning` passes under Miri without
   `alloc`.
 - A new Miri case: write the session, take `CtxRef::deref_mut`, write the
-  session again. It must pass, and it must fail with the projection rule
-  removed.
+  session again. It must pass, and it must fail when the `Carved` pointer is
+  derived through `&mut CppContext` (or through `carve`'s backing reference)
+  instead of by raw projection.
 - `check-config-fallback-macros` passes, and a clean-checkout NuttX C and
   C++ image builds (issue 1115's trap).
 - The C executor's `_opaque` and header are byte-identical before and after.
