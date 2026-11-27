@@ -64,3 +64,21 @@ someone can read. Changing the host's service setup is the user's decision.
 ## Acceptance
 Both runners come back online on GitHub, with `nros-host-241`, after a
 reboot of host 241 with no hand step.
+
+## Progress (2026-11-27)
+
+User ruling 2026-11-27: approved, persistent user units plus linger on 241.
+
+- **Done on 241, by the manager:** persistent unit files at
+  `~/.config/systemd/user/nros-runner-loop.service` and
+  `nros-runner-loop-queue.service`. They carry the transient units' settings
+  (working directory, `NROS_RUNNER_NAME`, `NROS_RUNNER_STORE_ROOT`,
+  `NROS_RUNNER_HOST=241`, `HOME`, the same `PATH`), plus `Restart=always` and
+  `RestartSec=30`. Both are linked into `default.target.wants`. The running
+  transient units were left untouched, so nothing restarted and no runner was
+  disrupted.
+- **The user's step:** `loginctl enable-linger aeon`, run by the user
+  themselves.
+- **Still unmeasured:** the acceptance, both runners online with the
+  `nros-host-241` label after a reboot. The issue stays open until a reboot
+  proves it.
