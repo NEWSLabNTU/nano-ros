@@ -17,6 +17,14 @@ board, named after the row's `matrix_platform` (phase-558; before it, after
 the row's `nightly_token`), and a sweep red on one board says nothing about
 another.
 
+It also records each board's RESULTS HISTORY (RFC-0114 D13, phase-585 W5):
+the `board-results.json` every board-verifying lane uploads per run
+(`scripts/ci/board-results.py`, W2/W8), merged per registry board key, newest
+first, at most `HISTORY_RUNS`. `nros board list --status` / `show` derive the
+board's status word from it offline, by the rule the book uses
+(`board_registry.status_from_evidence` and its Rust twin), and draw the same
+marks.
+
 Usage:
     record-lane-runs.py --repo OWNER/NAME --out <file>     (needs `gh`, GH_TOKEN)
     record-lane-runs.py --self-test
@@ -28,13 +36,30 @@ import argparse
 import json
 import subprocess
 import sys
+import tempfile
 from datetime import datetime, timezone
+from pathlib import Path
 
 LANES = {
     "daily": ("nightly.yml", "schedule"),
     "weekly": ("weekly.yml", "schedule"),
     "merge": ("queue.yml", "merge_group"),
 }
+
+
+# RFC-0114 D13 (phase-585 W5) -- the lanes that upload a `board-results`
+# artifact, and the events whose runs count. A dispatch on `main` is evidence
+# too (user ruling 2026-11-24); the derivation gives it no cadence.
+HISTORY_LANES = (
+    ("nightly.yml", ("schedule", "workflow_dispatch")),
+    ("weekly.yml", ("schedule", "workflow_dispatch")),
+    ("live-peer.yml", ("schedule", "workflow_dispatch")),
+    ("host-tests.yml", ("schedule", "workflow_dispatch")),
+)
+# D13's N: the runs a board's history keeps, the marks the book and the CLI draw.
+HISTORY_RUNS = 6
+# How many completed runs per lane are read for their artifact.
+HISTORY_SCAN = 12
 
 
 def gh_json(args: list[str]):
@@ -73,10 +98,57 @@ def lane_record(repo: str, workflow: str, event: str, fetch=gh_json) -> dict:
     }
 
 
-def record(repo: str, fetch=gh_json) -> dict:
+def gh_board_results(repo: str, run_id: int) -> dict | None:
+    """The run's `board-results.json`, or None when it uploaded none."""
+    with tempfile.TemporaryDirectory() as d:
+        r = subprocess.run(["gh", "run", "download", str(run_id), "--repo", repo,
+                            "--name", "board-results", "--dir", d],
+                           capture_output=True, text=True)
+        f = Path(d) / "board-results.json"
+        if r.returncode != 0 or not f.is_file():
+            return None
+        return json.loads(f.read_text())
+
+
+def board_histories(repo: str, fetch=gh_json, download=gh_board_results) -> dict:
+    """registry board key -> its newest `HISTORY_RUNS` results, newest first."""
+    entries: list[tuple[str, int, str, dict]] = []
+    for workflow, events in HISTORY_LANES:
+        runs = fetch([
+            "run", "list", "--repo", repo, "--workflow", workflow, "--branch", "main",
+            "--status", "completed", "--limit", str(HISTORY_SCAN),
+            "--json", "databaseId,event,createdAt",
+        ])
+        for run in runs:
+            if run.get("event") not in events:
+                continue
+            doc = download(repo, run["databaseId"])
+            if not doc:
+                continue
+            for key, b in (doc.get("boards") or {}).items():
+                outcome = b.get("outcome")
+                if not outcome:
+                    continue
+                entries.append((doc.get("date") or run["createdAt"][:10], run["databaseId"],
+                                key, {"date": doc.get("date") or run["createdAt"][:10],
+                                      "workflow": workflow, "event": run.get("event"),
+                                      "outcome": outcome,
+                                      "url": doc.get("url", "")}))
+    # Newest first; a run id breaks a same-day tie (ids grow with time).
+    entries.sort(key=lambda e: (e[0], e[1]), reverse=True)
+    out: dict[str, list[dict]] = {}
+    for _date, _id, key, rec in entries:
+        hist = out.setdefault(key, [])
+        if len(hist) < HISTORY_RUNS:
+            hist.append(rec)
+    return out
+
+
+def record(repo: str, fetch=gh_json, download=gh_board_results) -> dict:
     return {
         "recorded": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
         "lanes": {cad: lane_record(repo, wf, ev, fetch) for cad, (wf, ev) in LANES.items()},
+        "boards": board_histories(repo, fetch, download),
     }
 
 
@@ -84,13 +156,54 @@ def self_test() -> None:
     def fake(args):
         if args[:2] == ["run", "list"]:
             wf = args[args.index("--workflow") + 1]
+            if "--event" not in args:
+                # The history scan: nightly has three runs, one a push (not
+                # evidence) and one without an artifact; host-tests one.
+                return {
+                    "nightly.yml": [
+                        {"databaseId": 30, "event": "schedule", "createdAt": "2026-11-09T05:00:00Z"},
+                        {"databaseId": 20, "event": "push", "createdAt": "2026-11-08T05:00:00Z"},
+                        {"databaseId": 10, "event": "workflow_dispatch", "createdAt": "2026-11-07T05:00:00Z"},
+                        {"databaseId": 5, "event": "schedule", "createdAt": "2026-11-06T05:00:00Z"},
+                    ],
+                    "host-tests.yml": [
+                        {"databaseId": 31, "event": "schedule", "createdAt": "2026-11-09T06:00:00Z"},
+                    ],
+                }.get(wf, [])
             if wf == "weekly.yml":
                 return []
             return [{"databaseId": 7, "conclusion": "failure", "createdAt": "2026-11-07T05:07:15Z",
                      "headSha": "abc", "url": "https://x/runs/7"}]
         return {"jobs": [{"name": "qemu", "conclusion": "success"},
                          {"name": "nuttx", "conclusion": "failure"}]}
-    doc = record("o/r", fake)
+
+    def download(_repo, run_id):
+        return {
+            30: {"date": "2026-11-09", "boards": {"linux@Linux": {"outcome": "failed"},
+                                                  "tx@ThreadxLinux": {"outcome": "passed"}}},
+            20: {"date": "2026-11-08", "boards": {"linux@Linux": {"outcome": "passed"}}},
+            10: {"date": "2026-11-07", "boards": {"linux@Linux": {"outcome": "no-verdict"}}},
+            31: {"date": "2026-11-09", "boards": {"linux@Linux": {"outcome": "passed"}}},
+        }.get(run_id)
+
+    doc = record("o/r", fake, download)
+    linux = doc["boards"]["linux@Linux"]
+    # Newest first; the host-tests run (id 31) beats the nightly's (30) on the
+    # same day; the push run (20) is not evidence; run 5 uploaded nothing.
+    assert [(h["workflow"], h["outcome"]) for h in linux] == [
+        ("host-tests.yml", "passed"), ("nightly.yml", "failed"),
+        ("nightly.yml", "no-verdict")], linux
+    assert linux[0]["event"] == "schedule" and linux[2]["event"] == "workflow_dispatch", linux
+    assert [h["outcome"] for h in doc["boards"]["tx@ThreadxLinux"]] == ["passed"], doc["boards"]
+    many = {i: {"date": f"2026-11-{i:02d}", "boards": {"b@B": {"outcome": "passed"}}}
+            for i in range(1, 11)}
+    capped = board_histories(
+        "o/r",
+        lambda a: [{"databaseId": i, "event": "schedule", "createdAt": f"2026-11-{i:02d}T00:00:00Z"}
+                   for i in range(1, 11)] if a[a.index("--workflow") + 1] == "nightly.yml" else [],
+        lambda _r, i: many.get(i))
+    assert [h["date"] for h in capped["b@B"]] == [f"2026-11-{i:02d}" for i in range(10, 4, -1)], capped
+
     daily = doc["lanes"]["daily"]
     assert daily["run"]["date"] == "2026-11-07" and daily["run"]["conclusion"] == "failure", daily
     assert daily["jobs"] == {"qemu": "success", "nuttx": "failure"}, daily
@@ -119,6 +232,8 @@ def main() -> int:
         run = lane["run"]
         print(f"record-lane-runs: {cad} {lane['workflow']}: "
               + (f"{run['date']} {run['conclusion']}" if run else "no completed run"))
+    print(f"record-lane-runs: results history for {len(doc['boards'])} board(s), "
+          f"at most {HISTORY_RUNS} run(s) each")
     return 0
 
 

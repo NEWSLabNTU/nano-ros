@@ -92,6 +92,12 @@ pub struct ListArgs {
     /// Print one JSON object instead of a table
     #[arg(long)]
     pub json: bool,
+    // RFC-0114 D13.5: the derived word (phase-585 W5).
+    /// Add each board's status word derived from what its lanes recorded,
+    /// and its last runs' marks, from the results history a release
+    /// carries. A checkout has none: it says so.
+    #[arg(long)]
+    pub status: bool,
 }
 
 #[derive(Debug, ClapArgs)]
@@ -180,6 +186,15 @@ pub struct BoardItem {
     pub status: Vec<String>,
     /// The cadence of each registry row for it.
     pub cadence: Vec<String>,
+    /// phase-585 W5 (`--status` only): each registry row's status word
+    /// derived from its recorded results, or "not recorded in this checkout".
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub derived_status: Option<Vec<String>>,
+    /// phase-585 W5 (`--status` only): each registry row's recorded outcomes,
+    /// newest first (`passed`, `failed`, `no-verdict`, `not-run`); empty where
+    /// none is recorded.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub recent_runs: Option<Vec<Vec<String>>>,
 }
 
 /// The board package a descriptor lives in: the nearest directory at or
@@ -213,6 +228,7 @@ pub fn board_items(
     root: &Path,
     status: &crate::cmd::board_support::Status,
     today: &str,
+    evidence: Option<Option<&crate::cmd::board_support::LaneRuns>>,
 ) -> Vec<BoardItem> {
     let mut items: Vec<BoardItem> = catalog
         .descriptors()
@@ -232,6 +248,23 @@ pub fn board_items(
                 platform: platform_of(d),
                 status: rows.iter().map(|r| r.status_on(today)).collect(),
                 cadence: rows.iter().map(|r| r.cadence_text()).collect(),
+                // phase-585 W5: `Some` only under `--status`, so the default
+                // JSON keeps its keys (RFC-0133 D1).
+                derived_status: evidence.map(|runs| {
+                    rows.iter()
+                        .map(|r| {
+                            r.derived_status(runs, today, status.stale_days)
+                                .unwrap_or_else(|| {
+                                    crate::cmd::board_support::NOT_RECORDED.to_string()
+                                })
+                        })
+                        .collect()
+                }),
+                recent_runs: evidence.map(|runs| {
+                    rows.iter()
+                        .map(|r| r.recent_runs(runs).unwrap_or_default())
+                        .collect()
+                }),
                 krate,
             })
         })
@@ -241,12 +274,16 @@ pub fn board_items(
     items
 }
 
-/// The `list` table.
+/// The `list` table. Under `--status` (the items carry `derived_status`), two
+/// columns follow CADENCE: EVIDENCE, the derived word, and LAST RUNS, the
+/// marks newest first (phase-585 W5); the first five never move.
 pub fn render_list(items: &[BoardItem]) -> String {
-    let mut t = crate::cmd::frame::Table::new(
-        &["BOARD", "CRATE", "PLATFORM", "STATUS", "CADENCE"],
-        "No boards found.",
-    );
+    let with_status = items.iter().any(|i| i.derived_status.is_some());
+    let mut head = vec!["BOARD", "CRATE", "PLATFORM", "STATUS", "CADENCE"];
+    if with_status {
+        head.extend(["EVIDENCE", "LAST RUNS"]);
+    }
+    let mut t = crate::cmd::frame::Table::new(&head, "No boards found.");
     let words = |v: &[String]| {
         if v.is_empty() {
             "-".to_string()
@@ -255,13 +292,34 @@ pub fn render_list(items: &[BoardItem]) -> String {
         }
     };
     for i in items {
-        t.row(vec![
+        let mut row = vec![
             i.key.clone(),
             i.krate.clone(),
             i.platform.clone(),
             words(&i.status),
             words(&i.cadence),
-        ]);
+        ];
+        if with_status {
+            row.push(words(i.derived_status.as_deref().unwrap_or_default()));
+            let marks: Vec<String> = i
+                .recent_runs
+                .as_deref()
+                .unwrap_or_default()
+                .iter()
+                .map(|runs| {
+                    if runs.is_empty() {
+                        "-".to_string()
+                    } else {
+                        runs.iter()
+                            .map(|o| crate::cmd::board_evidence::outcome_mark(o))
+                            .collect::<Vec<_>>()
+                            .join(" ")
+                    }
+                })
+                .collect();
+            row.push(words(&marks));
+        }
+        t.row(row);
     }
     t.footer("`nros board show <board>` shows one board: its support evidence and its descriptor.");
     t.render()
@@ -275,7 +333,16 @@ fn list(args: ListArgs) -> Result<()> {
     let status = crate::cmd::board_support::Status::load(&root)?;
     let (notes, _other) = crate::cmd::board_support::other_copy(&root, own_sdk_root().as_deref());
     let today = crate::cmd::board_support::today();
-    let items = board_items(&catalog, &root, &status, &today);
+    let runs = args
+        .status
+        .then(|| crate::cmd::board_support::LaneRuns::load(&root));
+    let items = board_items(
+        &catalog,
+        &root,
+        &status,
+        &today,
+        runs.as_ref().map(Option::as_ref),
+    );
     if args.json {
         return crate::cmd::frame::print_json(LIST_SCHEMA, "items", &items, &[]);
     }
@@ -308,6 +375,9 @@ pub struct SupportItem {
     pub breadth: String,
     /// The Book page with the board's evidence.
     pub book: Option<String>,
+    /// phase-585 W5: the status word derived from the release's recorded
+    /// results and the last runs' marks, or "not recorded in this checkout".
+    pub evidence: String,
 }
 
 /// One board, as `show` reports it.
@@ -414,6 +484,7 @@ pub fn render_show(b: &BoardShow) -> String {
         f.field("support", format!("{} ({})", s.status, s.key))
             .field("runs on", s.runs_on.clone())
             .field("cadence", s.cadence.clone())
+            .field("evidence", s.evidence.clone())
             .field("breadth", s.breadth.clone());
     }
     out.push_str(&f.render());
@@ -486,6 +557,7 @@ fn show(args: ShowArgs) -> Result<()> {
                 cadence,
                 breadth: r.breadth.clone(),
                 book: r.page.as_deref().map(evidence_page),
+                evidence: r.evidence_text(runs.as_ref(), &today, status.stale_days),
             }
         })
         .collect();
@@ -1111,7 +1183,7 @@ fn main() -> ! {"""
             crate::orchestration::board_descriptor::BoardCatalog::load_with_extra(&root, &[])
                 .expect("catalog");
         let status = crate::cmd::board_support::Status::load(&root).expect("registry");
-        let items = super::board_items(&catalog, &root, &status, "2026-11-27");
+        let items = super::board_items(&catalog, &root, &status, "2026-11-27", None);
         let item = |k: &str| items.iter().find(|i| i.key == k).cloned().expect(k);
         let linux = item("linux");
         assert_eq!(linux.status.len(), 1, "one claiming row: {linux:?}");
@@ -1125,6 +1197,47 @@ fn main() -> ! {"""
                 .iter()
                 .all(|s| !s.contains("Infrastructure")),
             "its package's evidence row, not a platform page's: {freertos:?}"
+        );
+    }
+
+    /// phase-585 W5 -- `--status` adds EVIDENCE and LAST RUNS after CADENCE;
+    /// without it the table is unchanged.
+    #[test]
+    fn list_status_adds_two_columns_after_cadence() {
+        let item = super::BoardItem {
+            key: "mps2-an385".into(),
+            aliases: vec![],
+            krate: "nros-board-mps2-an385".into(),
+            platform: "bare-metal".into(),
+            status: vec!["Verified in emulator (daily)".into()],
+            cadence: vec!["daily".into()],
+            derived_status: None,
+            recent_runs: None,
+        };
+        let plain = super::render_list(std::slice::from_ref(&item));
+        assert!(
+            !plain.contains("EVIDENCE") && !plain.contains("LAST RUNS"),
+            "{plain}"
+        );
+        let with = super::BoardItem {
+            derived_status: Some(vec!["Failing since 2026-11-25".into()]),
+            recent_runs: Some(vec![vec![
+                "failed".into(),
+                "no-verdict".into(),
+                "passed".into(),
+            ]]),
+            ..item
+        };
+        let t = super::render_list(&[with]);
+        let head = t.lines().find(|l| l.contains("BOARD")).unwrap();
+        let cad = head.find("CADENCE").unwrap();
+        assert!(
+            head.find("EVIDENCE").unwrap() > cad && head.find("LAST RUNS").unwrap() > cad,
+            "{t}"
+        );
+        assert!(
+            t.contains("Failing since 2026-11-25") && t.contains("✗ – ✓"),
+            "{t}"
         );
     }
 
@@ -1145,10 +1258,31 @@ fn main() -> ! {"""
             platform: "p".into(),
             status: vec![],
             cadence: vec![],
+            derived_status: None,
+            recent_runs: None,
         };
         assert_eq!(
             keys(serde_json::to_value(&item).unwrap()),
             ["aliases", "cadence", "crate", "key", "platform", "status"]
+        );
+        // phase-585 W5 -- `--status` adds exactly two keys, within v1.
+        let with_status = super::BoardItem {
+            derived_status: Some(vec!["Builds".into()]),
+            recent_runs: Some(vec![vec!["passed".into()]]),
+            ..item
+        };
+        assert_eq!(
+            keys(serde_json::to_value(&with_status).unwrap()),
+            [
+                "aliases",
+                "cadence",
+                "crate",
+                "derived_status",
+                "key",
+                "platform",
+                "recent_runs",
+                "status"
+            ]
         );
         let show = super::BoardShow {
             key: "k".into(),
@@ -1164,6 +1298,7 @@ fn main() -> ! {"""
                 cadence: "daily".into(),
                 breadth: "b".into(),
                 book: None,
+                evidence: "not recorded in this checkout".into(),
             }],
         };
         let v = serde_json::to_value(&show).unwrap();
@@ -1181,7 +1316,9 @@ fn main() -> ! {"""
         );
         assert_eq!(
             keys(v["support"][0].clone()),
-            ["book", "breadth", "cadence", "key", "runs_on", "status"]
+            [
+                "book", "breadth", "cadence", "evidence", "key", "runs_on", "status"
+            ]
         );
     }
 }

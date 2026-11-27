@@ -1402,6 +1402,7 @@ Usage: nros board list [OPTIONS]
 Options:
       --workspace <WORKSPACE>  nano-ros SDK root holding the board catalog. Default: `$NROS_WORKSPACE_ROOT`, a checkout enclosing cwd, then this `nros` binary's own SDK root (the installed track needs no flag)
       --json                   Print one JSON object instead of a table
+      --status                 Add each board's status word derived from what its lanes recorded, and its last runs' marks, from the results history a release carries. A checkout has none: it says so
   -h, --help                   Print help
   -V, --version                Print version
 ```

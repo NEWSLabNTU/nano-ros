@@ -128,6 +128,25 @@ in the order below.
   fixture. Not on main (audited 2026-11-26): nothing calls it from
   `nros board list`/`show` or `nros doctor`; there is no `--status` or
   `--online` flag; and `record-lane-runs.py` writes no results history.
+- **Progress (2026-11-27, nros 118, claim released by 243 to 118).** Part
+  1, the history and the offline reader, is in the PR that records this:
+  - `record-lane-runs.py` writes `boards` into `board-support-runs.json`:
+    each registry key's newest 6 results, merged from the `board-results`
+    artifact of every board-verifying lane's runs on `main` (nightly, weekly,
+    live-peer and host-tests; schedule and dispatch).
+  - `board_support::Row::derived_status`, `recent_runs` and `evidence_text`
+    apply W3's derivation to that history.
+  - `nros doctor --report` prints it as an `evidence` line.
+
+  Against the real repo on 2026-11-27 it recorded 12 boards. QemuBaremetal,
+  NuttxArm and NuttxRiscv read six "–" (no verdict) in their recent
+  nightlies, which is worth a look on its own.
+
+  Part 2, the `--status` columns on `nros board list` and the word in
+  `board show`, waits on nros 133's registry-row fix to that table (fix/board-list-registry-rows-2995). Its
+  shape is agreed: EVIDENCE and LAST RUNS after CADENCE, and BoardItem
+  `derived_status` / `recent_runs` only under `--status`. `--online` (the
+  published `board-status.json`) needs W4.
 - **What:** `record-lane-runs.py` writes the results history into
   `board-support-runs.json` at release; `nros board list --status`, `show` and
   `nros doctor --report` apply W3's derivation offline; `--online` reads the
