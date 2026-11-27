@@ -266,7 +266,7 @@ job, and that job runs the board's cells at that cadence.
 | `merge` | **`merge-runtime`** (new), in the `CI` aggregator on `merge_group`; one shard per merge board | hosted (zephyr shard in the zephyr-ci image) | the three behaviour bringups in rust/c/cpp, zenoh, plus that board's witnesses, then their pair cells |
 | tier 1 (full) | daily, hosted shards, off the self-hosted runner | hosted | `lane=tier1`, every rmw and feature image for the merge boards |
 | tier 2, 2-nightly | as today | self-hosted | `ci matrix`, `ci matrix-nightly` |
-| `daily` | nightly `platform` jobs, **one per board** (amended 2026-11-13, below); the Zephyr nightly becomes 2 lines × 3 languages = 6 jobs **with native_sim runtime** | hosted | the board's slice of its module's rows, then `just test <module>` narrowed to that board |
+| `daily` | nightly `platform` jobs, **one per board** (amended 2026-11-13, below); a Zephyr board is kept by the tier-2 nightly cover (amended 2026-11-27, below) | hosted | the board's slice of its module's rows, then `just test <module>` narrowed to that board |
 | `weekly` | `weekly.yml` job `chapter` (was `probe-platforms.yml`; Sunday, phase-559 W4), chapters retargeted to the witnesses | hosted | the book replay |
 | tier 3 | **`release-gate`** (new): `ci full` on dispatch; `release-nros` requires a green run on the tagged commit | self-hosted | the whole matrix |
 
@@ -282,6 +282,18 @@ cell), both static.
 > `NROS_FIXTURE_COORDS`), so a red board withdraws its own daily verdict and no
 > sibling's. Before this, `freertos` and `nuttx` were one job each over two
 > boards. `check-cadence-jobs` refuses a daily job that is not keyed by board.
+
+> **Amended 2026-11-27 (issue 2462), per the user's ruling of 2026-11-22
+> (phase-585):** "fix tier 2 first, with no dedicated Zephyr nightly job." The
+> Zephyr nightly stays
+> build-only and gains no runtime step. A `daily` row whose module the
+> `platform` job cannot run (`zephyr`, which needs the self-hosted Zephyr SDK
+> runners) is kept by the scheduled tier-2 nightly (`run-matrix.yml`
+> `matrix-nightly`, `just ci matrix-nightly`). Its pairwise cover runs a cell of
+> every platform in its pool (every platform without an own lane), and
+> `ci_lane`'s `lanes_touch_every_declared_value_of_every_axis_they_cover` holds
+> that. `check-cadence-jobs` accepts the job for such a row only; a module the
+> `platform` job runs stays held to its per-board job.
 
 ### D9 — A cadence the CI cannot afford is lowered, not kept
 

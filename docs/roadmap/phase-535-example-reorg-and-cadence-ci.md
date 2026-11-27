@@ -882,8 +882,11 @@ templates are not a board row.
   before building a fixture), before any return to `cadence = "merge"`.
   `merge-runtime-p95.py --event workflow_dispatch` reads the result.
 - **3.** Tier 1 full on hosted shards, daily.
-- **4.** The Zephyr nightly: 2 lines x 3 languages with native_sim runtime.
-  Closes issue 2462 and its baseline entry.
+- **4.** ~~The Zephyr nightly: 2 lines x 3 languages with native_sim runtime.~~
+  **Superseded 2026-11-27** by the user's 2026-11-22 ruling (phase-585): no
+  dedicated Zephyr nightly job; the scheduled tier-2 nightly cover keeps the
+  Zephyr boards' `daily` (RFC-0122 D8 amendment 2026-11-27). Issue 2462 and
+  its baseline entry are closed by that.
 - **5.** `release-gate` (`ci full` on dispatch) and `release-nros.yml`
   requiring it on the tagged commit.
 
@@ -1023,4 +1026,4 @@ tracks".
 | [#2475](../issues/archived/2475-merge-lane-fails-before-fixtures.md) | W8's two measured runs: every `merge` shard failed before building a fixture (no rosidl clone, build sources not provisioned, no pinned nextest in zephyr-ci) after 26-49 min of tree-wide codegen and `check fast`. Blocks W8.2's re-measurement. |
 | issue 2472 | The `linux-rust-zenoh-logging` fixture row claims rmw `zenoh` but its owned entry links no RMW, so `rmw_coordinate_truth` fails on it. Resolved by #3631. |
 | [#2313](../issues/2313-zephyr-generated-rust-entry-cannot-run-cyclone.md) | Rehomed 2026-11-15 from phase-548 (archived). **Parked, awaiting user ruling.** A generated Rust entry boots with no Cyclone backend registered on threadx-riscv64, so W5 and W6 keep the Cyclone leaves. |
-| [#2462](../issues/2462-zephyr-daily-cadence-has-no-runtime-job.md) | Found writing W8's cadence gate: `ZephyrQemuCortexM` promises `daily`, and the Zephyr nightly D8 binds it to builds and runs nothing. Baselined in `.config/cadence-job-baseline.toml`; W8.4 closes it. |
+| [#2462](../issues/archived/2462-zephyr-daily-cadence-has-no-runtime-job.md) | Found writing W8's cadence gate: `ZephyrQemuCortexM` promises `daily`, and the Zephyr nightly D8 binds it to builds and runs nothing. Baselined in `.config/cadence-job-baseline.toml`; W8.4 closes it. |

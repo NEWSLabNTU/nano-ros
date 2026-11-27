@@ -208,6 +208,16 @@ ZEPHYR_JOB_PREFIX = "zephyr "
 # The one board those jobs build (`just zephyr build-one`'s default,
 # `native_sim/native/64`). phase-558: a zephyr-* verdict is this board's alone.
 ZEPHYR_JOB_BOARD = "ZephyrNativeSim"
+# Issue 2462 -- the 2026-11-22 ruling (phase-585): tier 2 is the runtime
+# evidence for a Zephyr board the zephyr-* jobs do not build. Its scheduled
+# pairwise cover runs a cell of every platform in its pool
+# (`ci_lane::lanes_touch_every_declared_value_of_every_axis_they_cover`), so
+# the job is this row's lane; its verdict is the job's, shared by every
+# platform in the cover, until the per-board results file (board-results.py)
+# splits it.
+TIER2_NIGHTLY_LANE = Lane("daily", "run-matrix.yml", "tier 2 nightly (pairwise cover)",
+                          "run-matrix.yml tier 2 nightly — cron 0 6",
+                          events=("schedule",))
 
 
 def nightly_platform_tokens(text):
@@ -325,10 +335,7 @@ def resolve_lanes(row, nightly_tokens):
         # `native_sim` (`just zephyr build-one`'s default board), so none of
         # them is evidence for another Zephyr board. Before the split this
         # row borrowed native_sim's verdict.
-        notes.append((
-            "UNCHECKED",
-            f"no nightly job builds or runs {platform!r}: the zephyr-* jobs "
-            f"build {ZEPHYR_JOB_BOARD} only (issue 2462)"))
+        lanes.append(TIER2_NIGHTLY_LANE)
     elif token == "zephyr":
         lanes.append(Lane("daily", "nightly.yml", ZEPHYR_JOB_PREFIX,
                           "nightly.yml zephyr-* jobs — cron 0 5",
@@ -644,8 +651,9 @@ def selftest(quiet=False):
     lanes, notes = resolve_lanes(
         {"runs": "emulator", "cadence": "daily", "matrix_platform": "ZephyrQemuCortexM",
          "nightly_token": "zephyr"}, toks)
-    check(not lanes and [k for k, _ in notes] == ["UNCHECKED"],
-          "a Zephyr board the zephyr-* jobs do not build must not borrow native_sim's verdict")
+    check(lanes == [TIER2_NIGHTLY_LANE] and not notes,
+          "a Zephyr board the zephyr-* jobs do not build must not borrow native_sim's "
+          "verdict: its lane is the tier-2 nightly cover (issue 2462)")
 
     lanes, notes = resolve_lanes(
         {"runs": "emulator", "cadence": "manual", "matrix_platform": "Fvp"}, toks)
