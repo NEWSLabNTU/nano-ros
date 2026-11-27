@@ -273,7 +273,7 @@ pub fn uninstall(args: UninstallArgs, pin_search_from: Option<&Path>) -> Result<
         // the two absences it is: a store with no `toolchains/` at all is a
         // host phase-440 W7 has not reached, not a typo in the version.
         if dir.is_dir() {
-            let have = store::scan(&root)
+            let have = store::scan_heads(&root)
                 .into_iter()
                 .filter(|e| e.category == store::Category::Toolchains)
                 .map(|e| e.version)
