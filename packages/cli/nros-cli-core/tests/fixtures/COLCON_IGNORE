@@ -1,0 +1,5 @@
+# Issue 2996: keeps every fixture package below this directory out of the
+# nano-ros tree's own provider scan, so a user workspace never resolves a test
+# fixture as a provider (`rmw = "acme"`) and `nros knob list` never lists
+# one's knobs. A test names a directory in here as its workspace root, and a
+# root the caller names is scanned whatever markers it holds.
