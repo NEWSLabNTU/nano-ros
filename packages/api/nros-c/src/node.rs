@@ -508,6 +508,16 @@ pub unsafe extern "C" fn rclc_node_init_ex(
     node.namespace[..opts.namespace_len].copy_from_slice(&opts.namespace[..opts.namespace_len]);
     node.namespace_len = opts.namespace_len;
 
+    // Issue 2739 -- this road names its node without `NodeBuilder::build`, so
+    // the environment rung is applied here, by the same rule: the namespace
+    // always, the name only in an image that states one node. Entities take
+    // the identity from this struct, so what is written here is what is
+    // announced.
+    let rc = apply_env_identity(node);
+    if rc != RCL_RET_OK {
+        return rc;
+    }
+
     // Mirror multi-RMW + SchedContext metadata.
     node.rmw_name[..opts.rmw_name_len].copy_from_slice(&opts.rmw_name[..opts.rmw_name_len]);
     node.rmw_name_len = opts.rmw_name_len;
@@ -546,6 +556,36 @@ pub unsafe extern "C" fn rclc_node_init_ex(
         );
     }
 
+    RCL_RET_OK
+}
+
+// Issue 2739 -- the environment rung on a legacy C node.
+/// `nros_node::executor::env_identity::apply` on a legacy C node's name and
+/// namespace, written back in place.
+fn apply_env_identity(node: &mut rcl_node_t) -> rcl_ret_t {
+    let (Ok(name), Ok(ns)) = (
+        core::str::from_utf8(&node.name[..node.name_len]),
+        core::str::from_utf8(&node.namespace[..node.namespace_len]),
+    ) else {
+        return RCL_RET_INVALID_ARGUMENT;
+    };
+    let r = nros_node::executor::env_identity::apply(name, ns);
+    if r.name == name && r.namespace == ns {
+        return RCL_RET_OK;
+    }
+    if r.name.len() > MAX_NAME_LEN || r.namespace.len() > MAX_NAMESPACE_LEN {
+        return RCL_RET_INVALID_ARGUMENT;
+    }
+    // Copy out before overwriting: `r` may borrow the buffers it replaces.
+    let mut name_out = [0u8; MAX_NAME_LEN];
+    let mut ns_out = [0u8; MAX_NAMESPACE_LEN];
+    name_out[..r.name.len()].copy_from_slice(r.name.as_bytes());
+    ns_out[..r.namespace.len()].copy_from_slice(r.namespace.as_bytes());
+    let (name_len, ns_len) = (r.name.len(), r.namespace.len());
+    node.name = name_out;
+    node.name_len = name_len;
+    node.namespace = ns_out;
+    node.namespace_len = ns_len;
     RCL_RET_OK
 }
 
@@ -2478,5 +2518,85 @@ mod accessor_tests {
         v.extend_from_slice(s.as_bytes());
         v.push(0);
         v
+    }
+}
+
+/// The C route (issue 2739 acceptance): `rclc_node_init_default`, which names
+/// its node without `NodeBuilder::build`, carries the environment's identity
+/// by the same rule. The rule's globals are process-wide, so these take turns
+/// and put the environment back.
+#[cfg(test)]
+mod env_identity_route_tests {
+    extern crate std;
+    use super::*;
+    use crate::support::{rclc_support_get_zero_initialized, rclc_support_state_t};
+    use nros_node::executor::env_identity::{clear_for_tests, set_for_tests};
+    use std::{
+        string::String,
+        sync::{Mutex, MutexGuard},
+    };
+
+    static LOCK: Mutex<()> = Mutex::new(());
+
+    struct Env(#[allow(dead_code)] MutexGuard<'static, ()>);
+    impl Env {
+        fn set(name: Option<&str>, ns: Option<&str>, count: Option<usize>) -> Self {
+            let g = LOCK.lock().unwrap_or_else(|e| e.into_inner());
+            set_for_tests(name, ns, count);
+            Env(g)
+        }
+    }
+    impl Drop for Env {
+        fn drop(&mut self) {
+            clear_for_tests();
+        }
+    }
+
+    /// `(name, namespace)` of a node `rclc_node_init_default` made from the
+    /// stated `name` / `ns` (both NUL-terminated).
+    fn init(name: &[u8], ns: &[u8]) -> (String, String) {
+        let mut support = rclc_support_get_zero_initialized();
+        support.state = rclc_support_state_t::RCLC_SUPPORT_STATE_INITIALIZED;
+        let mut node = rcl_get_zero_initialized_node();
+        let rc = unsafe {
+            rclc_node_init_default(
+                &mut node,
+                name.as_ptr() as *const c_char,
+                ns.as_ptr() as *const c_char,
+                &support,
+            )
+        };
+        assert_eq!(rc, RCL_RET_OK);
+        (
+            String::from_utf8_lossy(&node.name[..node.name_len]).into_owned(),
+            String::from_utf8_lossy(&node.namespace[..node.namespace_len]).into_owned(),
+        )
+    }
+
+    #[test]
+    fn one_stated_node_takes_the_env_name() {
+        let _e = Env::set(Some("w0node"), None, Some(1));
+        assert_eq!(init(b"talker\0", b"/\0").0, "w0node");
+    }
+
+    #[test]
+    fn two_stated_nodes_keep_the_stated_name() {
+        let _e = Env::set(Some("w0node"), None, Some(2));
+        assert_eq!(init(b"talker\0", b"/\0").0, "talker");
+    }
+
+    #[test]
+    fn an_unstated_count_keeps_the_stated_name() {
+        let _e = Env::set(Some("w0node"), None, None);
+        assert_eq!(init(b"talker\0", b"/\0").0, "talker");
+    }
+
+    #[test]
+    fn the_env_namespace_replaces_the_stated_one() {
+        let _e = Env::set(None, Some("/w0ns2"), Some(2));
+        assert_eq!(
+            init(b"talker\0", b"/fleet\0"),
+            ("talker".into(), "/w0ns2".into())
+        );
     }
 }

@@ -1982,8 +1982,16 @@ impl RemapRule {
     fn applies(&self, tier: RemapTier, node_name: &str, ns: &str) -> bool {
         self.tier == tier
             && match tier {
+                // Issue 2739 -- a launch rule is keyed by the identity the
+                // launch file STATED. When the environment rung replaced a part
+                // of the node's identity, the rule's value for that part is the
+                // stated one, so that part is not compared: the name is
+                // replaced only in a one-node image (every launch rule is that
+                // node's), the namespace for every node.
                 RemapTier::Launch => {
-                    self.node_name.as_str() == node_name && self.namespace.as_str() == ns
+                    (super::env_identity::renames_node() || self.node_name.as_str() == node_name)
+                        && (super::env_identity::replaces_namespace()
+                            || self.namespace.as_str() == ns)
                 }
                 RemapTier::Argv => {
                     self.node_name.is_empty() || self.node_name.as_str() == node_name
@@ -3591,7 +3599,19 @@ impl<'s> Executor<'s> {
                     .ok_or(NodeError::InvalidSchedContextBinding)?;
                 Ok((r.name.clone(), r.namespace.clone(), r.session_idx))
             }
-            None => Ok((self.node_name.clone(), self.namespace.clone(), 0u8)),
+            // An image with no declared node: the executor's identity is its one
+            // node, so the environment rung (issue 2739) answers for it here,
+            // including the once-per-process notice when the name is ignored.
+            None => {
+                let r =
+                    super::env_identity::apply(self.node_name.as_str(), self.namespace.as_str());
+                let mut name = heapless::String::<64>::new();
+                name.push_str(r.name).map_err(|_| NodeError::NameTooLong)?;
+                let mut ns = heapless::String::<64>::new();
+                ns.push_str(r.namespace)
+                    .map_err(|_| NodeError::NameTooLong)?;
+                Ok((name, ns, 0u8))
+            }
         }
     }
 

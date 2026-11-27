@@ -86,6 +86,9 @@ mod node;
 pub use node::fit_runtime_qos;
 #[cfg(any(has_rmw, test))]
 pub mod node_record;
+// Issue 2739.
+/// `$NROS_NODE_NAME` / `$NROS_NODE_NAMESPACE`, applied to every node.
+pub mod env_identity;
 #[cfg(any(has_rmw, test))]
 mod node_wake;
 // phase-436 -- one backend wake slot shared by every executor over a session.
