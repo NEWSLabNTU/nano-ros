@@ -365,6 +365,13 @@ jobs:
                --sched-period 10000000 0 true && echo "SCHED_DEADLINE: granted"
           nproc
 
+      # phase-585 W8 (RFC-0114 D13.3) -- every fixture resolution appends one
+      # line (test, row, coordinate) to the evidence ledger. From
+      # `$GITHUB_WORKSPACE` in the shell, because the job runs in a container
+      # and `github.workspace` names the HOST's path (W2's lesson).
+      - name: Point the evidence ledger at the uploaded tree
+        run: echo "NROS_TEST_EVIDENCE_DIR=$GITHUB_WORKSPACE/target/nros-evidence" >> "$GITHUB_ENV"
+
       - name: rt_sched_levels_e2e
         env:
           NROS_TEST_UNCLAIMED: ""
@@ -373,6 +380,24 @@ jobs:
           source ./activate.sh
           cargo nextest run -p nros-tests --test rt_sched_levels_e2e \
             --no-fail-fast --success-output immediate
+
+      # phase-585 W8 -- the junit and the ledger, for this run's
+      # `board-results` (the Linux row's cells). GLOB the profile, as the
+      # nightly does: `nros_nextest_junit_path` honours the run profile and
+      # `$CARGO_TARGET_DIR`, neither set here today.
+      - name: Upload nextest JUnit and the evidence ledger (rt-sched)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: host-tests-rt-sched-junit
+          path: |
+            target/nextest/*/junit.xml
+            target/nextest/*/junit-real.xml
+            ${{ env.CARGO_TARGET_DIR }}/nextest/*/junit.xml
+            ${{ env.CARGO_TARGET_DIR }}/nextest/*/junit-real.xml
+            target/nros-evidence/*.jsonl
+          if-no-files-found: ignore
+          retention-days: 7
 
   # phase-573 W2 (RFC-0108 D9, issue 2675) — a callback that calls back into
   # the executor dispatching it, under Miri with Tree Borrows: the only check
@@ -930,6 +955,55 @@ jobs:
             echo "--- sccache server log (deduped) ---"
             { sort /tmp/sccache-server.log | uniq -c | sort -rn | head -25; } || true
           fi
+
+  # RFC-0114 D13.3 (phase-585 W8) -- this run's results per registry board:
+  # the rt-sched job's junit joined with the evidence ledger its tests wrote,
+  # as nightly.yml's `board-results` does. The Linux cells this schedule runs
+  # carried no evidence before: the job uploaded no junit. A SEPARATE job, in
+  # no required check, and never `continue-on-error`: a collector that fails
+  # says so here, rather than reading green while broken.
+  board-results:
+    name: board results
+    needs: [rt-sched]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            scripts/ci
+            scripts/lib
+            packages/boards/board-support-status.json
+            packages/testing/nros-tests/src/matrix.rs
+          sparse-checkout-cone-mode: false
+      - name: Download the junit and evidence ledgers
+        uses: actions/download-artifact@v4
+        with:
+          pattern: host-tests-*-junit
+          path: board-artifacts
+      - name: Read this run's jobs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh run view "${{ github.run_id }}" --repo "${{ github.repository }}" --json jobs > jobs.json
+      - name: Collect the board results
+        run: |
+          python3 scripts/ci/board-results.py --jobs jobs.json --artifacts board-artifacts \
+            --out board-results.json --summary "$GITHUB_STEP_SUMMARY" \
+            --run-meta workflow=host-tests.yml event="${{ github.event_name }}" \
+              run="${{ github.run_id }}" sha="${{ github.sha }}" date="$(date -u +%F)" \
+              url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+      - name: Upload board-results.json
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: board-results
+          path: board-results.json
+          if-no-files-found: error
+          retention-days: 90
 
   # ===== lane census (was lane-census.yml, cron 04:40; phase-559 W6) =====
   #

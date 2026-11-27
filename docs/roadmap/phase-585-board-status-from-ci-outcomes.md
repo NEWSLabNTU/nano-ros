@@ -159,7 +159,15 @@ in the order below.
 
 ### W8 — `host-tests` keeps its junit and ledger
 
-- **Status:** OPEN (approved 2026-11-22, after W2)
+- **Status:** OPEN (approved 2026-11-22, after W2). Built 2026-11-27 (nros
+  118, the PR that records this): `rt-sched`, the job that runs the Linux
+  cells, points the ledger from `$GITHUB_WORKSPACE`, uploads its junit and
+  ledger as `host-tests-rt-sched-junit`, and a `board-results` job collects
+  them. The collector needed no change: on a synthetic artifact in that
+  layout it lists `nros-board-linux@Linux` "✓ passed 1/1". The `unit` job
+  runs no nros-tests (`--exclude nros-tests`), so it resolves no fixture
+  and writes no ledger. The acceptance waits on the first scheduled run
+  after the merge.
 - **What:** `host-tests.yml` uploads no junit today, so the Linux cells it
   runs on its schedule carry no evidence. Upload its junit with the evidence
   ledger (from `$GITHUB_WORKSPACE`, as W2 does, since its jobs run in
