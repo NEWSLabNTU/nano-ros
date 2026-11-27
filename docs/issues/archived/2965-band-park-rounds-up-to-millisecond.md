@@ -1,12 +1,14 @@
 ---
 id: 2965
 title: "A spawned level parked in whole milliseconds, so a 1 kHz level released every 1.3 ms"
-status: open
+status: resolved
 type: bug
 severity: high
 area: [executor, levels, real-time]
 related: [phase-162, phase-509, issue-1242, phase-590]
 found: 2026-11-25
+resolved: 2026-11-27
+resolved_in: "fix(executor, issue 2965): a spawned level parks at the port's finest park, not whole milliseconds (B33)"
 ---
 
 ## What happened
@@ -176,3 +178,13 @@ in S1 and the 2 ms line, against the control's ~5 ms. Measured on host 118
 S1's longest stretch is 696 us, the 1 ms period minus the loop's ~300 us
 callback, as predicted: 1,304 us under the line. Every control release ran its
 5 ms burn whole, 3,000 us over it.
+
+## Resolved (2026-11-27)
+
+The park fix (#4851, `8c936f649a`) and S1's verdict on telemetry's longest
+CPU stretch (#4863, `5058187aec`) are both on main. Since then the
+`real-time levels (rt-sched)` job has concluded success in every host-tests
+run on main: 45684811335 (`01388e07a3`), 45742787244 and 45747295109
+(`d92c369a14`), 45820896742 (`ebbb3a570d`) and 45868135916 (`52fcb58126`).
+The millisecond conversions left on purpose went to issue 2967.
+

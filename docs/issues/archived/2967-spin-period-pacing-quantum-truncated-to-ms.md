@@ -1,12 +1,14 @@
 ---
 id: 2967
 title: "RTOS sched-task runners pass a derived spin period truncated to whole milliseconds, and Zephyr's handle park rounds to milliseconds below a finer tick"
-status: open
+status: resolved
 type: bug
 severity: medium
 area: [executor, boards, zephyr, real-time]
 related: [issue-2965, phase-474, phase-521]
 found: 2026-11-25
+resolved: 2026-11-27
+resolved_in: "fix(boards): sched-task runners declare their period in microseconds and park on the entry budget"
 ---
 
 Found by issue 2965's sweep. That issue fixed the parks that rounded a
@@ -136,3 +138,36 @@ its cadence. With step 2 the grid is the boot level's declared
 Not run here: the Zephyr and NuttX Rust boards and every C runner. They
 build only for their targets, so the RTOS fixtures and their cells on 241
 are the acceptance.
+
+## Acceptance (2026-11-27, nros 175, main at `5067703e37`)
+
+The fix (#4854, `2b48a18eb5`) on every sched-task row and the four test files
+that read them, built and run on one host:
+
+- Rows, all built: FreeRTOS Rust, C and C++; ThreadX-Linux Rust; NuttX
+  (arm and riscv) Rust, C and C++; Zephyr Rust (plain and derived), C and C++
+  (realtime, levels, derived sched tasks); native Rust, C and C++ (realtime,
+  derived, rclcpp, levels, budget, S1 and S1-flat); `int32-sink-zenoh`; and the
+  `orch_sched_tasks_freertos` compile check.
+- `realtime_sched_tasks_e2e`: 22 rows executed, 22 passed, 0 out of lane.
+- `rt_sched_levels_e2e`: 5 of 5.
+- `orchestration_sched_tasks_freertos`: 2 of 2.
+- `sched_task_wake_fanout` (with `--features trigger-test`, as its
+  `required-features-tests` lane runs it): 2 of 2.
+
+**For the next acceptance run: no single command builds what these cells
+read.** The cells resolve rows outside the realtime set (`int32-sink`, the
+native derived, rclcpp, budget and S1-flat entries), and three builders are
+needed:
+
+- `scripts/build/workspace-fixtures-build.sh <platform> <lang> --id <row>`
+  for the FreeRTOS, ThreadX-Linux, NuttX C and C++, and native rows;
+- `just nuttx build-fixtures` for the NuttX Rust rows (it exports
+  `NUTTX_DIR`, which the `--id` builder refuses without);
+- `just zephyr build-fixtures` for every Zephyr row (west-built; the `--id`
+  builder refuses them).
+
+A Zephyr plus NuttX platform build needs about 90 GB free on its own. A
+first run that filled the disk timed out every test, which reads like a
+defect and is not one.
+
