@@ -59,3 +59,19 @@ under that lock. Owned passes hold the recursive lock across callbacks, so the
 callback's own thread re-enters it and reads `true` (refused), and any other
 thread waits for the pass to end and reads `false`. That change needs the
 cross-thread acceptance test above, in C.
+
+## Blocked (2026-11-28): no C lock-install API exists or is planned
+
+Finding 2 cannot be fixed or tested until C code can install an executor
+lock on an `rclc_executor_t`, and no phase plans that API. The executor's
+lock is installed today only by the C++ context
+(`nros_cpp_executor_set_lock`) and by the board level runners: RFC-0108's
+"As built in P10" table of runners, each with its lock and thread identity
+([RFC-0108](../design/0108-executor-preemption-levels.md)). None of those
+reaches an `rclc_executor_t` that the C API opened, so a second thread
+cannot call into a spinning C executor.
+
+So the issue stays open, and is not in the unowned bug queue. It unblocks
+when a phase plans a C lock-install API. That phase must carry this issue's
+two parts together: `refuse_in_dispatch` reading `in_dispatch` under the
+lock, and the cross-thread C acceptance test.
