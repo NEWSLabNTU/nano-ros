@@ -248,7 +248,10 @@ its own release note.
 >   `config explain --platform P` → `knob list --platform P`.
 > - `nros package list` is a second, equal spelling of `nros list`, with no
 >   note: neither is old.
-> - The `profile` row lands with phase-569 W6 (`profile list` / `show`).
+> - The `profile` row: `nros profile` becomes the user noun (`list` /
+>   `show`). `dev profile resolve|args|dir|carve-out|env` stay plumbing, and
+>   their old top-level spellings stay as hidden verbs of `nros profile`
+>   (phase-569 W6).
 
 ### D4 — Every `show` links its book chapter
 
