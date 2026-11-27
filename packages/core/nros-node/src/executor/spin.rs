@@ -10342,23 +10342,6 @@ impl<'s> Executor<'s> {
         )
     }
 
-    /// [`register_timer_entry`](Self::register_timer_entry), with a CAPTURE
-    /// the arena holds — phase-476 W2.
-    ///
-    /// The callback is BUILT after the allocation, by `make`, from the context
-    /// pointer the entry should dispatch with: `place_capture`'s copy of
-    /// `capture` when there is one, otherwise `context` unchanged. That is what
-    /// lets the capture ride in the timer entry's own trailing region (so a
-    /// release frees it) while the closure that reads it is still a plain
-    /// `TimerEntry<F>`.
-    ///
-    /// Issue 1974 — the stored callback takes the dispatcher's
-    /// [`TimerCallInfo`]; a plain `FnMut()` is adapted by ignoring it, so there
-    /// is one entry type and one dispatch whichever flavour the caller wrote.
-    /// `autostart == false` builds the entry CANCELLED (rcl's
-    /// `rcl_timer_init2(..., autostart = false)`): it never fires until
-    /// [`reset_timer`](Self::reset_timer) starts it.
-    #[allow(clippy::too_many_arguments)]
     // Issues 2984 and 2985.
     /// Report one callback slot a registration is about to claim, from the
     /// funnel every route crosses, and return its sequence number for the
@@ -10393,6 +10376,23 @@ impl<'s> Executor<'s> {
         SlotSeq
     }
 
+    /// [`register_timer_entry`](Self::register_timer_entry), with a CAPTURE
+    /// the arena holds — phase-476 W2.
+    ///
+    /// The callback is BUILT after the allocation, by `make`, from the context
+    /// pointer the entry should dispatch with: `place_capture`'s copy of
+    /// `capture` when there is one, otherwise `context` unchanged. That is what
+    /// lets the capture ride in the timer entry's own trailing region (so a
+    /// release frees it) while the closure that reads it is still a plain
+    /// `TimerEntry<F>`.
+    ///
+    /// Issue 1974 — the stored callback takes the dispatcher's
+    /// [`TimerCallInfo`]; a plain `FnMut()` is adapted by ignoring it, so there
+    /// is one entry type and one dispatch whichever flavour the caller wrote.
+    /// `autostart == false` builds the entry CANCELLED (rcl's
+    /// `rcl_timer_init2(..., autostart = false)`): it never fires until
+    /// [`reset_timer`](Self::reset_timer) starts it.
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn register_timer_entry_with<F, M>(
         &mut self,
         node_id: Option<super::node_record::NodeId>,
