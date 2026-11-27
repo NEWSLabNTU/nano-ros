@@ -562,6 +562,57 @@ mod tests {
         ));
     }
 
+    /// Issue 2901, the island's own shape: the controller declares 148
+    /// parameters, and `system_model.yaml` and `system_carla_model.yaml` set
+    /// all of them, differing only on `wheel_base`, `max_pitch_rad` and
+    /// `min_pitch_rad`. The other 145 are seeded; the three stay on their
+    /// declaration defaults, and only they are named.
+    #[test]
+    fn the_island_controller_seeds_145_keys_and_leaves_its_3_differing_ones() {
+        let shared: Vec<(String, String)> = (0..145)
+            .map(|i| (format!("p{i:03}"), format!("{i}.5")))
+            .collect();
+        let island = |wheel: &str, max: &str, min: &str| {
+            let mut v = shared.clone();
+            v.push(("wheel_base".into(), wheel.into()));
+            v.push(("max_pitch_rad".into(), max.into()));
+            v.push(("min_pitch_rad".into(), min.into()));
+            v.sort();
+            v
+        };
+        let a = island("2.74", "0.1", "-0.1");
+        let b = island("3.005", "0.2", "-0.2");
+        let mut ia = inst("/control/controller", "controller", &[], 0);
+        ia.params = a.clone();
+        let mut ib = inst("/carla/controller", "controller", &[], 1);
+        ib.params = b;
+        let s = models(vec![ia, ib]).seeding("ctrl_pkg", "controller", None);
+
+        let Seeding::Disagree { keys, .. } = &s else {
+            panic!("{s:?}")
+        };
+        assert_eq!(keys, &["max_pitch_rad", "min_pitch_rad", "wheel_base"]);
+        assert_eq!(s.params(), shared.as_slice());
+        assert_eq!(a.len(), 148);
+
+        let msg = s.refusal("ctrl_pkg::controller", "boom").unwrap();
+        assert!(
+            msg.contains("keys `max_pitch_rad`, `min_pitch_rad`, `wheel_base`"),
+            "{msg}"
+        );
+        assert!(!msg.contains("p000"), "an agreed key is named: {msg}");
+        let note = s.unseeded_note("ctrl_pkg::controller").unwrap();
+        assert!(
+            note.contains("the 145 keys they agree on were seeded"),
+            "{note}"
+        );
+        let Some(ProbeSeedRecord::PartlySeeded { seeded, keys, .. }) = s.record() else {
+            panic!("{:?}", s.record())
+        };
+        assert_eq!(seeded.len(), 145);
+        assert_eq!(keys, ["max_pitch_rad", "min_pitch_rad", "wheel_base"]);
+    }
+
     /// Issue 2901 -- the island's controller: two models that differ on three
     /// keys and agree on the rest. The agreed keys are seeded, the three stay
     /// on their declaration defaults, and only they are named.
