@@ -1975,6 +1975,55 @@ pub fn sched_runtime_cells() -> impl Iterator<Item = &'static SchedCell> {
         .filter(|c| matches!(c.tier, Tier::Runtime))
 }
 
+/// Issue 2997 -- the test binaries a `just <module> test` run must select:
+/// for each module, the [`consumer_of`] every Runtime cell of its platforms,
+/// so a platform lane runs every cell the matrix says it owns, never a hand
+/// list. Hand lists ran 3 of NuttxArm's 6 consumers, 1 of ThreadxLinux's 5
+/// and none of QemuBaremetal's. Linux (its scope runs `test-all`) and an
+/// own-lane platform (`Px4`) are not module runs.
+///
+/// Committed as [`MODULE_CONSUMERS_FILE`], which the recipes read; the test
+/// `module_consumers_file_is_current` holds it to this.
+#[must_use]
+pub fn module_consumers()
+-> std::collections::BTreeMap<&'static str, std::collections::BTreeSet<&'static str>> {
+    let mut out: std::collections::BTreeMap<_, std::collections::BTreeSet<_>> = Default::default();
+    for c in CELLS {
+        if !matches!(c.tier, Tier::Runtime)
+            || c.platform == PlatformId::Linux
+            || c.platform.own_lane().is_some()
+        {
+            continue;
+        }
+        if let Some(k) = consumer_of(c) {
+            out.entry(c.platform.just_module())
+                .or_default()
+                .insert(k.binary());
+        }
+    }
+    out
+}
+
+/// Where [`module_consumers`] is committed, relative to this crate.
+pub const MODULE_CONSUMERS_FILE: &str = "module-consumers.txt";
+
+/// [`module_consumers`] as the committed file's text: one `<module> <binary>`
+/// line each, sorted, under a header naming how to regenerate it.
+#[must_use]
+pub fn module_consumers_text() -> String {
+    let mut s = String::from(
+        "# GENERATED from matrix::module_consumers (consumer_of over matrix::CELLS) -- do not edit.\n\
+         # Regenerate: NROS_WRITE_MODULE_CONSUMERS=1 cargo test -p nros-tests --lib module_consumers_file_is_current\n\
+         # Read by scripts/test/module-consumers.sh for each `just <module> test` (issue 2997).\n",
+    );
+    for (module, bins) in module_consumers() {
+        for b in bins {
+            s.push_str(&format!("{module} {b}\n"));
+        }
+    }
+    s
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2094,5 +2143,31 @@ mod tests {
                 Tier::Runtime => {}
             }
         }
+    }
+
+    // Issue 2997 -- the committed list the recipes read IS the derivation.
+    #[test]
+    fn module_consumers_file_is_current() {
+        let path =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(super::MODULE_CONSUMERS_FILE);
+        let want = super::module_consumers_text();
+        if std::env::var_os("NROS_WRITE_MODULE_CONSUMERS").is_some() {
+            std::fs::write(&path, &want).unwrap();
+        }
+        let got = std::fs::read_to_string(&path).unwrap_or_default();
+        assert!(
+            got == want,
+            "{} is stale against matrix::CELLS. Regenerate:\n  \
+             NROS_WRITE_MODULE_CONSUMERS=1 cargo test -p nros-tests --lib module_consumers_file_is_current",
+            path.display()
+        );
+        // Each nightly module owns cells, and the board QemuBaremetal's
+        // consumers (issue 2997's case) are in it.
+        let m = super::module_consumers();
+        assert!(
+            m.get("qemu").is_some_and(|b| b.contains("emulator")),
+            "{m:?}"
+        );
+        assert!(!m.contains_key("px4") && !m.contains_key("linux"), "{m:?}");
     }
 }

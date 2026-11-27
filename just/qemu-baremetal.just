@@ -280,6 +280,18 @@ test verbose="": build-fixtures
     # WCET belongs to the hardware lane; run `just qemu test-wcet` directly on a
     # board.
     just qemu test-lan9118 {{verbose}} || failed=1
+    # Issue 2997 -- the board's nros-tests cells. The two runs above are shell
+    # harnesses (`tests/run-test.sh`): they write no junit and resolve no
+    # fixture, so this board's nightly job kept no evidence and the board read
+    # "no verdict" on every run while the job passed. Its cells' consumers
+    # (`matrix::consumer_of`: emulator, baremetal_run_plan_runtime,
+    # logging_smoke) run here, DERIVED, never a hand list, scoped to the
+    # board's coordinates. Gate: `check platform-lane-cells`.
+    if bins="$(bash scripts/test/module-consumers.sh qemu)"; then
+        just _nextest-platform "$bins" '{{verbose}}' '' '' || failed=1
+    else
+        failed=1
+    fi
     if [ $failed -ne 0 ]; then
         echo "FAIL: Some QEMU tests failed."
         exit 1
