@@ -1,12 +1,14 @@
 ---
 id: 2962
 title: "No Rust image builds for rpi-pico-w-zephyr: four library crates chose portable-atomic's backend, and it conflicts with the zephyr crate's"
-status: open
+status: resolved
 type: bug
 severity: high
 area: [build, zephyr, boards]
 related: [2206, 2772]
 found: 2026-11-25
+resolved: 2026-11-28
+resolved_in: "3d9cea2570"
 ---
 
 ## What happens
@@ -111,3 +113,30 @@ floor.
 later `nros build`, even after `rm -rf build`, reports that cached failure
 without probing again. Delete the marker before believing a second "probe
 FAILED".
+
+## Resolved (2026-11-28)
+
+The fix landed as 3d9cea2570 (PR #4847): no library crate chooses the
+backend, and nros-c and the size probe are covered as above. Its gate is on
+main, `just check portable-atomic-backend`, with a self-test; on main it reads
+"no library crate chooses portable-atomic's backend".
+
+**Acceptance, all four Rust templates on the Pico.** Host 133, 2026-11-27,
+ran issue 2772's sweep: `nros new <x> --board rpi-pico-w-zephyr --rmw zenoh
+--template <t>` then `nros build`, Zephyr 3.7. The base was PR #4843's head
+then, with PR #4847's 12 files applied. Every Rust row links:
+
+| Template | Rust RAM (of 270,336 B) |
+| --- | --- |
+| talker | 194,792 B (72.06 %) |
+| listener | 193,064 B (71.42 %) |
+| server | 194,704 B (72.02 %) |
+| action-server | 208,968 B (77.30 %) |
+
+The Nucleo-F767ZI Rust rows, a board with CAS, linked in the same run.
+
+The base carried #4843 because the Pico's queryable floor is issue 2772's
+defect, not this one. That fix is #4843, and issue 2772 records the full
+24-row table there. On main without #4843, a Pico image stops at that floor,
+not at portable-atomic.
+
