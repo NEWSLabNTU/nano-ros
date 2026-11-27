@@ -336,6 +336,9 @@ pub enum CallbackKind {
     /// phase-463 W1 (schema v2) -- a guard condition's callback. A v1
     /// recorder spelled it `timer`.
     GuardCondition,
+    /// A device event source's continuation (phase 579 W3a): what
+    /// `census_hooks::on_device_create` records, as its `timers[]` row's kind.
+    Device,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -439,6 +442,27 @@ mod tests {
     /// row (none of them) still parses. Every struct here is
     /// `deny_unknown_fields`, so without the additions a v2 sidecar would fail
     /// every `nros sync` outright (issue 0518's shape).
+    /// A device registration's rows, exactly as the metadata probe wrote them
+    /// for a C component that calls `nros_executor_register_device`. The
+    /// `timers[]` row's kind parsed already; the `callbacks[]` row's did not,
+    /// and every struct here is `deny_unknown_fields`, so one registered
+    /// device failed the image's configure ("unknown variant `device`").
+    #[test]
+    fn a_device_registration_parses_in_both_rows_the_probe_writes() {
+        let timer: SourceTimer = serde_json::from_str(
+            r#"{"id":"device0#1","declaration_slot":0,"kind":"device","period_ms":0,
+                "period_us":0,"callback":"device0","callback_slot":0}"#,
+        )
+        .expect("a device's timers[] row");
+        assert_eq!(timer.kind, Some(SourceTimerKind::Device));
+        let callback: SourceCallback = serde_json::from_str(
+            r#"{"id":"device0","declaration_slot":0,"kind":"device","group":null,"effects":[],
+                "source":{"artifact":"","line":null,"column":null}}"#,
+        )
+        .expect("a device's callbacks[] row");
+        assert_eq!(callback.kind, CallbackKind::Device);
+    }
+
     #[test]
     fn schema_v2_fields_are_additive() {
         let v2: SourceTimer = serde_json::from_str(

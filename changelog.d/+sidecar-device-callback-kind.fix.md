@@ -1,0 +1,1 @@
+An image whose component registers a device with `nros_executor_register_device` no longer fails to configure with "unknown variant `device`". The metadata probe records the device's continuation with `kind: "device"`, and the CLI's sidecar schema now accepts that word in its callback rows as well as its timer rows.
