@@ -13,13 +13,12 @@ The steps run on the `native_sim` board; its status is on
 
 ## Before you start
 
-Choose this road when the Zephyr application already exists, owns its build,
-and has its own drivers, devicetree and `prj.conf`, and you want `west build`
-and `west flash` to stay the commands you type. It has no bringup and no
+Choose this road when the Zephyr application already exists and owns its
+build, and you want `west build` and `west flash` to stay the commands you
+type. It has no bringup and no
 `system.toml`: nano-ros reads everything about the image from `prj.conf`, as
 any Zephyr module does. For a new project, or one that will grow past one
-node, use a nano-ros workspace instead, where `nros build` writes the Zephyr
-application for you: [Zephyr native_sim](zephyr-native-sim.md).
+node, use a nano-ros workspace instead: [Zephyr native_sim](zephyr-native-sim.md).
 
 You need a Linux host with ROS 2 and `ros-<distro>-rmw-zenoh-cpp`
 ([which edition](../../start/install.md#install-ros-2-first)), the
@@ -39,12 +38,16 @@ export PATH="$HOME/.local/bin:$PATH"
 
 Provision the Zephyr SDK and the zenoh sources nano-ros compiles, and point
 Zephyr at that SDK. If your workspace already builds with a Zephyr SDK of its
-own, set `ZEPHYR_SDK_INSTALL_DIR` to that one instead:
+own, set `ZEPHYR_SDK_INSTALL_DIR` to its root, the directory holding
+`sdk_version`, instead:
 
 ```bash probe=32 track=installed variant=west-app,west-app-cpp,west-app-rust,west-app-flash
 nros setup zephyr --rmw zenoh
 export ZEPHYR_SDK_INSTALL_DIR="$(nros locate tool zephyr-sdk)"
 ```
+
+The directory one level above the root also works. A value that names no SDK
+stops the build.
 
 If you already have a west workspace, skip the next block. This one pins
 Zephyr 3.7 and fetches only the modules nano-ros's boards use. Its last
@@ -108,8 +111,8 @@ once a second.
 
 In C and C++ the node is a **component**: a struct or class that holds its
 state, and a `configure` function that creates its publishers and timers. You
-write no `main()`: the module generates the entry point, which opens the RMW
-session, creates the node and executor, calls `configure`, and spins. In Rust
+write no `main()`: the module generates the entry point, which creates the
+node, calls `configure`, and spins. In Rust
 the node is a nano-ros Rust component, built by zephyr-lang-rust.
 
 <!-- tabs -->

@@ -1,0 +1,1 @@
+The west workspace page and the environment variables reference say what `ZEPHYR_SDK_INSTALL_DIR` may name: the SDK root, or the directory one level above it, and that a value naming no SDK stops the build.
