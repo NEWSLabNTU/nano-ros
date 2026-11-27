@@ -239,19 +239,24 @@ pub struct Entry {
     pub provenance_version: Option<String>,
 }
 
+/// `<category>[/<name>][/<version>]`: the identity a human types back.
+fn display_id(category: Category, name: Option<&str>, version: &str) -> String {
+    let mut s = String::from(category.label());
+    if let Some(name) = name {
+        s.push('/');
+        s.push_str(name);
+    }
+    if !version.is_empty() {
+        s.push('/');
+        s.push_str(version);
+    }
+    s
+}
+
 impl Entry {
     /// `sdk/corrosion/0.6.1-nros1` — the identity a human types back at us.
     pub fn display_id(&self) -> String {
-        let mut s = String::from(self.category.label());
-        if let Some(name) = &self.name {
-            s.push('/');
-            s.push_str(name);
-        }
-        if !self.version.is_empty() {
-            s.push('/');
-            s.push_str(&self.version);
-        }
-        s
+        display_id(self.category, self.name.as_deref(), &self.version)
     }
 
     /// Every version string this entry answers to.
@@ -281,6 +286,8 @@ const SELF_READ_MARKERS: [&str; 2] = [".nros-provenance", ".installed-version"];
 
 fn measure(path: &Path) -> Measured {
     use std::os::unix::fs::MetadataExt;
+    #[cfg(test)]
+    MEASURED.with(|n| n.set(n.get() + 1));
 
     let mut size_bytes = 0u64;
     let mut newest_mtime = std::fs::symlink_metadata(path)
@@ -343,6 +350,20 @@ fn unix_time((secs, nsecs): (i64, i64)) -> Option<SystemTime> {
 /// A missing category directory contributes nothing — that is how this reads a
 /// host with no `toolchains/` yet without special-casing W7.
 pub fn scan(root: &Path) -> Vec<Entry> {
+    scan_heads(root)
+        .into_iter()
+        .map(EntryHead::measure)
+        .collect()
+}
+
+/// Every entry in the store, NOT measured: what it is and its state, read
+/// from directory names and the provenance file, without walking its files.
+///
+/// Issue 2999: `nros toolchain list` walked every file of every entry to size
+/// it and to date its last read, on every call, which takes minutes on a
+/// store of real size. What is installed needs none of that; `--usage` asks
+/// for the walk, and `gc`, which decides by age and size, does it always.
+pub fn scan_heads(root: &Path) -> Vec<EntryHead> {
     let mut out = Vec::new();
     for category in Category::ALL {
         out.extend(scan_category(root, category));
@@ -350,7 +371,7 @@ pub fn scan(root: &Path) -> Vec<Entry> {
     out
 }
 
-fn scan_category(root: &Path, category: Category) -> Vec<Entry> {
+fn scan_category(root: &Path, category: Category) -> Vec<EntryHead> {
     let mut out = Vec::new();
     match category {
         Category::Other => {
@@ -367,20 +388,14 @@ fn scan_category(root: &Path, category: Category) -> Vec<Entry> {
                 if known.contains(name.as_str()) {
                     continue;
                 }
-                out.push(build_entry(
-                    category,
-                    None,
-                    name,
-                    child,
-                    EntryState::Unmanaged,
-                ));
+                out.push(head(category, None, name, child, EntryState::Unmanaged));
             }
         }
         _ if category.depth() == 1 => {
             for child in children(&root.join(category.dir_name())) {
                 let name = file_name(&child);
                 let state = state_of(&child, None);
-                out.push(build_entry(category, None, name, child, state));
+                out.push(head(category, None, name, child, state));
             }
         }
         _ => {
@@ -390,7 +405,7 @@ fn scan_category(root: &Path, category: Category) -> Vec<Entry> {
                 for child in children(&group) {
                     let version = file_name(&child);
                     let state = state_of(&child, flat.then_some(EntryState::LegacyFlat));
-                    out.push(build_entry(
+                    out.push(head(
                         category,
                         Some(group_name.clone()),
                         version,
@@ -457,23 +472,71 @@ fn build_entry(
     path: PathBuf,
     state: EntryState,
 ) -> Entry {
-    let m = measure(&path);
-    let (last_used, evidence) = match m.newest_read {
-        Some(read) if read > m.newest_mtime => (read, UseEvidence::Read),
-        _ => (m.newest_mtime, UseEvidence::InstallOnly),
-    };
+    head(category, name, version, path, state).measure()
+}
+
+fn head(
+    category: Category,
+    name: Option<String>,
+    version: String,
+    path: PathBuf,
+    state: EntryState,
+) -> EntryHead {
     let provenance_version = Provenance::read(&path).map(|p| p.version);
-    Entry {
+    EntryHead {
         category,
         name,
         version,
         path,
-        size_bytes: m.size_bytes,
-        last_used,
-        evidence,
         state,
         provenance_version,
     }
+}
+
+/// A store entry before it is measured: everything [`Entry`] holds but what
+/// a walk of its files would say (size, last use). [`scan_heads`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EntryHead {
+    pub category: Category,
+    pub name: Option<String>,
+    pub version: String,
+    pub path: PathBuf,
+    pub state: EntryState,
+    pub provenance_version: Option<String>,
+}
+
+impl EntryHead {
+    /// Walk the entry's files: its size, and when it was last read.
+    pub fn measure(self) -> Entry {
+        let m = measure(&self.path);
+        let (last_used, evidence) = match m.newest_read {
+            Some(read) if read > m.newest_mtime => (read, UseEvidence::Read),
+            _ => (m.newest_mtime, UseEvidence::InstallOnly),
+        };
+        Entry {
+            category: self.category,
+            name: self.name,
+            version: self.version,
+            path: self.path,
+            size_bytes: m.size_bytes,
+            last_used,
+            evidence,
+            state: self.state,
+            provenance_version: self.provenance_version,
+        }
+    }
+
+    /// `sdk/corrosion/0.6.1-nros1`, as [`Entry::display_id`].
+    pub fn display_id(&self) -> String {
+        display_id(self.category, self.name.as_deref(), &self.version)
+    }
+}
+
+#[cfg(test)]
+thread_local! {
+    /// How many entries this thread has walked; a test asserts a listing
+    /// walks none.
+    pub static MEASURED: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
 }
 
 /// `<root>/toolchains` — where RFC-0095 D2 puts nano-ros itself.

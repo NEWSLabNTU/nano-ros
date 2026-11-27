@@ -1960,6 +1960,7 @@ Usage: nros toolchain list [OPTIONS]
 
 Options:
       --root <ROOT>  Store root. Defaults to `$NROS_HOME`, else `~/.nros`
+      --usage        Also measure each entry: its size and when it was last used. This reads every file in the store, which takes minutes on a large one
   -h, --help         Print help
   -V, --version      Print version
 ```
