@@ -524,9 +524,11 @@ Landed 2026-11-24:
   fixed).
 - `workspace-zephyr-rs-lifecycle`'s exact state assertion.
 
-The XRCE images state their service-server slots by hand, because managed
-nodes made in `main` are invisible to the derivation
-([issue 2904](../issues/2904-lifecycle-pair-xrce-service-slots.md), open). The
+The XRCE images stated their service-server slots by hand, because managed
+nodes made in `main` were invisible to the derivation. They now declare
+`[lifecycle] managed_nodes`
+([issue 2904](../issues/archived/2904-lifecycle-pair-xrce-service-slots.md),
+fixed). The
 XRCE cells also exposed examples that ended their `NROS_SPIN_MS` budget early
 ([issue 2910](../issues/archived/2910-example-spin-budget-counts-iterations.md),
 fixed).
