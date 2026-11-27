@@ -6,7 +6,7 @@ type: limitation
 area: build, stack-floor, zephyr
 severity: medium
 found: 2026-11-16
-related: [issue-2360, issue-2202, issue-2402, phase-557]
+related: [issue-2360, issue-2202, issue-2402, phase-557, phase-592]
 ---
 
 **Home: [phase-557](../roadmap/phase-557-stack-floor-measured-frames.md).** The
