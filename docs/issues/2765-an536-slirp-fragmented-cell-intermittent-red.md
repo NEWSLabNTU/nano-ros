@@ -95,3 +95,19 @@ The cell is lane-skipped in run-matrix, so its evidence is the live-peer
 board lane: green in 45394588495 (2026-11-24, the final proof run of #4781). No red of either
 shape since 2026-11-11 (the 2026-11-21 one being issue 2820's). The close
 rule stands.
+
+## Neither issue 2950 nor 2941 explains it (2026-11-28)
+
+Checked because both touch the slirp and connect paths:
+- **Issue 2950** bounds a zenoh TCP connect. This cell is Cyclone DDS
+  (UDP, no router), so it makes no zenoh TCP connect at all.
+- **Issue 2941** is a slirp address stated on a native_sim image. This
+  cell is mps3-an536 under QEMU, where `10.0.2.2` is the right host address.
+
+The live-peer evidence still shows no recurrence. Of the last 12 live-peer
+runs (2026-11-24 to 2026-11-27), the only red is 45596621496 (2026-11-25),
+and its one failure is the XRCE cell
+`xrce_a_peer_leaving_fires_the_graph_change_guard`, not this one. This cell
+passed in 45868139877, 45946078598 and 46011729927 (78-79 s each). The
+close rule stands.
+

@@ -1,12 +1,14 @@
 ---
 id: 2950
 title: "A zenoh TCP connect to a peer that drops the SYN blocks ~127 s with connect budget 0 or forever, on every port (first seen on Zephyr native_sim)"
-status: open
+status: resolved
 type: bug
 severity: medium
 area: [zenoh, network, zephyr, posix]
 related: [2941]
 found: 2026-11-24
+resolved: 2026-11-28
+resolved_in: "679add46e1"
 ---
 
 ## What happens
@@ -100,3 +102,33 @@ The fix (zenoh-pico fork `nano-ros-1.10.1`, split by mode as ruled):
 `10.255.255.1:7447`: 0 fails in 1.0 s, forever starts a new attempt on a new
 socket after 10.3 s, and a 3 s budget ends at 3.0 s. Without the fix the first
 hangs to the test timeout and the second keeps one socket for 25 s.
+
+## Acceptance met (2026-11-28, host 139)
+
+Measured on native_sim, the platform the issue was found on. Image:
+examples/workspaces/features `demo_bringup:zephyr_rust_params`, built with
+`nros build` at main fa6b48e1f1, which carries the fix (679add46e1). Its
+budget is the builtin `connect_timeout_ms = 0`. It was run with
+`-testargs --nros-locator=tcp/192.0.2.1:7447`, an address on TEST-NET-1 that
+drops the SYN:
+
+```text
+[00:00:00.000,000] <inf> nros_net_wait: Network ready (NSOS — host kernel sockets)
+[00:00:03.002,000] <err> nros: zenoh open: no session with tcp/192.0.2.1:7447 in one attempt (connect_timeout_ms=0) (refused, unreachable, or no answer to the handshake)
+[00:00:03.002,000] <err> rustapp: nros: zephyr entry FAILED: Spin
+```
+
+The process exited after 3.0 s of host time, where the issue measured
+137 s. The 3.0 s is the 2 s NSOS network wait at boot plus the one
+attempt's 1 s connect bound (`Z_TCP_ONE_ATTEMPT_CONNECT_TIMEOUT_MS`).
+
+- **Budget 0** fails within about a second of the open starting, as above.
+- **A stated budget**: `zephyr_connect_budget`'s SYN-drop case (native_sim,
+  `connect_timeout_ms = 3000`, TEST-NET-1) asserts the open ends at the
+  budget, plus slack.
+- **The other ports**: the bound is set in zenoh-pico's shared
+  `src/link/unicast/tcp.c`, above each port's `_z_tcp_connect_within`
+  (`tcp_posix.c`, `tcp_zephyr.c`), so every TCP port gets it.
+  `nros-rmw-zenoh`'s `connect_budget` test measures all three modes on
+  POSIX.
+
