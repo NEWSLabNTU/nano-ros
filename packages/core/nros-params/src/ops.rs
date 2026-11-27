@@ -79,6 +79,15 @@ pub trait ParameterServerOps<'s>: sealed::Sealed + Sized {
     /// See `ParameterServer::mark_launch_seed` in `server.rs` (issue 2969).
     fn mark_launch_seed(&mut self, node: NodeKey, name: &str) -> bool;
 
+    // Issue 2992.
+    /// See `ParameterServer::seed_launch_text` in `server.rs`.
+    fn seed_launch_text(
+        &mut self,
+        node: NodeKey,
+        name: &str,
+        text: &str,
+    ) -> Result<bool, crate::LaunchSeedError>;
+
     /// See `ParameterServer::adopt_launch_seed` in `server.rs` (issue 2969).
     fn adopt_launch_seed(
         &mut self,
@@ -425,6 +434,16 @@ impl<'s> ParameterServerOps<'s> for ParameterServer<'s> {
     #[inline]
     fn mark_launch_seed(&mut self, node: NodeKey, name: &str) -> bool {
         ParameterServer::mark_launch_seed(self, node, name)
+    }
+
+    #[inline]
+    fn seed_launch_text(
+        &mut self,
+        node: NodeKey,
+        name: &str,
+        text: &str,
+    ) -> Result<bool, crate::LaunchSeedError> {
+        ParameterServer::seed_launch_text(self, node, name, text)
     }
 
     #[inline]

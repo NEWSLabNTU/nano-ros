@@ -754,6 +754,53 @@ mod tests {
         assert_eq!(plain.err(), Some(DeclarationError::AlreadyDeclared));
     }
 
+    // Issue 2992.
+    /// A launch seed parsed straight into its slot is the seed the
+    /// value-then-mark path made: adopted by the first typed declaration. A
+    /// text the store cannot hold, and `[]`, leave the table as it was (no
+    /// entry, no count), so the name stays free.
+    #[test]
+    fn a_launch_seed_from_text_is_parsed_into_its_slot() {
+        use crate::LaunchSeedError;
+        let mut storage: ParameterStorage = ParameterStorage::new();
+        let mut server = ParameterServer::new_in(storage.as_table());
+
+        assert_eq!(server.seed_launch_text(NODE, "period", "20"), Ok(true));
+        let period = ParameterBuilder::<i64>::new(&mut server, NODE, "period")
+            .default(5)
+            .mandatory()
+            .expect("the launch seed is adopted");
+        assert_eq!(period.get(), 20);
+
+        assert_eq!(
+            server.seed_launch_text(NODE, "gains", "[1.5, 2.5]"),
+            Ok(true)
+        );
+        assert!(matches!(
+            server.get(NODE, "gains"),
+            Some(crate::ParameterValue::DoubleArray(v)) if v.as_slice() == [1.5, 2.5]
+        ));
+
+        let before = server.len(NODE);
+        assert_eq!(server.seed_launch_text(NODE, "empty", "[]"), Ok(false));
+        assert_eq!(
+            server.seed_launch_text(NODE, "mixed", "[1, a]"),
+            Err(LaunchSeedError::Text(crate::LaunchTextError::MixedList))
+        );
+        assert_eq!(server.len(NODE), before, "a refused text declares nothing");
+        assert!(server.get(NODE, "empty").is_none() && server.get(NODE, "mixed").is_none());
+        assert_eq!(server.seed_launch_text(NODE, "mixed", "3"), Ok(true));
+
+        assert_eq!(
+            server.seed_launch_text(NODE, "period", "7"),
+            Err(LaunchSeedError::Declare(DeclarationError::AlreadyDeclared))
+        );
+        assert!(matches!(
+            server.get(NODE, "period"),
+            Some(crate::ParameterValue::Integer(20))
+        ));
+    }
+
     #[test]
     fn test_integer_range_constraint() {
         let mut storage: ParameterStorage = ParameterStorage::new();

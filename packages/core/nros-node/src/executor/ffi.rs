@@ -87,6 +87,15 @@ pub trait ExecutorFfi<'s>: sealed::Sealed + Sized {
         value: &nros_params::ParameterValue,
     ) -> bool;
 
+    /// The FFI entry point; see `Executor::seed_launch_text_on` in `spin.rs`.
+    #[cfg(feature = "param-store")]
+    fn seed_launch_text_on(
+        &mut self,
+        node: super::node_record::NodeId,
+        name: &str,
+        text: &str,
+    ) -> Option<Result<bool, nros_params::LaunchSeedError>>;
+
     /// The FFI entry point; see `Executor::adopt_launch_seed_on` in `spin.rs`.
     #[cfg(feature = "param-store")]
     fn adopt_launch_seed_on(
@@ -815,6 +824,17 @@ impl<'s> ExecutorFfi<'s> for Executor<'s> {
         value: &nros_params::ParameterValue,
     ) -> bool {
         Executor::seed_launch_parameter_on_ref(self, node, name, value)
+    }
+
+    #[inline]
+    #[cfg(feature = "param-store")]
+    fn seed_launch_text_on(
+        &mut self,
+        node: super::node_record::NodeId,
+        name: &str,
+        text: &str,
+    ) -> Option<Result<bool, nros_params::LaunchSeedError>> {
+        Executor::seed_launch_text_on(self, node, name, text)
     }
 
     #[inline]
