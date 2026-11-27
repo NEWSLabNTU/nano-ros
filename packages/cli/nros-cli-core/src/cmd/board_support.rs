@@ -151,12 +151,21 @@ fn evidence_name(page: &str) -> Option<&str> {
 /// A checkout has none: its lanes are on GitHub, not in the tree.
 pub const RUNS_FILE: &str = "packages/boards/board-support-runs.json";
 
+/// What a surface says where no results history is recorded: a checkout (its
+/// runs are on GitHub, not in the tree) or a release cut before phase-585 W5.
+pub const NOT_RECORDED: &str = "not recorded in this checkout";
+
 /// `board-support-runs.json` — one lane per automated cadence.
 #[derive(Debug, Clone, Deserialize, PartialEq, Default)]
 pub struct LaneRuns {
     /// The day the release recorded them.
     pub recorded: String,
     pub lanes: std::collections::BTreeMap<String, Lane>,
+    /// RFC-0114 D13 (phase-585 W5): each registry board key's results
+    /// history, newest first, at most [`board_evidence::HISTORY_RUNS`]. Absent
+    /// from a release cut before W5.
+    #[serde(default)]
+    pub boards: std::collections::BTreeMap<String, Vec<crate::cmd::board_evidence::Run>>,
 }
 
 #[derive(Debug, Clone, Deserialize, PartialEq)]
@@ -185,6 +194,86 @@ impl LaneRuns {
 }
 
 impl Row {
+    /// D13.5's status word for this row, derived offline from the release's
+    /// results history by the rule the book uses (`stale_days` is the
+    /// registry's, [`Status::stale_days`]); `None` where no history is
+    /// recorded (a checkout, or a release cut before W5), which a caller
+    /// prints as "not recorded in this checkout".
+    #[must_use]
+    pub fn derived_status(
+        &self,
+        runs: Option<&LaneRuns>,
+        today: &str,
+        stale_days: u32,
+    ) -> Option<String> {
+        let history = self.history(runs)?;
+        let facts = crate::cmd::board_evidence::Facts {
+            infra: self.infra,
+            built: self.built,
+            emulator: self.emulator.as_deref(),
+        };
+        Some(crate::cmd::board_evidence::status_from_evidence(
+            &facts,
+            history,
+            today,
+            crate::cmd::board_evidence::DEFAULT_OUTCOME_WINDOW,
+            stale_days,
+        ))
+    }
+
+    /// The one line every surface prints for the derived status:
+    /// "<word>; last N runs, newest first: ✓ ✓ –", or the not-recorded
+    /// sentence where the release carries no histories.
+    #[must_use]
+    pub fn evidence_text(&self, runs: Option<&LaneRuns>, today: &str, stale_days: u32) -> String {
+        let (Some(word), Some(recent)) = (
+            self.derived_status(runs, today, stale_days),
+            self.recent_runs(runs),
+        ) else {
+            return NOT_RECORDED.to_string();
+        };
+        if recent.is_empty() {
+            return format!("{word}; no recorded run");
+        }
+        let marks: Vec<&str> = recent
+            .iter()
+            .map(|o| crate::cmd::board_evidence::outcome_mark(o))
+            .collect();
+        format!(
+            "{word}; last {} run{}, newest first: {}",
+            recent.len(),
+            if recent.len() == 1 { "" } else { "s" },
+            marks.join(" ")
+        )
+    }
+
+    /// This row's recorded outcomes, newest first (the marks' source), or
+    /// `None` where no history is recorded.
+    #[must_use]
+    pub fn recent_runs(&self, runs: Option<&LaneRuns>) -> Option<Vec<String>> {
+        Some(
+            self.history(runs)?
+                .iter()
+                .take(crate::cmd::board_evidence::HISTORY_RUNS)
+                .map(|r| r.outcome.clone())
+                .collect(),
+        )
+    }
+
+    /// The release's history for this row: `Some(&[])` for a row the release
+    /// recorded nothing for (a board no lane reported), `None` when the
+    /// release carries no histories at all.
+    fn history<'r>(
+        &self,
+        runs: Option<&'r LaneRuns>,
+    ) -> Option<&'r [crate::cmd::board_evidence::Run]> {
+        let runs = runs?;
+        if runs.boards.is_empty() {
+            return None;
+        }
+        Some(runs.boards.get(&self.key).map_or(&[][..], Vec::as_slice))
+    }
+
     /// "When was this row last verified, and what did it say?" — `None` for a
     /// row with no automated cadence (a manual row's date is in
     /// [`Row::cadence_text`]).
@@ -590,5 +679,81 @@ mod tests {
                 .unwrap()
                 .contains("no weekly lane")
         );
+    }
+
+    // phase-585 W5 -- the word and the marks come from the release's results
+    // history, by the book's rule; a release with no histories (a checkout,
+    // or one cut before W5) has none, and a board the release recorded
+    // nothing for reads by its descriptor facts alone.
+    #[test]
+    fn a_row_derives_its_word_and_marks_from_the_recorded_history() {
+        let row = |key: &str| -> Row {
+            serde_json::from_str(&format!(
+                r#"{{"key":"{key}","crate":"c","matrix_platform":null,"status":"s","built":true,
+                   "infra":false,"runs":"emulator","emulator":"qemu","hardware":null,
+                   "cadence":"daily","nightly_token":null,"last_run":null,"stale_from":null,
+                   "breadth":"b","external":null,"book_run":null,"book_flash":null,"page":null}}"#
+            ))
+            .unwrap()
+        };
+        let runs: LaneRuns = serde_json::from_str(
+            r#"{"recorded":"2026-11-27","lanes":{},"boards":{
+                "red@R":[{"date":"2026-11-26","workflow":"nightly.yml","event":"schedule","outcome":"failed"},
+                         {"date":"2026-11-25","workflow":"nightly.yml","event":"schedule","outcome":"failed"},
+                         {"date":"2026-11-24","workflow":"nightly.yml","event":"schedule","outcome":"passed"}],
+                "ok@K":[{"date":"2026-11-26","workflow":"nightly.yml","event":"schedule","outcome":"passed"},
+                        {"date":"2026-11-25","workflow":"live-peer.yml","event":"schedule","outcome":"no-verdict"},
+                        {"date":"2026-11-24","workflow":"nightly.yml","event":"schedule","outcome":"passed"},
+                        {"date":"2026-11-23","workflow":"nightly.yml","event":"schedule","outcome":"passed"},
+                        {"date":"2026-11-22","workflow":"nightly.yml","event":"schedule","outcome":"passed"},
+                        {"date":"2026-11-21","workflow":"nightly.yml","event":"schedule","outcome":"passed"},
+                        {"date":"2026-11-20","workflow":"nightly.yml","event":"schedule","outcome":"passed"}]}}"#,
+        )
+        .unwrap();
+        let today = "2026-11-27";
+        assert_eq!(
+            row("ok@K")
+                .derived_status(Some(&runs), today, 120)
+                .as_deref(),
+            Some("Verified in emulator (daily)")
+        );
+        assert_eq!(
+            row("red@R")
+                .derived_status(Some(&runs), today, 120)
+                .as_deref(),
+            Some("Failing since 2026-11-25")
+        );
+        let marks: String = row("ok@K")
+            .recent_runs(Some(&runs))
+            .unwrap()
+            .iter()
+            .map(|o| crate::cmd::board_evidence::outcome_mark(o))
+            .collect::<Vec<_>>()
+            .join(" ");
+        // Six marks, newest first; a no-verdict run is "–", never "✗".
+        assert_eq!(marks, "✓ – ✓ ✓ ✓ ✓");
+        // A board the release recorded nothing for: its descriptor facts.
+        assert_eq!(
+            row("none@N")
+                .derived_status(Some(&runs), today, 120)
+                .as_deref(),
+            Some("Builds")
+        );
+        assert_eq!(row("none@N").recent_runs(Some(&runs)), Some(vec![]));
+        assert_eq!(
+            row("ok@K").evidence_text(Some(&runs), today, 120),
+            "Verified in emulator (daily); last 6 runs, newest first: ✓ – ✓ ✓ ✓ ✓"
+        );
+        assert_eq!(
+            row("none@N").evidence_text(Some(&runs), today, 120),
+            "Builds; no recorded run"
+        );
+        assert_eq!(row("ok@K").evidence_text(None, today, 120), NOT_RECORDED);
+        // No histories at all: not recorded, never a guessed word.
+        let old: LaneRuns =
+            serde_json::from_str(r#"{"recorded":"2026-11-07","lanes":{}}"#).unwrap();
+        assert_eq!(row("ok@K").derived_status(Some(&old), today, 120), None);
+        assert_eq!(row("ok@K").derived_status(None, today, 120), None);
+        assert_eq!(row("ok@K").recent_runs(None), None);
     }
 }
