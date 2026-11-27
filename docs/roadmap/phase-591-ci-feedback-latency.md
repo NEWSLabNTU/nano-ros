@@ -239,6 +239,13 @@ the morning triage, so a lane cannot sit red-without-a-verdict for a week again.
 
 Acceptance: the report runs daily and names such a lane.
 
+## Related issues
+
+- [issue 3006](../issues/3006-unsafe-census-concurrent-row-edits.md): two PRs
+  that each add one `unsafe` block to one crate make the identical baseline
+  edit and merge clean and wrong, so the queue ejects the second one for a
+  defect neither has. Fixed by per-change census fragments.
+
 ## Order
 
 W1, W2 and W3 first (the largest gains; W2's rule and W3's first half already landed). Then W4,
