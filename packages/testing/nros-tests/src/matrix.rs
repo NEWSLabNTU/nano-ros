@@ -1632,6 +1632,8 @@ pub const NON_CELL_TESTS: &[(&str, NonCell)] = &[
     ("zephyr_nucleo_ram_budget", NonCell::CompileCheck),
     ("zephyr_prjconf_requirements", NonCell::Static),
     ("zephyr_self_pkg", NonCell::CompileCheck),
+    // Issue 2897 -- asserts the stack-floor `report.json` of a west fixture by ID.
+    ("zephyr_stack_floor_aarch64", NonCell::CompileCheck),
     (
         "zero_copy",
         NonCell::Secondary(

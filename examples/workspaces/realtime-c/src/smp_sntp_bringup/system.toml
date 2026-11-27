@@ -1,0 +1,146 @@
+[system]
+name = "realtime_c_demo"
+rmw = "zenoh"
+domain_id = 0
+
+# Phase 269 W4 (RFC-0015 §4.2) — C two-sched-task realtime demo.
+# The ctrl node publishes /ctrl every 10 ms (high sched task);
+# the telem node publishes /telem every 100 ms (low sched task).
+# Phase 273 W2 (RFC-0047): group→sched task binding moved from [[node_overrides]] to
+# [[component]].group_tasks (deployment config, not package manifest).
+# CALLBACK_GROUPS in cmake declares the group IDs; group_tasks here assigns
+# them to the named sched tasks. nros dev codegen emits nros_cpp_create_sched_context +
+# nros_cpp_bind_group_sched to bind each group to its priority sched task.
+[[component]]
+pkg = "ctrl_pkg"
+class = "ctrl_pkg::Ctrl"
+name = "ctrl_node"
+group_tasks = { ctrl = "high" }
+
+[[component]]
+pkg = "telem_pkg"
+class = "telem_pkg::Telem"
+name = "telem_node"
+group_tasks = { telem = "low" }
+
+[tasks.high]
+# phase-330 / issue 0380 — authored HERE, not in the generated model. Commit
+# 15a72db8e restored `class` and the Zephyr `deadline` into
+# config/system_model.yaml after a re-resolve stripped them, but the model is
+# GENERATED: nothing declared them in the inputs, so the next regeneration would
+# have stripped them again. Declaring them closes that loop (W1 made both
+# expressible).
+class = "real_time"
+spin_period = "10000us"
+[tasks.high.posix]
+priority = 80
+# phase-281 W3c — RAW Zephyr priority (preemptive; lower number = higher priority).
+# Consumed by the zephyr_entry projection: [tasks.*.zephyr] flips the C codegen onto
+# ZephyrBoard::run_sched_tasks (RFC-0015 Model 1), one k_thread per sched task.
+[tasks.high.zephyr]
+# RFC-0079 §4.1 — allocated from the DERIVED pool.app, strictly less urgent
+# than the transport band. Zephyr's band is not a literal: the zenoh read/lease
+# tasks are pthreads whose Kconfig band maps through Zephyr's POSIX layer to a
+# k_thread priority that depends on the IMAGE: 4, pool [5, 14], on the default
+# band this bringup's images run (measured, issue 1583). 9 is a pool priority
+# of THIS bringup's images and is judged only against them; a lowered-band
+# image such as derived_bringup's (transport [4, 9]) is a different image.
+# 5 outranked the transport, undeclared. Resolve for any image:
+#   python3 scripts/check-sched-task-priority-plan-image.py <build>/zephyr/.config
+priority = 9
+# issue 0260 / phase-356 W3 — THE POINT OF THIS BRINGUP.
+#
+# `demo_bringup` declares no `core` for zephyr, so its sched task is unpinned and the
+# observed-CPU marker can only report where the sched task HAPPENED to run. Pinning to
+# core 1 — not 0 — is what makes the assertion falsifiable: an unpinned sched task
+# lands on cpu 0 anyway (measured), so `running_on=0` would prove nothing.
+#
+# A SEPARATE BRINGUP rather than a `core` in `demo_bringup`, because `bringup` is
+# a per-row fixture field and the native_sim rows share this workspace.
+# native_sim is UNIPROCESSOR: `core = 1` there cannot succeed and would flip an
+# already-green cell to the loud fallback. Same workspace, same entry, different
+# configuration per row — RFC-0066's "a configuration is a fixture axis", with no
+# second workspace directory.
+#
+# `nros configure` warns that two bringups declare a system and skips FACADE
+# generation (phase-315 W1). That is a warning and a skip, not a failure: the
+# facades exist to derive cargo features for Rust entries, and this is a C entry
+# whose selection is CMake-side. Verified by building it, after first misreading
+# that warning as the cause of an unrelated failure.
+core = 1
+# ZEPHYR-SCOPED: kernel EDF here (k_thread_deadline_set); lowers to None (Fifo)
+# on posix/nuttx, so the other bakes are byte-identical.
+deadline = "10000us"
+# phase-281 W3-nuttx — RAW NuttX SCHED_FIFO priority (higher number = higher
+# priority; verbatim into pthread_attr_setschedparam). `[tasks.*.nuttx]` flips the
+# C codegen onto NuttxBoard::run_sched_tasks (RFC-0015 Model 1), one pthread per sched task.
+# phase-331 W6 / issue 0395 — RAW FreeRTOS priority, restored with the C arm's
+# freertos bake (same consolidation dropped it here).
+[tasks.high.freertos]
+# RFC-0079 — allocated from the port's `pool.app`, strictly BELOW the
+# reserved transport band. A sched task that outranks the link cannot be drained
+# or refilled by it (issue 0623, measured again in 0736); a sched task that needs
+# the other side must SAY so with `above = "transport"` on the sched task.
+priority = 3
+
+[tasks.high.nuttx]
+# RFC-0079 — allocated from the port's `pool.app`, strictly BELOW the
+# reserved transport band. A sched task that outranks the link cannot be drained
+# or refilled by it (issue 0623, measured again in 0736); a sched task that needs
+# the other side must SAY so with `above = "transport"` on the sched task.
+priority = 99
+
+[tasks.low]
+spin_period = "100000us"
+[tasks.low.posix]
+priority = 10
+[tasks.low.freertos]
+priority = 2
+
+[tasks.low.zephyr]
+priority = 10
+[tasks.low.nuttx]
+# RFC-0079 — 99, not 100. 100 is the priority zenoh-pico's read and lease
+# threads INHERIT from the thread that opens the session (app_main's
+# SCHED_PRIORITY_DEFAULT), so a sched task at 100 shares a priority with the link it
+# publishes over — and equal-priority SCHED_FIFO threads round-robin, which is
+# not an ordering. One step below keeps the sched task order (high 110 > low 99)
+# and vacates the band. Declared in the port's [board.priority_plan];
+# `check-sched-task-priority-plan` rejects a pin that lands on it.
+# RFC-0079 — allocated from the port's `pool.app`, strictly BELOW the
+# reserved transport band. A sched task that outranks the link cannot be drained
+# or refilled by it (issue 0623, measured again in 0736); a sched task that needs
+# the other side must SAY so with `above = "transport"` on the sched task.
+priority = 98
+
+# Issue 0951 — the implicit machine this system runs on. A host says WHERE a
+# node runs; what it is built as comes from `[image.*]`. Unscoped and with no
+# `nodes`, so it governs every launch file and every node — which is what the
+# `kind = "self"` deploy block it replaces already meant.
+[host.native]
+[image_defaults]
+rmw = "zenoh"
+
+# Issue 2897 -- `smp_bringup`'s qemu_cortex_a53 SMP image with SNTP re-sync, for the stack-floor walk on
+# a 64-bit Arm target: its main thread and its re-sync thread (role
+# SNTP_RESYNC) must each get a floor, not a refusal for a frameless function.
+# `workspace-zephyr-c-realtime-smp-sntp-resync` builds it;
+# `tests/zephyr_stack_floor_aarch64.rs` reads its `report.json`. Its own bringup
+# so `smp_bringup` stays a single-image project (example-coverage floor). Build-only:
+# the server never answers (TEST-NET-1), which the walk does not care about.
+[image.zephyr_smp_sntp_resync]
+board = "qemu-cortex-a53"
+os_config = ["prj-zenoh.conf"]
+panic = "platform"
+
+[image.zephyr_smp_sntp_resync.knobs.zenoh]
+socket_timeout_ms = 5
+
+[image.zephyr_smp_sntp_resync.knobs.clock]
+source = "sntp,platform"
+sntp_attempts = 1
+sntp_resync_interval_ms = 60000
+
+[image.zephyr_smp_sntp_resync.knobs.sntp]
+server = "192.0.2.1"
+timeout_ms = 400

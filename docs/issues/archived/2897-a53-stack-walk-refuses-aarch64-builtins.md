@@ -102,8 +102,8 @@ the main root's floor is either checked or refused for a reason other than a mis
   the frame is the sum of the pushes on both stacks, an upper bound for
   each. aarch64 only: decoding Cortex-M/R assembly moves those images'
   floors and is its own measured change.
-- **Measured**, `examples/workspaces/realtime-c` `smp_bringup`
-  (qemu_cortex_a53/smp, zephyr-sdk 0.16.9), "19 frame(s) of assembled code
+- **Measured**, `examples/workspaces/realtime-c` `smp_bringup` and
+  `smp_sntp_bringup` (qemu_cortex_a53/smp, zephyr-sdk 0.16.9), "19 frame(s) of assembled code
   read off the linked objects", `refused: []`:
 
   | image | role | stack | floor (upper bound) |
@@ -119,7 +119,9 @@ the main root's floor is either checked or refused for a reason other than a mis
   warns and none is a size. One cause of the looseness is aarch64-only:
   clang typed 4 of 374 C TUs ("unknown target ABI 'lp64'", issue 2998).
   The rest is RFC-0143's.
-- **Kept in a lane.** `[image.zephyr_smp_sntp_resync]` and fixture row
+- **Kept in a lane.** `smp_sntp_bringup`'s `[image.zephyr_smp_sntp_resync]`
+  (its own bringup, so `smp_bringup` stays a single-image project) and
+  fixture row
   `workspace-zephyr-c-realtime-smp-sntp-resync` build this image, and
   `tests/zephyr_stack_floor_aarch64.rs` asserts its `report.json`: no role
   refused, and a floor for OPEN, TASK_HIGH and SNTP_RESYNC.
