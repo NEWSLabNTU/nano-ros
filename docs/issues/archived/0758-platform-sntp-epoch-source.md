@@ -2,13 +2,15 @@
 id: 758
 title: "No platform wall-clock epoch source — embedded consumers hand-roll
   SNTP before boot, and stamped messages are wrong until they do"
-status: open
+status: resolved
+resolved: 2026-11-27
+resolved_in: "phase-582 W1-W4 (RFC-0141); W3 #4609"
 type: enhancement
 area: core, boards
 related: [rfc-0052, rfc-0141, phase-478, phase-575, phase-582]
 ---
 
-**Home: [phase-478](../roadmap/phase-478-island-developer-experience-findings.md)** — re-homed 2026-10-12 from phase-364, which is archived.
+**Home: [phase-478](../../roadmap/phase-478-island-developer-experience-findings.md)** — re-homed 2026-10-12 from phase-364, which is archived.
 
 ## Problem
 
@@ -326,9 +328,75 @@ symbol.
 ## Design moved to RFC-0141 (2026-11-19)
 
 The shared clock seam this issue's requirement calls for is
-[RFC-0141](../design/0141-wall-clock-source.md), tracked by
-[phase-582](../roadmap/phase-582-wall-clock-source.md):
+[RFC-0141](../../design/0141-wall-clock-source.md), tracked by
+[phase-582](../../roadmap/phase-582-wall-clock-source.md):
 - one selected source, never a cascade (D1);
 - a board hook that says whether it is synced (D2);
 - one stated epoch-failure policy (D4);
 - SNTP re-acquire (D5, phase-582 W3).
+
+## Resolution (2026-11-27)
+
+Closed by phase-582 (RFC-0141), checked against main and two
+autoware-safety-island CI runs: 45075448610 (nano-ros 9e9deb715f) and
+45946528825 (nano-ros 0e4afce2fa). Both succeeded on all three lanes.
+
+**The platform epoch source.** `nros_platform_epoch_us()` and the wall-clock
+store, with the source chosen by `[knobs.clock] source` (`sntp`, `platform`,
+`board`) and SNTP configured as image knobs, not consumer defines
+(phase-582 W1/W2/W4).
+
+**The consumer requirement:**
+- **Re-acquire with a periodic re-sync:** `clock.sntp_resync_interval_ms`
+  (phase-582 W3, #4609). Its acceptance cells, `zephyr_clock_resolve.rs`
+  `ClockSntpResync` / `ClockSntpOnce`, step a local SNTP server by +1000 s
+  mid-run. With 500 ms the stamps follow within one interval, and with 0
+  they do not. Both pass on Zephyr 3.7 and 4.4.
+- **A stated failure policy, instead of an app exit:** `clock.epoch_failure`.
+  In run 45946528825 the Zephyr FVP image could reach no SNTP server. It
+  printed `no wall-clock source answered (sntp, platform); stamps are unset`,
+  reported `Stamp clock: boot-relative ... unsynced`, and kept running
+  (`Actuation Safety Island is Live`).
+- **ASI drops its own copy:** on ASI's `nano-ros-next`,
+  `platform/freertos/wall_clock.cpp` and `clock_resync.cpp` are gone, and
+  ASI carries no Zephyr SNTP code; the image takes the epoch from nano-ros.
+- **Absolute stamps on the other lanes:** the FreeRTOS AN536 and FreeRTOS
+  POSIX lanes print `Stamp clock: absolute ... synced` in both runs. AN536
+  uses the board source, which issue 0772 tracks.
+
+**ASI's acceptance, revised by ASI (2026-11-27).** The original acceptance
+was that `vehicle_cmd_gate` rejects no command as stale after an SNTP step.
+It cannot be shown: Autoware 2.0.0's `vehicle_cmd_gate` has no stamp check.
+ASI's P5 run on `freertos-posix-carla` (`source platform`) measured 14,969
+island `control_cmd` messages at the ego, aged 0.1 to 182 ms (median
+2.3 ms), and 0 stale rejections, which is true but proves nothing about
+stamps. The acceptance that can be reached has two parts:
+1. nano-ros's native_sim cell `ClockSntpResync`: a local server is stepped
+   +1000 s mid-run, and the stamps follow (phase-582 W3, met);
+2. an island fvp-tap image with `clock.sntp_resync_interval_ms` above 0,
+   its server stepped mid-run, with the stamp age checked at the island's
+   own output rather than at the gate. ASI is turning W3 on for its tap
+   images (it was 0 on every island image, so no step could reach one).
+
+**Part 2 met (2026-11-27):** autoware-safety-island run 46018854324 (ASI
+6b93f0f, nano-ros pin 0e4afce2fa), Zephyr FVP job, step "Run Zephyr FVP tap
+tunnel". The setup:
+- the fvp-tap controller runs with `clock.sntp_resync_interval_ms = 2000`
+  and an 8,192 B resync stack;
+- a local server answers 61 times and steps +1000 s after its 30th answer;
+- stamp age is measured at the island's own
+  `/control/trajectory_follower/control_cmd`.
+
+| Window | n | p50 | p99 | max |
+| --- | --- | --- | --- | --- |
+| before the step | 3,291 | -644.4 ms | 170.5 ms | 496.6 ms |
+| after the step window | 3,222 | -663.1 ms | 4.1 ms | 38.1 ms |
+
+The first stamp on the stepped clock came 0.04 s after the step, and the
+console reads `SNTP re-sync every 2000 ms`, the out-of-range rate on the
+step gap, and `FVP TAP SNTP re-sync OK`. The negative ages are the FVP
+guest clock running about 2x between answers, bounded by the interval.
+`steps` stays 0 by design: the same source is re-installed.
+
+The FreeRTOS half stays open as issue 0772.
+

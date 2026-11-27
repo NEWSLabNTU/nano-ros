@@ -283,7 +283,7 @@ describe no image.
 
 ### D4 -- a time source for a board with no IP stack
 
-[Issue 0758](../issues/0758-platform-sntp-epoch-source.md) (open) proposes
+[Issue 0758](../issues/archived/0758-platform-sntp-epoch-source.md) (resolved 2026-11-27) proposed
 `nros_platform_epoch_us()` and an SNTP provider. The S32K344 island reaches the
 host only through zenoh over a UART; it has no IP stack, so SNTP cannot reach
 it. Consequences on the island (gap 5.4, its phase 9 W3): the board's hazard

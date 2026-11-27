@@ -353,7 +353,7 @@ SNTP never re-acquires. A consumer's board hook papers over that with
 
 ## Links
 
-- [Issue 0758](../issues/0758-platform-sntp-epoch-source.md): SNTP, re-acquire, failure
+- [Issue 0758](../issues/archived/0758-platform-sntp-epoch-source.md): SNTP, re-acquire, failure
   policy, and the board-time section (D4). W1, W3.
 - [Issue 2691](../issues/archived/2691-freertos-tick-count-answers-as-wall-clock.md):
   W2.
