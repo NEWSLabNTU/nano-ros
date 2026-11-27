@@ -257,11 +257,13 @@ set by Zephyr's network stack, not by nano-ros. Measured with Zephyr 3.7's
 thread analyzer:
 - 32-bit (mps2-an385, Cortex-M3): 1,160 B with the server named by hostname
   (DNS lookup included), 888 B with a numeric address.
-- 64-bit Arm: 7,024 B in an equivalent re-sync thread of a consumer image,
-  where 4,096 B overflowed.
-The default, 8,192 B, is the 64-bit peak plus the stack-floor margin (10 %,
-7,727 B) rounded up to a power of two, so it holds on both. A 32-bit image
-may set it lower, down to its own measured peak plus 10 %. The build's
+- 64-bit Arm (qemu_cortex_a53, SMP): 2,192 B with the server named by
+  hostname.
+- 64-bit Arm, a consumer image: 7,024 B in its own re-sync thread around
+  the same SNTP query, where 4,096 B overflowed.
+The default, 8,192 B, is the largest of these plus the stack-floor margin
+(10 %, 7,727 B) rounded up to a power of two, so it holds for all of them.
+An image may set it lower, down to its own measured peak plus 10 %. The build's
 stack-floor walk checks this stack, and refuses one below a measured floor.
 The thread exists only when the interval is above 0, so this costs nothing
 otherwise.
