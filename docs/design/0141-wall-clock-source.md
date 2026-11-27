@@ -392,8 +392,13 @@ same spacing.
 
 Before two answers there is no rate, so the first re-sync after boot is paced
 on monotonic time. A rate outside 0.001 to 100 is not trusted: a server step,
-no monotonic time between answers, or a step back all produce one. That gap
-is paced on monotonic time, and the image says so. The rule is pure
+no monotonic time between answers, or a step back all produce one. Nor is a
+rate inside that band that is more than 8x away, either way, from the rate
+that paced the gap: a step of S over an interval I multiplies the rate by
+about 1 + S/I, which can land inside the band (+1000 s at 10 s read about
+53), while a simulator's rate drifts far less between two gaps. That gap is
+paced on monotonic time, and the image says so. The next gap is judged on
+its own. The rule is pure
 (`nros_sntp_pace_*` in `nros/clock_resolve.h`) and host-tested. The zenoh HLC
 window (`clock.hlc_interval_ms`) is still paced on monotonic time.
 
@@ -521,6 +526,10 @@ a stub board clock (`docs/reference/source-timestamps.md`, gate
   point that the board entries call after network bring-up and log-writer
   registration, not lazily on the first read. Reads before it read 0 and
   resolve nothing.
+- 2026-11-27: D5 amended (issue 3012): a gap whose rate is 8x away from the
+  rate that paced it is a server step and is paced on monotonic time, like
+  an out-of-band rate. Rate DISCIPLINE (scaling the image's clock by the
+  server's rate) is deferred to a later amendment (issue 3013, user ruling).
 - 2026-11-24: D5 amended (issue 2884, user ruling): the re-sync is paced on
   the server's clock, by the rate the last two answers measured, so the
   interval is real time on a racing simulator. Before two answers, and for a
