@@ -6377,7 +6377,12 @@ release-bump version:
     bump_workspace_version Cargo.toml "{{version}}"
     bump_workspace_version packages/cli/Cargo.toml "{{version}}"
     ./scripts/check-version-lockstep.sh
-    echo "release-bump: bundle bumped to {{version}}. Review with: git diff Cargo.toml packages/cli/Cargo.toml"
+    # The unsafe census's fragments fold into its baseline here, so the
+    # baseline is exact at every tag (`git commit -am` below stages the
+    # deleted fragments too). Refuses while the census and baseline +
+    # fragments disagree.
+    python3 scripts/check-unsafe-census.py --fold
+    echo "release-bump: bundle bumped to {{version}}. Review with: git diff Cargo.toml packages/cli/Cargo.toml .config/unsafe-census-baseline.txt"
 
 # =============================================================================
 # Docker: use `just docker build`, `just docker shell`, `just docker test`, etc.
