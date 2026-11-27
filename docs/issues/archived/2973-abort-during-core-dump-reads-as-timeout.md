@@ -1,7 +1,9 @@
 ---
 id: 2973
 title: "A process that aborts while the deadline is pending reads as `timeout`'s 124, so a check that treats 124 as \"still running\" passes a crash"
-status: open
+status: resolved
+resolved: 2026-11-27
+resolved_in: "the change that archives this issue (446c8e8d8d fixed the first site)"
 type: bug
 severity: high
 area: [testing, gates, scripts]
@@ -64,7 +66,7 @@ SUCCESS is. Those sites:
   in its first 3 s with a dump that outlasts the remainder would pass the image
   BUILD. Not changed here: the router may handle SIGTERM and exit 0, so
   `--preserve-status` alone changes what "alive" reads as and needs its own
-  measurement inside the image. Open.
+  measurement inside the image. Fixed 2026-11-27, see the resolution below.
 - `scripts/check-shared-build-dir.sh`'s negative control (`[ "$rc" -eq 124 ]`,
   "the raw cargo deadlocked"). A cargo that crashed mid-dump would satisfy the
   control. The control's subject is a lock deadlock, not a crash, and its
@@ -72,3 +74,31 @@ SUCCESS is. Those sites:
 
 Whoever touches one of the open sites should use `--preserve-status` and judge
 143/137 as "alive at the deadline", as this check now does.
+
+## Resolution (2026-11-27): the router check
+
+The measurement the open site needed, with ROS humble's `rmw_zenohd` (the
+package the image's ROS layer installs) on host 118:
+
+| subject | `timeout 3` | `timeout --preserve-status 3` |
+| --- | --- | --- |
+| a live router | 124 | **0** (it exits cleanly on SIGTERM) |
+| a command that exits 0 before the deadline | 0 | **0** |
+| a command that aborts | 124 if still dumping | 134 |
+
+So `--preserve-status` alone cannot be the router's rule: a live router and
+one that exited cleanly on its own read the same. The router check needs two
+facts, and `nros_router_alive_after <secs> <cmd>` (`scripts/dev/zenohd.sh`,
+already copied into the image) asks both:
+- the process is present, and not a zombie, at the deadline;
+- it then exits 0 or 143 on our SIGTERM. A process still dumping core is
+  present, then exits with its signal status (134, 139).
+
+The ROS layer's build-time `RUN` uses it; the real router passes it (`state=Sl,
+exit on SIGTERM rc=0`). `just check router-alive-probe` holds it with
+stand-ins for every verdict, plus the negative control that `timeout`'s 124
+passes the crashing one.
+
+`scripts/check-shared-build-dir.sh`'s control stays as recorded above: its 124
+means a deadlock, not life.
+

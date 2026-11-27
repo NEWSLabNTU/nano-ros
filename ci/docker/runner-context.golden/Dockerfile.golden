@@ -79,10 +79,11 @@ RUN apt-get update \
 # The second RUN is the acceptance this layer exists for, checked at build time
 # with the repo's OWN resolver and launcher (scripts/dev/zenohd.sh, copied in):
 # `nros_zenohd_bin` must resolve the router from ROS_DISTRO alone, and
-# `nros_router_exec` must still be running it 3 s later (`timeout`'s 124) --
-# resolving is not running (issue 0774). A package that put its router
-# elsewhere, or a router that cannot start here, fails the BUILD, not a lane
-# that stops at its first step on the runner.
+# `nros_router_exec` must still be running it 3 s later -- resolving is not
+# running (issue 0774). "Still running" is `nros_router_alive_after`'s, never
+# `timeout`'s 124, which a router still dumping core also earns (issue 2973).
+# A package that put its router elsewhere, or a router that cannot start here,
+# fails the BUILD, not a lane that stops at its first step on the runner.
 RUN apt-get update && apt-get install -y --no-install-recommends \
         ros-humble-rmw-zenoh-cpp \
         ros-humble-zenoh-cpp-vendor \
@@ -105,10 +106,8 @@ ENV ROS_DISTRO=humble
 ENV AMENT_PREFIX_PATH=/opt/ros/humble
 COPY zenohd.sh /opt/nros-ros/zenohd.sh
 RUN bash -c '. /opt/nros-ros/zenohd.sh && nros_zenohd_bin \
-      && rc=0 \
-      && { timeout 3 bash -c ". /opt/nros-ros/zenohd.sh && nros_router_exec tcp/127.0.0.1:17447" \
-           || rc=$?; } \
-      && echo "router after 3 s: timeout rc=$rc (124 = still running)" && test "$rc" -eq 124'
+      && nros_router_alive_after 3 \
+           bash -c ". /opt/nros-ros/zenohd.sh && nros_router_exec tcp/127.0.0.1:17447"'
 
 RUN useradd -m -u ${RUNNER_UID} -s /bin/bash runner
 WORKDIR /home/runner
