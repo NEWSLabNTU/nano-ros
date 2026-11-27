@@ -165,7 +165,7 @@ while IFS= read -r line; do
     state="$(nros_submodule_provision_state "$path")"
     case "$state" in
         incomplete:*)
-            echo "  [x] $path is an INCOMPLETE checkout: ${state#incomplete:} tracked file(s) absent or staged as deleted" >&2
+            echo "  [x] $path is an INCOMPLETE checkout: $(nros_submodule_incomplete_reason "$state")" >&2
             echo "      remedy: $(nros_submodule_state_remedy "$state" "$path")" >&2
             fail=$((fail + 1))
             ;;

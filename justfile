@@ -4792,11 +4792,37 @@ post-rebase:
     #      layer-3 submodules uninitialised, and the qemu / agent / tracing
     #      trees are provisioned on demand. Reporting those as a problem on
     #      every run is how a message earns its way into being ignored.
-    moved="$(git submodule status --cached 2>/dev/null | grep -E '^\+' || true)"
-    uninit_n="$(git submodule status --cached 2>/dev/null | grep -cE '^-' || true)"
+    #
+    # Issue 3009 -- every initialised submodule is classified by the one helper,
+    # never by the `+` mark alone: `status` marks ` ` over a checkout that never
+    # happened (an unborn HEAD, no index), and this line then said "matches its
+    # pin" over an empty directory.
+    # shellcheck source=scripts/lib/submodule-provision.sh
+    . scripts/lib/submodule-provision.sh
+    moved=""
+    uninit_n=0
+    while IFS= read -r line; do
+        [ -n "$line" ] || continue
+        if [ "${line:0:1}" = "-" ]; then
+            uninit_n=$((uninit_n + 1))
+            continue
+        fi
+        p="$(printf '%s' "${line:1}" | awk '{print $2}')"
+        [ -n "$p" ] || continue
+        state="$(nros_submodule_provision_state "$p")"
+        [ "$state" = ok ] && continue
+        moved+="$p  ($state)"
+        fix="$(nros_submodule_state_remedy "$state" "$p")"
+        [ -z "$fix" ] || moved+="  -> $fix"
+        moved+=$'\n'
+    done < <(git submodule status --cached 2>/dev/null)
+    # A failed listing is an empty stream, which would read as "every
+    # submodule matches its pin" -- the very claim this recipe must not make
+    # unproven (issue 2424's class).
+    wait $! || { echo "post-rebase: \`git submodule status --cached\` failed; submodule state unknown" >&2; exit 1; }
     if [ -n "$moved" ]; then
-        echo "post-rebase: submodule checkout(s) at a different commit than the pin:"
-        printf '%s\n' "$moved" | sed 's/^/    /'
+        echo "post-rebase: submodule checkout(s) not on their pin, or not provably checked out:"
+        printf '%s' "$moved" | sed 's/^/    /'
         echo ""
         echo "  NOT synced automatically — that would discard work in a submodule"
         echo "  you may be mid-edit on (AGENTS.md). When you are sure the checkout"
