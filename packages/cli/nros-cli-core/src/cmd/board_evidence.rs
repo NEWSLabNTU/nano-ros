@@ -30,6 +30,22 @@ pub struct Run {
     pub runner: Option<String>,
 }
 
+/// D13's N: how many runs a history keeps, and how many marks are drawn
+/// (`HISTORY_RUNS` in `scripts/release/record-lane-runs.py`).
+pub const HISTORY_RUNS: usize = 6;
+
+/// The mark a run's outcome is drawn as, the same map the job summary uses
+/// (`MARK` in `scripts/ci/board-results.py`): a run with no verdict is "–",
+/// never "✗".
+#[must_use]
+pub fn outcome_mark(outcome: &str) -> &'static str {
+    match outcome {
+        "passed" => "✓",
+        "failed" => "✗",
+        _ => "–",
+    }
+}
+
 /// The cadence a run's result evidences, or `None` for a dispatched run (a
 /// dispatch proves a run, not a schedule).
 pub fn run_cadence(run: &Run) -> Option<&'static str> {
@@ -199,5 +215,22 @@ mod tests {
         );
         assert_eq!(days_from_iso("2026-13-01"), None);
         assert_eq!(days_from_iso("x"), None);
+    }
+
+    /// The marks agree with the job summary's: read `MARK` from the
+    /// collector's source, so the CLI and the summary cannot drift apart.
+    #[test]
+    fn the_marks_are_the_job_summarys() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../scripts/ci/board-results.py");
+        let src = std::fs::read_to_string(&path).unwrap();
+        let line = src
+            .lines()
+            .find(|l| l.starts_with("MARK = {"))
+            .expect("board-results.py lost its MARK map");
+        for outcome in ["passed", "failed", "no-verdict", "not-run"] {
+            let want = format!("\"{outcome}\": \"{}\"", outcome_mark(outcome));
+            assert!(line.contains(&want), "{outcome}: {want} not in {line}");
+        }
     }
 }

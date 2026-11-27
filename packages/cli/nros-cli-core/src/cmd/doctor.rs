@@ -656,6 +656,11 @@ fn support_report(config: Option<&Path>, workspace: Option<PathBuf>) -> Result<(
             if let Some(t) = r.last_run_text(runs.as_ref()) {
                 println!("    last run   {t}");
             }
+            // phase-585 W5 (RFC-0114 D13.5): the word derived from what ran.
+            println!(
+                "    evidence   {}",
+                r.evidence_text(runs.as_ref(), &today, status.stale_days)
+            );
         }
         let rmw = img.rmw.clone().unwrap_or_else(|| system.system.rmw.clone());
         match system.image_ros_edition(Some(id)) {
