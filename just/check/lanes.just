@@ -4079,6 +4079,28 @@ cpp-headers:
         fi; \
     done
 
+    # issue 3003 -- `rclcpp::Executor` is NOT movable: its context points
+    # into itself. C++14, the lowest standard a toolchain builds nros-cpp
+    # with. The diagnostic is matched on the deleted move, in either
+    # compiler's words (GCC "use of deleted function ...Executor(...&&)",
+    # clang "call to deleted constructor of 'rclcpp::Executor'"), so a TU
+    # broken for another reason fails this check rather than passing it.
+    echo "  - rclcpp::Executor: a move FAILS, naming the deleted move"
+    f="packages/api/nros-cpp/tests/compile/executor_move_probe.cpp"; \
+    test -f "$f" || { echo "ERROR: $f is MISSING -- this check passes on absence." >&2; exit 1; }; \
+    if c++ -fsyntax-only -std=c++14 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
+           -I"$cppgen" -I"$cgen" \
+           -Ipackages/api/nros-cpp/include -Ipackages/api/nros-c/include \
+           -Ipackages/platform/nros-platform-api/include "$f" 2>"tmp/executor-move.log"; then \
+        echo "ERROR: $f COMPILED. rclcpp::Executor is movable again." >&2; exit 1; \
+    fi; \
+    nros_grep_q -E "deleted (function|constructor).*Executor" "tmp/executor-move.log" && _rc=0 || _rc=$?; \
+    if [ "$_rc" -ne 0 ]; then \
+        echo "ERROR: $f failed WITHOUT naming the deleted move -- it broke for" >&2; \
+        echo "       another reason, so this check proves nothing. See tmp/executor-move.log" >&2; \
+        exit 1; \
+    fi
+
     echo "  - declared QoS depth: the three cases COMPILE (c++17)"
     c++ -fsyntax-only -std=c++17 -fno-exceptions -fno-rtti \
         -Ipackages/api/nros-cpp/tests/compile/declared-qos-fixture \

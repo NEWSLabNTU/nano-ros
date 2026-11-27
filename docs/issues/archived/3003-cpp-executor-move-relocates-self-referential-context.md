@@ -1,12 +1,14 @@
 ---
 id: 3003
 title: "Moving an rclcpp::Executor byte-copies a self-referential context, so the moved executor reads the zeroed original"
-status: open
+status: resolved
 type: bug
 severity: low
 area: [cpp, executor]
 related: [issue-2845]
 found: 2026-11-27
+resolved: 2026-11-28
+resolved_in: "fix(cpp): rclcpp::Executor is not movable"
 ---
 
 Found reviewing PR #4995 (issue 2845). Pre-existing on main; that PR adds
@@ -138,3 +140,18 @@ run, not before it merges. That is the same as every other nros-cpp
 expected-failure compile, and it is accepted here. Moving the probe to
 `check compile-smoke` would make it gate merges, but it would be the only
 expected-failure compile there, so it stays with its siblings.
+
+## Resolution (2026-11-28)
+
+- `rclcpp::Executor`'s move constructor and move assignment are `= delete`,
+  beside the copy operations, with a doc comment giving the reason.
+- `packages/api/nros-cpp/tests/compile/executor_move_probe.cpp` runs in
+  `just check cpp` at `-std=c++14`. The check passes only if the move fails
+  to compile and the error names the deleted move. Measured with both
+  compilers: GCC "use of deleted function
+  'rclcpp::Executor::Executor(rclcpp::Executor&&)'", clang "call to
+  deleted constructor of 'rclcpp::Executor'".
+- Negative control: the same probe compiled against main's `executor.hpp`,
+  where the type is movable, COMPILES with both GCC and clang, so the check
+  fails there as intended.
+- The sweep found no in-tree code that moved one, so no caller changed.

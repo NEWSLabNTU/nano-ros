@@ -690,29 +690,13 @@ class Executor {
         }
     }
 
-    // Move semantics (non-copyable)
-    Executor(Executor&& other) : initialized_(other.initialized_) {
-        for (unsigned i = 0; i < sizeof(storage_); ++i) {
-            storage_[i] = other.storage_[i];
-            other.storage_[i] = 0;
-        }
-        other.initialized_ = false;
-    }
-
-    Executor& operator=(Executor&& other) {
-        if (this != &other) {
-            if (initialized_) {
-                nros_cpp_fini(storage_);
-            }
-            for (unsigned i = 0; i < sizeof(storage_); ++i) {
-                storage_[i] = other.storage_[i];
-                other.storage_[i] = 0;
-            }
-            initialized_ = other.initialized_;
-            other.initialized_ = false;
-        }
-        return *this;
-    }
+    /// Not movable. The context in `storage_` points into itself (the
+    /// executor into its own C storage, its tables into its own backing),
+    /// so a byte copy would leave the copy pointing into the original.
+    /// Construct an executor where it will live, with `create(out)`, and
+    /// hand it around by reference or pointer.
+    Executor(Executor&&) = delete;
+    Executor& operator=(Executor&&) = delete;
 
   private:
     Executor(const Executor&) = delete;
