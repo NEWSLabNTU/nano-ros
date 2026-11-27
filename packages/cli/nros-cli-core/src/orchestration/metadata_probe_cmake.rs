@@ -173,12 +173,13 @@ pub fn render_probe_cmakelists(comps: &[CmakeProbeOptions]) -> String {
     // defines that function. Emitting the pair together AFTER the
     // `find_package` was tried first and still failed.
     //
-    // Derived, not passed: a component lives at `<ws>/src/<pkg>`, so its parent
-    // IS the search root, and `probe_dir_for_workspace` keys the project on one
-    // workspace, so one root is the whole answer.
+    // Derived, not passed: the search root is the component's `<ws>/src`, at
+    // any depth below it (`probe_deps::workspace_src`, the same rule the
+    // probe's dependency scan uses), and `probe_dir_for_workspace` keys the
+    // project on one workspace, so one root is the whole answer.
     let search_root = comps
         .first()
-        .and_then(|c| c.package_dir.parent())
+        .and_then(|c| super::probe_deps::workspace_src(&c.package_dir))
         .map(|p| p.to_string_lossy().into_owned());
     if let Some(root) = &search_root {
         // issue 0662; Find-stub emitter from Phase 210.A.2.
