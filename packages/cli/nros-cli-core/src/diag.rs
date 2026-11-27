@@ -310,7 +310,7 @@ mod tests {
             "error[NROS-0002]: board `mps2-an358` is claimed by no board descriptor\n  \
              help: check the spelling of the image's `board`; `nros board list` names every \
              board this SDK has\n  \
-             explain: nros explain NROS-0002"
+             explain: nros code show NROS-0002"
         );
         assert!(ids(&quiet(r)).is_empty());
     }
@@ -325,7 +325,7 @@ mod tests {
             quiet(&r),
             "error[NROS-0004]: s.toml: names no board\n  \
              help: add `board = \"linux\"`\n  \
-             explain: nros explain NROS-0004"
+             explain: nros code show NROS-0004"
         );
         assert!(ids(&quiet(&r)).is_empty());
         assert_eq!(
@@ -333,7 +333,7 @@ mod tests {
             "error[NROS-0004]: s.toml: names no board\n  \
              help: add `board = \"linux\"`\n  \
              note: RFC-0098 D3\n  \
-             explain: nros explain NROS-0004"
+             explain: nros code show NROS-0004"
         );
     }
 
@@ -343,7 +343,7 @@ mod tests {
             ids("phase-552 issue 2305 RFC-0129 PR #472"),
             ["phase-552", "issue 2305", "RFC-0129", "#472"]
         );
-        assert!(ids("error[NROS-0412]: nros explain NROS-0412").is_empty());
+        assert!(ids("error[NROS-0412]: nros code show NROS-0412").is_empty());
     }
 
     #[test]
@@ -392,7 +392,7 @@ mod tests {
                 "error[NROS-0006]: no diagnostic has the code `NROS-0099`\n  \
                  help: the nearest codes are {}; check the code \
                  against the refusal that printed it\n  \
-                 explain: nros explain NROS-0006",
+                 explain: nros code show NROS-0006",
                 near.join(", ")
             )
         );

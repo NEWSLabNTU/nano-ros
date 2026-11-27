@@ -29,7 +29,7 @@ embedded image has no run-time configuration.
    (`builtin`, `platform`, `board` or `env`):
 
    ```bash
-   nros config explain --platform zephyr
+   nros knob list --platform zephyr
    ```
 
    ```text

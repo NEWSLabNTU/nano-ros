@@ -346,9 +346,11 @@ pub fn run(cmd: cmd::Cmd) -> Result<()> {
         cmd::Cmd::New(args) => cmd::new::run(*args),
         cmd::Cmd::Generate(args) => cmd::generate::run(args),
         cmd::Cmd::Interface(args) => cmd::interface::run(args),
-        cmd::Cmd::List(args) => cmd::ws::run(cmd::ws::Args {
-            command: cmd::ws::Sub::List(args),
-        }),
+        cmd::Cmd::List(args) | cmd::Cmd::Package(cmd::PackageArgs::List(args)) => {
+            cmd::ws::run(cmd::ws::Args {
+                command: cmd::ws::Sub::List(args),
+            })
+        }
         cmd::Cmd::Clean(args) => cmd::ws::run(cmd::ws::Args {
             command: cmd::ws::Sub::Clean(args),
         }),

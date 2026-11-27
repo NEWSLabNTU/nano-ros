@@ -129,7 +129,7 @@ pub mod sleep {{
 #
 # Resolution ladder: builtin < platform (this file, via optional
 # `inherits`) < board (`nros-board.toml` deltas) < env / Kconfig / -D.
-# Debug with: `nros config explain --platform {name}`.
+# Debug with: `nros knob list --platform {name}`.
 # Schema + loader: nros-board-common/src/platform_config.rs.
 
 # The names this platform answers to; names[0] is canonical. The directory

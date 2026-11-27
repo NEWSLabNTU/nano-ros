@@ -17,7 +17,7 @@ paraphrase. If your error text matches, the fix on the right is the
 one to try.
 
 A refusal that starts `error[NROS-NNNN]` carries a diagnostic code. Its last
-line, `explain: nros explain NROS-NNNN`, is a command that prints what
+line, `explain: nros code show NROS-NNNN`, is a command that prints what
 happened and how to fix it, with no network; [Diagnostic
 codes](diagnostic-codes.md) lists every code.
 
@@ -161,7 +161,7 @@ through `nros-rmw-cyclonedds-sys`.
 ```text
 error[NROS-0002]: `[image.linux] board = "mps2-an358"` matches no board
   help: check the spelling; the known boards are an536, bare-metal, baremetal, … Out-of-tree boards are added through `$NROS_EXTRA_BOARD_PATH`
-  explain: nros explain NROS-0002
+  explain: nros code show NROS-0002
 ```
 
 `[image.<id>] board` is where a bringup names its board, and a typo there is
@@ -176,10 +176,10 @@ The neighbouring refusals, when the image is missing rather than misspelt:
 ```text
 error[NROS-0003]: this workspace declares no `[image.*]`, and an image is the buildable unit
   help: add `[image.<id>] board = "<board>"` to the bringup package's system.toml
-  explain: nros explain NROS-0003
+  explain: nros code show NROS-0003
 error[NROS-0004]: …/system.toml: `[image.linux]` names no `board`
   help: add `board = "<board>"` to the `[image.<id>]` table in system.toml
-  explain: nros explain NROS-0004
+  explain: nros code show NROS-0004
 ```
 
 The first means no bringup in the workspace has a `system.toml` with an
@@ -224,7 +224,7 @@ The message names the command you ran; from `nros build`:
 ```text
 error[NROS-0001]: `AMENT_PREFIX_PATH` is unset, and `/home/you/sensor_ws` has no earlier configure that recorded one
   help: source ROS 2 in this shell (`source /opt/ros/<distro>/setup.bash`, or your overlay's `install/setup.bash`) and run `nros build` again; later shells need not source it
-  explain: nros explain NROS-0001
+  explain: nros code show NROS-0001
 ```
 
 The project has messages to generate (every talker uses `std_msgs`), and

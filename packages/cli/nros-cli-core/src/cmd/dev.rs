@@ -162,16 +162,27 @@ pub enum Image {
     #[command(name = "entity-facts")]
     EntityFacts(cmd::image_entity_facts::EntityFactsArgs),
     /// Read back the sizing descriptor `nros sync` wrote for an entry.
+    ///
+    /// Build plumbing: its output is read by the build. To read what the
+    /// build derived for an image, run `nros image show <image> --derived`.
+    // RFC-0133 D3 (ruled 2026-11-27): plumbing, not an old spelling.
     #[command(name = "sizing-descriptor")]
     SizingDescriptor(sizing_descriptor::SizingDescriptorArgs),
     /// A standalone Zephyr Rust leaf's derived sizes, for its west configure.
     #[command(name = "west-leaf-sizing")]
     WestLeafSizing(west_leaf_sizing::WestLeafSizingArgs),
     /// Compose an image's registered entity declarations into its inventory.
+    ///
+    /// Build plumbing: its output is read by the build. To see an image's
+    /// nodes, run `nros image show <image> --nodes`.
     #[command(name = "entity-inventory")]
     EntityInventory(entity_inventory::EntityInventoryArgs),
     /// Run, check or locate the entity census an image's configure compares
     /// against its contract.
+    ///
+    /// Build plumbing: its output is read by the build. To see the topics,
+    /// services and actions an image creates, run
+    /// `nros image show <image> --topics`.
     #[command(name = "entity-census")]
     EntityCensus(entity_census::EntityCensusArgs),
     /// Print the dimensions of a resolved SystemModel.
@@ -188,6 +199,9 @@ pub enum Image {
 #[derive(Debug, Subcommand)]
 pub enum Rmw {
     /// Lower one declared RMW name to the build facts its descriptor declares.
+    ///
+    /// Build plumbing: its output is read by the build. To see which RMW
+    /// backends exist, run `nros rmw list`.
     Dispatch(ws::RmwDispatchArgs),
     /// Print a bringup's default session RMW file for one backend.
     Config(ws::RmwConfigArgs),
@@ -227,6 +241,11 @@ pub enum Ws {
     /// Print the workspace's packages in dependency order.
     Order(ws::OrderArgs),
     /// List packages that announce a provision, across the search path.
+    ///
+    /// Build plumbing: its output is read by the build. To see the RMW
+    /// backends, boards, platforms or runners a workspace reaches, run
+    /// `nros rmw list`, `nros board list`, `nros platform list` or
+    /// `nros runner list`.
     Providers(ws::ProvidersArgs),
 }
 
