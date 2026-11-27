@@ -63,3 +63,37 @@ walk -21 % and re-records that row. So this issue waits for #4693 to land, then
 continues on top of it: a walker listing of the remaining untyped sites by TU
 (the first acceptance item), typing or a reason for each, and a re-measure of
 the `[[drift]]` row. Ruled with the manager; not started before then.
+
+## Progress (2026-11-27): listed by TU; none is in the image
+
+Its blocker landed (5c5c854bac types the C cargo build scripts compile), so
+the listing exists now:
+
+- **Listed by TU.** The walk records the object each function's machine
+  sites were disassembled from (`Graph.site_objects`), prints the untyped
+  sites by object after the bind line, and writes them all to
+  `report.json` `untyped_sites` (`[{object, sites, functions}]`). It counts
+  only functions the image holds: an input's function the link dropped is
+  on no path, and is reported as such.
+- **Measured** on a fresh `nros new --template talker --lang c --rmw zenoh`
+  project, board `mps2-an385-freertos`, main 0e4afce2fa, host 133:
+  - C typed: 149 of 149 linked TUs;
+  - untyped indirect sites: 35 (from 169), and **all 35 are in functions
+    the link dropped** (zenoh-pico's generic containers `lru_cache`,
+    `sortedmap`, `fifo`/`fifo_mt`, `lifo`, `ring`/`ring_mt`,
+    `cancellation`, plus four `nros_cpp` wake-callback setters and two
+    encoding/serialization helpers), checked against the ELF's symbols.
+    No indirect site in the image is untyped.
+  - Walk 52,308 B (the `[[drift]]` row re-recorded from 52,164 B), floor
+    57,544 B, under the 65,536 B app stack; an upper bound through a
+    type-bound edge (`CffiSession::create_subscription -> drop_entry`).
+  - Run under QEMU with the router up: app task stack peak **11,584** of
+    65,536 B.
+
+**Still open: the third acceptance item, which is a decision.** The walk is
+now within reach of the shipped stack, so the acceptance says the row
+becomes `[[observed]]` with that peak. But this walk is an upper bound, and
+an `[[observed]]` row with `upper_bound` is stamped from its peak (issue
+2783's ruling): `nros new` would give the C tutorial an app stack of about
+12.8 KB (11,584 B + 10 %) instead of 64 KiB. That changes what every new C
+FreeRTOS project ships, so it waits on a ruling; the row stays `[[drift]]`.

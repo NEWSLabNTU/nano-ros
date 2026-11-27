@@ -78,6 +78,10 @@ class Graph:
     edges: dict[str, set[str]] = field(default_factory=dict)
     # function -> number of indirect call sites in its code
     indirect_sites: dict[str, int] = field(default_factory=dict)
+    # issue 2653: the object (`archive(member)` or file) each function with
+    # machine-level indirect sites was disassembled from, so a site the bind
+    # cannot type is listed by translation unit.
+    site_objects: dict[str, str] = field(default_factory=dict)
     # functions whose address is taken from a data section
     address_taken: set[str] = field(default_factory=set)
     # issue 2402 (`--indirect bind`) — a function whose address CODE loads
@@ -1483,6 +1487,34 @@ def linked_away(names) -> bool:
 # (32-64 B) with no fault. Recorded in the report, which `just check max-frame`
 # reads over the fixture builds; the gate, not this walk, decides what is ours.
 BIG_FRAMES: list[tuple[str, int]] = []
+# Issue 2653: the indirect sites the bind could not type ("with no IR to every
+# function C can hold"), by the object each was disassembled from, for
+# report.json (`untyped_sites`) and the printed summary.
+UNTYPED_SITES: list[dict] = []
+
+
+def untyped_by_object(machine_fns: dict[str, int], site_objects: dict[str, str],
+                      linked: set[str] | None = None, local=lambda f: f) -> list[dict]:
+    """`[{object, sites, functions}]`, most sites first: the untyped sites
+    grouped by the object (`archive(member)` or file) they came from. An
+    object is named by its member, or its file name, which is what names
+    the translation unit; a function with no recorded object is `?`.
+    With `linked` (the image's own function symbols), only functions the
+    image holds count: an input's function the link dropped is on no path,
+    so its sites bind nothing the walk can reach."""
+    by: dict[str, dict] = {}
+    for fn, n in machine_fns.items():
+        if linked and local(fn).split(".", 1)[0] not in linked:
+            continue
+        o = site_objects.get(fn, "?")
+        m = re.search(r"\(([^()]+)\)$", o)
+        key = m.group(1) if m else Path(o).name
+        e = by.setdefault(key, {"object": key, "sites": 0, "functions": []})
+        e["sites"] += n
+        e["functions"].append(fn)
+    for e in by.values():
+        e["functions"].sort()
+    return sorted(by.values(), key=lambda e: (-e["sites"], e["object"]))
 
 
 def big_frames(g: "Graph", cap: int) -> list[tuple[str, int]]:
@@ -2367,6 +2399,8 @@ def bind_indirect_sites(g: Graph, modules, c_modules=None,
             note_bound(g, direct, fn, from_c, "machine")
             g.edges.setdefault(fn, set()).update(from_c)
             stats["machine"] += extra
+            # issue 2653: which function, from which object, holds them
+            stats.setdefault("machine_fns", {})[fn] = extra
         del g.indirect_sites[fn]
     stats["frameless"] = sorted(frameless)
     return stats
@@ -3015,6 +3049,7 @@ def load_object(g: Graph, paths: str | list[str], readobj: str, objdump: str) ->
             continue
         if cur and INDIRECT_RE.search(line):
             g.indirect_sites[cur] = g.indirect_sites.get(cur, 0) + 1
+            g.site_objects.setdefault(cur, obj)
 
     # Undefined references that are data-only were added to address_taken /
     # edges by name; anything never defined as a function is pruned at walk
@@ -3943,6 +3978,8 @@ def write_report(path: str, args: argparse.Namespace, results: dict, stacks: dic
         "raise": raises or [],
         # issue 2815: [[function, bytes], ...] over the table's `max_frame`
         "big_frames": [[fn, n] for fn, n in BIG_FRAMES],
+        # issue 2653: [{object, sites, functions}], the sites no type bound
+        "untyped_sites": UNTYPED_SITES,
     }
     import tempfile
     out = Path(path)
@@ -4484,6 +4521,18 @@ def run(args: argparse.Namespace) -> int:
               f"{st['type']} by type, {st['any']} with no typed target, {st['c_typed']} C "
               f"site(s) by clang type, {st['c_none']} C branch(es) that call nothing, and "
               f"{st['machine']} with no IR to every function C can hold", file=sys.stderr)
+        UNTYPED_SITES[:] = untyped_by_object(st.get("machine_fns", {}), g.site_objects,
+                                             LINKED_FUNCTIONS, lambda f: g.locals.get(f, f))
+        held = sum(e["sites"] for e in UNTYPED_SITES)
+        if LINKED_FUNCTIONS and held < st["machine"]:
+            print(f"nros-stack-floor: bind: {st['machine'] - held} of the {st['machine']} "
+                  "untyped site(s) are in functions the link dropped (on no path)",
+                  file=sys.stderr)
+        if UNTYPED_SITES:
+            top = ", ".join(f"{e['object']} ({e['sites']})" for e in UNTYPED_SITES[:8])
+            print(f"nros-stack-floor: bind: {held} untyped site(s) the image holds, by object: "
+                  f"{top}" + (" ..." if len(UNTYPED_SITES) > 8 else "")
+                  + " (all of them: report.json `untyped_sites`)", file=sys.stderr)
         if DISCARDED_EVIDENCE["relocs"] or DISCARDED_EVIDENCE["ir_globals"]:
             print(f"nros-stack-floor: bind: {DISCARDED_EVIDENCE['relocs']} relocation(s) "
                   f"and {DISCARDED_EVIDENCE['ir_globals']} Rust IR global(s) the link "
@@ -4953,6 +5002,18 @@ def self_test() -> int:
         '  ret void\n}\n'
     )
     types, sites, tables, escaped, leaked = parse_ir_sites(ir)
+    ub = untyped_by_object({"f": 2, "g": 1, "h": 3, "k": 1},
+                           {"f": "/b/libz.a(session.c.obj)", "g": "/b/libz.a(session.c.obj)",
+                            "h": "/b/app/main.c.obj"})
+    check("untyped sites: grouped by object member or file, most sites first",
+          ub == [{"object": "main.c.obj", "sites": 3, "functions": ["h"]},
+                 {"object": "session.c.obj", "sites": 3, "functions": ["f", "g"]},
+                 {"object": "?", "sites": 1, "functions": ["k"]}])
+    ub = untyped_by_object({"f": 2, "g.isra.0": 1, "h": 3},
+                           {"f": "a.o", "g.isra.0": "a.o", "h": "b.o"}, {"g", "h"})
+    check("untyped sites: only functions the image holds count (a clone by its base)",
+          ub == [{"object": "b.o", "sites": 3, "functions": ["h"]},
+                 {"object": "a.o", "sites": 1, "functions": ["g.isra.0"]}])
     check("bind: a packed vtable's slots sit at their byte offsets",
           {(0, "drop"), (12, "m")} <= tables)
     check("bind: a named struct table's slots sit at their field offsets",
