@@ -1,0 +1,23 @@
+# The C interrupt-wake test image (phase 579 W1b): one C component, booted by
+# the generated entry, opening a session to a router on
+# `nros_tests::alloc::FREERTOS_C_ISR_WAKE_PORT`, so its executor parks on the
+# port's real wake object.
+
+[system]
+name = "isr_wake_c"
+rmw = "zenoh"
+domain_id = 0
+
+[[component]]
+pkg = "isr_wake_c"
+class = "isr_wake_c::IsrWake"
+name = "isr_wake"
+
+[image.mps2-an385-freertos]
+board = "mps2-an385-freertos"
+# `nros_tests::alloc::FREERTOS_C_ISR_WAKE_PORT`.
+locator = "tcp/10.0.2.2:8110"
+os_config = ["board-net.toml"]
+
+[board_config."mps2-an385-freertos"]
+netstack = "lwip"

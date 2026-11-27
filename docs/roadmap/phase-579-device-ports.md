@@ -47,7 +47,7 @@ device. RFC-0139's Motivation has the measurements and the driver survey.
 ### W1b — The C and C++ interrupt-safe wake
 
 - **Owner:** nros 142 (with W3a).
-- **Status:** OPEN
+- **Status:** DONE (2026-11-27, the C image `isr-wake-freertos-c-mps2`)
 - W1 gave Rust `GuardCondition::trigger_from_isr`. C and C++ get no method
   on the ROS-mirrored types: `rcl_guard_condition_t` and
   `rclcpp::GuardCondition` stay thread-only, as stock ROS has them (RFC-0139
@@ -57,6 +57,12 @@ device. RFC-0139's Motivation has the measurements and the driver survey.
 - **Acceptance:** a C image's interrupt handler wakes a parked executor
   through the completion handle on the FreeRTOS MPS2 QEMU image, as W1's Rust
   cell does.
+- **As built:** the `isr-wake-freertos-c-mps2` image registers a device from a
+  C component with `nros_executor_register_device`, and the CMSDK TIMER1
+  handler signals it with `nros_completion_signal_from_isr`. 50 wakes at 84 to
+  97 us on the MPS2 QEMU image. Calling the thread-context
+  `nros_completion_signal` from the handler instead trips FreeRTOS's
+  `configASSERT`, and the test fails.
 
 ### W2 — The port ABI header
 

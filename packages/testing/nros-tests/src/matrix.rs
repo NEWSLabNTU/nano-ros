@@ -1381,7 +1381,7 @@ pub const NON_CELL_TESTS: &[(&str, NonCell)] = &[
     (
         "isr_wake_rtos",
         NonCell::Probe(
-            "an interrupt handler wakes a parked FreeRTOS, bare-metal, Zephyr, ThreadX (bare-metal and hosted) or NuttX executor (issues 2696, 2706, 2745)",
+            "an interrupt handler wakes a parked FreeRTOS, bare-metal, Zephyr, ThreadX (bare-metal and hosted) or NuttX executor (issues 2696, 2706, 2745), and a C one through a device completion (phase 579 W1b)",
         ),
     ),
     (
