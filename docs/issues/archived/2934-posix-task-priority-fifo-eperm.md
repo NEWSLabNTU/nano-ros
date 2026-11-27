@@ -1,12 +1,14 @@
 ---
 id: 2934
 title: "On a host that may not request real-time scheduling, a POSIX task that states a priority never starts"
-status: open
+status: resolved
 type: bug
 severity: medium
 area: [platform, posix, linux]
 related: [issue-0636, issue-0765, issue-0803, issue-2866]
 found: 2026-11-24
+resolved: 2026-11-25
+resolved_in: 3f396eb64d
 ---
 
 ## What happens
@@ -62,3 +64,14 @@ pass. Then:
 - an inheriting task is unchanged.
 
 Negative control: the port without the retry fails to spawn.
+
+## Resolution
+
+Fixed in 3f396eb64d (#4770), as described under Fix: an explicit-scheduling
+create that returns EPERM retries once with the creator's scheduling, and
+the post-create arm reports the refusal once.
+
+Re-verified on main at the archive commit: `just check posix-task-priority`
+passes all seven cases (two band-priority tasks spawn and run, an
+inheriting task is unchanged, the refusal is reported once naming EPERM),
+and its negative control, the port without the retry, fails to spawn.
