@@ -22,7 +22,16 @@ The binding (D8), and what "serves" means here — all static, no fixtures:
           the `runnable="…"` list and whose run step is `just test <platform>`.
           OR, for a host witness row (`runs = "host"`, `breadth = "witness"`:
           tier 1's pool), `run-matrix.yml`'s scheduled `tier1` job running
-          `just ci tier1`. A row neither reaches has no daily RUN job.
+          `just ci tier1`. OR, for a row whose module the `platform` job
+          cannot run (`zephyr`, which needs the self-hosted Zephyr SDK
+          runners), `run-matrix.yml`'s scheduled `matrix-nightly` job running
+          `just ci matrix-nightly`: its pairwise cover includes every value of
+          the platform axis of its pool, which is every platform without an
+          own lane (held by `ci_lane`'s
+          `lanes_touch_every_declared_value_of_every_axis_they_cover`). This is
+          the 2026-11-22 user ruling (phase-585): tier 2 is Zephyr's runtime
+          evidence, with no dedicated Zephyr nightly job. A row none of these
+          reaches has no daily RUN job.
   weekly  `weekly.yml` on `schedule`, job `chapter`, and every track
           the row's `probe` names is a weekly track (scripts/probe/
           probe-tracks.json).
@@ -78,6 +87,8 @@ CADENCES = ("merge", "daily", "weekly", "manual")
 MERGE_WF, MERGE_JOB = "merge-runtime.yml", "merge-runtime"
 DAILY_WF, DAILY_JOB = "nightly.yml", "platform"
 TIER1_WF, TIER1_JOB = "run-matrix.yml", "tier1"
+NIGHTLY2_JOB = "matrix-nightly"
+MATRIX_RS = ROOT / "packages" / "testing" / "nros-tests" / "src" / "matrix.rs"
 WEEKLY_WF, WEEKLY_JOB = "weekly.yml", "chapter"
 
 
@@ -176,6 +187,29 @@ def tier1_serves(wf_text):
     return ""
 
 
+def tier2_nightly_serves(wf_text):
+    """'' when run-matrix.yml's scheduled `matrix-nightly` job runs
+    `just ci matrix-nightly`, else why not."""
+    if wf_text is None:
+        return f"no {TIER1_WF}"
+    doc = yaml.safe_load(wf_text) or {}
+    if "schedule" not in _on(doc):
+        return f"{TIER1_WF} has no schedule"
+    job = _job(doc, NIGHTLY2_JOB)
+    if job is None:
+        return f"{TIER1_WF} has no job `{NIGHTLY2_JOB}`"
+    if "just ci matrix-nightly" not in _run_text(job):
+        return f"job `{NIGHTLY2_JOB}` does not run `just ci matrix-nightly`"
+    return ""
+
+
+def own_lane_platforms(matrix_text):
+    """The platforms `PlatformId::own_lane` gives a lane of their own: the
+    tier-2 pools leave them out, so the nightly cover cannot serve them."""
+    m = re.search(r"pub const fn own_lane\(self\).*?\n    \}\n", matrix_text or "", re.S)
+    return set(re.findall(r"PlatformId::(\w+)\s*=>\s*Some", m.group(0))) if m else set()
+
+
 def daily_job_per_board(doc, job):
     """Why the daily job is NOT one job per board, or [] (phase-558).
 
@@ -200,7 +234,7 @@ def daily_job_per_board(doc, job):
     return why
 
 
-def daily_unserved(rows, wf_text, tier1_text):
+def daily_unserved(rows, wf_text, tier1_text, own_lane=frozenset()):
     unserved = {}
     daily = [r for r in rows if r.get("cadence") == "daily"]
     why = []
@@ -218,9 +252,17 @@ def daily_unserved(rows, wf_text, tier1_text):
             why += daily_job_per_board(doc, job)
         runnable = nightly_runnable(wf_text)
     tier1_why = tier1_serves(tier1_text)
+    nightly2_why = tier2_nightly_serves(tier1_text)
     for r in daily:
         tok = row_module(r)
         if is_host_witness(r) and not tier1_why:
+            continue
+        # A module the `platform` job cannot run is the tier-2 nightly's: its
+        # pairwise cover runs a cell of every platform in its pool. A module it
+        # CAN run stays held to its per-board job.
+        plat = r.get("matrix_platform")
+        if (tok not in runnable and plat and plat not in own_lane
+                and not nightly2_why):
             continue
         # phase-558 — the job is the ROW's board, so a row with no board names
         # no job, whatever module it shares with one that does.
@@ -229,6 +271,9 @@ def daily_unserved(rows, wf_text, tier1_text):
         parts = why or ([f"module {tok!r} is not in the `{DAILY_JOB}` job's runnable "
                          f"set {sorted(runnable)}"] if tok not in runnable else
                         ["the row names no `matrix_platform`, so no per-board job is its"])
+        if tok not in runnable:
+            parts = parts + [nightly2_why or f"{plat or 'the row'} has a lane of its own, "
+                             f"so `{NIGHTLY2_JOB}` does not cover it"]
         if is_host_witness(r):
             parts = parts + [tier1_why]
         else:
@@ -306,7 +351,8 @@ def road_errors(rows, all_workflows):
     return errs
 
 
-def evaluate(rows, workflows, baseline, weekly_tracks, all_workflows=None):
+def evaluate(rows, workflows, baseline, weekly_tracks, all_workflows=None,
+             own_lane=frozenset()):
     """workflows: {file name: text or None}; baseline: {key: entry}."""
     errs = []
     for r in rows:
@@ -316,7 +362,7 @@ def evaluate(rows, workflows, baseline, weekly_tracks, all_workflows=None):
     merge_errs, unserved = merge_errors(rows, workflows.get(MERGE_WF))
     errs += merge_errs
     unserved.update(daily_unserved(rows, workflows.get(DAILY_WF),
-                                   workflows.get(TIER1_WF)))
+                                   workflows.get(TIER1_WF), own_lane))
     unserved.update(weekly_unserved(rows, workflows.get(WEEKLY_WF), weekly_tracks))
     errs += road_errors(rows, all_workflows if all_workflows is not None else workflows)
     cadence_of = {row_key(r): r.get("cadence") for r in rows}
@@ -417,8 +463,9 @@ jobs:
     wfs = {MERGE_WF: wf_merge, DAILY_WF: wf_daily, TIER1_WF: wf_tier1, WEEKLY_WF: None}
     cases = []
 
-    def case(name, errs_want, rows=rows, wfs=wfs, baseline=None, tracks=frozenset()):
-        errs, _ = evaluate(rows, wfs, baseline or {}, set(tracks))
+    def case(name, errs_want, rows=rows, wfs=wfs, baseline=None, tracks=frozenset(),
+             own_lane=frozenset({"Px4"})):
+        errs, _ = evaluate(rows, wfs, baseline or {}, set(tracks), own_lane=own_lane)
         ok = bool(errs) == errs_want
         cases.append((name, ok, errs))
 
@@ -474,6 +521,28 @@ jobs:
                              "nightly_token": "zephyr", "runs": "emulator",
                              "breadth": "witness"}],
          wfs={**wfs, MERGE_WF: wf_dispatch})
+    # Issue 2462 -- a module the `platform` job cannot run is served by the
+    # scheduled tier-2 nightly cover (the 2026-11-22 ruling: tier 2 is Zephyr's
+    # runtime evidence).
+    wf_t2n = wf_tier1 + """  matrix-nightly:
+    steps:
+      - run: just ci matrix-nightly
+"""
+    zqcm = {"matrix_platform": "ZephyrQemuCortexM", "cadence": "daily",
+            "nightly_token": "zephyr", "runs": "emulator", "breadth": "witness"}
+    case("a zephyr daily row is served by the scheduled tier-2 nightly", False,
+         rows=daily_only + [zqcm], wfs={**wfs, MERGE_WF: wf_dispatch, TIER1_WF: wf_t2n})
+    case("…and refused when that job does not run the cover", True,
+         rows=daily_only + [zqcm],
+         wfs={**wfs, MERGE_WF: wf_dispatch,
+              TIER1_WF: wf_t2n.replace("just ci matrix-nightly", "echo")})
+    case("…and refused for a platform with a lane of its own", True,
+         rows=daily_only + [dict(zqcm, matrix_platform="Px4", nightly_token="px4")],
+         wfs={**wfs, MERGE_WF: wf_dispatch, TIER1_WF: wf_t2n})
+    case("…and never for a module the platform job runs (its per-board job holds it)",
+         True, rows=daily_only,
+         wfs={**wfs, MERGE_WF: wf_dispatch, TIER1_WF: wf_t2n,
+              DAILY_WF: wf_daily.replace("schedule:", "workflow_dispatch:")})
     case("no merge rows and a dispatch-only merge workflow is clean", False,
          rows=daily_only, wfs={**wfs, MERGE_WF: wf_dispatch})
     case("a merge row with a dispatch-only merge workflow is refused", True,
@@ -546,7 +615,11 @@ def main():
     import json
     weekly = {t["track"] for t in json.loads(PROBE_TRACKS.read_text())["tracks"]
               if t.get("weekly")}
-    e, reported = evaluate(rows, wfs, baseline, weekly, all_wfs)
+    own_lane = own_lane_platforms(MATRIX_RS.read_text() if MATRIX_RS.exists() else "")
+    if not own_lane:
+        errs.append(f"{MATRIX_RS.relative_to(ROOT)}: no `own_lane` arm found, so the "
+                    "gate cannot tell which platforms the tier-2 nightly leaves out")
+    e, reported = evaluate(rows, wfs, baseline, weekly, all_wfs, own_lane)
     errs += e
     for line in reported:
         print(f"check-cadence-jobs: NOTE {line}")

@@ -43,7 +43,7 @@ phase-535 W8.6); the `L*` names are the original plan's.
 | **L3 cross-build** | `merge_group` | self-hosted | `queue.yml` `l3`, advisory, gated on `NROS_SELF_HOSTED_READY` |
 | **post-submit** | `push` to main | hosted | `post-submit.yml` `dep-chain` |
 | **tier 1 / tier 2 runtime** | `schedule` (daily) | self-hosted | `run-matrix.yml` `tier1`, `matrix` |
-| **per-platform + Zephyr nightly** | `schedule` (daily) | hosted | `nightly.yml` `platform` (build + `just test <platform>`), the Zephyr jobs (build only, issue 2462), and the self-hosted `matrix-nightly` pairwise cover |
+| **per-platform + Zephyr nightly** | `schedule` (daily) | hosted | `nightly.yml` `platform` (build + `just test <platform>`), the Zephyr jobs (build only), and the self-hosted `matrix-nightly` pairwise cover, which keeps the Zephyr boards' `daily` (RFC-0122 D8, amended 2026-11-27) |
 | **host unit + feature sweep** | `schedule` (daily) | hosted | `host-tests.yml` |
 | **L5 interop** | `schedule` (daily) | hosted | `live-peer.yml` (ROS 2 peers in the CI image) |
 | **book probe** | `schedule` (weekly, Sunday) | hosted | `weekly.yml` |
