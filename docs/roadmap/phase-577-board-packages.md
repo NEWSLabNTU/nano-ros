@@ -27,11 +27,21 @@ is already a package. What is missing is measured in RFC-0135's Motivation:
 
 ### W1 — Every board, listed
 
-- **Owner:** unassigned.
-- **Status:** OPEN. Partly landed through phase-569 W5b, #4527 (c80f3de04d,
-  2026-11-21): `nros board list` lists board keys with crate, platform,
-  status and cadence columns. Not on main (audited 2026-11-26): the root
-  column, and a test that the listing's keys equal `BoardCatalog`'s.
+- **Owner:** nros 133 (claimed 2026-11-27).
+- **Status:** DONE (2026-11-27, with the root column and the key-equality test)
+  - Columns since phase-569 W5b (#4527, c80f3de04d): key, crate, platform,
+    status, cadence. This change adds ROOT (`in-tree`, an
+    `$NROS_EXTRA_BOARD_PATH` root's path, or `workspace`; the JSON gains a
+    `root` key, an addition the v1 schema allows), and lists from the same
+    catalog `nros build` resolves against, so a workspace's own board
+    packages appear when run inside it.
+  - One row per descriptor, keyed by its first name; its other names are the
+    `aliases` column of the JSON.
+  - Test: `the_listing_has_every_catalog_key_from_every_root` builds a
+    catalog over the in-tree root, an extra root and a workspace package and
+    asserts the listing's keys equal the catalog's, each row's root, and
+    that `linux` and `zephyr` (no crate) are listed.
+  - The ament-index root is W2's.
 - `nros board list` lists every board key from every root (workspace,
   `$NROS_EXTRA_BOARD_PATH`, in-tree), one row per key, with its package, root,
   platform and support status. This is RFC-0133 D1's shape. Crate-less boards

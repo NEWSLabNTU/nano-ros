@@ -763,6 +763,12 @@ pub struct BoardDescriptor {
     /// sends the next reader to edit the wrong descriptor.
     #[serde(skip)]
     pub source: Option<String>,
+    /// Which board root the descriptor was found in, as `nros board list`
+    /// names it: `in-tree`, an `$NROS_EXTRA_BOARD_PATH` root's path, or
+    /// `workspace` (one of the workspace's own packages). Set by the
+    /// catalog's loader; `None` for a descriptor built in memory.
+    #[serde(skip)]
+    pub root: Option<String>,
     /// `[board.priority_plan]` — ACKNOWLEDGED here, interpreted elsewhere.
     ///
     /// The sched task/transport priority plan (RFC-0049; `linux/nros-board.toml`
@@ -1906,7 +1912,7 @@ impl BoardCatalog {
 
     /// [`Self::load_with_packages`] with the extra roots stated rather than read
     /// from the environment.
-    fn load_with_packages_and_extra(
+    pub(crate) fn load_with_packages_and_extra(
         workspace: &Path,
         extra: &[PathBuf],
         pkg_dirs: &[PathBuf],
@@ -1959,6 +1965,7 @@ impl BoardCatalog {
             self.descriptors
                 .extend(file.with_inferred_targets().into_iter().map(|mut b| {
                     b.source = Some(abs.clone());
+                    b.root = Some("workspace".to_string());
                     resolve_board_dir(b, dir, None)
                 }));
         }
@@ -2128,8 +2135,13 @@ impl BoardCatalog {
                     .join("/"),
                 None => descriptor_path.display().to_string(),
             };
+            let found_in = match rel_base {
+                Some(_) => "in-tree".to_string(),
+                None => root.display().to_string(),
+            };
             descriptors.extend(file.with_inferred_targets().into_iter().map(|mut b| {
                 b.source = Some(rel.clone());
+                b.root = Some(found_in.clone());
                 resolve_board_dir(b, &dir, rel_base)
             }));
         }
@@ -3390,6 +3402,7 @@ signature = "#[nros_board_stm32f4::entry]\nfn main() -> !"
             capabilities: None,
             memory: None,
             sdk: None,
+            root: None,
             cmake: None,
             source: None,
             zephyr: None,
@@ -3668,6 +3681,7 @@ signature = "#[nros_board_stm32f4::entry]\nfn main() -> !"
             capabilities: None,
             memory: None,
             sdk: None,
+            root: None,
             cmake: None,
             source: None,
             zephyr: None,
