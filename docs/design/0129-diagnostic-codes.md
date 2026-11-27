@@ -162,7 +162,7 @@ Every surface renders the same text:
 ```
 error[NROS-0412]: board `acme` names platform `acmeos`
   help: add `inherits = "<family>"` to the platform's nros-platform.toml
-  explain: nros explain NROS-0412
+  explain: nros code show NROS-0412
 ```
 
 The detail line is the site's own words. The `help` line is the entry's

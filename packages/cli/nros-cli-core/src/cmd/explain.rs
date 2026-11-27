@@ -48,7 +48,7 @@ pub fn run(args: Args) -> Result<()> {
 }
 
 /// The argument as a diagnostic code, when it is spelled exactly `NROS-NNNN`.
-fn diagnostic_code(arg: &std::path::Path) -> Option<&str> {
+pub(crate) fn diagnostic_code(arg: &std::path::Path) -> Option<&str> {
     let s = arg.to_str()?;
     nros_diagnostic_codes::parse_code(s).map(|_| s)
 }

@@ -6,7 +6,7 @@
 
     error[NROS-NNNN]: <detail>
       help: <help, or the code's remedy>
-      explain: nros explain NROS-NNNN
+      explain: nros code show NROS-NNNN
 """
 
 # name: (code, title, remedy)
@@ -42,5 +42,5 @@ def refuse(name, detail, help=None):
     return (
         f"error[{code}]: {detail}\n"
         f"  help: {help if help is not None else remedy}\n"
-        f"  explain: nros explain {code}"
+        f"  explain: nros code show {code}"
     )

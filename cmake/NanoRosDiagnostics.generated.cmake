@@ -7,7 +7,7 @@
 #
 #   error[NROS-NNNN]: <detail>
 #     help: <text, or the code's remedy>
-#     explain: nros explain NROS-NNNN
+#     explain: nros code show NROS-NNNN
 #
 # The <detail> arguments are concatenated, as message() does. A name no
 # live code was declared with is a configure error of its own.
@@ -64,5 +64,5 @@ function(nros_refuse _name)
         set(_help "${_NROS_DIAG_REMEDY_${_name}}")
     endif()
     set(_code "${_NROS_DIAG_CODE_${_name}}")
-    message(FATAL_ERROR "error[${_code}]: ${_detail}\n  help: ${_help}\n  explain: nros explain ${_code}")
+    message(FATAL_ERROR "error[${_code}]: ${_detail}\n  help: ${_help}\n  explain: nros code show ${_code}")
 endfunction()
