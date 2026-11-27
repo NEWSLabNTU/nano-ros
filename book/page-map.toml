@@ -1866,3 +1866,10 @@ path = "guide/build/pin-a-commit.md"
 action = "new issue-2645"
 batch = "issue-2645"
 note = "Pin a commit or a checkout (issue 2645): the git + rev and path forms of nros-toolchain.toml beside the release version, how a git pin is built into the store, and the stale-CLI check under each"
+
+[[page]]
+book = "user"
+path = "guide/build/find-what-nano-ros-offers.md"
+action = "new phase-569"
+batch = "p569-w10"
+note = "Find what nano-ros offers (W10): every discovery verb's list and show with real output, `--json` and completion; replayed by the find-offers tracks. Each later item (W2c's reference, W9's search) adds its rows"

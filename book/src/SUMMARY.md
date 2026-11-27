@@ -63,6 +63,7 @@
   - [Install options, pinning, working offline](./guide/build/install-options.md)
   - [Bring your own C++ library](./guide/build/bring-your-own-cpp-library.md)
   - [Pin a commit or a checkout](./guide/build/pin-a-commit.md)
+  - [Find what nano-ros offers](./guide/build/find-what-nano-ros-offers.md)
 - [Platforms]()
   - [Verified on host]()
     - [Linux host](./guide/platforms/linux-host.md)
