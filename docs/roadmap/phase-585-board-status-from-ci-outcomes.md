@@ -167,6 +167,16 @@ in the order below.
 - **Acceptance:** a scheduled `host-tests` run's summary lists the Linux row
   with the cells it ran.
 
+## Found while building W5 (2026-11-27)
+
+[Issue 2997](../issues/2997-boards-with-no-nightly-verdict.md): QemuBaremetal,
+NuttxArm and NuttxRiscv read no verdict in each of their last six results
+while their nightly jobs passed. The causes are a W2 collector defect (one
+job's lane skip erased another's pass, fixed with the issue), a QemuBaremetal
+nightly that runs no nros-tests cell, and a NuttxRiscv cell outside its own
+lane. A board's derived word is only as good as the evidence the lanes keep,
+so W3/W4 should not read those three as settled until 2997 closes.
+
 ## Not in this phase
 
 - Any outcome, cadence or date typed into the registry.
