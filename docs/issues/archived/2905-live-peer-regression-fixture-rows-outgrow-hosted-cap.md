@@ -1,7 +1,9 @@
 ---
 id: 2905
 title: "live-peer's host job builds about 141 fixture rows for 41 cells, each from scratch, and now ends minutes under GitHub's hosted-job cap"
-status: open
+status: resolved
+resolved: 2026-11-27
+resolved_in: "#4715 (fixes 1 and 2) and #4781 (the shards, phase-591 W3)"
 type: bug
 area: [ci, testing]
 severity: high
@@ -29,7 +31,7 @@ barely changes from run to run (`ubuntu22/20261111.360` on both 11-18 and 11-19,
 prepass below, not the runner. The comment above
 `timeout-minutes` ("longest green 177.7 min") is out of date: 11-19 took 282 min end to end.
 A step this close to a fixed cap fails on any slow day, and `release-lanes-green`
-has no flake allowance, so this blocks a release ([phase-590](../roadmap/phase-590-nros12-release-plan.md) B16).
+has no flake allowance, so this blocks a release ([phase-590](../../roadmap/phase-590-nros12-release-plan.md) B16).
 
 ## Cause
 
@@ -65,3 +67,27 @@ In order, without raising the cap first (raising it only moves the cliff):
 
 Two scheduled `live-peer` runs in a row where the `regression` job's fixture step finishes in
 under half the cap, and the step's build count matches the self-test's pinned count.
+
+## Resolution (2026-11-27)
+
+Fixes 1 and 2 landed in #4715 (2026-11-23). The host fixture rows then moved
+onto four parallel shards plus one cells job in #4781 (phase-591 W3,
+2026-11-24), which takes the place of fix 3's sharing for the wall clock. The
+acceptance is met on two consecutive scheduled runs:
+
+| run | shard fixture steps (min) | cells job's own build step | units per run | workspace rows (shards) |
+| --- | --- | --- | --- | --- |
+| 45545116210 (11-25) | 46.0, 49.7, 43.0, 45.0 | 2.7 min | 105 | 26 + 25 + 25 + 21 = **97** |
+| 45753606904 (11-26) | 33.3, 47.8, 48.6, 36.5 | 2.2 min | 105 | 25 + 21 + 26 + 25 = **97** |
+
+- **The time bar:** every fixture step is far under half the 350-min cap,
+  against 143 to 309 min single-job before.
+- **The count bar:** the build count matches the self-test's count. 97
+  workspace rows is the count `check-interop-verdicts.py` recorded when it
+  pinned the derivation (97 on 2026-11-23, ceiling
+  `HOST_WORKSPACE_ROWS_CEILING = 100`), against 141 under the coordinate
+  rule.
+- **Both runs green** end to end in 85 and 86 min.
+
+Fix 4 (a cache or a self-hosted runner) is not needed at these numbers.
+
