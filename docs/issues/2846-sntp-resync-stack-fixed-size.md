@@ -122,7 +122,7 @@ has no row in `config/stack-builtins.toml` (the `__aarch64_*` atomics), and
 the arm64 assembly entry points (`__start`, `arch_cpu_idle`,
 `arm_smccc_hvc`, `arm_smccc_smc`, `z_arm64_context_switch`,
 `z_arm64_exit_exc`, `z_arm64_fpu_save`) have no frames.
-[Issue 2897](2897-a53-stack-walk-refuses-aarch64-builtins.md) owns that
+[Issue 2897](archived/2897-a53-stack-walk-refuses-aarch64-builtins.md) owns that
 groundwork, in three steps: (1) the aarch64 libgcc row for the atomics (draft
 #4760); (2) frames for the arm64 assembly entry points above; (3) the
 observed `SNTP_RESYNC` row on `qemu-cortex-a53`, from a boot's stack-peak
@@ -140,7 +140,7 @@ knob's help with the in-tree 64-bit figure, and close this issue.
 
 Issue 2897 closed the frame gap on aarch64, so the qemu_cortex_a53 image's
 re-sync thread is walked: `[image.zephyr_smp_sntp_resync]` in realtime-c's
-`smp_bringup` reports SNTP_RESYNC from `nros_zephyr_sntp_resync_loop`
+`smp_sntp_bringup` reports SNTP_RESYNC from `nros_zephyr_sntp_resync_loop`
 against `CONFIG_NROS_CLOCK_SNTP_RESYNC_STACK_BYTES=8192`, floor 173,592 B.
 That floor is an UPPER BOUND through a machine-bound edge
 (`dns_resolve_name -> publish_trampoline`), not a size: do not size the

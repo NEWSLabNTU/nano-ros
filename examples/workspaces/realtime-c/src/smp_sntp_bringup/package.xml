@@ -1,0 +1,11 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>smp_sntp_bringup</name>
+  <version>0.1.0</version>
+  <description>issue 2897 — smp_bringup's qemu_cortex_a53 SMP image with SNTP re-sync, built so the stack-floor walk covers a 64-bit Arm image's main and re-sync threads.</description>
+  <maintainer email="dev@example.com">Developer</maintainer>
+  <license>Apache-2.0</license>
+  <export>
+    <build_type>nros_cmake</build_type>
+  </export>
+</package>

@@ -1,10 +1,10 @@
 //! Issue 2897 — the stack-floor walk on a 64-bit Arm Zephyr image.
 //!
 //! An aarch64 image reaches frameless code by direct calls: the toolchain's
-//! libgcc outline atomics and the arm64 arch assembly (`__start`,
-//! `z_arm64_context_switch`, ...). The walk used to refuse every root of such
+//! libgcc outline atomics and the arm64 arch assembly (Zephyr's reset entry
+//! and context switch). The walk used to refuse every root of such
 //! an image for want of their frames. This reads the build's `report.json`
-//! for the SMP realtime entry with SNTP re-sync (fixture
+//! for the realtime-c `smp_sntp_bringup` image (SMP, SNTP re-sync) (fixture
 //! `workspace-zephyr-c-realtime-smp-sntp-resync`) and asserts that every role
 //! the image has got a floor: the main thread, the sched task, and the SNTP
 //! re-sync thread (issue 2846's 64-bit half). The floors are upper bounds
