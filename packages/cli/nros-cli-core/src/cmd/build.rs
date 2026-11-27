@@ -10990,7 +10990,7 @@ fn zephyr_base(root: &std::path::Path, flag: Option<&std::path::Path>) -> Option
 
 /// Which rung of [`zephyr_base_with`]'s ladder decided the tree.
 #[derive(Debug, Clone, PartialEq, Eq)]
-enum ZephyrRung {
+pub(crate) enum ZephyrRung {
     /// `--zephyr-workspace`, `$ZEPHYR_BASE` or `$NROS_ZEPHYR_WORKSPACE`: a
     /// tree the user named.
     Named,
@@ -11148,7 +11148,7 @@ fn zephyr_base_with(
 /// moving any existing one, so a build that set `$NROS_ZEPHYR_WORKSPACE`
 /// keeps the tree it had, and the only builds that change are those that fell
 /// to the store while standing in a west workspace of their own.
-fn zephyr_base_rung_with(
+pub(crate) fn zephyr_base_rung_with(
     flag: Option<&std::path::Path>,
     base: Option<std::ffi::OsString>,
     workspace: Option<std::ffi::OsString>,
