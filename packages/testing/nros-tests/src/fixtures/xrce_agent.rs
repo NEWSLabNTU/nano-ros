@@ -97,6 +97,16 @@ impl AgentLog {
                 self.path.display(),
                 AgentLog::tail(&text)
             );
+            // Issue 2993 -- and the log itself, with the host load, kept in
+            // build/failed-run-logs beside the image's console log: this temp
+            // file is removed right after.
+            crate::run::keep_peer_failure(
+                &crate::build_dir(crate::kind::FAILED_RUN_LOGS, &[]),
+                what,
+                &self.path,
+                what,
+                None,
+            );
         }
     }
 

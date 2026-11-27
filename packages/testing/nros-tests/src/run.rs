@@ -203,17 +203,6 @@ pub const FAILED_RUN_LOG_CAP: usize = 256 * 1024;
 /// Best effort: a failing test is already failing, so a log that cannot be
 /// kept is reported on stderr, never turned into a second panic.
 pub fn keep_failed_run_logs(run_dir: &Path, dest: &Path, cell: &str) -> Vec<PathBuf> {
-    let flat = |s: &str| -> String {
-        s.chars()
-            .map(|c| {
-                if c.is_ascii_alphanumeric() || c == '-' || c == '.' {
-                    c
-                } else {
-                    '_'
-                }
-            })
-            .collect()
-    };
     let run_name = run_dir
         .file_name()
         .map_or_else(|| "run".to_string(), |n| n.to_string_lossy().into_owned());
@@ -246,12 +235,7 @@ pub fn keep_failed_run_logs(run_dir: &Path, dest: &Path, cell: &str) -> Vec<Path
                 flat(&run_name),
                 flat(&rel)
             ));
-            let result = std::fs::read(&p).and_then(|bytes| {
-                std::fs::create_dir_all(dest)?;
-                let tail = &bytes[bytes.len().saturating_sub(FAILED_RUN_LOG_CAP)..];
-                std::fs::write(&out, tail)
-            });
-            match result {
+            match keep_log_tail(&p, &out) {
                 Ok(()) => kept.push(out),
                 Err(e) => eprintln!("keeping run log {}: {e}", p.display()),
             }
@@ -259,6 +243,103 @@ pub fn keep_failed_run_logs(run_dir: &Path, dest: &Path, cell: &str) -> Vec<Path
     }
     if !kept.is_empty() {
         eprintln!("run logs of the failing test kept in {}", dest.display());
+    }
+    kept
+}
+
+/// A cell, run or process name as one file-name component: anything but
+/// `[A-Za-z0-9.-]` becomes `_`. One spelling for every kept failure log.
+#[must_use]
+pub fn flat(s: &str) -> String {
+    s.chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '.' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect()
+}
+
+/// Copy the last [`FAILED_RUN_LOG_CAP`] bytes of `src` to `out`, creating its
+/// directory. The one rule every kept failure log follows (run logs here, a
+/// router's log in `fixtures::zenohd_router`).
+///
+/// # Errors
+///
+/// `src` cannot be read, or `out` cannot be written.
+pub fn keep_log_tail(src: &Path, out: &Path) -> std::io::Result<()> {
+    let bytes = std::fs::read(src)?;
+    if let Some(dir) = out.parent() {
+        std::fs::create_dir_all(dir)?;
+    }
+    std::fs::write(
+        out,
+        &bytes[bytes.len().saturating_sub(FAILED_RUN_LOG_CAP)..],
+    )
+}
+
+/// Issue 2993 -- the host's load, as one line a failure log can carry:
+/// `/proc/loadavg` and the runnable and blocked counts from `/proc/stat`, with
+/// a UTC timestamp. A failure that only shows under load (B46) is placed
+/// against this, not against a guess. `None` where `/proc` is not Linux's.
+#[must_use]
+pub fn host_load_sample() -> Option<String> {
+    let loadavg = std::fs::read_to_string("/proc/loadavg").ok()?;
+    let stat = std::fs::read_to_string("/proc/stat").unwrap_or_default();
+    let field = |k: &str| {
+        stat.lines()
+            .find_map(|l| l.strip_prefix(k))
+            .map_or("?".to_string(), |v| v.trim().to_string())
+    };
+    let secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs());
+    Some(format!(
+        "unix={secs} loadavg=\"{}\" procs_running={} procs_blocked={} cpus={}",
+        loadavg.trim(),
+        field("procs_running "),
+        field("procs_blocked "),
+        std::thread::available_parallelism().map_or(0, std::num::NonZero::get),
+    ))
+}
+
+// Issue 2993.
+/// The other side of a failed cell: a peer process the test started (a zenoh
+/// router, an XRCE Agent) keeps its log's tail and a host load sample in
+/// `dest` (`build/failed-run-logs`), beside the image's console log, as
+/// `<cell>--<who>.log` and `<cell>--<who>--host-load.txt`. `load_at_start` is
+/// the sample the fixture took when it started the peer, if it took one.
+/// Called from the fixture's drop while the test panics; best effort, so a
+/// file that cannot be kept is reported, never a second panic.
+pub fn keep_peer_failure(
+    dest: &Path,
+    who: &str,
+    log: &Path,
+    launch: &str,
+    load_at_start: Option<&str>,
+) -> Vec<PathBuf> {
+    let cell = flat(std::thread::current().name().unwrap_or("unnamed-test"));
+    let who = flat(who);
+    let mut kept = Vec::new();
+    let log_out = dest.join(format!("{cell}--{who}.log"));
+    match keep_log_tail(log, &log_out) {
+        Ok(()) => kept.push(log_out),
+        Err(e) => eprintln!("keeping {who}'s log {}: {e}", log.display()),
+    }
+    let load_out = dest.join(format!("{cell}--{who}--host-load.txt"));
+    let text = format!(
+        "{who}: {launch}\nat start:   {}\nat failure: {}\n",
+        load_at_start.unwrap_or("not sampled"),
+        host_load_sample().as_deref().unwrap_or("unavailable"),
+    );
+    match std::fs::create_dir_all(dest).and_then(|()| std::fs::write(&load_out, text)) {
+        Ok(()) => kept.push(load_out),
+        Err(e) => eprintln!("keeping the host load sample: {e}"),
+    }
+    if !kept.is_empty() {
+        eprintln!("{who}'s log and the host load kept in {}", dest.display());
     }
     kept
 }
