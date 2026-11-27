@@ -46,7 +46,7 @@ fn the_id_pattern_matches_what_the_gate_matches() {
     assert_eq!(ids("issue 2305"), ["issue 2305"]);
     assert_eq!(ids("RFC-0129 D2"), ["RFC-0129"]);
     assert_eq!(ids("PR #472"), ["#472"]);
-    assert!(ids("error[NROS-0412]: x\n  explain: nros explain NROS-0412").is_empty());
+    assert!(ids("error[NROS-0412]: x\n  explain: nros code show NROS-0412").is_empty());
 }
 
 #[test]
@@ -169,7 +169,7 @@ fn a_refusal_renders_detail_remedy_and_explain_line() {
         "error[NROS-0002]: board `acme` is claimed by no board descriptor\n  \
          help: check the spelling of the image's `board`; `nros board list` names every board \
          this SDK has\n  \
-         explain: nros explain NROS-0002"
+         explain: nros code show NROS-0002"
     );
     assert_eq!(ids(&text), Vec::<String>::new());
 }
@@ -189,7 +189,7 @@ fn a_site_may_pass_a_more_specific_remedy() {
         text,
         "error[NROS-0005]: platform `acmeos` reaches no family\n  \
          help: add `inherits = \"<family>\"` to the nros-platform.toml of `acme-base`\n  \
-         explain: nros explain NROS-0005"
+         explain: nros code show NROS-0005"
     );
 }
 
@@ -207,7 +207,7 @@ fn a_note_prints_only_when_verbose() {
         "error[NROS-0004]: x: names no board\n  \
          help: add `board = \"<board>\"` to the `[image.<id>]` table in system.toml\n  \
          note: see issue 1234\n  \
-         explain: nros explain NROS-0004"
+         explain: nros code show NROS-0004"
     );
 }
 
@@ -224,7 +224,7 @@ fn the_build_script_constructor_panics_with_the_rendered_text() {
         msg,
         "\nerror[NROS-0004]: s.toml: names no board\n  \
          help: add `board = \"<board>\"` to the `[image.<id>]` table in system.toml\n  \
-         explain: nros explain NROS-0004"
+         explain: nros code show NROS-0004"
     );
     assert_eq!(ids(msg), Vec::<String>::new());
 }
@@ -262,7 +262,7 @@ mod retired_table {
         assert_eq!(
             crate::views::explain_text_in(&ALL[1], ALL),
             "NROS-0002: retired.\n\nThis code is no longer raised. It was replaced by \
-             NROS-0001: kept\nRun `nros explain NROS-0001` for its explanation.\n"
+             NROS-0001: kept\nRun `nros code show NROS-0001` for its explanation.\n"
         );
     }
 }
@@ -372,7 +372,7 @@ fn a_located_refusal_renders_rustc_s_span_block_and_the_fix_line() {
     assert!(text.starts_with(want), "{text}");
     assert!(text.contains("\n  fix: nros fix"), "{text}");
     assert!(
-        text.ends_with("\n  explain: nros explain NROS-0002"),
+        text.ends_with("\n  explain: nros code show NROS-0002"),
         "{text}"
     );
 }

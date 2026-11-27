@@ -482,7 +482,26 @@ a user verb on the image noun that runs the allocation check
 
 ### W8 — migration out of `nros dev`
 
-- **Status:** OPEN
+- **Status:** OPEN until W8 merges (branch `phase-569-w8-user-tier`).
+- **User ruling, 2026-11-27 (RFC-0133 D3 amended):** the four `nros dev`
+  rows are build plumbing, not old spellings. CMake, colcon and the release
+  workflow parse their output, so they keep their spelling with no alias row,
+  and each `--help` names the user verb. `check-cli-old-spellings` refuses a
+  row whose old spelling is a `dev` command.
+- **Done on the branch:**
+  - `user::ARG_ALIASES`, the moves that change an argument:
+    `setup --list` → `toolchain list --available`, `explain <code>` →
+    `code show <code>`, `config explain --platform` → `knob list --platform`.
+    The last carries `--get` / `--platforms-dir` as flags that keep the old
+    handler (`ARG_ALIAS_UNLESS`, published in `help --aliases --json`). A
+    test lowers each row's two spellings to one command.
+  - `nros package list`, an equal spelling of `nros list`.
+  - `nros --help` gains "Find what nano-ros offers": board, platform, rmw,
+    runner, knob, interface, template and code.
+  - `check-cli-old-spellings` reads `<code>` rows and `unless` flags.
+    `--fix` moved the tree, including every diagnostic emitter's `explain:`
+    line, to the new spellings.
+- **Left for W6:** the `profile` row (`profile list` / `show`).
 
 Apply RFC-0133 D3's table. Each moved spelling stays as a hidden alias and
 gets a row in the old-spellings table. `nros --help` gains the

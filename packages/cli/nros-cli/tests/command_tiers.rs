@@ -40,7 +40,7 @@ fn top_level_help_shows_the_groups_in_order() {
             "Build:",
             "Run on a target:",
             "Workspace:",
-            "Interfaces:",
+            "Find what nano-ros offers:",
             "Inspect:",
             "Toolchain:",
             "Other:",

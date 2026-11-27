@@ -142,7 +142,7 @@ in an `[image.<id>] env` row, it stops the build with an error naming the
 Build-time knobs of the zenoh-pico transmit path. The defaults are the
 platform's (`[knobs.zenoh] tx_*` in its `nros-platform.toml`, over a built-in
 default of off): Zephyr turns batching and split locking on.
-`nros config explain --platform <name>` prints the value each one resolves
+`nros knob list --platform <name>` prints the value each one resolves
 to and the rung that set it.
 
 | Variable | Image key | Zephyr Kconfig | Meaning | Default |

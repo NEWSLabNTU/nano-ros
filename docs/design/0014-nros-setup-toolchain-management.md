@@ -322,11 +322,11 @@ indistinguishable from a skip that fetched nothing.
 ### 5. CLI surface
 
 ```
-nros setup <board>            # board-scoped prebuilt fetch (the user path)
-nros setup --target <triple>  # by target instead of board
-nros setup --list             # available packages + versions (sdkmanager --list)
-nros setup --licenses         # accept license gates
-nros doctor                   # already reports SDK/pin presence
+nros setup <board>               # board-scoped prebuilt fetch (the user path)
+nros setup --target <triple>     # by target instead of board
+nros toolchain list --available  # available packages + versions (sdkmanager --list)
+nros setup --licenses            # accept license gates
+nros doctor                      # already reports SDK/pin presence
 ```
 
 A native build (`cargo build` / `cmake --build` / `west build`), via `nros

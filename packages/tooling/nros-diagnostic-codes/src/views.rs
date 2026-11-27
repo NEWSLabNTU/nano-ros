@@ -106,7 +106,7 @@ pub fn explain_text_in(e: &Entry, table: &[Entry]) -> String {
         ),
         (_, Some(s)) => format!(
             "{}: retired.\n\nThis code is no longer raised. It was replaced by {}: {}\n\
-             Run `nros explain {}` for its explanation.\n",
+             Run `nros code show {}` for its explanation.\n",
             e.code, s.code, s.title, s.code
         ),
         (None, None) => format!(
@@ -135,9 +135,9 @@ pub fn book_page() -> String {
          ```text\n\
          error[NROS-0004]: src/demo_bringup/system.toml: names no board\n  \
          help: add `board = \"<board>\"` to the `[image.<id>]` table in system.toml\n  \
-         explain: nros explain NROS-0004\n\
+         explain: nros code show NROS-0004\n\
          ```\n\n\
-         The `explain:` line is a command: `nros explain NROS-0004` prints the\n\
+         The `explain:` line is a command: `nros code show NROS-0004` prints the\n\
          code's section below without a network or a checkout. A code never\n\
          changes its meaning, and a retired code names the one that replaced it.\n\n\
          | Code | What went wrong |\n\
@@ -245,7 +245,7 @@ pub fn cmake_module() -> String {
          #\n\
          #   error[NROS-NNNN]: <detail>\n\
          #     help: <text, or the code's remedy>\n\
-         #     explain: nros explain NROS-NNNN\n\
+         #     explain: nros code show NROS-NNNN\n\
          #\n\
          # The <detail> arguments are concatenated, as message() does. A name no\n\
          # live code was declared with is a configure error of its own.\n\
@@ -289,7 +289,7 @@ pub fn cmake_module() -> String {
              endif()\n    \
              set(_code \"${_NROS_DIAG_CODE_${_name}}\")\n    \
              message(FATAL_ERROR \"error[${_code}]: ${_detail}\\n  help: ${_help}\\n  \
-         explain: nros explain ${_code}\")\n\
+         explain: nros code show ${_code}\")\n\
          endfunction()\n",
     );
     out
@@ -304,8 +304,8 @@ pub fn c_header() -> String {
          * Do not edit by hand: declare or retire a code in src/codes.rs and regenerate.\n \
          *\n \
          * One macro per live diagnostic code, the code as printed. A refusal\n \
-         * prints `error[<code>]: ...` and ends with `explain: nros explain <code>`;\n \
-         * `nros explain <code>` says what went wrong and how to fix it.\n \
+         * prints `error[<code>]: ...` and ends with `explain: nros code show <code>`;\n \
+         * `nros code show <code>` says what went wrong and how to fix it.\n \
          */\n\
          #ifndef NROS_DIAGNOSTICS_H\n\
          #define NROS_DIAGNOSTICS_H\n\n",
@@ -335,7 +335,7 @@ pub fn colcon_module() -> String {
          \n\
          \x20   error[NROS-NNNN]: <detail>\n\
          \x20     help: <help, or the code's remedy>\n\
-         \x20     explain: nros explain NROS-NNNN\n\
+         \x20     explain: nros code show NROS-NNNN\n\
          \"\"\"\n\
          \n\
          # name: (code, title, remedy)\n\
@@ -365,7 +365,7 @@ pub fn colcon_module() -> String {
              return (\n        \
                  f\"error[{code}]: {detail}\\n\"\n        \
                  f\"  help: {help if help is not None else remedy}\\n\"\n        \
-                 f\"  explain: nros explain {code}\"\n    \
+                 f\"  explain: nros code show {code}\"\n    \
              )\n",
     );
     out

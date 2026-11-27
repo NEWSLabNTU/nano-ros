@@ -2,8 +2,8 @@
  * Do not edit by hand: declare or retire a code in src/codes.rs and regenerate.
  *
  * One macro per live diagnostic code, the code as printed. A refusal
- * prints `error[<code>]: ...` and ends with `explain: nros explain <code>`;
- * `nros explain <code>` says what went wrong and how to fix it.
+ * prints `error[<code>]: ...` and ends with `explain: nros code show <code>`;
+ * `nros code show <code>` says what went wrong and how to fix it.
  */
 #ifndef NROS_DIAGNOSTICS_H
 #define NROS_DIAGNOSTICS_H
