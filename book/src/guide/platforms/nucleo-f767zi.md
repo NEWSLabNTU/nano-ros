@@ -78,8 +78,9 @@ an image's boot report, so you can see how much room a change leaves.
 - **STM32F767ZI, a Cortex-M7 with a double-precision FPU,** 2 MiB of flash,
   384 KiB of main SRAM and 128 KiB of DTCM, on Zephyr 3.7. The west
   workspace needs Zephyr's `hal_stm32` module, and
-  `nros setup board nucleo-f767zi-zephyr --zephyr-workspace <ws>` applies
-  nano-ros's patches to it and adds the `thumbv7em-none-eabi` Rust target.
+  `nros setup board nucleo-f767zi-zephyr`, run from inside that workspace
+  (or with `--zephyr-workspace <ws>` from elsewhere), applies nano-ros's
+  patches to it and adds the `thumbv7em-none-eabi` Rust target.
   The image is soft-float: Zephyr's board configuration leaves `CONFIG_FPU`
   off.
 - **The twin boots the same ELF.** Renode's `nucleo_f767zi` machine runs the

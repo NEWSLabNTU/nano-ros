@@ -176,7 +176,17 @@ nros build: Zephyr tree /work/robot/zephyr (the west workspace /work/robot this 
 ```
 
 When it finds none it stops and prints the `west build` line and where to run
-it, rather than guess. nano-ros never writes into the west workspace.
+it, rather than guess. `nros build` never writes into the west workspace.
+
+`nros setup board`, which does write nano-ros's patches into the west
+workspace, finds it on the same rungs and prints the one it chose:
+
+```text
+nros setup board: Zephyr workspace /work/robot (from the west workspace this directory is in)
+```
+
+It never takes the store's workspace, which is not yours to patch. With none
+of the others, it stops and names `--zephyr-workspace`.
 
 When a change needs the application's own `CMakeLists.txt` or `prj.conf`,
 take the application over with `nros materialize zephyr`. That writes it to
