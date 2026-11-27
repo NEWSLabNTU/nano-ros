@@ -480,22 +480,20 @@ mod tests {
             }
         }
 
-        /// An id no descriptor claims is refused, naming the line and the known
-        /// boards. That includes an id whose NAME contains an RTOS: the old
-        /// match read `my-freertos-board` as FreeRTOS.
+        /// An id no descriptor claims is refused, naming the line and its
+        /// nearest board keys (RFC-0135 D8), with the verb that lists them
+        /// all. That includes an id whose NAME contains an RTOS: the old match
+        /// read `my-freertos-board` as FreeRTOS.
         #[test]
-        fn an_unknown_board_is_refused_naming_the_known_ones() {
+        fn an_unknown_board_is_refused_naming_the_nearest_ones() {
             let s = sys("[image.fw]\nboard=\"my-freertos-board\"\n");
             let err = rtos(&s, Some("fw")).expect_err("an unknown board must not resolve");
             assert!(
                 err.contains("`[image.fw] board = \"my-freertos-board\"` matches no board"),
                 "{err}"
             );
-            // Descriptor NAMES. (`mps2-an385-freertos` resolves too, through
-            // the directory alias, but the list names only `names` entries.)
-            for known in ["freertos", "zephyr", "linux"] {
-                assert!(err.contains(known), "message omits `{known}`: {err}");
-            }
+            assert!(err.contains("did you mean `freertos`"), "{err}");
+            assert!(err.contains("nros board list"), "{err}");
         }
 
         /// `threadx` names both the Linux simulation and the riscv64 board. An

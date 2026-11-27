@@ -3724,7 +3724,10 @@ fn plan_leaf_image(
     let catalog = crate::orchestration::board_descriptor::BoardCatalog::load(&nros_root)
         .map_err(|e| eyre::eyre!("board catalog under {}: {e}", nros_root.display()))?;
     let Some(descriptor) = crate::cmd::board_facts::resolve_board(&catalog, &img.board) else {
-        eyre::bail!("{}", crate::cmd::board_facts::unresolved_board(&img.board));
+        eyre::bail!(
+            "{}",
+            crate::cmd::board_facts::unresolved_board(&catalog, &img.board)
+        );
     };
     // RFC-0103 D10 (phase-497 W2) — refused here, at preflight, with the
     // image named; `leaf_settings` resolves the same answer into the build.
@@ -4114,7 +4117,10 @@ fn plan_single_package_cmake(
     let catalog = crate::orchestration::board_descriptor::BoardCatalog::load(&nros_root)
         .map_err(|e| eyre::eyre!("board catalog under {}: {e}", nros_root.display()))?;
     let Some(descriptor) = crate::cmd::board_facts::resolve_board(&catalog, &board) else {
-        eyre::bail!("{}", crate::cmd::board_facts::unresolved_board(&board));
+        eyre::bail!(
+            "{}",
+            crate::cmd::board_facts::unresolved_board(&catalog, &board)
+        );
     };
     let image_net = leaf_image_net(descriptor, &board, Some(&nros_root), &decl)
         .map_err(|e| eyre::eyre!("`{board}` cannot be built: {e}"));

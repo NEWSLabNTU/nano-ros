@@ -102,10 +102,12 @@ is already a package. What is missing is measured in RFC-0135's Motivation:
 ### W6 — The pre-build compatibility check
 
 - **Owner:** nros 133 (claimed 2026-11-26).
-- **Status:** OPEN. The check landed in #4922 (c675afb8c8, 2026-11-26),
-  built on phase-578 W4's `RefusalGroup` and framework refusal; the exact
-  memory verdict after the link followed with phase-578 W1's budget. Left:
-  the near-match listing below, and the deferred rows, each with its item.
+- **Status:** DONE (2026-11-28). The check landed in #4922 (c675afb8c8,
+  2026-11-26), built on phase-578 W4's `RefusalGroup` and framework refusal;
+  the exact memory verdict after the link followed with phase-578 W1's
+  budget, and the near-match listing below with its own change. What is
+  left is the deferred rows, each owned by the item that lands its
+  authority.
   - Landed in #4922: the two new facts (`[board.memory]` on the four
     boards whose linker script states it, `[rmw.needs]` on Cyclone and
     zenoh); a collecting check on all three roads (workspace, cargo leaf,
@@ -131,8 +133,8 @@ is already a package. What is missing is measured in RFC-0135's Motivation:
     ram`, worded "needs at least N"; the exact verdict is phase-578 W1's size
     report after the link, against the same budget (its own PR). No cost
     model.
-  - Open: a key found in no root does not yet list near matches and the
-    roots searched (NROS-0002 lists every name).
+  - A key found in no root lists its nearest keys and every root searched
+    (`BoardCatalog::unknown_board`, NROS-0002), instead of every name.
 - RFC-0135 D8: one check, run by `nros build` before any build step and by
   `nros check --board <key>` alone. It calls the existing checks and collects
   every verdict, then adds:
