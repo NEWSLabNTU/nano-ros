@@ -1,0 +1,1 @@
+The Linux host page and the environment variables reference describe `NROS_NODE_NAME` and `NROS_NODE_NAMESPACE`: the namespace applies to every node, and the name renames only an image that states exactly one node.
