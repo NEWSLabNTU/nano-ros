@@ -1959,11 +1959,11 @@ help = "[system] / [image.<id>] locator: where the image connects. Overridden at
 [[statement]]
 key = "node_name"
 carrier = true
-help = "The launch-declared node name, baked in the boot blob. Overridden at run time by NROS_NODE_NAME."
+help = "The launch-declared node name, baked in the boot blob. NROS_NODE_NAME renames the node at run time only in an image that states one node; otherwise it is ignored with a notice."
 
 [[statement]]
 key = "node_namespace"
-help = "The launch-declared node namespace, baked in the boot blob. Overridden at run time by NROS_NODE_NAMESPACE."
+help = "The launch-declared node namespace, baked in the boot blob. NROS_NODE_NAMESPACE overrides it at run time, for every node of the image."
 
 [[statement]]
 key = "rmw"

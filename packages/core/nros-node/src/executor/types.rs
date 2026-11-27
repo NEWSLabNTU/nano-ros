@@ -720,6 +720,13 @@ impl<'a> ExecutorConfig<'a> {
             });
         };
 
+        let default_identity = crate::executor::env_identity::resolve(
+            env.node_name,
+            env.namespace,
+            crate::config::STATED_NODE_COUNT,
+            baked.node_name.unwrap_or("node"),
+            baked.namespace.unwrap_or(""),
+        );
         let domain_id = env.domain_id.or(baked.domain_id).unwrap_or(0);
         if domain_id > DOMAIN_ID_MAX {
             return Err(BootConfigError::DomainIdRange);
@@ -746,11 +753,13 @@ impl<'a> ExecutorConfig<'a> {
                 .unwrap_or(""),
             mode: env.mode.unwrap_or(SessionMode::Client),
             domain_id,
-            node_name: env.node_name.or(baked.node_name).unwrap_or("node"),
-            // Issue 0794 — `env > baked`, like every other field here. It read
-            // `baked.namespace` alone, because the rung had no namespace to
-            // read; the asymmetry was in the rung, not in this line's intent.
-            namespace: env.namespace.or(baked.namespace).unwrap_or(""),
+            // Issue 2739 -- the executor's own identity follows the rule every
+            // node does (`env_identity::resolve`): the namespace is the
+            // environment's when set (issue 0794's `env > baked`), the name only
+            // when the image states exactly one node. A blind `env > baked`
+            // here renamed this default and left every named node alone.
+            node_name: default_identity.name,
+            namespace: default_identity.namespace,
             clock_us: None,
             // A rung means a hosted caller, and a hosted caller has a wall
             // clock — the same one `from_env` installs. `default_epoch_us_fn`
@@ -2550,23 +2559,39 @@ mod boot_config_tests {
         assert_eq!(cfg.domain_id, DOMAIN_ID_MAX);
     }
 
+    /// Issue 2739 -- the name rung follows the node-count rule
+    /// (`env_identity`): it names the executor only in an image that states
+    /// one node, and the namespace rung applies whatever the count.
     #[test]
-    fn try_resolve_node_name_rung_wins() {
+    fn try_resolve_node_identity_follows_the_count_rule() {
         let rung = EnvRung {
             node_name: Some("env_node"),
+            namespace: Some("/env_ns"),
             ..EnvRung::default()
         };
         let baked = BootConfig {
             node_name: Some("baked_node"),
+            namespace: Some("/baked_ns"),
             ..BootConfig::default()
         };
         let cfg = match ExecutorConfig::try_resolve_with(baked, Some(rung)) {
             Ok(c) => c,
             Err(e) => panic!("resolve failed: {e}"),
         };
+        let want_name = if crate::config::STATED_NODE_COUNT == Some(1) {
+            "env_node"
+        } else {
+            "baked_node"
+        };
         assert_eq!(
-            cfg.node_name, "env_node",
-            "the rung must override baked with its own value"
+            cfg.node_name,
+            want_name,
+            "STATED_NODE_COUNT = {:?}",
+            crate::config::STATED_NODE_COUNT
+        );
+        assert_eq!(
+            cfg.namespace, "/env_ns",
+            "the namespace rung applies to every node"
         );
     }
 
