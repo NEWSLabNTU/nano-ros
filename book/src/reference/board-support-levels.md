@@ -134,7 +134,7 @@ CAVEAT: only ever built for native_sim/native/64. No real Zephyr hardware board 
 | Cadence | daily |
 | Breadth | witness — Runtime: Pubsub, Port, PortSmoke, PortMonitor, PortWorkspace, Service, Action, Logging, EntryPubsub, RealtimeSchedTasks in Rust, C, C++, Mixed over zenoh, cyclonedds |
 | Book | Run: [mps2 an385 freertos](../starters/mps2-an385-freertos.md#run-it-in-qemu) |
-| Book probe tracks | `first-project`, `tutorial-2`, `tutorial-3`, `tutorial-4`, `tutorial-5`, `tutorial-6`, `tutorial-7`, `tutorial-8`, `tutorial-9`, `tutorial-10`, `tutorial-c` (weekly), `tutorial-cpp` (weekly), `lab-qos` (weekly), `lab-qos-c` (weekly), `lab-qos-cpp` (weekly), `lab-tiers` (weekly), `lab-tiers-c` (weekly), `lab-tiers-cpp` (weekly), `freertos` (weekly), `freertos-c` (weekly), `freertos-cpp` (weekly), `platform-freertos`, `own-library` |
+| Book probe tracks | `first-project`, `tutorial-2`, `tutorial-3`, `tutorial-4`, `tutorial-5`, `tutorial-6`, `tutorial-7`, `tutorial-8`, `tutorial-9`, `tutorial-10`, `tutorial-c` (weekly), `tutorial-cpp` (weekly), `lab-qos` (weekly), `lab-qos-c` (weekly), `lab-qos-cpp` (weekly), `lab-tiers` (weekly), `lab-tiers-c` (weekly), `lab-tiers-cpp` (weekly), `freertos` (weekly), `freertos-c` (weekly), `freertos-cpp` (weekly), `platform-freertos`, `own-library`, `lab-lifecycle` (weekly), `lab-lifecycle-c` (weekly), `lab-lifecycle-cpp` (weekly) |
 
 [Back to the board list](#boards)
 

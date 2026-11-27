@@ -1567,3 +1567,33 @@ chapter = "guide/build/find-what-nano-ros-offers.md"
 lang = "cpp"
 weekly = true
 notes = "phase-569 W10 — Find what nano-ros offers, in its cpp tab: every discovery verb's list and show (rmw, board, template, knob, runner, code, image), `--json` and the completion line, on the installed release with no checkout."
+
+[[probe]]
+track = "lab-lifecycle"
+chapter = "tutorial/lifecycle.md"
+variant = "qemu"
+lang = "rust"
+after = ["tutorial/run-a-talker.md", "tutorial/what-you-just-built.md", "tutorial/add-a-second-node.md", "tutorial/pick-the-rmw.md", "tutorial/your-own-message.md", "tutorial/services-and-actions.md", "tutorial/parameters-and-launch-files.md"]
+weekly = true
+row = "nros-board-mps2-an385-freertos@FreertosMps2"
+notes = "issue 2269 — Lab: a managed node waits for its cue, in its rust chain: the talker becomes a <lifecycle_node> with autostart none, boots silent, and stock ros2 lifecycle commands configure, activate, deactivate and refuse a transition. Chained after Tutorial 1-7."
+
+[[probe]]
+track = "lab-lifecycle-c"
+chapter = "tutorial/lifecycle.md"
+variant = "qemu"
+lang = "c"
+after = ["tutorial/run-a-talker.md", "tutorial/what-you-just-built.md", "tutorial/add-a-second-node.md", "tutorial/pick-the-rmw.md", "tutorial/your-own-message.md", "tutorial/services-and-actions.md", "tutorial/parameters-and-launch-files.md"]
+weekly = true
+row = "nros-board-mps2-an385-freertos@FreertosMps2"
+notes = "issue 2269 — Lab: a managed node waits for its cue, in its c chain: the talker becomes a <lifecycle_node> with autostart none, boots silent, and stock ros2 lifecycle commands configure, activate, deactivate and refuse a transition. Chained after Tutorial 1-7."
+
+[[probe]]
+track = "lab-lifecycle-cpp"
+chapter = "tutorial/lifecycle.md"
+variant = "qemu"
+lang = "cpp"
+after = ["tutorial/run-a-talker.md", "tutorial/what-you-just-built.md", "tutorial/add-a-second-node.md", "tutorial/pick-the-rmw.md", "tutorial/your-own-message.md", "tutorial/services-and-actions.md", "tutorial/parameters-and-launch-files.md"]
+weekly = true
+row = "nros-board-mps2-an385-freertos@FreertosMps2"
+notes = "issue 2269 — Lab: a managed node waits for its cue, in its cpp chain: the talker becomes a <lifecycle_node> with autostart none, boots silent, and stock ros2 lifecycle commands configure, activate, deactivate and refuse a transition. Chained after Tutorial 1-7."

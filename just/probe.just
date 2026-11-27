@@ -132,6 +132,21 @@ find-offers-c: (platform "find-offers-c")
 [group("main")]
 find-offers-cpp: (platform "find-offers-cpp")
 
+# book/src/tutorial/lifecycle.md — Lab: a managed node waits for its cue (Rust),
+# after Tutorial 1-7 (issue 2269).
+[group("main")]
+lab-lifecycle: (platform "lab-lifecycle")
+
+# book/src/tutorial/lifecycle.md — Lab: a managed node waits for its cue (C),
+# after Tutorial 1-7 (issue 2269).
+[group("main")]
+lab-lifecycle-c: (platform "lab-lifecycle-c")
+
+# book/src/tutorial/lifecycle.md — Lab: a managed node waits for its cue (C++),
+# after Tutorial 1-7 (issue 2269).
+[group("main")]
+lab-lifecycle-cpp: (platform "lab-lifecycle-cpp")
+
 # book/src/tutorial/two-tiers.md — Lab: two sched tasks keep a promise (Rust),
 # after Tutorial 1 (phase-537 W5, issue 2269).
 [group("main")]

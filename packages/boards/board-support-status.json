@@ -181,7 +181,10 @@
         "freertos-c",
         "freertos-cpp",
         "platform-freertos",
-        "own-library"
+        "own-library",
+        "lab-lifecycle",
+        "lab-lifecycle-c",
+        "lab-lifecycle-cpp"
       ],
       "roads": [],
       "last_run": null,

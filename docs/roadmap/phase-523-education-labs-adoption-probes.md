@@ -211,7 +211,7 @@ Issues homed here (each has a `**Home:**` line pointing here):
 | [#2266](../issues/archived/2266-book-has-no-third-party-inventory.md) | industrial | **Resolved** 2026-11-07: Book: a third-party inventory and the fork pages |
 | [#2267](../issues/archived/2267-book-has-no-release-provenance-report.md) | industrial | **Resolved** 2026-11-07: Book: name `nros doctor --report` and date support per release |
 | [#2268](../issues/archived/2268-no-release-support-backport-policy.md) | industrial | **Resolved** 2026-11-07: Book: release support policy (latest only) |
-| [#2269](../issues/2269-no-emulator-chapters-for-lab-topics.md) | education | Five of seven lab topics have no emulator chapter. Home moved to phase-537 W5 with W1 (2026-11-06) |
+| [#2269](../issues/archived/2269-no-emulator-chapters-for-lab-topics.md) | education | Five of seven lab topics have no emulator chapter. Home moved to phase-537 W5 with W1 (2026-11-06) |
 | [#2270](../issues/archived/2270-default-talker-prints-internal-warnings.md) | education | **Resolved** 2026-11-06: the descriptor writer reports defaults as one line, the scaffold declares its contract, and no user-facing text cites a tracker id (gated) |
 | [#2271](../issues/archived/2271-install-sh-no-longer-prints-path-export.md) | education | **Resolved** 2026-11-06: not reproduced — install.sh prints the line, above the closing `next` lines |
 | [#2272](../issues/archived/2272-serial-flow-needs-socat-unlisted.md) | education | **Resolved** 2026-11-07: Fixed on main: no `socat` in the serial flow |
