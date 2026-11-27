@@ -933,9 +933,16 @@ _sweep_disk() {
     # toolchains to keep current. `sizes-probe` sits under the CHECKOUT's
     # `build/`, not `nros_build_root` (nros-sizes-build `probe_target_dir`), and
     # a west build root an operator relocated is honoured as given.
+    # issue 2840 (c2) — the shared class build dirs,
+    # `fixture-classes/<class-root>/<key>/`: one cargo build dir per
+    # configuration class, shared across leaves. 60 GiB on newslab-118 two
+    # runs after it landed, in no area, so reported every sweep and never
+    # evicted. A key is the unit (the next build re-creates it), its parent
+    # the candidate dir, as `sizes-probe/<slug>/<key>` is.
     local sub
     for sub in "$build_root/sizes-probe"/*/ "$repo_root/build/sizes-probe"/*/ \
-               "$build_root/zephyr-workspace-builds"/*/; do
+               "$build_root/zephyr-workspace-builds"/*/ \
+               "$build_root/fixture-classes"/*/; do
         [ -d "$sub" ] || continue
         sub="${sub%/}"
         case " ${cache_dirs[*]} " in *" $sub "*) continue ;; esac
