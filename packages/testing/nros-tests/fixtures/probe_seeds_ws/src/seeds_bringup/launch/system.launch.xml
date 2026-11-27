@@ -2,7 +2,15 @@
   <node pkg="seeds_c_pkg" exec="seeds_c" name="seeds_c">
     <param name="ctrl_period_ms" value="20"/>
   </node>
+  <!-- Issue 2901: two instances of the C++ component agree on the period
+       (no default) and differ on gain_03 (default 3). The probe seeds the
+       period and leaves gain_03 on its default. -->
   <node pkg="seeds_cpp_pkg" exec="seeds_cpp" name="seeds_cpp">
     <param name="ctrl_period_ms" value="25"/>
+    <param name="gain_03" value="7"/>
+  </node>
+  <node pkg="seeds_cpp_pkg" exec="seeds_cpp" name="seeds_cpp_b">
+    <param name="ctrl_period_ms" value="25"/>
+    <param name="gain_03" value="9"/>
   </node>
 </launch>

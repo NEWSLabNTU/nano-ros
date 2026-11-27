@@ -2803,6 +2803,30 @@ mod tests {
             seeding.refusal("demo_pkg::talker", "boom").is_some(),
             "a failed probe of disagreeing instances is refused naming them"
         );
+
+        // Issue 2901 -- instances that agree on one key and differ on another
+        // hand the harness the agreed key only.
+        let partial = SeedModels::for_test(&[
+            (
+                "demo_pkg",
+                &exec,
+                "/a/talker",
+                &[("period_ms", "20"), ("gain", "1")],
+            ),
+            (
+                "demo_pkg",
+                &exec,
+                "/b/talker",
+                &[("period_ms", "20"), ("gain", "2")],
+            ),
+        ]);
+        let seeding = seeding_of(&partial, &decl);
+        assert!(matches!(seeding, Seeding::Disagree { .. }), "{seeding:?}");
+        assert_eq!(
+            build_options(&decl, &root, &dir.join("probe"), &seeding).seeds,
+            vec![("period_ms".to_string(), "20".to_string())],
+            "the agreed key is seeded, the disagreeing one is left to its default"
+        );
     }
 
     /// Issue 1528 — the probe's language is decided by an exhaustive match,
