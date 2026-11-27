@@ -321,40 +321,68 @@ without `alloc`; every derived backing size (the C and C++ sizes headers,
 `NROS_EXECUTOR_BACKING_U64S`, the Zephyr arena pairing) moves with
 `ExecutorSizing::u64_len`, and a C executor's does not.
 
-**Planned design (2026-11-27, for review before code).**
+**Planned design (2026-11-27, revised after nros 133's review on #4995).**
 
-- **Sizing.** `ExecutorSizing` gains `session: usize`, either 0 or 1. It is
-  the owned-session slots the backing carves. `ExecutorSizing::DEFAULT`
-  carves one, because the Rust entry, the `alloc` conveniences and every sched
-  task's owner OWN their session. The region is placed by
-  `nros-executor-layout`'s `Counts`, like every other table, so a host build
-  script that evaluates the layout for a cross target gets the same total.
-  The unit (`concrete_session`) is already in `RegionUnits`.
-- **Store.** `SessionStore` gains `Carved(NonNull<ConcreteSession>)`. Its
-  pointer is derived from the backing, not from `&mut self`, so it survives
-  the owner's writes. It replaces `Heap` under `alloc` too, giving one owned
-  path in every build. The session is written into the slot at open and
-  dropped in place when the executor drops. `Owned` (inline) remains only for
-  an owner whose sizing carved no slot, and `session_handle` refuses to share
-  it, as it does today for a failed `Heap` allocation.
-- **C borrows; C++ owns.** Today both read one `ExecutorInlineStorage` at
-  `INLINE_SIZING`. They split:
-  - C (`rclc_executor_t`, `from_session_ptr_in`, session borrowed from
-    `rclc_support_t`) keeps today's sizing with `session: 0`, so its
-    `_opaque` size and the C sizes header do not move.
-  - C++ (`open_multi_in`, which owns) carves `session: 1`. Its inline storage
-    and `CPP_EXECUTOR_BACKING_U64S` grow by one session (536 B on x86_64).
-  - Two inline-storage types and two inline sizings, each measured by the
-    sizes probe as today.
+- **Sizing: a derived fact, never a default.** `ExecutorSizing` gains
+  `session: usize`, 0 or 1: the owned-session slots its backing carves. It
+  is 1 exactly where the entry OPENS its own session, and 0 where it borrows
+  one. So `DEFAULT` does not carve unconditionally: a borrowing entry pays
+  nothing.
+  - `sched_task_executor_sizing` is a literal today, and `SchedTaskSizing`
+    states no ownership. It gains the fact, derived per task: the boot task
+    owns (1), and a spawned task borrows the boot task's session (0).
+  - The region is placed by `nros-executor-layout`'s `Counts`, like every
+    other table, so a host build script that evaluates the layout for a cross
+    target gets the same total. The unit (`concrete_session`) is already in
+    `RegionUnits`.
+- **Store.** `SessionStore` gains `Carved(NonNull<ConcreteSession>)`, a raw
+  pointer carved from the backing over a range disjoint from every other
+  table, so it is a sibling of their tags and not a child of the executor's.
+  - The session is written into the slot at open and dropped in place when
+    the executor drops.
+  - Dropping is keyed on the store's VARIANT (`Carved`), never on
+    `sizing.session`. A borrowing executor whose sizing happens to carry a slot
+    leaves it unused and never drops through it.
+- **`Heap`: retire it in W6.** That is 133's recommendation, pending the
+  user's ruling. Only an
+  `alloc` build with no carved slot reaches it, and `Owned` plus a refusing
+  `session_handle` already covers that, so after W6 there is one owned
+  shared path in every build.
+- **C keeps its size; the C++ slot sits outside `rclc_executor_t`.** C++'s
+  executor IS `CppContext.c._opaque` (phase-492 W4: one executor object, and
+  C components get `&c`). So growing a C++ inline storage would grow the C
+  executor too.
+  - The C++ owned-session slot lives in `CppContext`, beside `c` and not
+    inside it. The executor is carved over `c`'s backing with `session: 0`
+    and handed the slot as its `Carved` pointer.
+  - So `rclc_executor_t` and the C sizes header do not move.
+  - `CppContext`, and with it `CPP_EXECUTOR_BACKING_U64S` / the C++ context
+    size, grows by one session (536 B on x86_64).
+  - No second `ExecutorInlineStorage` type is needed.
+  - `open_over_session` (`open_with_session_handle_in`) borrows, so it
+    carries no slot.
+- **Tree Borrows, by access path.** Carving the sibling pointer is sound. The
+  hazard is a reborrow that COVERS the slot:
+  - `CtxRef::deref_mut` makes a whole `&mut CppContext` on every guarded
+    call. Its implicit read would Freeze the session's Active tag, and the
+    next session write would be UB.
+  - The fix is to reach the slot only by field projection from the raw
+    context pointer, never through a `&mut CppContext` that spans it. This is
+    the existing carved tables' own rule, applied to one more field.
 - **Derived sizes.** These move with `u64_len`:
-  - `NROS_EXECUTOR_BACKING_U64S`;
-  - the C++ sizes header;
+  - `NROS_EXECUTOR_BACKING_U64S` (the Rust entry owns);
+  - the C++ context size;
   - the Zephyr arena pairing;
-  - the two committed NuttX buildless snapshot headers, regenerated, with
-    `check-config-fallback-macros` and a clean-checkout NuttX C and C++ image
-    build as acceptance (issue 1115's trap).
+  - the two committed NuttX buildless snapshot headers, regenerated.
   The C header does not move.
 
-Open question for review: whether `Heap` goes in this item or stays until a
-later one. Keeping it costs a second owned path under `alloc` that no test
-reaches once `Carved` exists.
+**Acceptance (revised).**
+
+- `a_session_pointer_survives_its_owner_spinning` passes under Miri without
+  `alloc`.
+- A new Miri case: write the session, take `CtxRef::deref_mut`, write the
+  session again. It must pass, and it must fail with the projection rule
+  removed.
+- `check-config-fallback-macros` passes, and a clean-checkout NuttX C and
+  C++ image builds (issue 1115's trap).
+- The C executor's `_opaque` and header are byte-identical before and after.
