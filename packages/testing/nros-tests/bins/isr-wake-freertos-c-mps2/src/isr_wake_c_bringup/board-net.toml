@@ -1,0 +1,4 @@
+# The board network file for image `mps2-an385-freertos` (RFC-0109 D4).
+[eth0]
+network = "qemu"
+host = 97

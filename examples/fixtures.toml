@@ -3998,6 +3998,20 @@ image = "mps2-an385-freertos"
 target_dir = "target"
 target = "thumbv7m-none-eabi"
 
+# phase-579 W1b — the C twin: a C component registers a device with
+# `nros_executor_register_device`, and the CMSDK TIMER1 handler wakes the
+# parked executor through `nros_completion_signal_from_isr`. Opens a session to
+# a router on `alloc::FREERTOS_C_ISR_WAKE_PORT`.
+[[workspace_fixture]]
+id = "freertos-c-isr-wake-mps2"
+platform = "freertos"
+lang = "c"
+rmw = "zenoh"
+dir = "packages/testing/nros-tests/bins/isr-wake-freertos-c-mps2"
+bringup = "src/isr_wake_c_bringup"
+image = "mps2-an385-freertos"
+build_subdir = "build/freertos-zenoh-mps2-an385-freertos-isr_wake_c_bringup-mps2-an385-freertos/cmake"
+
 # issue 2706 — the bare-metal twin of `freertos-isr-wake-mps2`: a hardware
 # interrupt (CMSDK TIMER1, every 20 ms) wakes a parked bare-metal executor
 # through `GuardCondition::trigger_from_isr`. Opens a session to a router on

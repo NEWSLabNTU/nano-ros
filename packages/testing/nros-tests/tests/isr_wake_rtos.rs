@@ -24,13 +24,15 @@
 use nros_tests::{
     fixtures::{
         ManagedProcess, QemuProcess, RequireFixture, ZenohRouter, build_isr_wake_baremetal_mps2,
-        build_isr_wake_freertos_mps2, build_isr_wake_nuttx_qemu_arm, build_isr_wake_threadx_linux,
+        build_isr_wake_freertos_c_mps2, build_isr_wake_freertos_mps2,
+        build_isr_wake_nuttx_qemu_arm, build_isr_wake_threadx_linux,
         build_isr_wake_threadx_riscv64, build_isr_wake_zephyr_native_sim, or_unmet, threadx_linux,
     },
     matrix::PlatformId,
     output::{
-        DEVICE_PRIO_DONE, ISR_PARK_DONE, ISR_PARK_SAMPLE, ISR_RACE_DONE, ISR_RACE_SAMPLE,
-        ISR_WAKE_DONE, ISR_WAKE_NOT_IN_ISR, ISR_WAKE_READY_PERIOD, ISR_WAKE_SAMPLE,
+        C_ISR_WAKE_DONE, C_ISR_WAKE_SAMPLE, DEVICE_PRIO_DONE, ISR_PARK_DONE, ISR_PARK_SAMPLE,
+        ISR_RACE_DONE, ISR_RACE_SAMPLE, ISR_WAKE_DONE, ISR_WAKE_NOT_IN_ISR, ISR_WAKE_READY_PERIOD,
+        ISR_WAKE_SAMPLE,
     },
     wait_for_port,
 };
@@ -65,6 +67,67 @@ fn a_timer_interrupt_wakes_the_parked_executor_on_freertos_mps2() {
         DEVICE_PRIO_DONE,
     );
     check_device_priority_output(&output);
+}
+
+/// Phase 579 W1b -- the C twin. A C component registers a device with
+/// `nros_executor_register_device`, and the CMSDK TIMER1 handler signals its
+/// completion with `nros_completion_signal_from_isr`, which reaches FreeRTOS's
+/// `xSemaphoreGiveFromISR`. The generated entry's executor has nothing else to
+/// do, so only the interrupt ends its park. Held to the same cap as the Rust
+/// image's wakes.
+#[test]
+fn a_c_interrupt_handler_wakes_the_parked_executor_through_a_completion_on_freertos_mps2() {
+    nros_tests::fixtures::lane::require_platform_in_lane(
+        &[PlatformId::FreertosMps2],
+        "the FreeRTOS C interrupt-wake image",
+    );
+    let binary = build_isr_wake_freertos_c_mps2()
+        .require("isr-wake-freertos-c-mps2 — run `just build freertos`");
+    let port = nros_tests::alloc::FREERTOS_C_ISR_WAKE_PORT;
+    let _zenohd = or_unmet(ZenohRouter::start_slirp(port));
+    assert!(
+        wait_for_port(port, Duration::from_secs(5)),
+        "zenohd not reachable on the C interrupt-wake port"
+    );
+    let mut qemu = QemuProcess::start_mps2_an385_networked_measured(binary)
+        .unwrap_or_else(|e| panic!("start QEMU for the C interrupt-wake image: {e:?}"));
+    let output = qemu.collect_until(C_ISR_WAKE_DONE, Duration::from_secs(120));
+    qemu.kill();
+
+    let done = output
+        .lines()
+        .find_map(|l| l.split(C_ISR_WAKE_DONE).nth(1))
+        .unwrap_or_else(|| {
+            panic!("the C image never finished (an assert or a lost wake?):\n{output}")
+        });
+    let mut it = done
+        .split_whitespace()
+        .map(|v| v.parse::<u64>().unwrap_or(0));
+    let (fires, continuations) = (it.next().unwrap_or(0), it.next().unwrap_or(0));
+    let samples: Vec<u64> = output
+        .lines()
+        .filter_map(|l| l.strip_prefix(C_ISR_WAKE_SAMPLE))
+        .filter_map(|v| v.trim().parse().ok())
+        .collect();
+    eprintln!(
+        "FreeRTOS C interrupt wake: {fires} interrupts, {continuations} continuations, latency min {:?} max {:?} us",
+        samples.iter().min(),
+        samples.iter().max()
+    );
+    assert!(
+        continuations >= 50 && samples.len() >= 50,
+        "too few continuations:\n{output}"
+    );
+    assert!(
+        continuations <= fires,
+        "{continuations} continuations for only {fires} interrupts: something other than the interrupt signalled the device"
+    );
+    // A lost wake sleeps to the park's deadline, far above half the period.
+    let late: Vec<&u64> = samples.iter().filter(|&&us| us >= CAP_US).collect();
+    assert!(
+        late.is_empty(),
+        "C wakes at or past {CAP_US} us (a lost interrupt-safe wake?): {late:?}"
+    );
 }
 
 /// Phase 579 W3a, on the same image: a device completed from the timer

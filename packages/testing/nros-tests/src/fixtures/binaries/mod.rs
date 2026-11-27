@@ -6962,6 +6962,26 @@ pub fn build_isr_wake_freertos_mps2() -> TestResult<&'static Path> {
         .map(|p| p.as_path())
 }
 
+static ISR_WAKE_FREERTOS_C_MPS2_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
+/// Phase 579 W1b -- the prebuilt `isr-wake-freertos-c-mps2` image: a C timer
+/// interrupt handler signals a device completion through
+/// `nros_completion_signal_from_isr`.
+pub fn build_isr_wake_freertos_c_mps2() -> TestResult<&'static Path> {
+    ISR_WAKE_FREERTOS_C_MPS2_BINARY
+        .get_or_try_init(|| {
+            const DIR: &str = "packages/testing/nros-tests/bins/isr-wake-freertos-c-mps2";
+            migrated_leaf_binary_named(
+                DIR,
+                Rmw::Zenoh,
+                crate::fixtures::migrated_leaf::LeafVariant::Plain,
+                "isr_wake",
+            )
+            .unwrap_or_else(|| Err(not_migrated(DIR)))
+        })
+        .map(|p| p.as_path())
+}
+
 /// Resolve the prebuilt `condvar-contract-freertos-mps2` image. Built in the
 /// `freertos rust` fixture lane at the `freertos-qemu` profile, like the
 /// logging smoke beside it.

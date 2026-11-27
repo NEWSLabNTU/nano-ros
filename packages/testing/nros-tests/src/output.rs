@@ -2389,6 +2389,14 @@ mod guest_failure_tests {
 pub const ISR_WAKE_SAMPLE: &str = "ISR_WAKE ";
 /// See [`ISR_WAKE_SAMPLE`].
 pub const ISR_WAKE_DONE: &str = "ISR_WAKE_DONE ";
+/// Phase 579 W1b -- what `isr-wake-freertos-c-mps2` prints: one
+/// `C_ISR_WAKE <latency_us>` per device continuation the timer interrupt woke
+/// through `nros_completion_signal_from_isr`, and
+/// `C_ISR_WAKE_DONE <interrupts> <continuations>` when it has enough. The
+/// image's `IsrWake.c` prints these exact words.
+pub const C_ISR_WAKE_SAMPLE: &str = "C_ISR_WAKE ";
+/// See [`C_ISR_WAKE_SAMPLE`].
+pub const C_ISR_WAKE_DONE: &str = "C_ISR_WAKE_DONE ";
 /// What `isr-wake-freertos-mps2` prints after its device phase:
 /// `DEVICE_PRIO_DONE <rounds> <device_first> <low_first> <refused>`. Each
 /// round the timer interrupt readied a best-effort guard and then signalled a

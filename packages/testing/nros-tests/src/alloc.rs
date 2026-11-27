@@ -270,6 +270,11 @@ pub const NUTTX_ISR_WAKE_PORT: u16 = aux_port(PlatformId::NuttxArm, 0);
 /// `config.toml` states this port as its locator.
 pub const FREERTOS_ISR_WAKE_PORT: u16 = aux_port(PlatformId::FreertosMps2, 0);
 
+/// The C twin (`packages/testing/nros-tests/bins/isr-wake-freertos-c-mps2`,
+/// phase 579 W1b): a C interrupt handler signals a device completion while the
+/// executor parks. Its `system.toml` states this port as its locator.
+pub const FREERTOS_C_ISR_WAKE_PORT: u16 = aux_port(PlatformId::FreertosMps2, 1);
+
 /// Does this cell's image BAKE its isolation values at build time?
 ///
 /// Native cells are ephemeral (runtime ports, `unique_ros_domain_id`); every
@@ -418,6 +423,7 @@ mod tests {
             BAREMETAL_RTIC_PUBSUB_PORT,
             BAREMETAL_RTIC_LEVELS_PORT,
             FREERTOS_ISR_WAKE_PORT,
+            FREERTOS_C_ISR_WAKE_PORT,
             THREADX_ISR_WAKE_PORT,
             NUTTX_ISR_WAKE_PORT,
             BAREMETAL_ISR_WAKE_PORT,
