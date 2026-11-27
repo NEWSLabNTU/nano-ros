@@ -319,8 +319,13 @@ def main() -> int:
     g.add_argument("--run", action="store_true")
     g.add_argument("--self-test", action="store_true")
     a = ap.parse_args()
+    # The negative controls run on the normal path too, so a regression in the
+    # derivation fails every plan and run, not only an explicit --self-test.
+    if self_test() != 0:
+        return 1
     if a.self_test:
-        return self_test()
+        print("cmake-toolchain-smoke: selftest OK")
+        return 0
     entries, errors = plan()
     print("cmake-toolchain-smoke: one CMake-road image per cross-toolchain file (issue 2990)")
     print(describe(entries))

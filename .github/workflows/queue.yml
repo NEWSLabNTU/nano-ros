@@ -196,10 +196,16 @@ jobs:
       # WHICH breadth at WHICH depth, which is what the file is for. It is the
       # same recipe (`_matrix-build`'s body IS `l3`), now with one spelling
       # across the repo instead of two.
+      #
+      # Issue 2990 (user ruling 2026-11-27): `just ci matrix build` also runs
+      # the CMake toolchain smoke (one fixture row per cross-toolchain file,
+      # ~15 min cold). That is for local runs and the tier-2 nightly, not per
+      # merge, so this step calls `_matrix-build` itself and keeps the lane's
+      # "no fixture build" contract (scripts/check-lane-contracts.py).
       - name: just ci matrix build
         run: |
           source ./activate.sh
-          just ci matrix build
+          just ci::_matrix-build
       # phase-559 W9 (user ruling 2026-11-14, option B) — a per-merge Zephyr
       # BUILD + LINK. Since #3710 moved the Zephyr template copy-out to the
       # daily schedule, no per-merge lane linked a Zephyr image. These three

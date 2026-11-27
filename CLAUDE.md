@@ -93,8 +93,10 @@ to — `net/` `serial/` `ipc/` `sys/` — documented in `packages/drivers/README
     FIXTURES** (phase-395 W2; renamed phase-410 W4 because it visits no
     coordinates, so it was never a rung on the breadth ladder). Measured 230 s.
     Depth is a positional arg on the tiers: `just ci matrix` runs, `just ci
-    matrix build` builds+links only (27 s) — `name=value` does NOT parse for a
-    module recipe.
+    matrix build` builds+links only: the cargo-road RTOS link check, plus one
+    CMake-road image per cross-toolchain file (issue 2990; ~15 min cold, the
+    nightly runs it too, the merge queue does not). `name=value` does NOT parse
+    for a module recipe.
     **The tier is chosen by the diff** (user ruling 2026-11-14): a docs-only diff
     needs `just check fast` alone, and `just ci gate` detects one and runs only that
     (`scripts/ci/gate-tier.py`; a `.md` that Rust source reads does not count).

@@ -415,8 +415,10 @@ l3:
 # `just ci matrix` runs at RUN depth; `just ci matrix build` at BUILD depth.
 #
 # CI is BREADTH x DEPTH (RFC-0061, amended by phase-410) and only depth is
-# expensive: measured 2026-08-31, build depth is 46 s against 20+ minutes for
-# run depth over the same tree. The argument is POSITIONAL because `just` does
+# expensive. Build depth is NOT run depth minus execution: it is the cargo-road
+# RTOS link check (`l3`, measured 46 s on 2026-08-31) plus, since issue 2990,
+# one CMake-road image per cross-toolchain file (893 s cold, 337 s warm on
+# host 175). Run depth builds and runs tier 2's fixture cover, 20+ minutes. The argument is POSITIONAL because `just` does
 # not parse `name=value` for a MODULE recipe — `just ci matrix depth=build`
 # sets depth to the literal string `depth=build`, measured.
 #
@@ -430,7 +432,11 @@ matrix depth="run":
     set -euo pipefail
     case "{{ depth }}" in
         run)   just ci::_matrix-run ;;
-        build) just ci::_matrix-build ;;
+        # Issue 2990 (user ruling 2026-11-27) -- build depth also configures
+        # and links one CMake-road image per cross-toolchain file. HERE and in
+        # the scheduled tier-2 nightly, never per merge: the queue calls
+        # `_matrix-build` itself, whose "no fixture build" contract stays true.
+        build) just ci::_matrix-build && just ci::cmake-toolchain-smoke ;;
         *) echo "just ci matrix: unknown depth '{{ depth }}' — expected 'run' or 'build'." >&2
            echo "  run   = build + execute (the 1-wise cover)" >&2
            echo "  build = build + link only, no boot" >&2
@@ -570,6 +576,19 @@ _matrix-run:
 # per-merge placement rests on.
 [private]
 _matrix-build: l3
+
+# Issue 2990 (user ruling 2026-11-27): one CMake-road image per cross-toolchain
+# file, configured and linked. `_matrix-build` (`l3`) configures no CMake image,
+# so a change to `cmake/toolchain/*.cmake` passed it unbuilt (#4928). The list
+# is DERIVED (scripts/ci/cmake-toolchain-smoke.py): a toolchain file, the
+# boards naming it, an image on such a board, the first C/C++ fixture row that
+# builds it. `check cmake-toolchain-smoke-plan` refuses a toolchain file with
+# no smoke. Run by `just ci matrix build` and the tier-2 nightly, NOT the
+# merge queue. Measured on host 175 (sccache off): 893 s cold, 337 s warm,
+# +12 GB.
+[group("ci")]
+cmake-toolchain-smoke:
+    python3 scripts/ci/cmake-toolchain-smoke.py --run
 
 [group("ci")]
 matrix-nightly:

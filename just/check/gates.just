@@ -465,3 +465,12 @@ gate-needs:
 [private]
 cache-trim:
     @python3 scripts/build/trim-caches.py
+
+# Issue 2990 -- every cross-toolchain file in cmake/toolchain/ has a CMake-road
+# smoke: a C/C++ fixture row building an image whose board names the file, an
+# include-only alias credited through its include, or a NO_ROW recipe with its
+# reason. A new toolchain file with none is refused here, before any build.
+# Its selftest's negative controls run first, on this normal path. Buildless,
+# about 5 s.
+cmake-toolchain-smoke-plan:
+    @python3 scripts/ci/cmake-toolchain-smoke.py --plan
