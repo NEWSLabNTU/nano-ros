@@ -142,6 +142,9 @@ pub mod stale_guard;
 // every target verb shares (`nros run`; `nros flash --monitor` and `nros
 // monitor` reuse it).
 pub mod target_session;
+// phase-578 W2 (RFC-0118 D9) — a fault line's addresses as source lines,
+// for every target verb's console.
+pub mod fault_lines;
 // Issue 0455 — one `scratch_dir` for every unit test in this crate. Nine
 // hand-written `temp_dir().join(...)` spellings raced each other; the
 // differences between them WERE the bug. Test-only, so it ships nothing.

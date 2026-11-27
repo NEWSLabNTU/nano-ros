@@ -4027,6 +4027,20 @@ image = "mps2-an385-freertos"
 target_dir = "target"
 target = "thumbv7m-none-eabi"
 
+# phase-578 W2 (RFC-0118 D9) — a fault on FreeRTOS + MPS2-AN385 prints the
+# board's `nros-fault:` line, and `nros run` names the faulting function and
+# line from this image's ELF. Opens no session.
+[[workspace_fixture]]
+id = "freertos-fault-report-mps2"
+platform = "freertos"
+lang = "rust"
+dir = "packages/testing/nros-tests/bins/fault-report-freertos-mps2"
+rmw = "zenoh"
+bringup = "src/fault_report_freertos_mps2_bringup"
+image = "mps2-an385-freertos"
+target_dir = "target"
+target = "thumbv7m-none-eabi"
+
 # ===========================================================================
 # nuttx (qemu ARM virt) — Rust role examples. Plain cargo (nightly pinned by
 # the example's rust-toolchain.toml). Codegen runs in the recipe.

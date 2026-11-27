@@ -60,6 +60,12 @@ pub struct Args {
     /// `--base-paths`, as `nros build` takes it (phase-527 W2d).
     #[command(flatten)]
     pub sources: crate::cmd::build::BasePathsArgs,
+    // RFC-0118 D9.
+    /// The ELF a fault line's addresses are looked up in: needed with
+    /// `--port` alone, or for an image this workspace did not build (else
+    /// the selected image's own).
+    #[arg(long, value_name = "FILE")]
+    pub elf: Option<PathBuf>,
 }
 
 fn exit_with(code: u8) -> ! {
@@ -205,6 +211,7 @@ pub fn run(args: Args) -> eyre::Result<()> {
         // A console attaches to a board already running; it starts nothing.
         router: "none".into(),
         sources: args.sources.clone(),
+        elf: args.elf.clone(),
         ..ExecArgs::default()
     };
     exit_with(run_exec::execute(

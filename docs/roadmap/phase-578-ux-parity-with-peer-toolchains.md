@@ -85,7 +85,7 @@ budget the percentages; a test holds the numbers equal to the ELF's.
 
 ### W2 — crash addresses as source lines in `nros monitor`
 
-- **Status:** OPEN
+- **Status:** OPEN — in progress; design accepted 2026-11-26 (user rulings): [RFC-0118](../design/0118-target-execution-model.md) D9
 - **Owner:** nros 241, after its current batch
 - **Needs:** a short design note: which fault formats (Cortex-M HardFault
   frame, Cortex-R abort, Rust panic location, a POSIX backtrace) and where the

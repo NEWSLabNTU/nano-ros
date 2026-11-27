@@ -193,6 +193,10 @@ NO_ROUTER = {
     "packages/testing/nros-tests/bins/stack-guard-freertos-mps2": (
         "no-session `run_bare` stack guard check — opens no Executor and dials nothing"
     ),
+    # phase-578 W2 -- the fault report image faults on purpose.
+    "packages/testing/nros-tests/bins/fault-report-freertos-mps2": (
+        "no-session `run_bare` fault report check — opens no Executor and dials nothing"
+    ),
     # Issue 2732 -- spawns one task the byte pool must refuse, then stops.
     "packages/testing/nros-tests/bins/sched-task-pool-refusal-threadx-linux": (
         "no-session `run_bare` byte-pool refusal check — opens no Executor and dials nothing"

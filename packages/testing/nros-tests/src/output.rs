@@ -684,6 +684,14 @@ pub const STACK_GUARD_OVERFLOWING: &str = "stack-guard: overflowing the task 'ov
 pub const STACK_GUARD_CAUGHT: &str =
     "*** STACK OVERFLOW: overflow *** (the task's stack hit its guard)";
 pub const STACK_GUARD_FAIL: &str = "stack-guard: FAIL";
+/// phase-578 W2 (RFC-0118 D9) — what the `fault-report-freertos-mps2` image
+/// prints before its fault, and its FAIL line if the fault is not taken.
+pub const FAULT_REPORT_INJECTING: &str = "fault-report: injecting a fault";
+pub const FAULT_REPORT_FAIL: &str = "fault-report: FAIL";
+/// The head of the `nros-fault:` line a nano-ros fault handler prints.
+pub const NROS_FAULT_HARDFAULT: &str = "nros-fault: kind=hardfault";
+/// The head of the line the CLI prints under a fault line for its `pc`.
+pub const NROS_FAULT_PC_LOOKUP: &str = "nros:   pc ";
 /// What the MPS2-AN385 FreeRTOS board printed for a task stack overflow before
 /// it had a stack guard (issue 2507).
 pub const FREERTOS_MALLOC_FAILED: &str = "*** MALLOC FAILED ***";

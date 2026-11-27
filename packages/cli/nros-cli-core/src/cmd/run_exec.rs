@@ -146,6 +146,11 @@ pub struct ExecArgs {
     /// and the runner lookup alike (phase-527 W2d).
     #[command(flatten)]
     pub sources: crate::cmd::build::BasePathsArgs,
+    // RFC-0118 D9.
+    /// The ELF a fault line's addresses are looked up in (else the image's
+    /// own, when the verb selected one).
+    #[arg(long, value_name = "FILE")]
+    pub elf: Option<PathBuf>,
 }
 
 impl ExecArgs {
@@ -1371,6 +1376,14 @@ pub fn execute(plan: &RunPlan, x: &Execution<'_>) -> u8 {
         Err(e) => return fail(exit::PLAN_UNRESOLVED, &e),
     };
     let (tx, rx) = ts::channel();
+    // RFC-0118 D9 -- a fault line's addresses, looked up in `--elf`, else in
+    // the image's own ELF.
+    let faults = || {
+        crate::fault_lines::FaultLines::new(crate::fault_lines::ElfSource::resolve(
+            x.exec.elf.as_deref(),
+            plan.artifacts.get("elf").map(PathBuf::as_path),
+        ))
+    };
     let mut log = Some(log);
     let mut consoles = Vec::new();
     let chains = group.chain_log();
@@ -1388,12 +1401,13 @@ pub fn execute(plan: &RunPlan, x: &Execution<'_>) -> u8 {
                     side_tx,
                 );
             } else {
-                consoles.push(ts::spawn_console(
+                consoles.push(ts::spawn_console_with_faults(
                     out,
                     Box::new(io::stdout()),
                     log.take(),
                     grade.clone(),
                     tx.clone(),
+                    Some(faults()),
                 ));
             }
             ts::spawn_stderr(err, tx.clone(), chains);
@@ -1419,12 +1433,13 @@ pub fn execute(plan: &RunPlan, x: &Execution<'_>) -> u8 {
         match group.spawn("console", c) {
             Ok(m) => {
                 let out = m.child.stdout.take().expect("piped");
-                consoles.push(ts::spawn_console(
+                consoles.push(ts::spawn_console_with_faults(
                     out,
                     Box::new(io::stdout()),
                     log.take(),
                     grade.clone(),
                     tx,
+                    Some(faults()),
                 ));
                 required.push("console".to_string());
             }
