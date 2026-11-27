@@ -1,12 +1,14 @@
 ---
 id: 2904
 title: "An owned C/C++ entry that makes several nodes managed in its own `main` derives too few XRCE service-server slots, and the C++ node carries on after its lifecycle services fail"
-status: open
+status: resolved
 type: bug
 severity: medium
 area: [xrce, sizing, lifecycle]
 related: [phase-554, issue-2482, issue-2553]
 found: 2026-11-23
+resolved: 2026-11-27
+resolved_in: "#4795 (fe007626ed): [lifecycle] managed_nodes declares the count; a LifecycleNode reports failed services"
 ---
 
 ## What happens
@@ -97,3 +99,25 @@ checks `ok()` and stops, as the C one does.
 
 The user guide's managed-nodes page states the key.
 
+## Resolution (2026-11-27)
+
+Fixed by #4795 (`fe007626ed`, 2026-11-24), as the section above describes.
+The issue stayed open because its acceptance cells had never run: the
+`lifecycle_pair_interop` cells are in the live-peer lane only once a verdict
+is recorded for them, and none had been, so CI never ran them
+(`check-interop-verdicts.py --report` listed all six as NEVER).
+
+They were run by hand on host 241 at main `5067703e37`, from fixtures built
+there (`just linux test-ros2-lifecycle-pair`), with both examples at
+`managed_nodes = 2` and no `max_service_servers` knob:
+
+| case | result |
+| --- | --- |
+| `lifecycle_cli_answers_as_stock_lifecycle_talker` C, C++ | pass, 88 to 89 s |
+| `two_managed_nodes_are_silent_until_each_is_active` C, C++ on zenoh | pass, 58 s |
+| the same on Cyclone DDS | pass, 150 s |
+| the same on XRCE (the image this issue was about) | pass, 147 to 148 s |
+
+9 of 9 tests passed in 445 s. Recording these verdicts in the ledger, which
+would put the cells in the live-peer lane, is a separate decision: it widens
+a lane whose row count is capped.
