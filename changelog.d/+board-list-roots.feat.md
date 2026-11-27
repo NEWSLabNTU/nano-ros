@@ -1,0 +1,1 @@
+`nros board list` now lists every board a build can resolve: boards under `$NROS_EXTRA_BOARD_PATH` and a workspace's board packages, not only the in-tree ones. A new ROOT column (and a `root` field in `--json`) says where each was found.

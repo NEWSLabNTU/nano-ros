@@ -174,6 +174,9 @@ pub struct BoardItem {
     /// The board package (crate) the descriptor lives in.
     #[serde(rename = "crate")]
     pub krate: String,
+    /// Where the descriptor was found: `in-tree`, an `$NROS_EXTRA_BOARD_PATH`
+    /// root's path, or `workspace` (RFC-0135 D5's board roots).
+    pub root: String,
     /// The platform the board builds for, as the descriptor names it.
     pub platform: String,
     /// The support status word of each registry row for it, today.
@@ -229,6 +232,7 @@ pub fn board_items(
             Some(BoardItem {
                 key: key.clone(),
                 aliases: aliases.to_vec(),
+                root: d.root.clone().unwrap_or_else(|| "-".into()),
                 platform: platform_of(d),
                 status: rows.iter().map(|r| r.status_on(today)).collect(),
                 cadence: rows.iter().map(|r| r.cadence_text()).collect(),
@@ -244,7 +248,7 @@ pub fn board_items(
 /// The `list` table.
 pub fn render_list(items: &[BoardItem]) -> String {
     let mut t = crate::cmd::frame::Table::new(
-        &["BOARD", "CRATE", "PLATFORM", "STATUS", "CADENCE"],
+        &["BOARD", "CRATE", "ROOT", "PLATFORM", "STATUS", "CADENCE"],
         "No boards found.",
     );
     let words = |v: &[String]| {
@@ -258,6 +262,7 @@ pub fn render_list(items: &[BoardItem]) -> String {
         t.row(vec![
             i.key.clone(),
             i.krate.clone(),
+            i.root.clone(),
             i.platform.clone(),
             words(&i.status),
             words(&i.cadence),
@@ -269,7 +274,12 @@ pub fn render_list(items: &[BoardItem]) -> String {
 
 fn list(args: ListArgs) -> Result<()> {
     let root = catalog_root(args.workspace)?;
-    let catalog = BoardCatalog::load(&root).map_err(|e| eyre!("load board catalog: {e}"))?;
+    // Every root a build resolves a board key against (RFC-0135 D5): the
+    // SDK's boards, `$NROS_EXTRA_BOARD_PATH`, and the board packages of the
+    // workspace the current directory is in. The same catalog as `nros build`
+    // (`catalog_for_dir`), so a key listed here is a key a build finds.
+    let cwd = std::env::current_dir().map_err(|e| eyre!("current directory: {e}"))?;
+    let catalog = catalog_for_dir(&root, &cwd)?;
     // phase-522 W5 — the status word and cadence of every row, read from the
     // registry this root ships.
     let status = crate::cmd::board_support::Status::load(&root)?;
@@ -1128,6 +1138,74 @@ fn main() -> ! {"""
         );
     }
 
+    /// Phase-577 W1's acceptance: the listing's keys equal the catalog's for
+    /// the same roots -- in-tree, an `$NROS_EXTRA_BOARD_PATH` root and a
+    /// workspace package -- one row per descriptor's key, each naming the root
+    /// it was found in. Crate-less boards (`linux`, `zephyr`) are listed too.
+    #[test]
+    fn the_listing_has_every_catalog_key_from_every_root() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
+        let tmp = tempfile::tempdir().unwrap();
+        let board = |dir: &std::path::Path, key: &str| {
+            std::fs::create_dir_all(dir).unwrap();
+            std::fs::write(
+                dir.join("nros-board.toml"),
+                format!(
+                    "[[board]]\nnames = [\"{key}\"]\nplatform = \"freertos\"\n\
+                     toolchain = \"stable\"\nentry_kind = \"board-run\"\n"
+                ),
+            )
+            .unwrap();
+            std::fs::write(
+                dir.join("package.xml"),
+                format!(
+                    "<package format=\"3\"><name>{key}</name><version>0.1.0</version>\
+                     <description>d</description><maintainer email=\"a@b.c\">a</maintainer>\
+                     <license>MIT</license><export><nano_ros_provides kind=\"board\" name=\"{key}\"/>\
+                     </export></package>\n"
+                ),
+            )
+            .unwrap();
+        };
+        let extra = tmp.path().join("extra");
+        board(&extra.join("acme_boards"), "acme-extra");
+        let pkg = tmp.path().join("ws/src/my_board");
+        board(&pkg, "acme-ws");
+        let catalog =
+            crate::orchestration::board_descriptor::BoardCatalog::load_with_packages_and_extra(
+                &root,
+                std::slice::from_ref(&extra),
+                std::slice::from_ref(&pkg),
+            )
+            .expect("catalog");
+        let status = crate::cmd::board_support::Status::load(&root).expect("registry");
+        let items = super::board_items(&catalog, &root, &status, "2026-11-27");
+
+        let mut want: Vec<&str> = catalog
+            .descriptors()
+            .iter()
+            .filter_map(|d| d.names.first().map(String::as_str))
+            .collect();
+        want.sort_unstable();
+        want.dedup();
+        let got: Vec<&str> = items.iter().map(|i| i.key.as_str()).collect();
+        assert_eq!(got, want, "one row per catalog key, no more, no fewer");
+
+        let root_of = |k: &str| items.iter().find(|i| i.key == k).map(|i| i.root.clone());
+        assert_eq!(root_of("acme-extra"), Some(extra.display().to_string()));
+        assert_eq!(root_of("acme-ws").as_deref(), Some("workspace"));
+        assert_eq!(
+            root_of("linux").as_deref(),
+            Some("in-tree"),
+            "crate-less board listed"
+        );
+        assert_eq!(
+            root_of("zephyr").as_deref(),
+            Some("in-tree"),
+            "crate-less board listed"
+        );
+    }
+
     /// RFC-0133 D1: renaming a key or the schema name is a new version.
     #[test]
     fn board_json_schemas_are_pinned() {
@@ -1142,13 +1220,16 @@ fn main() -> ! {"""
             key: "k".into(),
             aliases: vec![],
             krate: "c".into(),
+            root: "in-tree".into(),
             platform: "p".into(),
             status: vec![],
             cadence: vec![],
         };
         assert_eq!(
             keys(serde_json::to_value(&item).unwrap()),
-            ["aliases", "cadence", "crate", "key", "platform", "status"]
+            [
+                "aliases", "cadence", "crate", "key", "platform", "root", "status"
+            ]
         );
         let show = super::BoardShow {
             key: "k".into(),
