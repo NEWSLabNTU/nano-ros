@@ -291,23 +291,46 @@ static inline uint8_t nros_clock_first_source_from_build(void) {
 #define NROS_SNTP_PACE_RATE_MIN_PPM 1000ULL
 #define NROS_SNTP_PACE_RATE_MAX_PPM 100000000ULL
 
+/* A gap whose rate differs from the rate that paced it by more than this
+ * factor, either way, is a server step, not drift. A step of S over an
+ * interval I multiplies the rate by about 1 + S/I (a +1000 s step at a 10 s
+ * interval: about 100x), which the band above can miss when it lands
+ * inside it; a simulator's rate drifts far less between two gaps (0.60 to
+ * 0.88 measured on an Arm FVP). */
+#define NROS_SNTP_PACE_STEP_FACTOR 8ULL
+
 typedef struct {
     uint64_t prev_mono_ms; /* the answer before the last: monotonic ... */
     uint64_t prev_wall_ms; /* ... and the wall clock right after it installed */
     uint64_t last_mono_ms;
     uint64_t last_wall_ms;
     uint32_t answers; /* how many answers were noted, saturating */
+    /* The usable rate (ppm) that paced the gap ending at the last answer, or
+     * 0 when that gap was paced on monotonic time. */
+    uint64_t paced_rate_ppm;
 } nros_sntp_pace_t;
 
 typedef enum {
     NROS_SNTP_PACE_RATE_UNKNOWN = 0, /* fewer than two answers */
     NROS_SNTP_PACE_RATE_OK = 1,
     NROS_SNTP_PACE_RATE_OUT_OF_RANGE = 2, /* zero, negative or outside the bounds */
+    /* inside the bounds, but NROS_SNTP_PACE_STEP_FACTOR away from the rate
+     * that paced the gap: the server's clock jumped */
+    NROS_SNTP_PACE_RATE_STEP = 3,
 } nros_sntp_pace_rate_t;
+
+static inline nros_sntp_pace_rate_t nros_sntp_pace_rate(const nros_sntp_pace_t* p,
+                                                        uint64_t* rate_ppm);
 
 /* Note a successful exchange: the monotonic time and the wall clock read
  * right after the offset it installed. */
 static inline void nros_sntp_pace_answer(nros_sntp_pace_t* p, uint64_t mono_ms, uint64_t wall_ms) {
+    /* The rate that paced the gap this answer ends: the last two answers'. */
+    uint64_t paced = 0u;
+    if (nros_sntp_pace_rate(p, &paced) != NROS_SNTP_PACE_RATE_OK) {
+        paced = 0u;
+    }
+    p->paced_rate_ppm = paced;
     p->prev_mono_ms = p->last_mono_ms;
     p->prev_wall_ms = p->last_wall_ms;
     p->last_mono_ms = mono_ms;
@@ -336,6 +359,12 @@ static inline nros_sntp_pace_rate_t nros_sntp_pace_rate(const nros_sntp_pace_t* 
     uint64_t r = d_wall * 1000000ULL / d_mono;
     if (r < NROS_SNTP_PACE_RATE_MIN_PPM || r > NROS_SNTP_PACE_RATE_MAX_PPM) {
         return NROS_SNTP_PACE_RATE_OUT_OF_RANGE;
+    }
+    /* Both rates are at most RATE_MAX (1e8), so the products fit. */
+    uint64_t before = p->paced_rate_ppm;
+    if (before != 0u &&
+        (r > before * NROS_SNTP_PACE_STEP_FACTOR || r * NROS_SNTP_PACE_STEP_FACTOR < before)) {
+        return NROS_SNTP_PACE_RATE_STEP;
     }
     *rate_ppm = r;
     return NROS_SNTP_PACE_RATE_OK;

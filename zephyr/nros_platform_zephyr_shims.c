@@ -277,8 +277,9 @@ static bool nros_zephyr_clock_try(uint8_t source, uint32_t settle_ms, void *ctx)
  * FVP that races an idle guest 10x to 100x, a guest-time interval re-queried
  * several times a real second. `nros_sntp_pace_due` (clock_resolve.h) scales
  * the monotonic time since the last attempt by the rate the last two answers
- * measured, checked on a short monotonic tick. Before two answers, and for a
- * gap whose rate is out of range (a server step, say), it paces on monotonic
+ * measured, checked on a short monotonic tick. Before two answers, for a
+ * gap whose rate is out of range, and for one whose rate jumped from the
+ * rate that paced it (a server step, issue 3012), it paces on monotonic
  * time, and says so when that changes. */
 #if defined(CONFIG_SNTP) && CONFIG_NROS_CLOCK_SNTP_RESYNC_INTERVAL_MS > 0
 /* The tick a due check runs on: a sixteenth of the interval, 10 ms to 1 s. */
@@ -336,6 +337,9 @@ static void nros_zephyr_sntp_resync_loop(void *a, void *b, void *c) {
             } else if (now == NROS_SNTP_PACE_RATE_OUT_OF_RANGE) {
                 printk("nros: SNTP re-sync: the server's rate between its last two answers is "
                        "out of range (a step?); pacing this gap on the image's own time\n");
+            } else if (now == NROS_SNTP_PACE_RATE_STEP) {
+                printk("nros: SNTP re-sync: the server's clock jumped between its last two "
+                       "answers (a step); pacing this gap on the image's own time\n");
             }
             said = now;
         }

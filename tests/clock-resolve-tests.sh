@@ -29,7 +29,8 @@
 #      answers measured, so a racing guest's 10 s interval is 10 s of the
 #      server's; monotonic pacing before two answers;
 #  11. a rate that cannot be trusted (a server step either way, no monotonic
-#      time between answers, outside the bounds) paces that gap on monotonic
+#      time between answers, outside the bounds, or a rate 8x away from the
+#      one that paced the gap: a step, issue 3012) paces that gap on monotonic
 #      time.
 # The negative control rebuilds the same test with the elapsed time between
 # readings FROZEN: both "advances" cases must fail, so neither "never goes
@@ -323,6 +324,36 @@ int main(void) {
         nros_sntp_pace_answer(&edge, 10000, 1700001000000ULL); /* rate 100, the bound */
         CHECK("11 the upper bound itself is usable",
               nros_sntp_pace_rate(&edge, &r) == NROS_SNTP_PACE_RATE_OK && r == 100000000ULL);
+
+        /* 12. a step whose rate lands INSIDE the bounds (issue 3012): ASI's
+         * +1000 s at a 10 s interval read a rate of about 53. It is told by
+         * the jump from the rate that paced the gap. */
+        nros_sntp_pace_t in = {0};
+        nros_sntp_pace_answer(&in, 0, 1700000000000ULL);
+        nros_sntp_pace_answer(&in, 10000, 1700000010000ULL); /* rate 1 */
+        nros_sntp_pace_answer(&in, 29000, 1700001020000ULL); /* +1000 s step: rate ~53 */
+        CHECK("12 a step inside the rate bounds is a step",
+              nros_sntp_pace_rate(&in, &r) == NROS_SNTP_PACE_RATE_STEP && r == 0u);
+        CHECK("12 ... and that gap is paced on monotonic time, not at 53x",
+              !nros_sntp_pace_due(&in, 9999, 10000) && nros_sntp_pace_due(&in, 10000, 10000));
+        nros_sntp_pace_answer(&in, 39000, 1700001030000ULL); /* honest again: rate 1 */
+        CHECK("12 the gap after the step is judged on its own: rate 1 again",
+              nros_sntp_pace_rate(&in, &r) == NROS_SNTP_PACE_RATE_OK && r == 1000000ULL);
+        /* Drift a simulator really shows between two gaps (an Arm FVP:
+         * 0.599 then 0.884 server s per image s) is no step. */
+        nros_sntp_pace_t drift = {0};
+        nros_sntp_pace_answer(&drift, 0, 1700000000000ULL);
+        nros_sntp_pace_answer(&drift, 10000, 1700000005990ULL);
+        nros_sntp_pace_answer(&drift, 20000, 1700000014830ULL);
+        CHECK("12 a simulator's drift between gaps is no step",
+              nros_sntp_pace_rate(&drift, &r) == NROS_SNTP_PACE_RATE_OK && r == 884000ULL);
+        /* A step BACK small enough to keep the clock moving forward. */
+        nros_sntp_pace_t sback = {0};
+        nros_sntp_pace_answer(&sback, 0, 1700000000000ULL);
+        nros_sntp_pace_answer(&sback, 100000, 1700000100000ULL); /* rate 1 */
+        nros_sntp_pace_answer(&sback, 200000, 1700000110000ULL); /* -90 s: rate 0.1 */
+        CHECK("12 a step back inside the bounds is a step",
+              nros_sntp_pace_rate(&sback, &r) == NROS_SNTP_PACE_RATE_STEP);
     }
     return bad;
 }
