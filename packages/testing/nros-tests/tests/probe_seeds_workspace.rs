@@ -9,6 +9,13 @@
 //! configure and the C++ one creates no timer; probed with them, each sidecar
 //! records its timer at the launch period and all 41 parameters.
 //!
+//! Issue 2901 -- the C++ component has a SECOND launch instance,
+//! `seeds_cpp_alt`, that agrees on `ctrl_period_ms` and sets `gain_03` (which
+//! has a default in code) differently. The probe seeds every key the instances
+//! agree on and leaves only `gain_03` on its default, so the node still gets
+//! its period. Before that, one disagreeing key left every parameter unseeded
+//! and the node created no timer.
+//!
 //! The probe runs in the build stage (`workspace-probe-seeds` row): this test
 //! reads the sidecars that build left beside each package.
 
@@ -62,7 +69,11 @@ fn launch_period(name: &str) -> u64 {
     value.parse().expect("an integer period")
 }
 
-fn assert_probed_with_launch_values(pkg: &str, component: &str, language: &str) {
+fn assert_probed_with_launch_values(
+    pkg: &str,
+    component: &str,
+    language: &str,
+) -> serde_json::Value {
     let doc = sidecar(pkg, component);
     let period = launch_period(component);
     let timers: Vec<u64> = doc["nodes"][0]["timers"]
@@ -84,10 +95,16 @@ fn assert_probed_with_launch_values(pkg: &str, component: &str, language: &str) 
         "the {language} component declares {DECLARED} parameters; the probe's store must hold \
          every one of them"
     );
+    doc
+}
+
+#[test]
+fn a_c_component_is_probed_with_its_launch_values() {
+    let doc = assert_probed_with_launch_values("seeds_c_pkg", "seeds_c", "C");
     let seeds = &doc["probe"]["seeds"];
     assert_eq!(
         seeds["instances"],
-        serde_json::json!([format!("/{component}")]),
+        serde_json::json!(["/seeds_c"]),
         "the sidecar names the launch instance it was seeded from: {doc:#}"
     );
     assert!(
@@ -98,12 +115,25 @@ fn assert_probed_with_launch_values(pkg: &str, component: &str, language: &str) 
     );
 }
 
+/// Issue 2901 -- two instances that disagree on one key: the agreed keys are
+/// seeded (the period, so the timer exists), the disagreeing one is named.
 #[test]
-fn a_c_component_is_probed_with_its_launch_values() {
-    assert_probed_with_launch_values("seeds_c_pkg", "seeds_c", "C");
-}
-
-#[test]
-fn a_cpp_component_is_probed_with_its_launch_values() {
-    assert_probed_with_launch_values("seeds_cpp_pkg", "seeds_cpp", "C++");
+fn a_cpp_component_whose_instances_disagree_on_one_key_is_seeded_with_the_rest() {
+    let doc = assert_probed_with_launch_values("seeds_cpp_pkg", "seeds_cpp", "C++");
+    let partly = &doc["probe"]["partly_seeded"];
+    assert_eq!(
+        partly["instances"],
+        serde_json::json!(["/seeds_cpp", "/seeds_cpp_alt"]),
+        "the sidecar names both launch instances: {doc:#}"
+    );
+    assert_eq!(partly["keys"], serde_json::json!(["gain_03"]), "{partly:#}");
+    let seeded = partly["seeded"].as_array().expect("seeded");
+    assert!(
+        seeded.iter().any(|k| k == "ctrl_period_ms"),
+        "the key both instances agree on is seeded: {partly:#}"
+    );
+    assert!(
+        !seeded.iter().any(|k| k == "gain_03"),
+        "the disagreeing key stays on its declaration default: {partly:#}"
+    );
 }
