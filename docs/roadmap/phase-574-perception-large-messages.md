@@ -234,6 +234,11 @@ modes (the typed path), which the raw path above does not exercise.
   whether the medium class fits an M7-class memory map; and, if a hook is
   needed, its accepted design.
 
+The core slot pool a device job takes its input in (RFC-0038 D5) is built by
+[phase-579](phase-579-device-ports.md) W3p, with two classes whose slot size
+and count are knobs. Stating them in the sizing descriptor is phase-579 W3p-2,
+which takes its class measurements from here.
+
 ### W4 — Timing under load
 
 - **Owner:** unassigned.

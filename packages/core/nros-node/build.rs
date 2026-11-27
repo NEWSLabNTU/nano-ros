@@ -661,6 +661,12 @@ fn main() {
     // `NROS_EXECUTOR_MAX_SHUTDOWN_CBS` (or `CONFIG_NROS_EXECUTOR_MAX_SHUTDOWN_CBS`
     // on Zephyr) when an image genuinely has more things to park.
     let max_shutdown_cbs = env_usize("NROS_EXECUTOR_MAX_SHUTDOWN_CBS", 2);
+    // phase-579 W3p (RFC-0038 D5) -- the core slot pool's two classes. A
+    // count of 0 (the default) reserves nothing.
+    let slot_small_slot_bytes = env_usize("NROS_SLOT_SMALL_SLOT_BYTES", 2048);
+    let slot_small_count = env_usize("NROS_SLOT_SMALL_COUNT", 0);
+    let slot_large_slot_bytes = env_usize("NROS_SLOT_LARGE_SLOT_BYTES", 65536);
+    let slot_large_count = env_usize("NROS_SLOT_LARGE_COUNT", 0);
     // phase-474 I1 -- depth of the contract-violation ring, PER EXECUTOR, and of
     // the image-wide SWD record (`monitor::NROS_VIOLATION_RECORD`) beside it.
     // The ring keeps the LATEST this-many verdicts (it used to keep the first),
@@ -1389,6 +1395,22 @@ fn main() {
          pre-shutdown hooks and a second for on-shutdown hooks \
          (set via NROS_EXECUTOR_MAX_SHUTDOWN_CBS, default 2).\n\
          pub const MAX_SHUTDOWN_CBS: usize = {max_shutdown_cbs};\n\
+         \n\
+         /// Bytes in each slot of the slot pool's `small` class \
+         (set via NROS_SLOT_SMALL_SLOT_BYTES, default 2048).\n\
+         pub const SLOT_SMALL_SLOT_BYTES: usize = {slot_small_slot_bytes};\n\
+         \n\
+         /// Slots in the slot pool's `small` class \
+         (set via NROS_SLOT_SMALL_COUNT, default 0: the class reserves nothing).\n\
+         pub const SLOT_SMALL_COUNT: usize = {slot_small_count};\n\
+         \n\
+         /// Bytes in each slot of the slot pool's `large` class \
+         (set via NROS_SLOT_LARGE_SLOT_BYTES, default 65536).\n\
+         pub const SLOT_LARGE_SLOT_BYTES: usize = {slot_large_slot_bytes};\n\
+         \n\
+         /// Slots in the slot pool's `large` class \
+         (set via NROS_SLOT_LARGE_COUNT, default 0: the class reserves nothing).\n\
+         pub const SLOT_LARGE_COUNT: usize = {slot_large_count};\n\
          \n\
          /// Contract-violation ring depth per executor, and the SWD record's \
          slot count (set via NROS_EXECUTOR_MAX_VIOLATIONS, default 8). The ring \

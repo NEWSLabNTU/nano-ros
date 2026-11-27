@@ -104,8 +104,12 @@ device. RFC-0139's Motivation has the measurements and the driver survey.
 
 ### W3p — The large-message pool, with per-slot claim and release
 
-- **Owner:** nros 142.
-- **Status:** OPEN
+- **Owner:** nros 241 (2026-11-27, from nros 142, who had not started it).
+- **Status:** OPEN — in progress (draft PR). `nros_node::slot_pool`: the two
+  classes as `.bss` statics from the four `slot.*` knobs (counts default 0,
+  so an image reserves nothing until it asks), a compare-and-swap bitmap per
+  class, release safe from an interrupt handler, and refusal with a counter.
+  The sizing-descriptor statement is W3p-2.
 - **After:** W3a.
 - The core slot pool [RFC-0038](../design/0038-zero-copy-data-transport.md) D5
   specifies (amended 2026-11-27, because D1's pools are backend-internal and
@@ -120,9 +124,24 @@ device. RFC-0139's Motivation has the measurements and the driver survey.
   concurrent claim and release from several threads loses and duplicates no
   slot.
 
+### W3p-2 — The slot classes, stated in the sizing descriptor
+
+- **Owner:** nros 241.
+- **Status:** OPEN
+- **After:** W3p. Measured against [phase-574](phase-574-perception-large-messages.md)
+  W3, which measures the classes and designs where a board places the pools.
+- RFC-0038 D5 says the classes' slot size and count are "stated in the
+  image's sizing descriptor (RFC-0100) like every other pool". Today the
+  descriptor states only facts derived from declarations, and its producer
+  never sees a knob's resolved value, so W3p does not meet that clause.
+- **Acceptance:** the descriptor has a section for the slot classes, schema
+  bumped; it is fed from the knob ladder on all three build roads (cargo,
+  cmake, west); and a road that cannot resolve a class refuses that field,
+  as every other descriptor field does.
+
 ### W3b — Owned slots
 
-- **Owner:** nros 142.
+- **Owner:** nros 241 (2026-11-27, from nros 142, who had not started it).
 - **Status:** OPEN
 - **After:** W3p.
 - The owned slot handle over W3p's pool (RFC-0139 D6): `nros_slot_t` with

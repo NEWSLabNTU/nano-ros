@@ -2241,6 +2241,74 @@ config NROS_RMW_SUBSCRIBER_SLOTS
       carrying either must state this knob.
 
 
+# prompt: Slots in the `large` class.
+config NROS_SLOT_LARGE_COUNT
+    int
+    default 0
+    help
+      Slots in the `large` class. The core slot pool a device job claims a slot from and
+      releases it to, from any thread or from an interrupt handler.
+      Read by nros-node/build.rs as NROS_SLOT_LARGE_COUNT.
+
+      0, the default, reserves nothing: the class claims nothing and costs no
+      .bss. Raise it to the number of large slots the image holds at once.
+
+      The storage is a .bss static of count x slot_bytes per class. A claim
+      with no free slot in its class is refused, never waits and never
+      allocates, and the class counts the refusal.
+
+
+# prompt: Bytes in each slot of the `large` class.
+config NROS_SLOT_LARGE_SLOT_BYTES
+    int
+    default 65536
+    help
+      Bytes in each slot of the `large` class. The core slot pool a device job claims a slot from and
+      releases it to, from any thread or from an interrupt handler.
+      Read by nros-node/build.rs as NROS_SLOT_LARGE_SLOT_BYTES.
+
+      The `large` class is for an input as big as the largest a job takes, a
+      camera frame or a model input, so its slots are few.
+
+      The storage is a .bss static of count x slot_bytes per class. A claim
+      with no free slot in its class is refused, never waits and never
+      allocates, and the class counts the refusal.
+
+
+# prompt: Slots in the `small` class.
+config NROS_SLOT_SMALL_COUNT
+    int
+    default 0
+    help
+      Slots in the `small` class. The core slot pool a device job claims a slot from and
+      releases it to, from any thread or from an interrupt handler.
+      Read by nros-node/build.rs as NROS_SLOT_SMALL_COUNT.
+
+      0, the default, reserves nothing: the class claims nothing and costs no
+      .bss. Raise it to the number of small slots the image holds at once.
+
+      The storage is a .bss static of count x slot_bytes per class. A claim
+      with no free slot in its class is refused, never waits and never
+      allocates, and the class counts the refusal.
+
+
+# prompt: Bytes in each slot of the `small` class.
+config NROS_SLOT_SMALL_SLOT_BYTES
+    int
+    default 2048
+    help
+      Bytes in each slot of the `small` class. The core slot pool a device job claims a slot from and
+      releases it to, from any thread or from an interrupt handler.
+      Read by nros-node/build.rs as NROS_SLOT_SMALL_SLOT_BYTES.
+
+      The `small` class holds what fits in 2 KiB by default, so a small input
+      never takes a `large` slot.
+
+      The storage is a .bss static of count x slot_bytes per class. A claim
+      with no free slot in its class is refused, never waits and never
+      allocates, and the class counts the refusal.
+
+
 # prompt: SNTP server (host or IP)
 config NROS_SNTP_SERVER
     string

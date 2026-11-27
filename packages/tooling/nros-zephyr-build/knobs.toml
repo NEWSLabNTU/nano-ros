@@ -93,6 +93,7 @@ rmw = "the RMW layer, backend-independent"
 runtime = "the component runtime"
 service = "service servers and clients"
 session = "the middleware session"
+slot = "the core slot pool a device job claims and releases"
 sntp = "SNTP time"
 subscriber = "subscriber buffers"
 trace = "tracing"
@@ -1635,6 +1636,98 @@ retired = [
     { spelling = "toml:zenoh.limits.service_timeout_ms" },
 ]
 ladder = true
+
+[[knob]]
+key = "slot.large_count"
+scope = "image"
+class = "public"
+ladder = true
+type = "int"
+prompt = "Slots in the `large` class."
+kconfig_attrs = [
+    "default 0",
+]
+help = '''
+Slots in the `large` class. The core slot pool a device job claims a slot from and
+releases it to, from any thread or from an interrupt handler.
+Read by nros-node/build.rs as NROS_SLOT_LARGE_COUNT.
+
+0, the default, reserves nothing: the class claims nothing and costs no
+.bss. Raise it to the number of large slots the image holds at once.
+
+The storage is a .bss static of count x slot_bytes per class. A claim
+with no free slot in its class is refused, never waits and never
+allocates, and the class counts the refusal.
+'''
+
+[[knob]]
+key = "slot.large_slot_bytes"
+scope = "image"
+class = "public"
+ladder = true
+type = "int"
+prompt = "Bytes in each slot of the `large` class."
+kconfig_attrs = [
+    "default 65536",
+]
+help = '''
+Bytes in each slot of the `large` class. The core slot pool a device job claims a slot from and
+releases it to, from any thread or from an interrupt handler.
+Read by nros-node/build.rs as NROS_SLOT_LARGE_SLOT_BYTES.
+
+The `large` class is for an input as big as the largest a job takes, a
+camera frame or a model input, so its slots are few.
+
+The storage is a .bss static of count x slot_bytes per class. A claim
+with no free slot in its class is refused, never waits and never
+allocates, and the class counts the refusal.
+'''
+
+[[knob]]
+key = "slot.small_count"
+scope = "image"
+class = "public"
+ladder = true
+type = "int"
+prompt = "Slots in the `small` class."
+kconfig_attrs = [
+    "default 0",
+]
+help = '''
+Slots in the `small` class. The core slot pool a device job claims a slot from and
+releases it to, from any thread or from an interrupt handler.
+Read by nros-node/build.rs as NROS_SLOT_SMALL_COUNT.
+
+0, the default, reserves nothing: the class claims nothing and costs no
+.bss. Raise it to the number of small slots the image holds at once.
+
+The storage is a .bss static of count x slot_bytes per class. A claim
+with no free slot in its class is refused, never waits and never
+allocates, and the class counts the refusal.
+'''
+
+[[knob]]
+key = "slot.small_slot_bytes"
+scope = "image"
+class = "public"
+ladder = true
+type = "int"
+prompt = "Bytes in each slot of the `small` class."
+kconfig_attrs = [
+    "default 2048",
+]
+help = '''
+Bytes in each slot of the `small` class. The core slot pool a device job claims a slot from and
+releases it to, from any thread or from an interrupt handler.
+Read by nros-node/build.rs as NROS_SLOT_SMALL_SLOT_BYTES.
+
+The `small` class holds what fits in 2 KiB by default, so a small input
+never takes a `large` slot.
+
+The storage is a .bss static of count x slot_bytes per class. A claim
+with no free slot in its class is refused, never waits and never
+allocates, and the class counts the refusal.
+'''
 
 [[knob]]
 key = "sntp.server"

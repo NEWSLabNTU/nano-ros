@@ -315,6 +315,12 @@ NOT_SIZING = {
     "NROS_EXECUTOR_MAX_MONITORS": "inline in the Executor value, not the backing",
     "NROS_EXECUTOR_MAX_AGE_MONITORS": "inline in the Executor value, not the backing",
     "NROS_EXECUTOR_BACKING_BYTES": "the claim itself",
+    # phase-579 W3p -- the core slot pool is its own .bss statics, not the
+    # executor's backing.
+    "NROS_SLOT_SMALL_SLOT_BYTES": "the core slot pool's own static, not the backing",
+    "NROS_SLOT_SMALL_COUNT": "the core slot pool's own static, not the backing",
+    "NROS_SLOT_LARGE_SLOT_BYTES": "the core slot pool's own static, not the backing",
+    "NROS_SLOT_LARGE_COUNT": "the core slot pool's own static, not the backing",
     "NROS_EXECUTOR_BACKING_SECTION": "placement only, not size",
     "NROS_BOOT_REPORT": "a cfg, no size",
     "NROS_ARENA_EXHAUSTION_IS_FATAL": "a cfg, no size (issue 1036)",

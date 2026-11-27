@@ -79,6 +79,10 @@ OWNERS: dict[str, str | tuple[str, ...]] = {
     "NROS_EXECUTOR_MAX_SC": "packages/core/nros-node/build.rs",
     "NROS_EXECUTOR_MAX_NODES": "packages/core/nros-node/build.rs",
     "NROS_EXECUTOR_MAX_SHUTDOWN_CBS": "packages/core/nros-node/build.rs",
+    "NROS_SLOT_SMALL_SLOT_BYTES": "packages/core/nros-node/build.rs",
+    "NROS_SLOT_SMALL_COUNT": "packages/core/nros-node/build.rs",
+    "NROS_SLOT_LARGE_SLOT_BYTES": "packages/core/nros-node/build.rs",
+    "NROS_SLOT_LARGE_COUNT": "packages/core/nros-node/build.rs",
     "NROS_EXECUTOR_ACTION_CLIENTS": "packages/core/nros-node/build.rs",
     "NROS_EXECUTOR_ARENA_BYTES": "packages/core/nros-node/build.rs",
     # phase-448 W5 / issue 1145. `nros-node` OWNS it: it sizes `EXECUTOR_BACKING`
