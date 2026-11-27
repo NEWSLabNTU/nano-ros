@@ -1,7 +1,9 @@
 ---
 id: 2937
 title: "The nightly stack-floor drift lane verified no Zephyr row: a pinned SDK outside the store read as unpinned, and a family with nothing verified still passed"
-status: open
+status: resolved
+resolved: 2026-11-27
+resolved_in: "02e6cfaf68 (the fix); acceptance confirmed by nightly 45868131204"
 type: bug
 severity: high
 area: [ci, stack-floor, zephyr]
@@ -66,3 +68,29 @@ reporting success. That covers the boards issue 2772's overflow was on.
   - one verified row keeps a family passing, with its skips counted.
 - The next nightly's drift job reports its Zephyr rows as verified (PASS,
   NOTE or FAIL), with the per-family table in its log.
+
+## Resolution (2026-11-27)
+
+Fixed by `02e6cfaf68` (merged 2026-11-26), whose self-tests carry the
+mutations the acceptance lists (`stack-floor-drift self-test: OK` at the top of
+every run). The acceptance's second half, the next nightly's Zephyr rows
+verified, is met:
+- nightly 45780611528 (the `Fixes-Lane: nightly` dispatch, green);
+- nightly 45868131204, job 140076223634 (green).
+
+The per-family table in that job's log:
+
+```
+stack-floor-drift: per family
+  baremetal: 1 of 1 verified, 0 not verified, 0 not walked
+  freertos: 1 of 1 verified, 0 not verified, 0 not walked
+  zephyr: 5 of 5 verified, 0 not verified, 0 not walked
+  zephyr_cortex_m_talker_clock_sntp_resync: 1 of 1 verified, 0 not verified, 0 not walked
+stack-floor-drift: 8 row(s), 0 failed, 8 note(s), 0 not verified (another toolchain than the pins), 0 family(ies) with nothing verified
+```
+
+Each Zephyr row names its toolchain (`zephyr-sdk 0.16.9, zephyr v3.7.2`), the
+pinned SDK at `/opt/zephyr-sdks/zephyr-sdk-0.16.9`, outside the store, which is
+the case the issue was about. Before the fix, nightlies 45115997343 and
+45331150752 skipped all five.
+
