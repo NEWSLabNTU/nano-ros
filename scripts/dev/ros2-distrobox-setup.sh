@@ -120,8 +120,7 @@ source it rather than exporting them by hand. Then, inside the box:
 
   cd <your checkout>
   . scripts/dev/ros2-box-env.sh    # box-local store / target dir / PATH
-  cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros
-  nros_box_publish                 # put the box CLI where consumers look
+  just setup-cli                   # this checkout's CLI, built in the box
   nros setup --system              # system packages — SEE BELOW, do not skip
   nros setup linux --rmw zenoh
   just doctor                      # confirm; fix anything it reports

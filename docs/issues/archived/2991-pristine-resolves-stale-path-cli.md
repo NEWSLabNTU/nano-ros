@@ -1,7 +1,9 @@
 ---
 id: 2991
 title: "A pristine checkout with no CLI built runs whatever `nros` PATH holds, and a box keeps a stale one forever"
-status: open
+status: resolved
+resolved: 2026-11-27
+resolved_in: "the change that archives this issue"
 type: bug
 severity: medium
 area: [testing, tooling, dev-env]
@@ -35,7 +37,7 @@ Moving that binary aside (renamed, reversible) turned the clone green:
 
 1. **Nothing refreshes or clears a box's published CLI.**
    `scripts/dev/ros2-distrobox-setup.sh` still ends by telling the user to run
-   `nros_box_publish`, a function #1248 removed. `ros2-box-env.sh` still puts
+   ~~`nros_box_publish`~~, a function #1248 removed. `ros2-box-env.sh` still puts
    `CARGO_INSTALL_ROOT/bin` (`~/.local-box/bin`) first on PATH. So a box that
    ever published a CLI keeps it, and `$HOME` is shared with the host, so it
    also survives the container being deleted and rebuilt (2026-11-24 here). It
@@ -58,10 +60,39 @@ Moving that binary aside (renamed, reversible) turned the clone green:
   its `--version`. Never a silent fallback to rung 3. Where a helper treats "no
   CLI" as "no question to ask" (`nros_zephyr_sdk_has_board_toolchain` returns 0),
   a CLI that answers with a usage error must not count as a "no".
-- (1) The setup script stops naming `nros_box_publish`. Either it says how to
+- (1) The setup script stops naming ~~`nros_box_publish`~~. Either it says how to
   install the box CLI on purpose, or the box env stops putting a published `nros`
   ahead of the checkout's, and a published one that does not match the checkout
   is reported, as `cli-fresh` reports an in-tree one.
 - A gate that runs in a PATH-poisoned shell: a stub `nros` that fails every
   `dev` subcommand, ahead of everything on PATH, under a pristine lane. Today
   that lane goes red for an unrelated reason, with an SDK message.
+
+## Resolution (2026-11-27)
+
+The issue was filed by #4934; this change fixes both halves.
+
+- **A CLI that cannot answer is not a refusal.**
+  `nros_zephyr_sdk_has_board_toolchain` treats only the CLI's refusal
+  (`nros dev zephyr-toolchain` exit 1) as "this SDK lacks the toolchain".
+  Any other failure, clap's usage exit 2 from a binary older than the
+  subcommand among them, leaves the SDK accepted. It warns, naming the
+  binary and its `--version`, and says `just setup-cli`.
+- **No silent fallback.** Inside a checkout whose own CLI is not built,
+  `nros_cli_bin`'s rungs 3 (PATH) and 4 (the installed toolchain) still
+  answer, since an installed toolchain is a real user. Each now says on
+  stderr which binary it handed back and its version.
+- **The box:** `ros2-distrobox-setup.sh` and the book page no longer name the
+  retired ~~`nros_box_publish`~~; the setup says `just setup-cli`.
+  `ros2-box-env.sh` reports a leftover published `$CARGO_INSTALL_ROOT/bin/nros`
+  and its version, and leaves deleting it to the operator.
+- **Gate:** `check-zephyr-sdk-env`'s selftest gained three cases, in a
+  PATH-poisoned shell with a stub that fails every `dev` subcommand:
+  - the pinned SDK is accepted under a CLI too old to answer, and the stub is
+    named with its version;
+  - a refusing CLI still refuses;
+  - a pristine checkout's PATH fallback names the binary and its version.
+
+  The old helper fails the first two and the old `nros_cli_bin` fails the
+  third (mutation-checked).
+

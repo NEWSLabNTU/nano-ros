@@ -176,7 +176,9 @@ not encoded anywhere.
   variable`). Any script sourcing it needs `set +u` around the source.
 - **The stale-CLI guard fires after any pull that touched CLI sources**
   (`in-tree nros CLI is STALE — its sources changed since it was built`).
-  Rebuild it in the box and re-run `nros_box_publish`.
+  Rebuild it in the box with `just setup-cli`. Nothing is published any more:
+  the checkout's own `packages/cli/target/release/nros` is the CLI its scripts
+  use (issue 2991).
 - **`source` in a pipeline runs in a subshell** — `source env.sh | tail` leaves
   your environment untouched and looks exactly like a broken activation.
 

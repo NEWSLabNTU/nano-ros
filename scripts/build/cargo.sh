@@ -603,16 +603,33 @@ nros_cli_bin() {
         return 0
     fi
     [ "$_checkout_only" = 1 ] && return 1
+    # Issue 2991 -- inside a checkout whose own CLI is not built (a pristine
+    # clone), rungs 3 and 4 hand back a binary from some OTHER tree, of any
+    # age: a box's long-published `~/.local-box/bin/nros` answered today's
+    # arguments with a usage error that a helper read as an SDK refusal. The
+    # fallback stays (an installed toolchain is a real user), but never
+    # silently: it names the binary and its version.
+    _nros_cli_bin_foreign() { # <path> <rung>
+        if [ -n "$repo_root" ] && [ -f "$repo_root/packages/cli/Cargo.toml" ]; then
+            {
+                echo "nros_cli_bin: this checkout's CLI is not built; using $1 ($2),"
+                echo "  $("$1" --version 2>/dev/null || echo 'version unknown'), built from another tree."
+                echo "  Run: just setup-cli"
+            } >&2
+        fi
+    }
     # host-tool-path-ok: rung 3 of nros_cli_bin itself (PATH).
     if command -v nros >/dev/null 2>&1; then
         local _path_nros
         # host-tool-path-ok: rung 3 of nros_cli_bin itself (PATH).
         _path_nros="$(command -v nros)"
+        _nros_cli_bin_foreign "$_path_nros" "from PATH"
         printf '%s\n' "$_path_nros"
         return 0
     fi
     local home_nros="${NROS_HOME:-$HOME/.nros}/bin/nros"
     if [ -x "$home_nros" ]; then
+        _nros_cli_bin_foreign "$home_nros" "the installed toolchain"
         printf '%s\n' "$home_nros"
         return 0
     fi

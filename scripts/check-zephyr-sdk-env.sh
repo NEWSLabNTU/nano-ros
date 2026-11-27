@@ -81,6 +81,37 @@ selftest() {
         "$(probe "$tmp/home-other" mps2/an385 ZEPHYR_SDK_INSTALL_DIR="$tmp/opt/zephyr-sdk-$other")" \
         "rc=0 out=ZEPHYR_SDK_INSTALL_DIR=$tmp/opt/zephyr-sdk-$other"
 
+    # Issue 2991 -- a CLI that cannot answer is not a refusal. A stub that
+    # fails `dev zephyr-toolchain` with clap's usage exit (2), as a binary
+    # older than the subcommand does, must leave a correct SDK accepted and
+    # name itself; a stub that REFUSES (exit 1) must still refuse.
+    mkdir -p "$tmp/stub"
+    printf '#!/bin/sh\n[ "$1" = --version ] && { echo "nros 0.5.0"; exit 0; }\necho "error: unrecognized subcommand" >&2\nexit 2\n' \
+        > "$tmp/stub/old-nros"
+    printf '#!/bin/sh\necho "missing toolchain" >&2\nexit 1\n' > "$tmp/stub/refusing-nros"
+    chmod +x "$tmp/stub/old-nros" "$tmp/stub/refusing-nros"
+    expect "a CLI too old to answer leaves the pinned SDK accepted" \
+        "$(probe "$tmp/home-both" mps2/an385 NROS_CLI="$tmp/stub/old-nros")" \
+        "rc=0 out=ZEPHYR_SDK_INSTALL_DIR=$tmp/opt/zephyr-sdk-$want"
+    nros_grep_q "old-nros cannot answer" "$tmp/err" && nros_grep_q "nros 0.5.0" "$tmp/err" \
+        || fail "the unanswering CLI is not named with its version: $(cat "$tmp/err")"
+    expect "a CLI that refuses still refuses" \
+        "$(probe "$tmp/home-both" mps2/an385 NROS_CLI="$tmp/stub/refusing-nros")" "rc=1 out="
+
+    # Issue 2991's other half -- a checkout with no CLI built, in a
+    # PATH-poisoned shell, still runs the PATH binary (an installed toolchain
+    # is a real user), but never silently: it names the binary and version.
+    mkdir -p "$tmp/clone/packages/cli" "$tmp/pathbin"
+    : > "$tmp/clone/packages/cli/Cargo.toml"
+    cp "$tmp/stub/old-nros" "$tmp/pathbin/nros"
+    got="$(env -u NROS_CLI PATH="$tmp/pathbin:/usr/bin:/bin" NROS_HOME="$tmp/no-store" \
+        bash -c 'source "$1/scripts/build/cargo.sh"; nros_cli_bin --root "$2"' \
+        _ "$repo_root" "$tmp/clone" 2>"$tmp/err")" || true
+    expect "a pristine checkout falls back to PATH's nros" "$got" "$tmp/pathbin/nros"
+    nros_grep_q -F "this checkout's CLI is not built; using $tmp/pathbin/nros" "$tmp/err" \
+        && nros_grep_q "nros 0.5.0" "$tmp/err" \
+        || fail "the PATH fallback is silent, or names no version: $(cat "$tmp/err")"
+
     expect "a third-party variant asks nothing of the SDK" \
         "$(probe "$tmp/home-other" mps2/an385 ZEPHYR_TOOLCHAIN_VARIANT=gnuarmemb)" "rc=0 out="
 

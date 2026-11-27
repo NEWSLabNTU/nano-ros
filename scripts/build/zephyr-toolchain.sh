@@ -159,7 +159,26 @@ nros_zephyr_sdk_has_board_toolchain() {
     declare -F nros_cli_bin >/dev/null \
         || source "$(dirname "${BASH_SOURCE[0]}")/cargo.sh"
     nros_bin="$(nros_cli_bin 2>/dev/null)" && [ -n "$nros_bin" ] || return 0
-    "$nros_bin" dev zephyr-toolchain --board "$board" --zephyr-base "$tree" --sdk "$sdk" >/dev/null
+    # Issue 2991 -- only the CLI's REFUSAL (exit 1, `eyre::bail!`) means the
+    # SDK lacks the toolchain. Any other failure is a CLI that cannot answer
+    # the question: clap's usage error (exit 2) from a binary older than
+    # `nros dev zephyr-toolchain`, which is what a pristine clone ran when
+    # rung 3 handed it a stale `nros` from PATH, and the helper then refused
+    # a correct SDK naming the wrong cause. Such a CLI asks nothing, and says
+    # which binary it was, so the stale one can be found.
+    local rc=0
+    "$nros_bin" dev zephyr-toolchain --board "$board" --zephyr-base "$tree" --sdk "$sdk" \
+        >/dev/null || rc=$?
+    case "$rc" in
+        0) return 0 ;;
+        1) return 1 ;;
+    esac
+    {
+        echo "warning: $nros_bin cannot answer \`nros dev zephyr-toolchain\` (exit $rc);"
+        echo "         its version: $("$nros_bin" --version 2>/dev/null || echo unknown)."
+        echo "         The SDK's board toolchain is not checked. Run: just setup-cli"
+    } >&2
+    return 0
 }
 
 nros_zephyr_sdk_env() {
