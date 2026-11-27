@@ -420,6 +420,9 @@ impl<'a, 'cfg, 's> NodeBuilder<'a, 'cfg, 's> {
             // C.3 adds the mismatch check + session-cache lookup.
         }
 
+        // The identity the code, the launch file or the baked rung STATED.
+        // Codegen seeds the sched-context and rank tables under it, so the
+        // lookups below key on it even when the environment renames the node.
         let mut name_buf = heapless::String::<64>::new();
         name_buf
             .push_str(self.name)
@@ -480,6 +483,19 @@ impl<'a, 'cfg, 's> NodeBuilder<'a, 'cfg, 's> {
         let rank = self
             .executor
             .lookup_node_rank(name_buf.as_str(), ns_buf.as_str());
+
+        // Issue 2739 -- the environment rung, applied to EVERY node here rather
+        // than to the executor's default name alone, where it was read and
+        // then dropped for any node named in code or by the launch file.
+        let (name_buf, ns_buf) = {
+            let r = crate::executor::env_identity::apply(name_buf.as_str(), ns_buf.as_str());
+            let mut name = heapless::String::<64>::new();
+            name.push_str(r.name).map_err(|_| NodeError::NameTooLong)?;
+            let mut ns = heapless::String::<64>::new();
+            ns.push_str(r.namespace)
+                .map_err(|_| NodeError::NameTooLong)?;
+            (name, ns)
+        };
 
         let record = NodeRecord {
             name: name_buf,

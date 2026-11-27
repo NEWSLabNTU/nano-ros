@@ -1,7 +1,7 @@
 ---
 id: 2739
 title: "`NROS_NODE_NAME` and `NROS_NODE_NAMESPACE` are read on every Linux road and silently change nothing for a component or application-named node"
-status: open
+status: resolved
 type: bug
 area: [runtime, configuration]
 severity: high
@@ -9,7 +9,7 @@ found: 2026-11-19
 related: [2714, phase-581]
 ---
 
-**Home:** [phase-581](../roadmap/phase-581-ros-env-vars.md) W12 (band 1: a
+**Home:** [phase-581](../../roadmap/phase-581-ros-env-vars.md) W12 (band 1: a
 stated setting silently ignored).
 
 ## What
@@ -69,3 +69,31 @@ Not landed ahead of W12: the fix belongs on `nros-env` (W10), under RFC-0140.
 Acceptance stays as above: a Linux run per road (Rust, C, C++), single-node
 and multi-node, with the variable set, observing the liveliness token and the
 boot line.
+
+## Resolution
+
+Fixed 2026-11-27, by the recommendation above, with the node-count question
+settled by user ruling: an unstated count IGNORES the name.
+
+- The rule lives in one place, `nros_node::executor::env_identity`. A pure
+  `resolve()` makes the decision. `apply()` adds the once-per-process
+  warnings. The values are installed once by the hosted edge
+  (`nros::env::try_resolve_hosted`, reached by every Linux road).
+- The count is `nros_node::config::STATED_NODE_COUNT`, the sizing descriptor's
+  stated `[image] node_count` read through `Fact::stated()`. A refused or absent
+  field is `None`, never a guess. `MAX_NODES` stays the capacity.
+- It is applied where each road fixes a node's identity:
+  - `NodeBuilder::build` (Rust, C++, C's `rclc_executor_node_init`);
+  - C's legacy `rclc_node_init_ex` / `rclc_node_init_default`, which skip it;
+  - `entity_identity` for an image with no declared node;
+  - the executor's own default identity in `ExecutorConfig::try_resolve_with`.
+    That one used to take `env > baked` blindly, which is the rename that
+    happened while every named node was left alone.
+- A launch remap is keyed by the stated identity, so a part the environment
+  replaced (the name in a one-node image, the namespace everywhere) is not
+  compared, and the node's remaps keep applying.
+- Tests: `resolve()` covers each branch (1 / 2+ / unstated / namespace). Route
+  tests cover a node created through the executor (Rust) and through
+  `rclc_node_init_default` (C), plus a launch remap on a renamed node. They are
+  mutation-checked: dropping the rule from `build()`, from the C init, or from
+  the remap match each turns them red.
