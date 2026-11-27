@@ -121,11 +121,6 @@ ALLOWLIST = {
         "bash -c 'sleep <marker> & wait'` tree whose exact shape (and the "
         "missing kill-after) is what the test measures; it is reaped by the "
         "test's own group kill",
-    # phase-551 W1: the Dockerfile text moved into the shared image generator.
-    ("scripts/ci/lib/image-context.sh", "bash"):
-        "a Dockerfile `RUN` that smoke-starts the router at image BUILD time: "
-        "no checkout exists in the build context to source the helper from, and "
-        "`docker build` itself is the outer bound",
 }
 ALLOW = Exemptions(ALLOWLIST, what="literal deadline")
 ALLOW_NEIGHBOURS = [

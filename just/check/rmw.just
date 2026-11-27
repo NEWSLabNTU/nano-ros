@@ -494,6 +494,13 @@ zenohd-flag-invocations:
 router-sourced-twins:
     @python3 scripts/check-router-sourced-twins.py
 
+# Issue 2973 — "the router is still running" is `nros_router_alive_after`'s
+# answer (present at the deadline AND a clean exit on SIGTERM), never
+# `timeout`'s 124, which a router still dumping core also earns. Stand-ins for
+# each verdict, plus the negative control that 124 passes the crashing one.
+router-alive-probe:
+    @bash tests/router-alive-probe-tests.sh
+
 # phase-519 W4 — the XRCE agent's sibling: no doc or example starts
 # `MicroXRCEAgent <transport>` by hand; `just xrce agent <locator>` is the door.
 xrce-agent-invocations:

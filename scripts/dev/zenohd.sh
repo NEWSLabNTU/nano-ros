@@ -258,3 +258,41 @@ nros_router_exec() {
     fi
     ZENOH_CONFIG_OVERRIDE="$override" nros_router_env_exec "$bin"
 }
+
+# Issue 2973 -- is a router STILL RUNNING <secs> after it starts?
+#
+#   nros_router_alive_after <secs> <command>...
+#
+# Exit 0 only when BOTH hold: the process is present and not a zombie at
+# <secs>, and the status it then exits with, on our SIGTERM, is a clean one
+# (0 or 143, or 137 from the SIGKILL 3 s later if it ignores the TERM). `timeout`'s 124 answers neither: it means "the timer fired",
+# which it also does over a process that crashed and is still dumping core
+# (issue 2973 measured a 6 s dump against a 3 s deadline). `--preserve-status`
+# alone does not separate them either: measured with ROS humble's
+# rmw_zenohd, a live router exits 0 on SIGTERM, the same status as a router
+# that exited cleanly on its own before the deadline. The command must exec
+# the router (`nros_router_exec` does), so the pid probed is the router's.
+nros_router_alive_after() {
+    local secs="${1:?nros_router_alive_after: seconds}"
+    shift
+    "$@" &
+    local pid=$! state rc=0
+    sleep "$secs"
+    state="$(ps -o stat= -p "$pid" 2>/dev/null | tr -d ' ')"
+    kill -TERM "$pid" 2>/dev/null
+    # A router that ignores SIGTERM must not hang this: SIGKILL after 3 s
+    # (the deadline helper's grace). Its 137 is still "alive at the deadline".
+    ( sleep 3; kill -KILL "$pid" 2>/dev/null ) &
+    local reaper=$!
+    wait "$pid" || rc=$?
+    kill "$reaper" 2>/dev/null
+    wait "$reaper" 2>/dev/null
+    echo "router after ${secs} s: state=${state:-gone}, exit on SIGTERM rc=$rc" >&2
+    case "$state" in
+        '' | Z*) return 1 ;;
+    esac
+    case "$rc" in
+        0 | 143 | 137) return 0 ;;
+    esac
+    return 1
+}
