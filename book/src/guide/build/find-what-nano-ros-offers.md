@@ -11,7 +11,7 @@ to read the source or a list in this book to know what exists, and what the
 command lists is what the installed release has.
 
 `nros --help` lists these commands together, under "Find what nano-ros
-offers". Every list works the same way:
+offers", with `nros search` first. Every list works the same way:
 
 - `nros <noun> list` prints one row per item;
 - `nros <noun> show <name>` prints one item in full, with a link to its page
@@ -20,6 +20,28 @@ offers". Every list works the same way:
 - a name it does not know is refused with the nearest names it does.
 
 ## Steps
+
+### Search for a word
+
+When you know a word but not which list it is in, search for it:
+
+```bash probe=3105 track=installed
+nros search uorb
+```
+
+```text
+NOUN   NAME      SUMMARY                                                            SHOW
+rmw    uorb      The uORB RMW backend for nano-ros — PX4's in-process message bus.  nros rmw show uorb
+board  px4-sitl  runs `uorb`                                                        nros board show px4-sitl
+```
+
+The search covers every list on this page, matching names, other names and
+descriptions, and the SHOW column is the command that prints the row in
+full. An RMW comes with the boards that run it and the knobs that name it.
+Inside a workspace the search also covers its images and packages, and,
+once a plan exists, the nodes and topics it plans. Toolchains are not
+searched: `nros toolchain list` lists them. `--json` prints the same rows
+for a script.
 
 ### See the RMW backends
 
