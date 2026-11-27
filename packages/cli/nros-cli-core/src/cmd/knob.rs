@@ -76,7 +76,9 @@ pub struct ListArgs {
     #[arg(long)]
     pub json: bool,
     /// Resolve each knob's value for this platform, and say which rung of the
-    /// platform/board ladder set it (`builtin`, `platform`, `board`, `env`)
+    /// platform/board ladder set it (`builtin`, `platform`, `board`, `env`).
+    /// A knob that ladder does not resolve shows its default, set by `-`
+
     #[arg(long, value_name = "PLATFORM")]
     pub platform: Option<String>,
     /// With `--platform`: the board's `nros-board.toml`, for its rung

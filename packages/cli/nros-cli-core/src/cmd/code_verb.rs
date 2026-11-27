@@ -92,6 +92,13 @@ fn list(args: ListArgs) -> Result<()> {
 /// The entry `code` names, or the refusal with the nearest codes.
 pub fn find(code: &str) -> Result<&'static Entry> {
     nros_diagnostic_codes::lookup(code).ok_or_else(|| {
+        // A code spelled `NROS-NNNN` that no entry has is refused as
+        // NROS-0006, with the three nearest codes: the refusal `nros explain
+        // <code>` printed before it became this verb's old spelling
+        // (RFC-0133 D3), so both spellings say the same thing.
+        if nros_diagnostic_codes::parse_code(code).is_some() {
+            return crate::diag::explain(code).expect_err("a code with no entry is refused");
+        }
         frame::unknown(
             "diagnostic code",
             code,
@@ -154,6 +161,25 @@ pub fn render_show(e: &Entry) -> String {
 
 #[cfg(test)]
 mod tests {
+    /// An unknown code spelled `NROS-NNNN` is refused as NROS-0006 with the
+    /// three nearest codes, by `code show` and by its older spelling,
+    /// `explain <code>`, alike.
+    #[test]
+    fn an_unknown_code_is_refused_as_nros_0006() {
+        let shown = find("NROS-9999").unwrap_err().to_string();
+        let explained = crate::diag::explain("NROS-9999").unwrap_err().to_string();
+        assert!(shown.contains("NROS-0006"), "{shown}");
+        assert!(shown.contains("the nearest codes are"), "{shown}");
+        assert_eq!(shown, explained);
+        // A name that is not a code keeps the generic refusal.
+        assert!(
+            !find("nonsense")
+                .unwrap_err()
+                .to_string()
+                .contains("NROS-0006")
+        );
+    }
+
     use super::*;
 
     #[test]
@@ -167,7 +193,7 @@ mod tests {
     #[test]
     fn an_unknown_code_is_refused_with_the_list_command() {
         let e = find("NROS-9998").unwrap_err().to_string();
-        assert!(e.contains("no diagnostic code named `NROS-9998`"), "{e}");
+        assert!(e.contains("no diagnostic has the code `NROS-9998`"), "{e}");
         assert!(e.contains("`nros code list` names every one"), "{e}");
     }
 
