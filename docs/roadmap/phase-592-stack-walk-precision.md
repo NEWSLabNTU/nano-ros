@@ -42,9 +42,23 @@ Recorded before W1, so each item's effect is a measured delta:
 - Read vtables and their slot functions from the IR, and their referrers
   from the linked objects' relocations; bind a `dyn` site in slot S to slot S
   of the vtables live code references.
+- **And nothing else.** Today a slot site also joins every ESCAPED Rust
+  function of the same LLVM type (`escaped_by_type`, tier "type" in
+  `bind_indirect_sites`): a function whose address escapes as a value, a
+  callback handed over, is taken to be callable through any `dyn` slot of
+  its signature. Safe Rust reaches a `dyn T` slot only through a `T`
+  vtable, so that join is false, and W2 drops it. A function whose vtable
+  SLOT leaked (issue 2402's `leaked`) stays, because it is in a vtable.
+- Evidence (NXP's ASI run, CARLA freertos-posix image, main 0e4afce2fa,
+  reported 2026-11-27): the walk binds `nros_log::Logger::dispatch`, whose
+  only indirect calls are `&'static dyn LogSink` slots, to the app's
+  `MpcLateralController::run` "by type, not by a vtable slot". `LogSink::log`
+  and an escaped callback both lower to two pointers, and that edge carries
+  the OPEN floor to 418,616 B.
 - **Acceptance:** a walker self-test where a trait with two implementations,
-  one never made into a trait object, binds to one; the baseline images
-  re-measured (SCC size, walk) and recorded in issue 2658.
+  one never made into a trait object, binds to one, and where an escaped
+  function of the slot's LLVM type is NOT bound to the slot site; the
+  baseline images re-measured (SCC size, walk) and recorded in issue 2658.
 
 ### W3 — C sites bind through their field or parameter (RFC-0143 D2)
 
