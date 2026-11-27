@@ -16,7 +16,7 @@ superseded-by: null
 added nothing new when written. The decisions marked "maintainer" were made
 on 2026-11-06 and 2026-11-07, in the phase doc. Amended 2026-11-20 (user
 ruling): the `gate` tier, the `ci` lane and lane preconditions, built by
-[phase-584](../roadmap/phase-584-ci-gate-one-nextest.md). It goes to Stable
+[phase-584](../roadmap/archived/phase-584-ci-gate-one-nextest.md). It goes to Stable
 after the maintainer's OK.
 
 ## Summary
