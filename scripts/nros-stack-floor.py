@@ -52,6 +52,7 @@ import os
 import re
 import shutil
 import subprocess
+import tempfile
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -1702,6 +1703,55 @@ def apply_linked_compiler_builtins(g: Graph, inputs: list[str], llvm_bin: str | 
             if fn not in g.frames and "bytes" in got.get(fn, {}):
                 g.frames[fn] = got[fn]["bytes"]
                 n += 1
+    return n
+
+
+def apply_assembled_objects(g: Graph, inputs: list[str], llvm_bin: str | None) -> int:
+    """Own frames for the frameless functions an ASSEMBLED input defines
+    (issue 2897): an object CMake built from `.S`/`.s` source (`switch.S.obj`)
+    has no `.su` and no bitcode, so its frame is what its instructions push,
+    read by the same decoder as the toolchain's builtins. Own frames only:
+    the object is a walk input, so its calls are already the walk's edges.
+    An sp moved by a register still refuses, and so does a function the
+    decoder cannot read. Only `stack_builtins.ASSEMBLED_ARCHES`. Returns how
+    many functions got a frame."""
+    frameless = {fn for fn in g.functions if fn not in g.frames}
+    if not frameless:
+        return 0
+    ar = llvm_tool("llvm-ar", llvm_bin)
+    objdump = llvm_tool("llvm-objdump", llvm_bin)
+    nm = llvm_tool("llvm-nm", llvm_bin)
+    objs: list[Path] = []
+    with tempfile.TemporaryDirectory(prefix="nros-stack-asm-") as tmp:
+        for a in dict.fromkeys(inputs):
+            m = _LLD_MEMBER.match(a)
+            if m:
+                # an LLD map's `archive(member)`: the loose copy extract_members made
+                continue
+            p = Path(a)
+            if p.suffix in (".o", ".obj") and stack_builtins.is_assembled(p.name) and p.is_file():
+                objs.append(p)
+            elif p.suffix == ".a" and p.is_file():
+                r = subprocess.run([ar, "t", str(p)], capture_output=True, text=True)
+                want = [mem for mem in r.stdout.split() if stack_builtins.is_assembled(mem)]
+                if r.returncode or not want:
+                    continue
+                d = Path(tmp) / f"{len(objs)}-{p.stem}"
+                d.mkdir()
+                subprocess.run([ar, "x", "--output", str(d), str(p.resolve()), *want],
+                               check=True)
+                objs += [d / mem for mem in want if (d / mem).is_file()]
+        objs = [o for o in objs
+                if stack_builtins.object_arch(o.read_bytes()[:20])
+                in stack_builtins.ASSEMBLED_ARCHES]
+        if not objs:
+            return 0
+        got = stack_builtins.measure_objects(objs, objdump, nm, own=True)
+    n = 0
+    for fn in sorted(frameless):
+        if "bytes" in got.get(fn, {}):
+            g.frames[fn] = got[fn]["bytes"]
+            n += 1
     return n
 
 
@@ -4401,6 +4451,10 @@ def run(args: argparse.Namespace) -> int:
     if got:
         print(f"nros-stack-floor: {got} frame(s) of compiler_builtins and toolchain C runtime "
               "routines read off the linked objects", file=sys.stderr)
+    got = apply_assembled_objects(g, list(args.inputs), args.llvm_bin)
+    if got:
+        print(f"nros-stack-floor: {got} frame(s) of assembled code read off the linked "
+              "objects", file=sys.stderr)
     bt_path = builtins_table_path(args.table, args.builtins)
     if bt_path is not None and dropped:
         got = apply_builtins(g, dropped, load_table(bt_path), llvm_tool("llvm-nm", args.llvm_bin))
