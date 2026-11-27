@@ -1,0 +1,16 @@
+# What this test image deploys to (RFC-0098 D3/D5). The program is the owned
+# entry `lifecycle-driver`, which opens its own executor, so the bringup
+# declares no component table. The locator and domain stay runtime env on the
+# host.
+
+[system]
+name = "lifecycle_driver"
+rmw = "zenoh"
+domain_id = 0
+default_images = ["linux"]
+
+[image_defaults]
+board = "linux"
+
+[image.linux]
+entry = "lifecycle-driver"

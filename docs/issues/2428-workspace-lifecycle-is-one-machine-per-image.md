@@ -144,3 +144,23 @@ exception is C++'s `LifecyclePublisher`. The book's
 already states both limits. The publisher half is phase-554 W6, and its
 acceptance is W9's silent-until-active cell. The callback half is phase C
 (W10 onward).
+
+## Status (2026-11-27): the publisher half is accepted on embedded
+
+The publisher half of defect 3 (phase-554 W6, in code since 2026-11-23) now
+has an embedded cell. `tests/freertos_lifecycle_e2e.rs` boots a managed
+talker on FreeRTOS QEMU over zenoh, in C, C++ and Rust
+(`bins/lifecycle-freertos-mps2`, `[lifecycle] autostart = "none"`). A native
+nano-ros lifecycle client (`bins/lifecycle-driver`) drives `configure`,
+`activate` and `deactivate`. The cell asserts:
+- `/chatter` is silent while `unconfigured` and while `inactive`;
+- it publishes once `active` (4 messages in 4 s, measured);
+- it is silent again after `deactivate`.
+
+With the gate forced open, the unconfigured node published 3 messages and the
+cell went red. It needs no ROS 2 install, so it is a baked `matrix::CELLS`
+cell that the tier lanes run, not an interop row.
+
+What this issue still tracks is the callback half: a Rust or C component
+cannot see its node's state or supply transition callbacks (phase-554 phase
+C, W10 onward).

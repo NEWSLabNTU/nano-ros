@@ -131,7 +131,7 @@
       "roads": [],
       "last_run": null,
       "stale_from": null,
-      "breadth": "inherited from FreertosMps2 \u2014 Runtime: Pubsub, Port, PortSmoke, PortMonitor, PortWorkspace, Service, Action, Logging, EntryPubsub, RealtimeSchedTasks in Rust, C, C++, Mixed over zenoh, cyclonedds",
+      "breadth": "inherited from FreertosMps2 \u2014 Runtime: Lifecycle, Pubsub, Port, PortSmoke, PortMonitor, PortWorkspace, Service, Action, Logging, EntryPubsub, RealtimeSchedTasks in C, C++, Rust, Mixed over zenoh, cyclonedds",
       "rmws": {
         "runtime": [
           "zenoh",
@@ -186,7 +186,7 @@
       "roads": [],
       "last_run": null,
       "stale_from": null,
-      "breadth": "witness \u2014 Runtime: Pubsub, Port, PortSmoke, PortMonitor, PortWorkspace, Service, Action, Logging, EntryPubsub, RealtimeSchedTasks in Rust, C, C++, Mixed over zenoh, cyclonedds",
+      "breadth": "witness \u2014 Runtime: Lifecycle, Pubsub, Port, PortSmoke, PortMonitor, PortWorkspace, Service, Action, Logging, EntryPubsub, RealtimeSchedTasks in C, C++, Rust, Mixed over zenoh, cyclonedds",
       "rmws": {
         "runtime": [
           "zenoh",
@@ -217,7 +217,7 @@
       "roads": [],
       "last_run": null,
       "stale_from": null,
-      "breadth": "inherited from FreertosMps2 \u2014 Runtime: Pubsub, Port, PortSmoke, PortMonitor, PortWorkspace, Service, Action, Logging, EntryPubsub, RealtimeSchedTasks in Rust, C, C++, Mixed over zenoh, cyclonedds",
+      "breadth": "inherited from FreertosMps2 \u2014 Runtime: Lifecycle, Pubsub, Port, PortSmoke, PortMonitor, PortWorkspace, Service, Action, Logging, EntryPubsub, RealtimeSchedTasks in C, C++, Rust, Mixed over zenoh, cyclonedds",
       "rmws": {
         "runtime": [
           "zenoh",
@@ -251,7 +251,7 @@
       "roads": [],
       "last_run": null,
       "stale_from": null,
-      "breadth": "inherited from FreertosMps2 \u2014 Runtime: Pubsub, Port, PortSmoke, PortMonitor, PortWorkspace, Service, Action, Logging, EntryPubsub, RealtimeSchedTasks in Rust, C, C++, Mixed over zenoh, cyclonedds",
+      "breadth": "inherited from FreertosMps2 \u2014 Runtime: Lifecycle, Pubsub, Port, PortSmoke, PortMonitor, PortWorkspace, Service, Action, Logging, EntryPubsub, RealtimeSchedTasks in C, C++, Rust, Mixed over zenoh, cyclonedds",
       "rmws": {
         "runtime": [
           "zenoh",
@@ -374,7 +374,7 @@
       "roads": [],
       "last_run": null,
       "stale_from": null,
-      "breadth": "inherited from FreertosMps2 \u2014 Runtime: Pubsub, Port, PortSmoke, PortMonitor, PortWorkspace, Service, Action, Logging, EntryPubsub, RealtimeSchedTasks in Rust, C, C++, Mixed over zenoh, cyclonedds. Board-specific: Runtime: EntryPubsub in C, C++ over cyclonedds, zenoh; build-only: Port",
+      "breadth": "inherited from FreertosMps2 \u2014 Runtime: Lifecycle, Pubsub, Port, PortSmoke, PortMonitor, PortWorkspace, Service, Action, Logging, EntryPubsub, RealtimeSchedTasks in C, C++, Rust, Mixed over zenoh, cyclonedds. Board-specific: Runtime: EntryPubsub in C, C++ over cyclonedds, zenoh; build-only: Port",
       "rmws": {
         "runtime": [
           "zenoh",
