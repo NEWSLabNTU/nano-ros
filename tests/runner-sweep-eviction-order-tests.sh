@@ -191,6 +191,27 @@ else
     fail "no warning at a 0 GiB warn threshold:
 $out2"
 fi
+# phase-591 W4 -- the unbudgeted report must not walk an area a second time:
+# it was one `du -d6` over each whole root, i.e. every byte an area had just
+# scanned, 9 of the tier-1 sweep's 20 minutes on 241. A `du` shim records
+# every invocation; none may name the checkout root or the build root.
+mkdir -p "$w2/shim"
+real_du="$(command -v du)"
+printf '#!/bin/sh\nprintf "%%s\\n" "$*" >> "%s"\nexec "%s" "$@"\n' \
+    "$w2/du.log" "$real_du" > "$w2/shim/du"
+chmod +x "$w2/shim/du"
+: > "$w2/du.log"
+PATH="$w2/shim:$PATH" NROS_RUNNER_REPO_ROOT="$w2" NROS_BUILD_ROOT="$w2/build" \
+    NROS_SWEEP_BUDGET_FIXTURES_GIB=0 NROS_SWEEP_UNBUDGETED_SHOW_MIB=1 \
+    NROS_SWEEP_UNBUDGETED_WARN_GIB=0 NROS_SWEEP_STATE_DIR="$w2/state" \
+    "$sweep" --check --disk >/dev/null 2>&1 || true
+if [ -s "$w2/du.log" ] \
+   && ! grep -qE "(^| )($w2|$w2/build)/?( |\$)" "$w2/du.log"; then
+    ok "the unbudgeted report walks only what no area holds (no du over a root)"
+else
+    fail "a du walked a whole root, re-reading every area:
+$(cat "$w2/du.log")"
+fi
 if nros_grep_q -E 'Broken pipe|sort: write error' <<<"$out2"; then
     fail "sort wrote into a closed pipe:
 $out2"

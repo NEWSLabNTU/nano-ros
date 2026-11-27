@@ -787,35 +787,48 @@ _report_unbudgeted() {
         printf 'out'
     }
 
-    # One `du` walk per root, classified breadth-first: a depth-1 entry is
-    # always looked at, a deeper one only when its parent HOLDS an area. Depth
-    # 6 because an area unit can sit that deep: a leaf build is
+    # The frontier, found WITHOUT a walk: a depth-1 entry is always looked
+    # at, a deeper one only when its parent HOLDS an area. Depth 6 because an
+    # area unit can sit that deep: a leaf build is
     # `examples/<plat>/<lang>/<leaf>/build` (issue 2191), and what sits beside
-    # it (`generated/`) must still be counted.
-    local -A expand=()
-    local root sz path rel parent total=0 found="" depth slashes
+    # it (`generated/`) must still be counted. Then ONE `du` over the frontier
+    # only (each inode once across it, as one walk counted it).
+    #
+    # phase-591 W4: this was one `du -d6` over each whole ROOT, so every byte
+    # an area had just scanned was walked a second time. On 241's volume that
+    # was 9 of the tier-1 sweep's 20 minutes (run 45767321390: fixtures 280
+    # GiB, unbudgeted 61 GiB), on a disk where a metadata walk is cold.
+    local -a out=()
+    local root dev
+    _frontier() {
+        local p="$1" depth="$2" c
+        for c in "$p"/* "$p"/.[!.]* "$p"/..?*; do
+            [ -e "$c" ] || [ -L "$c" ] || continue
+            # du's `-x`: an entry on another filesystem is not this volume's.
+            if [ ! -L "$c" ] && [ "$(stat -c %d -- "$c" 2>/dev/null)" != "$dev" ]; then
+                continue
+            fi
+            case "$(_attribution "$c")" in
+                out)  out+=("$c") ;;
+                over) if [ -d "$c" ] && [ ! -L "$c" ] && [ "$depth" -lt 6 ]; then
+                          _frontier "$c" $((depth + 1))
+                      fi ;;
+            esac
+        done
+    }
     for root in "${roots[@]}"; do
         [ -d "$root" ] || continue
-        local walk
-        walk="$(du -x -B1 -d6 "$root" 2>/dev/null || true)"
-        for depth in 1 2 3 4 5 6; do
-            while IFS=$'\t' read -r sz path; do
-                [ -n "${path:-}" ] || continue
-                [ "$path" = "$root" ] && continue
-                rel="${path#"$root"/}"
-                slashes="${rel//[!\/]/}"
-                [ "$(( ${#slashes} + 1 ))" -eq "$depth" ] || continue
-                parent="${path%/*}"
-                if [ "$depth" -gt 1 ] && [ -z "${expand[$parent]:-}" ]; then
-                    continue
-                fi
-                case "$(_attribution "$path")" in
-                    out)  found+="$sz"$'\t'"$path"$'\n'; total=$((total + sz)) ;;
-                    over) expand["$path"]=1 ;;
-                esac
-            done <<< "$walk"
-        done
+        dev="$(stat -c %d -- "$root" 2>/dev/null)"
+        _frontier "$root" 1
     done
+    local sz path total=0 found=""
+    if [ "${#out[@]}" -gt 0 ]; then
+        while IFS=$'\t' read -r sz path; do
+            [ -n "${path:-}" ] || continue
+            found+="$sz"$'\t'"$path"$'\n'
+            total=$((total + sz))
+        done <<< "$(du -sx -B1 -- "${out[@]}" 2>/dev/null || true)"
+    fi
 
     _hwm_put unbudgeted "$total"
     local gib=$((1024 * 1024 * 1024))
