@@ -564,7 +564,7 @@ def _helper_bodies(src_dir: Path = NROS_TESTS_SRC) -> dict[str, str]:
     for f in sorted(ROOT / p for p in listed.split("\0") if p.endswith(".rs")):
         if not f.is_file():  # tracked, but deleted in this worktree
             continue
-        text = _strip_cfg_test_mods(f.read_text(encoding="utf-8"))
+        text = _strip_line_comments(_strip_cfg_test_mods(f.read_text(encoding="utf-8")))
         marks = list(_FN.finditer(text))
         for i, m in enumerate(marks):
             end = marks[i + 1].start() if i + 1 < len(marks) else len(text)
@@ -573,6 +573,32 @@ def _helper_bodies(src_dir: Path = NROS_TESTS_SRC) -> dict[str, str]:
 
 
 _IDENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+
+# Issue 3001 — a whole-line `//` or `///` comment. A row id or an example
+# directory named in prose (`/// e.g. "linux/rust/talker"`) is not a resolve,
+# and counting it made every test that reached `build_dir` derive the Rust
+# talker's rows. Only WHOLE-line comments go: a `//` inside a string literal
+# (`"tcp://..."`) is never at the start of a line.
+_LINE_COMMENT = re.compile(r"^[ \t]*//[^\n]*$", re.M)
+
+
+def _strip_line_comments(text: str) -> str:
+    return _LINE_COMMENT.sub("", text)
+
+
+# Issue 3001 — what a body CALLS, for the transitive reach: a free-function
+# call (`name(`, `path::name(`, `name::<T>(`), never a method (`.stop()`),
+# plus an rstest fixture parameter (`xrce_listener_binary: PathBuf`), which
+# rstest calls for the test. Every identifier was the call graph before, so
+# helpers named `stop`, `create`, `value` or `main` linked a test to the whole
+# fixture resolver, and a lifecycle-pair cell derived 16 leaf rows it never
+# launches.
+_CALL_SITE = re.compile(r"(?<![.\w])([A-Za-z_]\w*)\s*(?:::<[^()]*?>)?\s*\(")
+_FIXTURE_PARAM = re.compile(r"\b([a-z_]\w*)\s*:\s*(?:std::path::)?PathBuf\b")
+
+
+def _calls_in(text: str) -> "set[str]":
+    return set(_CALL_SITE.findall(text)) | set(_FIXTURE_PARAM.findall(text))
 
 
 def _one_hop(text: str, helpers: "dict[str, str]") -> str:
@@ -621,7 +647,6 @@ def host_workspace_fixtures_for(cells, ids, known=None, read=None, helpers=None,
     pairs = _linux_pair_rows() if pairs is None else pairs
     leaves = _linux_migrated_leaf_rows() if leaves is None else leaves
     out = set(host_rows_for(cells, ids, known, read, helpers))
-    out |= _pair_rows_for_cells(cells, ids, pairs)
     out |= _leaf_rows_named(cells, ids, leaves, read, helpers)
     out |= _pair_rows_named(cells, ids, pairs, read, helpers)
     return sorted(out)
@@ -635,20 +660,40 @@ def host_workspace_fixtures_for(cells, ids, known=None, read=None, helpers=None,
 # above therefore both missed the pair images, and live-peer's bridge and C
 # Cyclone cells came up UNMET every night from 2026-11-07.
 #
-# Two rules, both read from the manifest, never a hand list:
-# - by COORDINATE: a host cell on (lang, rmw) gets every linux pair image of
-#   that (lang, rmw), which is what `fixtures-build.sh linux <lang> <rmw>`
-#   built for it before the move;
-# - by NAME: a `linux_pair_image("<lang>", "<role>", Rmw::<R>)` call the cell's
-#   test (or a helper it calls) makes, because a cell may resolve a pair image
-#   OFF its own coordinate (the Rust/Zenoh bridge cell's Cyclone listener is
-#   `linux/c/listener`). A variable argument is a wildcard: it errs toward
-#   building, which costs a build; a missed row costs the red.
+# By NAME only, read from the manifest, never a hand list: a resolver call the
+# cell's test makes, or a helper it reaches TRANSITIVELY (an rstest fixture
+# argument such as `xrce_listener_binary` reaches `linux_pair_image` two
+# helpers down). A cell may resolve a pair image OFF its own coordinate (the
+# Rust/Zenoh bridge cell's Cyclone listener is `linux/c/listener`). A variable
+# argument is a wildcard: it errs toward building, which costs a build; a
+# missed row costs the red.
+#
+# Issue 3001 — there was a second rule, by COORDINATE: a host cell on
+# (lang, rmw) got every linux pair image of that pair, as
+# `fixtures-build.sh linux <lang> <rmw>` built before the move. It stood in
+# for the resolver spellings the name rule could not read, and it supplied 47
+# of the 97 rows the host job built on 2026-11-27, of which 6 were used in
+# three green runs. Those 6 are read by name now, and the post-run
+# `--check-resolved` refuses any row a run resolves that was not derived.
 PAIR_BRINGUPS = ("src/pubsub_bringup", "src/service_bringup", "src/action_bringup")
-_PAIR_CALL = re.compile(
-    r'linux_pair_image\(\s*(?:"(?P<lang>[\w-]+)"|[A-Za-z_]\w*)\s*,'
-    r'\s*(?:"(?P<role>[\w-]+)"|[A-Za-z_]\w*)\s*,'
-    r'\s*(?:Rmw::(?P<rmw>\w+)|[A-Za-z_]\w*)\s*\)'
+# Issue 3001 — the three shapes a test (or a helper it reaches) asks for a pair
+# image in. Each argument is a string literal or, for anything else, a
+# wildcard. The RMW is any path ending `Rmw::<Variant>` (`Rmw::Xrce`,
+# `fixtures::Rmw::Cyclonedds`, `FixtureRmw::Cyclonedds`); a call spread over
+# several lines may end in a trailing comma.
+_ARG = r'(?:"(?P<{n}>[\w-]+)"|[A-Za-z_][\w.]*)'
+_RMW_ARG = r'(?:(?:\w+::)*\w*Rmw::(?P<rmw>\w+)|[A-Za-z_][\w.]*)'
+_CALL_END = r'\s*,?\s*\)'
+_PAIR_CALLS = (
+    # linux_pair_image("<lang>", "<role>", Rmw::<R>)
+    re.compile(r'linux_pair_image\(\s*' + _ARG.format(n="lang") + r'\s*,\s*'
+               + _ARG.format(n="role") + r'\s*,\s*' + _RMW_ARG + _CALL_END),
+    # build_native_<lang>_example_rmw("<role>", <binary>, Rmw::<R>)
+    re.compile(r'build_native_(?P<lang>rust|c|cpp)_example_rmw\(\s*'
+               + _ARG.format(n="role") + r'\s*,\s*[^,()]+,\s*' + _RMW_ARG + _CALL_END),
+    # build_example[_cmake]_rmw("linux/<lang>/<role>", <binary>, Rmw::<R>)
+    re.compile(r'build_example(?:_cmake)?_rmw\(\s*"linux/(?P<lang>rust|c|cpp)/(?P<role>[\w-]+)"'
+               r'\s*,\s*[^,()]+,\s*' + _RMW_ARG + _CALL_END),
 )
 
 
@@ -706,17 +751,6 @@ def _linux_migrated_leaf_rows(rows=None) -> "list[dict]":
     ]
 
 
-def _pair_rows_for_cells(cells, ids, pairs) -> set[str]:
-    by_id = {c["id"]: c for c in cells}
-    want = set()
-    for cid in set(ids):
-        c = by_id.get(cid)
-        if c is None or runner_of(c["platform"]) != "host":
-            continue
-        want.add((HOST_BUILD_LANG.get(c["lang"]), HOST_BUILD_RMW.get(c["rmw"])))
-    return {p["id"] for p in pairs if (p["lang"], p["rmw"]) in want}
-
-
 def _pair_rows_named(cells, ids, pairs, read=None, helpers=None) -> set[str]:
     by_id = {c["id"]: c for c in cells}
     read = (lambda t: (TESTS_DIR / f"{t}.rs").read_text()) if read is None else read
@@ -728,18 +762,20 @@ def _pair_rows_named(cells, ids, pairs, read=None, helpers=None) -> set[str]:
             text = read(test)
         except OSError:
             continue
-        reached = _one_hop(text, helpers)
-        for m in _PAIR_CALL.finditer(reached):
-            rmw = m["rmw"] and HOST_BUILD_RMW.get(m["rmw"], m["rmw"].lower())
-            out |= {p["id"] for p in pairs
-                    if (m["lang"] is None or p["lang"] == m["lang"])
-                    and (m["role"] is None or p["role"] == m["role"])
-                    and (rmw is None or p["rmw"] == rmw)}
+        reached = _reached(text, helpers)
+        for rx in _PAIR_CALLS:
+            for m in rx.finditer(reached):
+                g = m.groupdict()
+                rmw = g.get("rmw") and HOST_BUILD_RMW.get(g["rmw"], g["rmw"].lower())
+                out |= {p["id"] for p in pairs
+                        if (g.get("lang") is None or p["lang"] == g["lang"])
+                        and (g.get("role") is None or p["role"] == g["role"])
+                        and (rmw is None or p["rmw"] == rmw)}
     return out
 
 
 # B16 — the most workspace rows the host cells may derive (`self_test`).
-HOST_WORKSPACE_ROWS_CEILING = 100
+HOST_WORKSPACE_ROWS_CEILING = 70
 
 _CALLS: "dict[int, dict[str, set[str]]]" = {}
 
@@ -747,16 +783,16 @@ _CALLS: "dict[int, dict[str, set[str]]]" = {}
 def _reached(text: str, helpers: "dict[str, str]") -> str:
     """`text` plus the body of every helper it reaches, TRANSITIVELY.
 
-    The call graph is the identifiers each body mentions that are helper
-    names, so a whole closure costs one tokenisation per body (cached per
-    helper table).
+    The call graph is the helpers each body CALLS (`_calls_in`), so a whole
+    closure costs one scan per body (cached per helper table).
     """
     names = set(helpers)
+    text = _strip_line_comments(text)
     calls = _CALLS.get(id(helpers))
     if calls is None or set(calls) != names:
         calls = _CALLS[id(helpers)] = {
-            n: set(_IDENT.findall(b)) & names for n, b in helpers.items()}
-    seen = set(_IDENT.findall(text)) & names
+            n: _calls_in(b) & names for n, b in helpers.items()}
+    seen = _calls_in(text) & names
     todo = list(seen)
     while todo:
         for c in calls[todo.pop()] - seen:
@@ -2039,9 +2075,10 @@ def _self_test_runner_split(
         "selftest: qos_override_e2e resolves workspace-features-rust-qos through its helper"
 
     # Issue 2383 — linux pair images, which no test names by id. The manifest
-    # shape is parsed (rmw suffix stripped, `_` -> `-`), a host cell gets its
-    # own (lang, rmw)'s pairs, a named call reaches OFF its coordinate, and a
-    # variable argument is a wildcard. A board cell contributes nothing.
+    # shape is parsed (rmw suffix stripped, `_` -> `-`), a named call reaches
+    # OFF its coordinate, and a variable argument is a wildcard. A board cell
+    # contributes nothing. Issue 3001: a host cell gets NO pair image by its
+    # coordinate alone.
     _pairs = _linux_pair_rows([
         {"id": "c-l", "platform": "linux", "lang": "c", "bringup": "src/pubsub_bringup",
          "image": "linux_listener"},
@@ -2068,11 +2105,37 @@ def _self_test_runner_split(
         _pc, ["rz", "bz"], known=set(), pairs=_pairs, leaves=[], helpers={},
         read={"t_rz": 'linux_pair_image("c", "listener", Rmw::Cyclonedds)',
               "t_bz": 'linux_pair_image("c", case, Rmw::Cyclonedds)'}.__getitem__,
-    ) == ["c-l-cy", "r-t"], "selftest: pair rows by coordinate + by named call"
+    ) == ["c-l-cy"], "selftest: pair rows by named call only, never by coordinate (issue 3001)"
     assert host_workspace_fixtures_for(
         _pc, ["rz"], known=set(), pairs=_pairs, leaves=[], helpers={},
         read={"t_rz": 'linux_pair_image("c", case, Rmw::Cyclonedds)'}.__getitem__,
-    ) == ["c-l-cy", "c-ss-cy", "r-t"], "selftest: a variable role is a wildcard"
+    ) == ["c-l-cy", "c-ss-cy"], "selftest: a variable role is a wildcard"
+    assert host_workspace_fixtures_for(
+        _pc, ["rz"], known=set(), pairs=_pairs, leaves=[], helpers={},
+        read={"t_rz": "fn t() {}"}.__getitem__,
+    ) == [], "selftest: a cell whose test resolves no pair image derives none (issue 3001)"
+    # Issue 3001 — the resolver spellings the coordinate rule used to cover:
+    # a qualified RMW path, a trailing comma, the `build_native_<lang>` and
+    # `build_example*_rmw("linux/...")` wrappers, and an rstest fixture that
+    # reaches the resolver two helpers down.
+    _resolvers = {
+        "c_ss_binary": "fn c_ss_binary() -> PathBuf { build_c_ss().require() }",
+        "build_c_ss": 'fn build_c_ss() { linux_pair_image("c", "service-server", Rmw::Cyclonedds) }',
+    }
+    for _text, _want in (
+        ('linux_pair_image("c", "listener", FixtureRmw::Cyclonedds)', ["c-l-cy"]),
+        ('fixtures::linux_pair_image(\n  "c",\n  "listener",\n  fixtures::Rmw::Cyclonedds,\n)',
+         ["c-l-cy"]),
+        ('build_native_rust_example_rmw("talker", "talker", Rmw::Zenoh)', ["r-t"]),
+        ('build_native_c_example_rmw(\n  "listener",\n  "c_listener",\n  fixtures::Rmw::Cyclonedds,\n)',
+         ["c-l-cy"]),
+        ('build_example_cmake_rmw("linux/c/listener", "c_listener", Rmw::Zenoh)', ["c-l"]),
+        ("fn t(c_ss_binary: PathBuf) {}", ["c-ss-cy"]),
+    ):
+        _got = host_workspace_fixtures_for(
+            _pc, ["rz"], known=set(), pairs=_pairs, leaves=[], helpers=_resolvers,
+            read={"t_rz": _text}.__getitem__)
+        assert _got == _want, f"selftest: resolver spelling {_text!r} -> {_got}, want {_want}"
     # And on the real tree: the cell that was UNMET for this reason.
     _b = [c for c in runtime_cells() if c["id"] == "bridge-zenoh-to-cyclone-imperative"]
     assert _b, "selftest: bridge-zenoh-to-cyclone-imperative left CELLS — update this check"
@@ -2128,10 +2191,43 @@ def _self_test_runner_split(
     assert "native-rust-talker" in host_workspace_fixtures_for(
         _b, [_b[0]["id"]]
     ), "selftest: bridge_zenoh_to_cyclonedds builds the migrated linux Rust talker"
+    # Issue 3001 — narrowing may never drop a row a passing run USED. The
+    # snapshot holds what each host test binary resolved in green live-peer
+    # runs; the derivation over the recorded cells must still hold every row
+    # of it, per binary where the binary is a cell's test.
+    _snap = tomllib.loads((ROOT / ".config" / "live-peer-resolved-rows.toml").read_text())
+    _host_cells = runtime_cells()
+    _rec = in_runner(_host_cells, sorted(
+        e["cell"] for e in load_ledger(read_ledger(
+            ROOT / ".config" / "interop-verdicts.toml", required=True))
+        if e.get("verdict") == "pass"), "host")
+    _all = set(host_workspace_fixtures_for(_host_cells, _rec))
+    _missing = sorted({r for rows in _snap.values() for r in rows} - _all)
+    assert not _missing, (
+        f"selftest: the host derivation drops row(s) a green live-peer run resolved "
+        f"(.config/live-peer-resolved-rows.toml): {_missing}")
+    for _bin, _rows in sorted(_snap.items()):
+        _ids = [c for c in _rec if any(x["id"] == c and x["test"] == _bin for x in _host_cells)]
+        if _ids:
+            _short = sorted(set(_rows) - set(host_workspace_fixtures_for(_host_cells, _ids)))
+            assert not _short, f"selftest: {_bin}'s own cells no longer derive {_short}"
+    # And a cell derives what it launches, not its coordinate's pair images:
+    # each lifecycle-pair cell resolves its rows by literal id, and must not
+    # pull in the talker/listener/service/action images of its (lang, rmw).
+    for _lp in [c for c in _host_cells if c["id"].startswith("native-lifecycle-pair-")]:
+        _got = set(host_workspace_fixtures_for(_host_cells, [_lp["id"]]))
+        assert _got == {"c-lifecycle-pair", "c-lifecycle-pair-xrce", "c-lifecycle-pair-cyclonedds",
+                        "cpp-lifecycle-pair", "cpp-lifecycle-pair-xrce",
+                        "cpp-lifecycle-pair-cyclonedds"}, (
+            f"selftest: {_lp['id']} derives {sorted(_got)}, not the six lifecycle-pair rows "
+            f"lifecycle_pair_interop launches (issue 3001)")
+
     # And the size of the whole host set, pinned so a rule that re-widens it
     # shows up here and not as a cancelled 350-min job. 97 on 2026-11-23,
-    # against 141 under the coordinate rule. Raise it deliberately when cells
-    # are added, with the new count.
+    # against 141 under the coordinate rule for leaves; 66 on 2026-11-27 once
+    # pair images were derived by name too (issue 3001), of which 39 were
+    # resolved in three green runs. Raise it deliberately when cells are
+    # added, with the new count.
     _real_cells = runtime_cells()
     _passing = in_runner(_real_cells, sorted(
         e["cell"] for e in load_ledger(read_ledger(
