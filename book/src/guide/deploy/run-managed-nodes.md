@@ -120,10 +120,10 @@ publishing on `/sensor/reading` while its node is not active: the message is dro
 - Subscriptions, services, clients, timers and `/rosout` are not gated: they
   work in every state.
 
-In C++, a publisher held as `rclcpp_lifecycle::LifecyclePublisher` still
-drops a message published inside `on_activate`: it starts sending only once
-`on_activate` has returned `SUCCESS`. Publish from a timer or callback that
-runs after activation instead.
+In C++, a publisher held as `rclcpp_lifecycle::LifecyclePublisher` behaves
+the same way: it opens before `on_activate` runs, so a message it publishes
+there goes out, and it closes again if `on_activate` does not return
+`SUCCESS`.
 
 ## One boot state per image
 
