@@ -126,6 +126,9 @@ pub mod sizing_descriptor;
 // recomputes it. Replaces the mtime comparison that fired on every rebase.
 pub(crate) mod configure_stamp;
 mod file_lock;
+/// phase-569 W4d — the interface types a workspace reaches, for `nros
+/// interface` and the completion cache.
+pub mod interface_index;
 pub mod interface_package;
 /// phase-581 W1 (RFC-0140 D4/D5) — the merged configuration catalog: core's
 /// registry plus each package's `nros-knobs.toml`, built in memory, and the

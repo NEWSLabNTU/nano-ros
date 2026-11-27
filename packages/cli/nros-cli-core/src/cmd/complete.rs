@@ -84,6 +84,19 @@ pub fn extension_verbs() -> Vec<CompletionCandidate> {
     )
 }
 
+/// The interface types the workspace reaches, from the completion cache. No
+/// cache, no names: listing them reads the whole ament environment, which no
+/// completer may do.
+pub fn interface_types() -> Vec<CompletionCandidate> {
+    sorted(
+        cached()
+            .map(|c| c.interfaces)
+            .unwrap_or_default()
+            .into_iter()
+            .map(CompletionCandidate::new),
+    )
+}
+
 /// The workspace's packages, from the completion cache. No cache, no names.
 pub fn packages() -> Vec<CompletionCandidate> {
     sorted(
@@ -122,6 +135,10 @@ pub struct Cache {
     /// with its summary.
     #[serde(default)]
     pub commands: Vec<(String, String)>,
+    /// The interface types the workspace reaches, as `nros interface show`
+    /// names them (phase-569 W4d). A cache written before it reads as none.
+    #[serde(default)]
+    pub interfaces: Vec<String>,
 }
 
 /// Where `workspace`'s completion cache lives.
@@ -379,6 +396,35 @@ mod tests {
         c.search_path.push("/another/root".into());
         write_cache(leaf.path(), &c).unwrap();
         assert_eq!(cached_in(leaf.path()), None);
+    }
+
+    /// phase-569 W4d: interface types come from the cache, and a cache
+    /// written before the field existed reads as none rather than failing.
+    #[test]
+    fn interface_types_round_trip_and_an_older_cache_has_none() {
+        let leaf = tempfile::tempdir().unwrap();
+        std::fs::write(
+            leaf.path().join("system.toml"),
+            "[image.linux]\nboard = \"linux\"\n",
+        )
+        .unwrap();
+        let key = search_key(leaf.path()).unwrap();
+        let c = Cache {
+            schema: CACHE_SCHEMA,
+            search_path: key.clone(),
+            interfaces: vec!["std_msgs/msg/String".into()],
+            ..Cache::default()
+        };
+        write_cache(leaf.path(), &c).unwrap();
+        assert_eq!(
+            cached_in(leaf.path()).map(|c| c.interfaces),
+            Some(vec!["std_msgs/msg/String".to_string()])
+        );
+        let older = serde_json::json!({
+            "schema": CACHE_SCHEMA, "search_path": key, "images": [], "packages": [], "rmws": [],
+        });
+        let read = accept(&serde_json::to_vec(&older).unwrap(), &key).expect("still read");
+        assert!(read.interfaces.is_empty());
     }
 
     #[test]

@@ -50,7 +50,10 @@ pub struct ListArgs {
 #[derive(Debug, ClapArgs)]
 pub struct ShowArgs {
     /// The type, as `<package>/<msg|srv|action>/<Name>`.
-    #[arg(value_name = "TYPE")]
+    #[arg(
+        value_name = "TYPE",
+        add = clap_complete::ArgValueCandidates::new(crate::cmd::complete::interface_types)
+    )]
     pub type_name: String,
     /// Workspace whose `src/` is searched first. Defaults to the current
     /// directory.
@@ -75,21 +78,7 @@ pub fn run(args: Args) -> Result<()> {
 }
 
 fn load_index(workspace: Option<&Path>) -> Result<AmentIndex> {
-    let ws = match workspace {
-        Some(w) => w.to_path_buf(),
-        None => std::env::current_dir().wrap_err("resolving cwd")?,
-    };
-    let mut index = AmentIndex::from_path_string("")?;
-    let src = ws.join("src");
-    for dir in [src.as_path(), ws.as_path()] {
-        if dir.is_dir()
-            && let Ok(local) = AmentIndex::from_directory(dir)
-        {
-            index.merge(local);
-        }
-    }
-    index.merge(cargo_nano_ros::load_index_with_fallback(false)?);
-    Ok(index)
+    crate::interface_index::load(workspace)
 }
 
 /// `ros2 interface list`'s layout: a heading per kind, one indented
