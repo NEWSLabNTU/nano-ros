@@ -8,7 +8,8 @@
 //! `workspace-zephyr-c-realtime-smp-sntp-resync`) and asserts that every role
 //! the image has got a floor: the main thread, the sched task, and the SNTP
 //! re-sync thread (issue 2846's 64-bit half). The floors are upper bounds
-//! (RFC-0143 narrows them); what this pins is that the walk completes.
+//! (RFC-0143 narrows them); what this pins is that the walk completes, and
+//! that every linked C TU is typed (issue 2998).
 
 use nros_tests::{
     fixtures::{RequireFixture, build_zephyr_workspace_c_realtime_smp_sntp_resync_report},
@@ -37,6 +38,14 @@ fn every_role_of_an_aarch64_zephyr_image_gets_a_floor() {
     );
     let refused = report["refused"].as_array().expect("`refused` is a list");
     assert!(refused.is_empty(), "no role refused: {refused:?}");
+    // Issue 2998: every linked C TU is typed. clang rejects GCC's
+    // `-mabi=lp64` on aarch64, which once left 4 of 387 typed; the walk now
+    // drops it, as GCC's own default.
+    let typing = &report["c_typing"];
+    let linked = typing["linked"].as_u64().expect("`c_typing.linked`");
+    let typed = typing["typed"].as_u64().expect("`c_typing.typed`");
+    assert!(linked > 0, "the image links C: {typing}");
+    assert_eq!(typed, linked, "every linked C TU is typed: {typing}");
     let roles = report["roles"].as_object().expect("`roles` is an object");
     for role in ["OPEN", "TASK_HIGH", "SNTP_RESYNC"] {
         let r = roles

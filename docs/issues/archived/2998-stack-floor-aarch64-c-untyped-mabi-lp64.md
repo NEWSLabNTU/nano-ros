@@ -1,7 +1,9 @@
 ---
 id: 2998
 title: "The stack-floor walk types almost no C on aarch64: clang rejects GCC's `-mabi=lp64`, so 370 of 374 TUs keep the coarsest binding"
-status: open
+status: resolved
+resolved: 2026-11-27
+resolved_in: "the change that adds this line"
 type: bug
 severity: medium
 area: [stack-floor, tooling, zephyr]
@@ -47,3 +49,35 @@ TU count.
 On the `workspace-zephyr-c-realtime-smp-sntp-resync` fixture, the typed C
 TU count is near the linked count, and `-mabi=ilp32` (which changes the
 ABI) is still refused rather than dropped.
+
+## Fixed (2026-11-27)
+
+The class, not the flag. Each distinct GCC target-flag set is probed once
+(`clang_target_flag_drops`): a flag clang rejects for the target is dropped
+only when it is a no-op for GCC itself, i.e. GCC predefines the same
+ABI-fixing macros (`__SIZEOF_*__`, `__LP64__`/`__ILP32__`, char and wchar
+signedness, the Arm PCS and FP macros, RISC-V float ABI and xlen, byte
+order) with and without it. Otherwise it is kept and the TU stays untyped,
+with the reason in the walk's note. Comparing GCC against clang instead
+does not work: the two spell `__ARM_FP` and `__WCHAR_UNSIGNED__`
+differently whatever the flags.
+
+Probed with the real aarch64-zephyr-elf GCC (zephyr-sdk 0.16.9) and clang:
+`-mabi=lp64` is dropped; `-mabi=ilp32` is kept (it changes `long`,
+`__LP64__`, `__ILP32__`).
+
+Measured on the `workspace-zephyr-c-realtime-smp-sntp-resync` fixture
+(host 133):
+
+| | before | after |
+| --- | ---: | ---: |
+| C TUs typed | 4 of 387 | 387 of 387 |
+| C sites typed by clang | 0 | 333 |
+| sites bound to every function C can hold | 370 | 37 |
+| OPEN floor | 169,368 B | 133,992 B (-21 %) |
+| SNTP_RESYNC floor | 173,592 B | 133,008 B (-23 %) |
+| TASK_HIGH floor | 172,744 B | 138,904 B (-20 %) |
+
+`report.json` gains `c_typing` (`{linked, typed, dropped_flags}`), and
+`tests/zephyr_stack_floor_aarch64.rs` asserts `typed == linked` on that
+fixture. The floors are still upper bounds; the rest is RFC-0143's.
