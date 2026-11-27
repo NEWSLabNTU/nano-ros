@@ -44,6 +44,9 @@ name = "xrce-agent"
 path = "third-party/xrce/agent"
 upstream = "eProsima/Micro-XRCE-DDS-Agent"
 base = "v2.4.3"
+# The release lines `scripts/xrce-agent/build.sh` builds for a ROS-paired agent
+# (`nano-ros-<version>`, chosen by the ROS install's Fast-CDR major).
+patch_lines = ["nano-ros-2.4.3", "nano-ros-2.4.2"]
 # Issue 2978. On the NEWSLabNTU organisation, not the maintainer's account:
 # an exception to issue 2327's ruling, decided by the user on 2026-11-27.
 # The one patch drops a relayed sample whose DATA submessage is over 65,535

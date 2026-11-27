@@ -83,23 +83,33 @@ if ros_prefix="$(nros_ros_fastdds_prefix)"; then
     else
         agent_ref="v2.4.2"
     fi
+    # Issue 2978 — the agent is built from OUR FORK's patch line for that
+    # release, never from eProsima's bare tag: upstream lacks the fix that
+    # drops a relayed sample over 65,535 bytes instead of wedging the client.
+    # The fork is the submodule's URL (.gitmodules); a release's patch line is
+    # `nano-ros-<version>` (forks.toml's xrce-agent row lists them). Pins move
+    # forward only, so a v2.4.2 build cannot come from the v2.4.3 submodule
+    # checkout: shallow-clone the line.
+    agent_url="$(git -C "$REPO_ROOT" config -f .gitmodules submodule.third-party/xrce/agent.url)"
+    agent_branch="nano-ros-${agent_ref#v}"
     PAIRED_DIR="$BUILD_DIR/ros-paired"
     stamp="$PAIRED_DIR/.stamp"
-    want="$agent_ref $ros_prefix logger=$logger_profile"
+    want="$agent_branch $agent_url $ros_prefix logger=$logger_profile"
     if [ -x "$BUILD_DIR/MicroXRCEAgent" ] && [ -f "$stamp" ]         && [ "$(cat "$stamp" 2>/dev/null)" = "$want" ]; then
-        echo "ROS-paired Micro-XRCE-DDS Agent up to date ($agent_ref against $ros_prefix, logger=$logger_profile)"
+        echo "ROS-paired Micro-XRCE-DDS Agent up to date ($agent_branch against $ros_prefix, logger=$logger_profile)"
         exit 0
     fi
-    echo "Building ROS-paired Micro-XRCE-DDS Agent $agent_ref against $ros_prefix ..."
+    echo "Building ROS-paired Micro-XRCE-DDS Agent $agent_branch against $ros_prefix ..."
     mkdir -p "$PAIRED_DIR"
     src="$PAIRED_DIR/src"
-    if [ ! -f "$src/CMakeLists.txt" ]; then
-        # The in-tree submodule is PINNED (v2.4.3) and pins move forward only,
-        # so a v2.4.2 build cannot come from it — shallow-clone the tag.
-        git clone --depth 1 --branch "$agent_ref"             https://github.com/eProsima/Micro-XRCE-DDS-Agent "$src"         || { echo "clone failed (offline?) — falling back to the bundled agent" >&2; src=""; }
-    elif ! git -C "$src" describe --tags 2>/dev/null | grep -q "$agent_ref"; then
+    if [ -f "$src/CMakeLists.txt" ] \
+        && [ "$(git -C "$src" rev-parse --abbrev-ref HEAD 2>/dev/null)" != "$agent_branch" ]; then
+        # An earlier checkout of another line (or of upstream's tag).
         rm -rf "$src"
-        git clone --depth 1 --branch "$agent_ref"             https://github.com/eProsima/Micro-XRCE-DDS-Agent "$src"         || { echo "clone failed (offline?) — falling back to the bundled agent" >&2; src=""; }
+    fi
+    if [ ! -f "$src/CMakeLists.txt" ]; then
+        git clone --depth 1 --branch "$agent_branch" "$agent_url" "$src" \
+            || { echo "clone of $agent_branch failed (offline?) — falling back to the bundled agent" >&2; src=""; }
     fi
     if [ -n "$src" ] && [ -f "$src/CMakeLists.txt" ]; then
         # The prefix is named to cmake, because detection read it from
@@ -117,7 +127,7 @@ if ros_prefix="$(nros_ros_fastdds_prefix)"; then
         chmod 0755 "$tmp"
         mv -f "$tmp" "$BUILD_DIR/MicroXRCEAgent"
         printf '%s' "$want" > "$stamp"
-        echo "Published ROS-paired agent: $BUILD_DIR/MicroXRCEAgent ($agent_ref, zero Fast-DDS skew, logger=$logger_profile)"
+        echo "Published ROS-paired agent: $BUILD_DIR/MicroXRCEAgent ($agent_branch, zero Fast-DDS skew, logger=$logger_profile)"
         exit 0
     fi
 fi

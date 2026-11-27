@@ -281,10 +281,16 @@ fn an_oversized_relayed_sample_is_dropped_and_the_stream_goes_on(xrce_listener_b
         }
     };
 
-    let listener_output = listener.collect_until(
+    // Every small sample, or whatever had arrived when the wait ran out: an
+    // unpatched agent stops the stream after the first.
+    let listener_output = match listener.wait_for_output_count(
         nros_tests::output::LISTENER_LOG_PREFIX,
+        1 + AFTER,
         Duration::from_secs(15),
-    );
+    ) {
+        Ok(out) => out,
+        Err(e) => format!("{e}"),
+    };
     ros2_publisher.kill();
     listener.kill();
     let agent_output = agent.output();
