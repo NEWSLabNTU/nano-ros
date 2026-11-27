@@ -109,6 +109,52 @@ The listener in the measurements above also hung at `close` after a run in
 which nothing arrived (65,400 and 65,535 bytes against a 17 KiB receive
 buffer); not investigated here.
 
+## A relayed sample wedges the Agent (2026-11-27)
+
+The "still open" case above was measured on host 241. A ROS 2 publisher on DDS
+(rclpy, `rmw_cyclonedds_cpp`, raw CDR samples on a `std_msgs/Int32` topic) was
+relayed by the SDK store's Agent 2.4.3 to the `stress-xrce` listener at main
+`5067703e37`, built with the settings in Reproduce below. Five samples per size:
+
+| data bytes | listener |
+| --- | --- |
+| 16,000 | 5 received, 16,004 bytes each (whole, with the 4-byte CDR header) |
+| 65,000 | 5 received, 65,004 bytes each |
+| 65,531, 65,532 | none |
+| 70,000, 140,000 | none |
+
+**No cut sample reaches nano-ros.** Its receive path never sees a wrapped
+length, because the sample never leaves the Agent:
+
+- The Agent's reliable output stream fragments an oversized submessage in
+  `ReliableOutputStream::push_submessage`
+  (`include/uxr/agent/client/session/stream/OutputStream.hpp`). It counts the
+  bytes sent so far in a `uint16_t serialized_size` and loops while
+  `serialized_size < submessage_size`. Above 65,535 bytes the counter wraps,
+  so the loop does not end where it should. The submessage header's own
+  length is also cast to `uint16_t` there.
+- The threshold fits: a data payload of 65,531 bytes is a 65,539-byte DATA
+  submessage (4-byte subheader, 4-byte object request), the first over 65,535.
+- **The Agent then stops serving that client.** Samples of 1,000, 70,000,
+  1,000 bytes: the first arrived, and nothing after it did, the small ones
+  included. The Agent process sat at about 300 MiB resident and 55 to 71 % of
+  a core until it was killed.
+
+So one oversized sample from any DDS publisher on a relayed topic cuts off
+every XRCE client of that Agent session, and costs the Agent host a core.
+That is worse than the cut sample this issue was filed for, and it is
+upstream's: eProsima's `master` and `develop` have the same `uint16_t`
+counter (checked 2026-11-27; the latest release is v3.0.2).
+
+**What a fix needs now.**
+- The Agent: refuse a DATA submessage whose serialized size exceeds 65,535
+  bytes, dropping that sample with a log line, instead of fragmenting it. That
+  is a patch on the SDK's Agent build, a new Agent release in the SDK index,
+  and a report upstream.
+- The nano-ros receive-side check this issue asked for can never fire with
+  this Agent. It would matter only for an Agent that fragments correctly and
+  still wraps the header length.
+
 ## Reproduce
 
 ```
