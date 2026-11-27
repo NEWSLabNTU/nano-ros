@@ -206,6 +206,29 @@ the morning triage, so a lane cannot sit red-without-a-verdict for a week again.
 
 Acceptance: the report runs daily and names such a lane.
 
+### W9 -- a test's wait fits its nextest kill (static check)
+
+- **Status:** OPEN (added 2026-11-27, from issue 2825's class half).
+
+A test whose own wait outlasts nextest's kill is killed mid-wait. Issue 2825's
+fix makes such a kill print the fixture output the test had read, so the
+verdict is no longer a bare TIMEOUT. But nothing checks the fit itself:
+tier 2 lost a night to a 90 s boot wait under a 60 s kill. nextest cannot
+answer it (0.9.99's `show-config` resolves no per-test timeout). What is
+needed:
+- a resolver of `.config/nextest.toml`'s `[[profile.*.overrides]]` (first
+  match per setting, the filterset subset this repo uses) over
+  `cargo nextest list --message-format json`, giving each test's effective
+  slow-timeout x terminate-after;
+- a DECLARED per-test wait budget it can compare against (the long-wait
+  helpers' timeouts made declarative, not scanned as literals);
+- a check, in a lane that builds the test list, that refuses a test whose
+  budget is not under its kill. Its negative control is issue 2825's
+  `zephyr_cortex_m_qemu` before its 180 s row.
+
+Acceptance: the check runs in a build lane, and it measures the eleven
+binaries issue 2825 lists (fixing or clearing each).
+
 ## Order
 
 W1, W2 and W3 first (the largest gains; W2's rule and W3's first half already landed). Then W4,

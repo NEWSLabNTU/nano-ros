@@ -1215,7 +1215,7 @@ impl ManagedProcess {
                 && n > 0
             {
                 crate::capture::append(&mut output, &buf[..n]);
-                crate::capture::append(&mut out_text, &buf[..n]);
+                crate::capture::append_copy(&mut out_text, &buf[..n]);
                 got_data = true;
             }
             if let Some(ref mut err) = stderr
@@ -1223,7 +1223,7 @@ impl ManagedProcess {
                 && n > 0
             {
                 crate::capture::append(&mut output, &buf[..n]);
-                crate::capture::append(&mut err_text, &buf[..n]);
+                crate::capture::append_copy(&mut err_text, &buf[..n]);
                 got_data = true;
             }
 
