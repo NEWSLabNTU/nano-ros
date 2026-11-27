@@ -1,11 +1,13 @@
 ---
 id: 3002
 title: "`nros config explain` searches the whole directory tree it runs in for platform packages, and one unreadable file there stops it"
-status: open
+status: resolved
 type: bug
 severity: medium
 area: [cli, ux]
 found: 2026-11-27
+resolved: 2026-11-27
+resolved_in: "fix-3002-cwd-not-a-workspace"
 ---
 
 ## What happens
@@ -52,3 +54,26 @@ A user who runs it from `$HOME` searches their whole home directory.
   `resolve_ladder`).
 - Found by the book's CLI sweep (2026-11-27), while checking
   "Tune throughput and latency"'s `nros config explain` output.
+
+## Fix (2026-11-27)
+
+One rule decides whether the current directory is a workspace,
+`image_facts::enclosing_workspace`. It accepts the nearest ancestor whose
+`src/` holds a bringup. It also accepts the directory itself when it holds a
+`system.toml` (a leaf) or when its `src/` holds a package (`package.xml`,
+`Cargo.toml` or a platform descriptor; `nros new platform` scaffolds no
+`package.xml`).
+- `config explain` searches the workspace rung only when that rule finds a
+  workspace (or `--workspace` names one). Elsewhere it searches nano-ros's
+  own platforms and RMWs. `knob list` builds its catalog the same way:
+  outside a workspace, from the nano-ros packages alone, never from the
+  current directory.
+- The completion cache reader and `rmw_index::for_dir` each spelled a
+  narrower form of the same rule; both call the helper now.
+
+Negative control, from a directory holding a broken `nros-platform.toml` two
+levels down: a binary from main exits 1 with the load error naming that file;
+the fix exits 0 and never names it
+(`config_explain_workspace_platform::outside_a_workspace_nothing_below_the_directory_is_read`).
+The porter's case keeps working: a workspace holding only a scaffolded
+platform package is still searched (`a_scaffolded_platform_explains_from_its_workspace`).

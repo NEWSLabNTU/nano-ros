@@ -129,6 +129,35 @@ pub fn workspace_root_from(start: &std::path::Path) -> Option<PathBuf> {
     None
 }
 
+/// The workspace `dir` is in: the nearest ancestor whose `src/` holds a
+/// bringup; else `dir` itself when it holds a `system.toml` (a single-package
+/// leaf) or is a colcon workspace (its `src/` holds a package -- a `package.xml`, `Cargo.toml`
+/// or platform descriptor -- such as a porter's platform package with no
+/// bringup yet). `None` when `dir` is in
+/// no workspace.
+///
+/// Issue 3002 -- a verb whose `--workspace` defaults to "here" asks this
+/// rather than taking the current directory as a workspace: from `/tmp` or
+/// `$HOME` that walked every package left there.
+pub fn enclosing_workspace(dir: &std::path::Path) -> Option<PathBuf> {
+    if let Some(ws) = workspace_root_from(dir) {
+        return Some(ws);
+    }
+    let leaf = dir.join("system.toml").is_file();
+    let colcon = std::fs::read_dir(dir.join("src"))
+        .map(|es| {
+            es.flatten().any(|e| {
+                // A package by any of the manifests a workspace package has:
+                // `nros new platform` scaffolds no `package.xml`.
+                ["package.xml", "Cargo.toml", "nros-platform.toml"]
+                    .iter()
+                    .any(|m| e.path().join(m).is_file())
+            })
+        })
+        .unwrap_or(false);
+    (leaf || colcon).then(|| dir.to_path_buf())
+}
+
 /// The workspace a facts query answers for, from where it was asked.
 ///
 /// Issue 2862 -- the root is `model_location::workspace_root`, the one rule
@@ -565,6 +594,33 @@ mod tests {
         assert_eq!(
             got.map(|p| p.canonicalize().unwrap()),
             Some(ws.canonicalize().unwrap())
+        );
+    }
+
+    /// Issue 3002 -- a directory holding only leftovers is no workspace; a
+    /// leaf, a colcon workspace and a bringup workspace are.
+    #[test]
+    fn enclosing_workspace_is_none_for_a_directory_of_leftovers() {
+        let junk = tempfile::tempdir().unwrap();
+        let deep = junk.path().join("a/nros-platform-x");
+        std::fs::create_dir_all(&deep).unwrap();
+        std::fs::write(deep.join("nros-platform.toml"), "").unwrap();
+        assert_eq!(enclosing_workspace(junk.path()), None);
+
+        let leaf = tempfile::tempdir().unwrap();
+        std::fs::write(leaf.path().join("system.toml"), "").unwrap();
+        assert_eq!(
+            enclosing_workspace(leaf.path()).as_deref(),
+            Some(leaf.path())
+        );
+
+        let colcon = tempfile::tempdir().unwrap();
+        let p = colcon.path().join("src/nros-platform-acmeos");
+        std::fs::create_dir_all(&p).unwrap();
+        std::fs::write(p.join("package.xml"), "<package/>").unwrap();
+        assert_eq!(
+            enclosing_workspace(colcon.path()).as_deref(),
+            Some(colcon.path())
         );
     }
 }

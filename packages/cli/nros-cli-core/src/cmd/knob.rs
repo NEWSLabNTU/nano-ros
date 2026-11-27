@@ -179,7 +179,20 @@ pub fn run(args: Args) -> Result<()> {
 pub fn workspace_catalog(workspace: Option<&std::path::Path>) -> Result<Catalog> {
     let ws = match workspace {
         Some(w) => w.to_path_buf(),
-        None => std::env::current_dir()?,
+        // Issue 3002: the workspace the current directory is in, or none --
+        // never the current directory itself, which from `/tmp` or `$HOME`
+        // walked every package left there.
+        None => {
+            let cwd = std::env::current_dir()?;
+            match crate::cmd::image_facts::enclosing_workspace(&cwd) {
+                Some(ws) => ws,
+                None => {
+                    let path = crate::cmd::ws::provider_search_path_without_sources(&cwd);
+                    let scan = cargo_nano_ros::provider_scan::scan_search_path(&path)?;
+                    return crate::knob_catalog::build_workspace(&scan.providers, Some(&scan));
+                }
+            }
+        }
     };
     let ws = ws.canonicalize().unwrap_or(ws);
     let scan = crate::cmd::ws::sync_provider_scan(&ws, &[], None)?;

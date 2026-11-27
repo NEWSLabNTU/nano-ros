@@ -82,3 +82,28 @@ fn without_the_workspace_the_platform_stays_unknown() {
     let out = explain(elsewhere.path(), &[]);
     assert!(!out.status.success());
 }
+
+/// Issue 3002 -- from a directory that is no workspace, the search reads none
+/// of the platform packages left below it: a broken `nros-platform.toml` two
+/// levels down (as test runs leave in `/tmp`) neither stops the command nor
+/// appears in its output, and the SDK's own platforms still resolve.
+#[test]
+fn outside_a_workspace_nothing_below_the_directory_is_read() {
+    let junk = tempfile::tempdir().unwrap();
+    let pkg = junk.path().join("leftover/nros-platform-broken");
+    std::fs::create_dir_all(&pkg).unwrap();
+    std::fs::write(pkg.join("nros-platform.toml"), "[[ not toml").unwrap();
+    let out = Command::new(nros())
+        .args(["config", "explain", "--platform", "posix"])
+        .current_dir(junk.path())
+        .env_remove("NROS_PLATFORMS_DIR")
+        .output()
+        .expect("run nros config explain");
+    let all = format!(
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(out.status.success(), "{all}");
+    assert!(!all.contains("nros-platform-broken"), "{all}");
+}
