@@ -39,14 +39,14 @@ pub const STATEMENTS: &[StatementRow] = &[
         key: "node_name",
         carrier: Some("NROS_ENTRY_NODE_NAME"),
         kconfig: None,
-        help: Some("The launch-declared node name, baked in the boot blob. Overridden at run time by NROS_NODE_NAME."),
+        help: Some("The launch-declared node name, baked in the boot blob. NROS_NODE_NAME renames the node at run time only in an image that states one node; otherwise it is ignored with a notice."),
         retired_spellings: &[],
     },
     StatementRow {
         key: "node_namespace",
         carrier: None,
         kconfig: None,
-        help: Some("The launch-declared node namespace, baked in the boot blob. Overridden at run time by NROS_NODE_NAMESPACE."),
+        help: Some("The launch-declared node namespace, baked in the boot blob. NROS_NODE_NAMESPACE overrides it at run time, for every node of the image."),
         retired_spellings: &[],
     },
     StatementRow {
