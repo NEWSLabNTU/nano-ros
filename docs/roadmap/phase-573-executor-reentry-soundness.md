@@ -321,7 +321,7 @@ without `alloc`; every derived backing size (the C and C++ sizes headers,
 `NROS_EXECUTOR_BACKING_U64S`, the Zephyr arena pairing) moves with
 `ExecutorSizing::u64_len`, and a C executor's does not.
 
-**Planned design (2026-11-27, revised after nros 133's review on #4995).**
+**Design (2026-11-27; reviewed by nros 133 on #4995; Heap retirement ruled by the user the same day).**
 
 - **Sizing: a derived fact, never a default.** `ExecutorSizing` gains
   `session: usize`, 0 or 1: the owned-session slots its backing carves. It
@@ -343,8 +343,8 @@ without `alloc`; every derived backing size (the C and C++ sizes headers,
   - Dropping is keyed on the store's VARIANT (`Carved`), never on
     `sizing.session`. A borrowing executor whose sizing happens to carry a slot
     leaves it unused and never drops through it.
-- **`Heap`: retire it in W6.** That is 133's recommendation, pending the
-  user's ruling. Only an
+- **`Heap` is retired in W6.** User ruling 2026-11-27 (option A, on 133's
+  recommendation). Only an
   `alloc` build with no carved slot reaches it, and `Owned` plus a refusing
   `session_handle` already covers that, so after W6 there is one owned
   shared path in every build.
