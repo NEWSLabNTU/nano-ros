@@ -182,3 +182,7 @@ Two things the run needed:
   at Zephyr's 1,024 B default: a Data Abort at its second round, which halted
   the image. The twin fragment now states a 4,096 B analyzer stack.
 
+**Re-measured (2026-11-28, issue 3015).** Taken again on Zephyr's own run
+line with no icount (an SMP twin no longer uses it): 2,256, 2,256 and 2,272 B
+over three runs. The row now keeps 2,272 B, and the knob help says so.
+

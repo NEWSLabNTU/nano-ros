@@ -1412,7 +1412,7 @@ config NROS_CLOCK_SNTP_RESYNC_STACK_BYTES
       thread analyzer:
       - 32-bit (mps2-an385, Cortex-M3): 1,160 B with the server named by hostname
         (DNS lookup included), 888 B with a numeric address.
-      - 64-bit Arm (qemu_cortex_a53, SMP): 2,192 B with the server named by
+      - 64-bit Arm (qemu_cortex_a53, SMP): 2,272 B with the server named by
         hostname.
       - 64-bit Arm, a consumer image: 7,024 B in its own re-sync thread around
         the same SNTP query, where 4,096 B overflowed.

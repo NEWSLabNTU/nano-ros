@@ -106,3 +106,5 @@ one image, not the class.
   under which this 2-CPU guest loses its session over slirp. That is
   issue 3015's, and the image's comment now says so.
 
+
+**Update (2026-11-28):** issue 3015 is fixed. An SMP twin now runs without icount, so the 2846 image dropped its `[run] method = "qemu"`, and every acceptance item here is met.

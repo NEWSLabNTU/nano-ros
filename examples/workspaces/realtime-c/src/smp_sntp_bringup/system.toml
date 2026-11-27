@@ -137,16 +137,6 @@ stack_floor_image = "smp_sntp_bringup@zephyr_smp_sntp_resync"
 os_config = ["prj-zenoh.conf"]
 panic = "platform"
 
-# Run on the descriptor's QEMU line, not Zephyr's own (`west build -t run`).
-# The stack-floor twin turns CONFIG_QEMU_ICOUNT on for repeatable runs, and
-# Zephyr's line then fixes `-icount shift=4`: on this 2-CPU guest, guest time
-# runs ahead of the host's, so a networked run over slirp loses its session
-# (the connect's 1 s bound, then a 5 s write timeout) and never reaches the
-# SNTP and DNS stand-ins (measured on host 139, 2026-11-28). The
-# descriptor's line uses `-icount shift=auto`, which connected and re-synced.
-[image.zephyr_smp_sntp_resync.run]
-method = "qemu"
-
 [image.zephyr_smp_sntp_resync.knobs.zenoh]
 socket_timeout_ms = 5
 

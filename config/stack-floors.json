@@ -150,8 +150,8 @@
     {
       "image": "smp_sntp_bringup@zephyr_smp_sntp_resync",
       "issue": "2846",
-      "method": "QEMU qemu_cortex_a53 SMP (2 cpus) under icount, on the descriptor's QEMU line with the e1000 on QEMU's user network (the image's `[run] method = \"qemu\"`; Zephyr's own run line needs a TAP, issue 3014), thread analyzer peak of the `nros_sntp_resync_tid` thread, 2026-11-28. Taken by the twin lane, `python3 scripts/stack-floor-twin.py --only smp_sntp_bringup@zephyr_smp_sntp_resync --seconds 120`, which builds the image with the twin fragment (analyzer, INIT_STACKS, a 4 KiB analyzer thread stack) and starts the router and the row's `twin_peers`: an SNTP responder on udp 12399 and a DNS responder on udp 15353 answering 10.0.2.2, so the hostname server `ntp.nros.test` goes through Zephyr's resolver. 230 SNTP and 460 DNS answers, 24 analyzer rounds, peak 2,192 of 8,192 B; a second run (same counts) peaked at 2,112 B, so the row keeps the higher.",
-      "peak": 2192,
+      "method": "QEMU qemu_cortex_a53 SMP (2 cpus) on Zephyr's own run line with the e1000 on QEMU's user network (the board's CONFIG_NET_QEMU_USER, issue 3014) and NO icount: an SMP twin runs without it (issue 3015), because no fixed `-icount shift` gave runs that agree or a session that holds. Thread analyzer peak of the `nros_sntp_resync_tid` thread, taken by the twin lane, `python3 scripts/stack-floor-twin.py --only smp_sntp_bringup@zephyr_smp_sntp_resync --seconds 120`, which builds the image with the twin fragment (analyzer, INIT_STACKS, a 4 KiB analyzer thread stack) and starts the router and the row's `twin_peers`: an SNTP responder on udp 12399 and a DNS responder on udp 15353 answering 10.0.2.2, so the hostname server `ntp.nros.test` goes through Zephyr's resolver. Three runs on 2026-11-28: peaks 2,256, 2,256 and 2,272 B (228-229 SNTP and 456-458 DNS answers each); the row keeps the highest. First taken on the descriptor's QEMU line under `-icount shift=auto`: 2,192 and 2,112 B.",
+      "peak": 2272,
       "rmw": "zenoh",
       "role": "SNTP_RESYNC",
       "shape": {
