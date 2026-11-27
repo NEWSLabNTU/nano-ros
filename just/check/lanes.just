@@ -4097,7 +4097,7 @@ cpp-headers:
     echo "  - rclcpp::Executor: a move FAILS, naming the deleted move"
     f="packages/api/nros-cpp/tests/compile/executor_move_probe.cpp"; \
     test -f "$f" || { echo "ERROR: $f is MISSING -- this check passes on absence." >&2; exit 1; }; \
-    if c++ -fsyntax-only -std=c++14 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
+    if "$_cxx" -fsyntax-only -std=c++14 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
            -I"$cppgen" -I"$cgen" \
            -Ipackages/api/nros-cpp/include -Ipackages/api/nros-c/include \
            -Ipackages/platform/nros-platform-api/include "$f" 2>"tmp/executor-move.log"; then \
