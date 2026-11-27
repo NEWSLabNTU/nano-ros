@@ -10,7 +10,8 @@ takes, the run and flash runners, and the diagnostic codes. You do not need
 to read the source or a list in this book to know what exists, and what the
 command lists is what the installed release has.
 
-Every list works the same way:
+`nros --help` lists these commands together, under "Find what nano-ros
+offers". Every list works the same way:
 
 - `nros <noun> list` prints one row per item;
 - `nros <noun> show <name>` prints one item in full, with a link to its page
@@ -109,6 +110,16 @@ A default that depends on the board is not a number in the list. Add
 `--platform <platform>` to `nros knob list` to see each value resolved for
 that platform, with where it came from.
 
+### See the build profiles
+
+```bash probe=3165 track=installed
+nros profile list
+```
+
+One row per profile an image can name, with the CMake build type it maps
+to. `nros profile show <name>` prints the cargo settings it defines, and
+[Build profiles](build-profiles.md) says which one to choose.
+
 ### See the runners
 
 ```bash probe=3170 track=installed
@@ -205,6 +216,25 @@ It prints the line that turns on completion, and the file it goes in. Name
 `zsh` or `fish` instead of `bash` for those shells, or name none to use the
 shell `$SHELL` names. With it, `nros rmw show <Tab>` offers the backends, `nros board
 show <Tab>` the board keys and `nros knob show <Tab>` the knobs.
+
+## If you know an older spelling
+
+Some of these commands had other names before. The old ones keep working,
+and on a terminal each prints one note naming the new one:
+
+| Older spelling | Now |
+| --- | --- |
+| `nros setup --list` | `nros toolchain list --available` |
+| `nros explain NROS-0003` | `nros code show NROS-0003` |
+| `nros config explain --platform <platform>` | `nros knob list --platform <platform>` |
+
+`nros list` and `nros package list` are the same command, with no note.
+`nros explain` still renders a generated plan file.
+
+`nros help --all` also lists the build-system tier: the commands CMake,
+west and the build recipes call, whose output the build reads. `nros --help`
+leaves them out, and you don't need them to find anything. Each one that
+answers a question above names the command to use instead in its `--help`.
 
 ## If a name is refused
 
