@@ -66,9 +66,9 @@ by the descriptor's own platform list, not by a list in `new.rs`.
 
 ### W2 — the knob catalog
 
-- **Status:** OPEN. W2a and W2b merged in #4267 (5f8c91ae5e, 2026-11-19);
-  W2c is open: no generated configuration reference or comparing gate on
-  main (audited 2026-11-26).
+- **Status:** DONE (2026-11-28). W2a and W2b merged in #4267
+  (5f8c91ae5e, 2026-11-19); W2c lands with the configuration reference
+  below.
 - **W2a, the catalog fields:** done. Each row authors `scope` and `class`
   (public, carrier, internal, retired; a carrier names what it `carries`).
   The generator derives `default` (the Kconfig `default` lines with their
@@ -85,12 +85,30 @@ by the descriptor's own platform list, not by a list in `new.rs`.
   name `NROS_*`, `CONFIG_*` or `ZPICO_*` spellings; `show` replaces every
   knob's spelling with its name. A conditional default is shown with each
   case, in words (`CONDITIONS`; a test refuses a condition with none).
-- **W2c, open:** the configuration reference generated from the rows, with
-  the gate that compares it to `nros knob list`; `gen-config-surface.py`
-  reading `class` from the rows (its prompt test now calls every knob
-  symbol "derived", because phase-484 W5b made them prompt-less);
-  `config explain` as an alias; the `surface` field handed to the
-  build-arguments refusal (nros 118).
+- **W2c, the reference and its gate:**
+  - `reference/configuration-surface.md` is now the configuration reference:
+    every public knob, with its `system.toml` spelling, values, default and
+    help, and no carrier spelling. `gen-config-surface.py` renders it from
+    `nros knob list --json` (core and built-in packages), so the page, `list`
+    and `show` share one rendering of defaults and help. It is COMMITTED,
+    like the CLI reference; it was gitignored and generated before mdbook.
+  - `just check config-surface` compares three pairs. The registry's public
+    rows, read from the TOML by `gen-knob-registry.py`'s loader, against the
+    page's knobs: no CLI needed, so it runs in every lane. The page against a
+    fresh render from this checkout's CLI: NOT VERIFIED when the CLI is
+    missing or stale. And every `zephyr/Kconfig` symbol is classified, with
+    none dead.
+  - The Kconfig classification takes a registry knob's `class` from its row
+    (85 symbols are knob twins: 84 public, 1 carrier). The prompt test applies
+    only to the symbols no row owns, so it no longer calls a knob "derived".
+  - `config explain --platform <p>` prints the `knob list --platform <p>`
+    table under its old header, and keeps `--get` (the cmake road's reader).
+    Its old table named each knob's environment carrier. Measured on main
+    before the change: both list the same 55 ladder knobs on zephyr and on
+    freertos.
+  - The `-D` refusal's remedy is the row's `surface`, and it names the knob
+    by its `system.toml` name rather than its environment spelling; a test
+    holds every row to that.
 - **Findings:** `memory.heap_bytes` and `memory.app_stack_bytes` are ladder
   knobs with no registry row; the FreeRTOS and ThreadX `*_KB` rows carry
   them.

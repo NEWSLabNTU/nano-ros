@@ -215,16 +215,23 @@ fn define_refusal_with(arg: &str, name: &str, knob_refusal_on: &[&str]) -> Optio
         knob_refusal_on.contains(&r.id)
             && (r.env == name || r.kconfig == name || r.legacy.contains(&name) || r.id == name)
     }) {
-        let (group, key) = row.image_key.split_once('.').unwrap_or((row.image_key, ""));
+        // phase-569 W2c (RFC-0133 D2): the remedy is the row's `surface`, the
+        // one spelling `nros knob show` prints, never a carrier spelling. A
+        // row with none is not user surface; its note says what to set.
+        let only_on = row
+            .only_on
+            .map(|(p, why)| format!(" (on {p} images only: {why})"))
+            .unwrap_or_default();
+        let remedy = match row.surface {
+            Some(s) => format!("set it in system.toml as `{s} = …`, its one committed place"),
+            None => nros_zephyr_build::not_public_note(row)
+                .unwrap_or_else(|| "not set directly".to_string()),
+        };
         return Some(refuse(
             arg,
             format!(
-                "`{name}` is the knob `{}`; set it in system.toml as \
-                 `[image.<id>.knobs.{group}] {key} = …`, its one committed place{}",
-                row.env,
-                row.only_on
-                    .map(|(p, why)| format!(" (on {p} images only: {why})"))
-                    .unwrap_or_default()
+                "`{name}` is the knob `{}`; {remedy}{only_on}",
+                row.image_key
             ),
         ));
     }
@@ -734,6 +741,35 @@ mod tests {
         for name in [row.env, row.kconfig, row.legacy[0]] {
             let r = define_refusal_with("-D", name, &[row.id]).expect("refused");
             assert!(r.reason.contains("[image.<id>.knobs."), "{name}: {r}");
+        }
+    }
+
+    /// phase-569 W2c: the remedy is the row's `surface`, the spelling `nros
+    /// knob show` prints, and the refusal never names a carrier spelling. A
+    /// row with no surface says what to set instead.
+    #[test]
+    fn the_remedy_is_the_rows_surface_and_names_no_carrier() {
+        for row in nros_zephyr_build::KNOBS.iter() {
+            let r = define_refusal_with("-D", row.env, &[row.id]).expect("refused");
+            match row.surface {
+                Some(s) => assert!(r.reason.contains(&format!("`{s} = …`")), "{}: {r}", row.id),
+                None => {
+                    let note = nros_zephyr_build::not_public_note(row)
+                        .expect("a non-public row has a note");
+                    assert!(r.reason.contains(&note), "{}: {r}", row.id)
+                }
+            }
+            let after = r.reason.split_once("; ").map_or("", |(_, rest)| rest);
+            assert!(
+                !after.contains(row.env),
+                "{}: the remedy names its carrier: {r}",
+                row.id
+            );
+            assert!(
+                !after.contains(&format!("CONFIG_{}", row.kconfig)) && !after.contains(row.kconfig),
+                "{}: the remedy names its Kconfig spelling: {r}",
+                row.id
+            );
         }
     }
 

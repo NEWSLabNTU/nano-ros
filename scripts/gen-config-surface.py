@@ -1,175 +1,278 @@
 #!/usr/bin/env python3
-"""Enumerate every configuration knob and say whether a USER may set it.
+"""Generate the configuration reference: every knob a project can state.
 
-Issue 0934. Surveying the config surfaces found one fact with as many as nine
-authorities -- the receive locator is settable through Kconfig, an env var, a
-cmake cache variable, a cmake function argument, a compile definition, a
-`system.toml` block, a Cargo manifest key and two runtime envs. Read as nine
-choices that is unusable. It is not nine choices.
+phase-569 W2c (RFC-0133 D2). The page lists every PUBLIC knob of the knob
+registry -- core's `packages/tooling/nros-zephyr-build/knobs.toml` and the
+in-tree packages' `nros-knobs.toml` -- with the one place a project states it
+(`[image.<id>.knobs.<group>] <name>`), the values it takes, its default and
+its help. It never prints an environment variable, a Kconfig symbol or a `-D`
+define: those carry a decision between build layers and are not where a user
+makes it.
 
-## The distinction this file exists to make
+## Where the facts come from
 
-Most of those are not places a user decides anything. They are CARRIERS: the
-mechanism by which one decision crosses a layer boundary. `-DNROS_RMW=zenoh` on
-a cmake command line is how the workspace function tells a cargo invocation what
-was already chosen in `system.toml`; it is plumbing that happens to be
-spellable.
+The page is rendered from `nros knob list --json`, the CLI that reads the
+registry compiled into it, so the page, `nros knob list` and `nros knob show`
+say the same thing in the same words (the CLI rewrites a help text's carrier
+spellings into knob names, and renders the conditional defaults; doing that a
+second time here would be a second implementation of both). The page is
+COMMITTED, like the CLI reference, and needs no CLI to read.
 
-So every knob is exactly one of:
+## The gate (`--check`)
 
-  public    a user MAY set this, and it is the place to set it
-  carrier   internal transport between layers; setting it by hand is at best
-            redundant and at worst a second authority that silently wins
-  dead      declared and read by nothing (delete, or wire)
+Three comparisons, each between two readers that could disagree:
 
-The value is not the list -- it is that the list is EXHAUSTIVE and every entry
-is classified FROM EVIDENCE. All 74 classify today, because the class follows
-from who reads the symbol rather than from someone's opinion of it.
+  rows      the registry's public in-tree rows, read here from the TOML by
+            `scripts/gen-knob-registry.py`'s loader, against the knobs the
+            committed page lists. Needs no CLI, so it runs in every lane: a
+            row that gains or loses `class = "public"` fails until the page
+            is regenerated.
+  cli       the page against a fresh render from this checkout's CLI. A
+            missing or stale CLI is NOT VERIFIED (`just check cli-fresh` owns
+            that), never a quiet pass.
+  kconfig   every `config NROS_*` in zephyr/Kconfig is classified, and none is
+            dead. A registry knob's Kconfig symbol takes the row's `class`
+            (the symbol carries that knob). Any other symbol is classified
+            from evidence: a prompt makes it public, a reader with no prompt
+            makes it derived, and a symbol nothing reads is dead.
 
-Two arms guard that, and they catch different things:
-
-  freshness   adding or removing a knob changes the page, so `--check` fails
-              until it is regenerated. The regenerated diff SHOWS the new
-              knob and its derived class -- a new dead knob is visible in
-              review rather than silent.
-  ratchet     `unclassified` is for a symbol whose readers do not match any
-              rule. Zero today; may only fall. This is the arm that fires when
-              the evidence is genuinely ambiguous, which is exactly when a
-              human should decide rather than the script guessing.
-
-## Why classification is curated rather than derived
-
-Whether a knob is public is a POLICY, not a fact recoverable from the source.
-`NROS_DOMAIN_ID` and `CONFIG_NROS_DOMAIN_ID` are read identically; what differs
-is that one is the documented surface and the other is how Zephyr states it.
-Deriving that from code would be inventing it. So the table below is authored,
-and the gate's job is to ensure it stays COMPLETE -- discovery is mechanical,
-judgement is written down.
-
-Run:  python3 scripts/gen-config-surface.py [--check] [--self-test]
+Run:  python3 scripts/gen-config-surface.py [--check | --stdout | --self-test]
+Gate: just check config-surface
 """
 
+from __future__ import annotations
+
+import json
 import os
 import re
+import subprocess
 import sys
+import tempfile
+import textwrap
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "scripts", "lib"))
-import git_grep  # noqa: E402  issue 1816 — a failed search is not "no match"
-# Where the page lives is the page map's answer (RFC-0123 D7), not this script's.
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "lib"))
-import book_pages  # noqa: E402
+sys.path.insert(0, os.path.join(ROOT, "scripts"))
+import git_grep  # noqa: E402  issue 1816 -- a failed search is not "no match"
+import book_pages  # noqa: E402  where the page lives is the page map's answer (RFC-0123 D7)
 
-OUT = str(book_pages.page_file("reference/configuration-surface.md"))
+PAGE = "reference/configuration-surface.md"
+NAME = "config-surface"
+OUT = str(book_pages.page_file(PAGE))
 KCONFIG = os.path.join(ROOT, "zephyr", "Kconfig")
 CMAKE_FORWARD = os.path.join(ROOT, "zephyr", "cmake", "nros_cargo_build.cmake")
+REGISTRY = os.path.join(ROOT, "packages", "tooling", "nros-zephyr-build", "knobs.toml")
+
+# The CLI names the provenance of a package knob: `built in` for an in-tree
+# package, a provider-scan root for anything the workspace found. The page is
+# the SDK's reference, so it lists core and the built-in packages only.
+BUILT_IN = (None, "built in")
+
+# A knob heading on the page. The rows check reads the page back through it.
+HEADING = re.compile(r"^### `([a-z0-9_]+\.[a-z0-9_.]+)`$", re.M)
+
 
 # --------------------------------------------------------------------------
-# Classification. Keyed by the FACT, not by the spelling, because the whole
-# point is that one fact has many spellings.
-#
-#   ssot     — the ONE place a user should state it
-#   carriers — spellings that transport that decision; never authored by hand
-#
-# A knob discovered below and absent from every entry here is UNCLASSIFIED and
-# fails `--check`.
+# The page
 # --------------------------------------------------------------------------
-FACTS = [
-    {
-        "fact": "RMW backend",
-        "ssot": "`[system].rmw` in the bringup's `system.toml`",
-        "carriers": [
-            "CONFIG_NROS_RMW_ZENOH", "CONFIG_NROS_RMW_XRCE", "CONFIG_NROS_RMW_CYCLONEDDS",
-        ],
-        "note": "`nano_ros_workspace(BACKEND …)` and `-DNROS_RMW` are the cmake "
-                "carriers. cmake already warns that BACKEND silently beats the "
-                "cache var; nothing yet compares either against `[system].rmw`.",
-    },
-    {
-        "fact": "ROS domain id",
-        "ssot": "`[system].domain_id` in `system.toml`",
-        "carriers": ["CONFIG_NROS_DOMAIN_ID", "CONFIG_NROS_CYCLONEDDS_DOMAIN_ID"],
-        "note": "`CONFIG_NROS_CYCLONEDDS_DOMAIN_ID` defaults FROM `NROS_DOMAIN_ID` — "
-                "the one derivation edge in this cluster. Do not pin it to a literal: "
-                "a Cyclone DDS image would then run on that domain whatever `domain_id` says.",
-    },
-    {
-        "fact": "Router / agent endpoint",
-        "ssot": "`[system].locator` in `system.toml`",
-        "carriers": [
-            "CONFIG_NROS_LOCATOR", "CONFIG_NROS_XRCE_AGENT_ADDR",
-            "CONFIG_NROS_XRCE_AGENT_PORT",
-        ],
-        "note": "Zephyr is exempt from the cmake precedence chain by design "
-                "(see the exemption comments in NanoRosEntry.cmake — no line ref, they move), "
-                "so the Kconfig spelling is the carrier "
-                "there rather than an override.",
-    },
-    {
-        "fact": "Executor sizing",
-        "ssot": "environment knobs at build time (see the pool inventory)",
-        "carriers": [
-            "CONFIG_NROS_EXECUTOR_MAX_CBS", "CONFIG_NROS_EXECUTOR_MAX_SC",
-            "CONFIG_NROS_EXECUTOR_MAX_NODES", "CONFIG_NROS_EXECUTOR_ARENA_BYTES",
-            "CONFIG_NROS_EXECUTOR_MAX_MONITORS", "CONFIG_NROS_EXECUTOR_MAX_AGE_MONITORS",
-            "CONFIG_NROS_EXECUTOR_MAX_SHUTDOWN_CBS",
-            "CONFIG_NROS_EXECUTOR_ACTION_CLIENTS",
-            "CONFIG_NROS_EXECUTOR_SUBSCRIPTION_BUFFER_BYTES",
-            "CONFIG_NROS_EXECUTOR_PARAM_SERVICE_BUFFER_BYTES",
-            "CONFIG_NROS_PARAMS_MAX_PARAMETERS",
-            "CONFIG_NROS_PARAMS_MAX_NAME_BYTES",
-            "CONFIG_NROS_PARAMS_MAX_STRING_VALUE_BYTES",
-            "CONFIG_NROS_PARAMS_MAX_ARRAY_LEN",
-            "CONFIG_NROS_PARAMS_MAX_STRING_ARRAY_LEN",
-            "CONFIG_NROS_PARAMS_MAX_BYTE_ARRAY_BYTES",
-            "CONFIG_NROS_PARAMS_MAX_DESCRIPTION_BYTES",
-            "CONFIG_NROS_PARAMS_MAX_CONSTRAINTS_BYTES",
-            "CONFIG_NROS_PARAMS_EVENTS_DEPTH",
-        ],
-        "note": "On Zephyr the Kconfig spelling IS how a user sets these — it is "
-                "a carrier only in the sense that the env var is what the build "
-                "script reads, so the Kconfig value must reach the build environment.",
-    },
-]
 
-# Knobs that are neither a user decision nor a carrier of one.
-# Symbols whose readers match no rule. ZERO today: the evidence classifies all
-# 74. May only decrease. If this ever needs raising, the honest move is to add a
-# rule to `suggest()` explaining the new reader shape, not to raise the number.
-RATCHET = 0
+def owners():
+    """Group word -> what the group is, from the registries' `[owners]`."""
+    try:
+        import tomllib
+    except ModuleNotFoundError:  # Python < 3.11 -- the repo's interpreter is 3.10
+        import tomli as tomllib
+
+    out = {}
+    with open(REGISTRY, "rb") as fh:
+        out.update(tomllib.load(fh).get("owners", {}))
+    return out
+
+
+def default_lines(d):
+    """The default in words, as `nros knob show` prints it."""
+    src = d.get("from")
+    if src == "ladder":
+        return ["set per platform and board; `nros knob list --platform <p>` shows "
+                "the value one platform gets, and which rung set it"]
+    if src == "build":
+        return ["chosen by the build"]
+    choices = d.get("choices") or []
+    if len(choices) == 1:
+        return [f"`{choices[0]['value']}`"]
+    out = ["the first that applies:"]
+    for c in choices:
+        if c.get("when"):
+            out.append(f"  - `{c['value']}` if {c['when']}")
+        else:
+            out.append(f"  - `{c['value']}` otherwise")
+    return out
+
+
+def default_cell(d):
+    src = d.get("from")
+    if src == "ladder":
+        return "per platform"
+    if src == "build":
+        return "chosen by the build"
+    choices = d.get("choices") or []
+    if len(choices) == 1:
+        return f"`{choices[0]['value']}`"
+    return f"`{choices[-1]['value']}` (varies)" if choices else "-"
+
+
+def cell(text):
+    return text.replace("|", "\\|")
+
+
+def render(items, groups):
+    """The page, from `nros knob list --json` items (built-in ones only)."""
+    by_group = {}
+    for i in items:
+        by_group.setdefault(i["name"].split(".", 1)[0], []).append(i)
+    L = [
+        "# Configuration surface",
+        "",
+        "<!-- type: reference · level: 2 -->",
+        "",
+        "<!-- GENERATED by scripts/gen-config-surface.py from `nros knob list --json`. Do not edit by hand.",
+        "     Regenerate: python3 scripts/gen-config-surface.py (needs this checkout's nros built)",
+        "     Gated by:   just check config-surface -->",
+        "",
+        "Every knob a project can state, with the one place to state it, the",
+        "values it takes and its default. A knob is set in the image's",
+        "`system.toml`, under `[image.<id>.knobs.<group>]`; a board-scoped knob",
+        "can also be set in a board's `nros-board.toml`. `nros knob list` prints",
+        "this list for your workspace, including the knobs of packages it",
+        "depends on, and `nros knob show <knob>` prints one entry.",
+        "",
+        "A knob has other spellings inside the build, such as an environment",
+        "variable or a Kconfig symbol. Those carry the value between build",
+        "layers. They are not places to set it, so this page does not list them.",
+        "",
+        f"{len(items)} knobs in {len(by_group)} groups.",
+        "",
+    ]
+    for g in sorted(by_group):
+        rows = sorted(by_group[g], key=lambda i: i["name"])
+        L += [f"## `{g}`", ""]
+        if groups.get(g):
+            L += [f"Knobs for {groups[g]}.", ""]
+        L += ["| Knob | Scope | Default | What it is |", "| --- | --- | --- | --- |"]
+        for i in rows:
+            anchor = i["name"].replace(".", "")
+            L.append(f"| [`{i['name']}`](#{anchor}) | {i['scope']} | "
+                     f"{cell(default_cell(i['default']))} | {cell(i['summary'])} |")
+        L.append("")
+        for i in rows:
+            L += [f"### `{i['name']}`", "", i["summary"], ""]
+            if i.get("surface"):
+                L.append(f"- **Set it in:** `system.toml`, `{i['surface']}`")
+            if i.get("board_key"):
+                L.append(f"- **Or for a board:** `nros-board.toml`, `[knobs] {i['board_key']}`")
+            L.append(f"- **Scope:** {i['scope']}")
+            if i.get("package"):
+                L.append(f"- **Package:** `{i['package']}`")
+            L.append(f"- **Values:** {i['values']}")
+            dl = default_lines(i["default"])
+            L.append(f"- **Default:** {dl[0]}")
+            L += dl[1:]
+            L.append("")
+            if i.get("help"):
+                L += [textwrap.dedent(i["help"]).strip(), ""]
+    return "\n".join(L).rstrip() + "\n"
+
+
+# --------------------------------------------------------------------------
+# The CLI
+# --------------------------------------------------------------------------
+
+def cli_path():
+    from source_locate import nros_cli_bin
+
+    return nros_cli_bin(checkout_only=True)
+
+
+def stale(cli):
+    r = subprocess.run([cli, "source-stamp"], capture_output=True, text=True, cwd=ROOT)
+    return None if r.returncode == 0 else (r.stdout + r.stderr).strip() or f"exit {r.returncode}"
+
+
+def cli_items(cli):
+    """`nros knob list --json` from an empty workspace, built-in knobs only.
+
+    A scratch directory and a scrubbed environment, so neither the generating
+    machine's workspace nor an `NROS_*` variable can reach the page."""
+    tmp = tempfile.mkdtemp(prefix="nros-knobs-")
+    env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "HOME": tmp,
+           "NO_COLOR": "1", "LANG": "C", "LC_ALL": "C"}
+    r = subprocess.run([cli, "knob", "list", "--json", "--workspace", tmp], cwd=tmp, env=env,
+                       capture_output=True, text=True, timeout=120)
+    if r.returncode != 0:
+        sys.exit(f"gen-config-surface: `nros knob list --json` exited {r.returncode}:\n"
+                 f"{r.stderr.strip()}")
+    doc = json.loads(r.stdout)
+    if doc.get("schema") != "nros.knob.list.v1":
+        sys.exit(f"gen-config-surface: `nros knob list --json` says schema {doc.get('schema')!r}; "
+                 "this generator reads nros.knob.list.v1")
+    return [i for i in doc["items"] if i.get("root") in BUILT_IN]
+
+
+# --------------------------------------------------------------------------
+# The rows check: the registry's public rows against the committed page
+# --------------------------------------------------------------------------
+
+def registry_public_keys():
+    """Every public in-tree row's knob name, read from the TOML."""
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "gen_knob_registry", os.path.join(ROOT, "scripts", "gen-knob-registry.py"))
+    reg = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(reg)
+    rows, errors = reg.load(packages=None)
+    if errors:
+        sys.exit("gen-config-surface: the knob registry does not load:\n  " + "\n  ".join(errors[:8]))
+    keys = set()
+    for r in rows:
+        if reg.surface(r):
+            keys.add(reg.image_key(r))
+    return keys, {reg.kconfig_symbol(r): r.get("class") for r in rows}
+
+
+def rows_problems(page, public):
+    on_page = set(HEADING.findall(page))
+    out = []
+    for k in sorted(public - on_page):
+        out.append(f"`{k}` is a public knob in the registry and is not on the page")
+    for k in sorted(on_page - public):
+        out.append(f"`{k}` is on the page and is not a public knob in the registry")
+    return out
+
+
+# --------------------------------------------------------------------------
+# The Kconfig check
+# --------------------------------------------------------------------------
 
 # Symbols whose only consumer is USER code, by design. They have no reader in
 # this tree and are not dead: the guides teach an application to use them in its
 # own `main()`, and Kconfig generating the macro is the whole service.
-#
-# Evidence is required, not asserted — each entry names where the contract is
-# documented, so "provided" cannot become a place to hide a symbol nobody uses.
 PROVIDED = {
     "CONFIG_NROS_INIT_DELAY_MS":
         "`book/src/guide/platforms/zephyr.md` (its C++ applications section) shows an application calling "
-        "`nros_platform_zephyr_wait_network(CONFIG_NROS_INIT_DELAY_MS)` from its own "
-        "`main()`; `book-internals/src/testing/zephyr-dev-setup.md:220` documents it as a knob.",
+        "`nros_platform_zephyr_wait_network(CONFIG_NROS_INIT_DELAY_MS)` from its own `main()`.",
 }
-
-DEAD = {}
 
 
 def kconfig_symbols():
-    """Every `config NROS_*` in zephyr/Kconfig, with its default."""
-    out = {}
+    """Every `config NROS_*` in zephyr/Kconfig."""
+    out = []
     if not os.path.exists(KCONFIG):
         return out
-    cur = None
     for line in open(KCONFIG, encoding="utf-8"):
         m = re.match(r"^\s*(?:menu)?config\s+(NROS_\w+)", line)
         if m:
-            cur = "CONFIG_" + m.group(1)
-            out.setdefault(cur, None)
-            continue
-        if cur is not None:
-            d = re.match(r'^\s*default\s+(.+?)\s*$', line)
-            if d and out[cur] is None:
-                out[cur] = d.group(1).strip('"')
+            out.append("CONFIG_" + m.group(1))
     return out
 
 
@@ -182,270 +285,162 @@ def forwarded_knobs():
 
 
 def readers(symbols):
-    """Where each symbol is actually READ, so a class is evidence not opinion.
-
-    Classification is a policy, but it is not a free choice: what a knob IS
-    follows from who consumes it. A symbol forwarded to cargo and read by a
-    build script is a build-time sizing knob; one that only reaches
-    `zephyr_compile_definitions` is C-lane; one nothing reads is dead. This
-    finds the consumers so the FACTS table can be argued from them rather than
-    asserted over them.
-
-    One `git grep` over the whole tree, not one per symbol -- 74 greps is slow
-    enough that someone would run it less often than the gate does.
-    """
-    kinds = {s: set() for s in symbols}
+    """Symbols read anywhere outside Kconfig and the docs (one `git grep`)."""
+    read = set()
+    wanted = set(symbols)
     out = git_grep.run(["-n", "-F", "--", "CONFIG_NROS_"], ROOT)
     for line in out.splitlines():
         try:
             path, _, body = line.split(":", 2)
         except ValueError:
             continue
-        if path.endswith("Kconfig") or path.startswith("docs/") or path.startswith("book/"):
+        if path.endswith("Kconfig") or path.startswith(("docs/", "book/")):
             continue
-        for sym in re.findall(r"CONFIG_NROS_\w+", body):
-            if sym not in kinds:
-                continue
-            if path.endswith((".c", ".h", ".cpp", ".hpp")):
-                kinds[sym].add("c-source")
-            elif path.endswith(".rs"):
-                kinds[sym].add("rust-source")
-            elif "compile_definitions" in body:
-                kinds[sym].add("c-define")
-            elif path.endswith((".cmake", "CMakeLists.txt")):
-                kinds[sym].add("cmake")
-    return kinds
+        read.update(s for s in re.findall(r"CONFIG_NROS_\w+", body) if s in wanted)
+    return read
 
 
-def kconfig_internal_refs(symbols):
-    """Symbols consumed BY KCONFIG ITSELF — `select`, `depends on`, `default X`.
-
-    The tree-wide grep deliberately skips Kconfig (else every declaration would
-    count as its own reader), and that hid a real consumer class.
-    The retired `NROS_TRANSPORT_SERIAL` looked dead with zero readers; it
-    carried `select NROS_ZENOH_LINK_SERIAL`, so setting it turned the serial
-    link on.
-    That IS its effect — Kconfig is the consumer, and a rule that cannot see
-    `select` will keep proposing live symbols for deletion.
-    """
+def kconfig_internal_refs():
+    """Symbols Kconfig itself consumes (`select`, `imply`, `depends on`,
+    `default`), and symbols whose effect is a `select` or `imply`."""
     refs, cur = set(), None
     for line in open(KCONFIG, encoding="utf-8"):
         m = re.match(r"^\s*(?:menu)?config\s+(NROS_\w+)", line)
         if m:
             cur = "CONFIG_" + m.group(1)
             continue
-        # A symbol REFERENCED by another's select/depends/default is consumed.
         ref = re.match(r"^\s*(?:select|imply|depends on|default)\s+(.+)$", line)
         if ref:
             for name in re.findall(r"\bNROS_\w+", ref.group(1)):
                 refs.add("CONFIG_" + name)
-            # …and a symbol that SELECTS or IMPLIES another has its effect that
-            # way, even though nothing reads it. The retired
-            # `NROS_TRANSPORT_SERIAL` was the case: it selected
-            # `NROS_ZENOH_LINK_SERIAL`, which was exactly what turning it on was
-            # for. Reading only the referenced side would keep
-            # proposing it for deletion.
             if cur and re.match(r"^\s*(?:select|imply)\s", line):
                 refs.add(cur)
-    return refs & set(symbols)
+    return refs
 
 
-def prompted(symbols):
-    """Which symbols carry a Kconfig PROMPT — its own mark of user-facing.
-
-    This replaced a rule that guessed from readers and got the LAYER wrong. It
-    called 24 symbols "carriers" because only cmake read them, but cmake reading
-    `${CONFIG_X}` to emit `ZPICO_X=<value>` is cmake CARRYING a user's choice,
-    not owning it. Kconfig already answers this: a symbol with a prompt is one
-    the user is asked about. All 79 have one, so there are no internal Kconfig
-    symbols and the carriers are at another layer entirely — see `CARRIERS`.
-    """
-    out = {s: False for s in symbols}
-    cur = None
+def prompted():
+    out, cur = set(), None
     for line in open(KCONFIG, encoding="utf-8"):
         m = re.match(r"^\s*(?:menu)?config\s+(NROS_\w+)", line)
         if m:
             cur = "CONFIG_" + m.group(1)
             continue
-        if cur in out and (re.match(r'^\s*(bool|int|string|hex)\s+"', line)
-                           or re.match(r'^\s*prompt\s+"', line)):
-            out[cur] = True
+        if cur and (re.match(r'^\s*(bool|int|string|hex)\s+"', line)
+                    or re.match(r'^\s*prompt\s+"', line)):
+            out.add(cur)
     return out
 
 
-def suggest(sym, kinds, forwarded, has_prompt, kconfig_refs):
-    """public / dead. There is no third class AT THIS LAYER.
-
-    A prompted symbol nothing reads is DEAD — the prompt asks a question whose
-    answer is discarded, which is worse than not asking.
-    """
-    k = kinds.get(sym) or set()
+def classify(sym, row_class, read, has_prompt):
+    """`knob:<class>` for a registry knob's symbol, else from evidence."""
+    if row_class:
+        return f"knob:{row_class}"
     if sym in PROVIDED:
         return "provided"
-    if not k and sym not in forwarded and sym not in kconfig_refs:
+    if sym not in read:
         return "dead"
-    if has_prompt.get(sym):
-        return "public"
-    # Unprompted AND read: Kconfig-internal, selected by another symbol.
-    return "derived"
+    return "public" if sym in has_prompt else "derived"
 
 
-def classify(symbols, kinds, forwarded, has_prompt, kconfig_refs):
-    """Evidence-derived class per symbol, plus what could not be derived."""
-    out = {s: suggest(s, kinds, forwarded, has_prompt, kconfig_refs) for s in symbols}
-    unclassified = sorted(s for s, c in out.items() if c is None)
-    return out, unclassified
+def kconfig_classes(row_classes):
+    syms = kconfig_symbols()
+    read = readers(syms) | forwarded_knobs() | kconfig_internal_refs()
+    has_prompt = prompted()
+    return {s: classify(s, row_classes.get(s[len("CONFIG_"):]), read, has_prompt) for s in syms}
 
 
-def render(symbols, forwarded, classes, kinds, kconfig_refs, unclassified):
-    def ev(sym):
-        k = sorted(kinds.get(sym) or [])
-        if sym in forwarded:
-            k = ["forwarded-to-cargo"] + k
-        if sym in kconfig_refs:
-            k = k + ["kconfig select/depends"]
-        if sym in PROVIDED:
-            return PROVIDED[sym]
-        return ", ".join(k) if k else "no reader found"
-
-    L = []
-    L.append("# Configuration surface\n")
-    L.append("<!-- GENERATED by scripts/gen-config-surface.py — do not edit. -->\n")
-    L.append("One fact can be spelled several ways. Only one of them is a place to make\n"
-             "a decision; the rest carry that decision across a layer boundary. This page\n"
-             "separates the two, because a list that does not is a list of nine ways to\n"
-             "set a locator.\n")
-    L.append("**Every symbol on this page is one a user may set.** Kconfig says so\n"
-             "itself: each carries a PROMPT, which is what a prompt means. An earlier\n"
-             "draft split these into public and carrier by asking who read them, and got\n"
-             "the layer wrong — cmake reading `${CONFIG_X}` to emit `ZPICO_X=<value>` is\n"
-             "cmake CARRYING the choice, not owning it.\n")
-    L.append("The real carriers are one layer down and are NOT Kconfig symbols: the\n"
-             "`ZPICO_*` / `NROS_*` environment variables, the `-D` cache variables and\n"
-             "the compile definitions this page's symbols feed. Setting one of those by\n"
-             "hand bypasses the question Kconfig asked.\n")
-    L.append("The `evidence` column is where each value is consumed, so a symbol with no\n"
-             "reader stands out: a prompt asking a question whose answer is discarded is\n"
-             "worse than no prompt.\n")
-    n = len(symbols)
-    pub = sum(1 for c in classes.values() if c == "public")
-    drv = sum(1 for c in classes.values() if c == "derived")
-    dead = sum(1 for c in classes.values() if c == "dead")
-    prov = sum(1 for c in classes.values() if c == "provided")
-    L.append(f"{n} Kconfig symbols — **{pub} settable**, {prov} provided for "
-             f"application code, {drv} derived, {dead} dead.\n")
-
-    L.append("## Facts with more than one spelling\n")
-    L.append("Where a decision has an authority OUTSIDE Kconfig, that authority is the\n"
-             "place to set it and these symbols carry it.\n")
-    for f in FACTS:
-        L.append(f"### {f['fact']}\n")
-        L.append(f"**Set it here:** {f['ssot']}\n")
-        L.append("| symbol | default | class | evidence |")
-        L.append("| --- | --- | --- | --- |")
-        for c in f["carriers"]:
-            d = symbols.get(c)
-            L.append(f"| `{c}` | {'`' + d + '`' if d else '—'} | "
-                     f"{classes.get(c) or '?'} | {ev(c)} |")
-        L.append("")
-        L.append(f"{f['note']}\n")
-
-    named = {c for f in FACTS for c in f["carriers"]}
-    for kind, title, blurb in (
-        ("public", "Public — set these",
-         "Read by compiled code or forwarded to a build script. On Zephyr the\n"
-         "`CONFIG_` spelling IS the way to state these; the env var is the carrier."),
-        ("provided", "Provided for application code",
-         "No reader in THIS tree, and not dead: the guides teach an application\n"
-         "to use these in its own `main()`. Kconfig generating the macro is the\n"
-         "service. Each names where that contract is written down."),
-        ("derived", "Derived — selected by another symbol",
-         "No Kconfig prompt, so not asked about directly."),
-        ("dead", "Dead — delete or wire",
-         "Declared and read by nothing. A knob that is documented and inert is\n"
-         "worse than one that is absent."),
-    ):
-        rows = sorted(s for s, c in classes.items() if c == kind and s not in named)
-        if not rows:
-            continue
-        L.append(f"## {title}\n")
-        L.append(blurb + "\n")
-        L.append("| symbol | default | evidence |")
-        L.append("| --- | --- | --- |")
-        for r in rows:
-            d = symbols.get(r)
-            L.append(f"| `{r}` | {'`' + d + '`' if d else '—'} | {ev(r)} |")
-        L.append("")
-
-    if unclassified:
-        L.append("## Unclassified\n")
-        L.append("The evidence did not point at a class. Each is a hole in the claim that\n"
-                 "this page is exhaustive; the count is RATCHETED and may only fall.\n")
-        for u in unclassified:
-            L.append(f"- `{u}`")
-        L.append("")
-    return "\n".join(L) + "\n"
-
+# --------------------------------------------------------------------------
 
 def self_test():
-    """The generator's own invariants, so a green run means something."""
-    syms = kconfig_symbols()
-    assert syms, "no Kconfig symbols discovered — the parser is broken, not the file"
-    fwd = forwarded_knobs()
-    assert fwd, "no forwarded knobs discovered — the cmake regex is broken"
-    assert fwd <= set(syms), (
-        "cmake forwards a symbol Kconfig does not declare: "
-        f"{sorted(fwd - set(syms))}")
-    # A fact must not claim a carrier that does not exist.
-    for f in FACTS:
-        for c in f["carriers"]:
-            assert c in syms, f"{f['fact']} names {c}, which Kconfig does not declare"
-    print("gen-config-surface self-test: OK")
+    item = {"name": "net.max_sockets", "scope": "board", "class": "public",
+            "surface": "[image.<id>.knobs.net] max_sockets", "board_key": "net.max_sockets",
+            "values": "an integer from 1 to 64", "summary": "Sockets | slots",
+            "default": {"from": "stated", "choices": [{"value": "8", "when": "the image uses X"},
+                                                      {"value": "4", "when": None}]},
+            "help": "  Line one.\n  Line two.\n"}
+    page = render([item], {"net": "the network stack"})
+    assert "### `net.max_sockets`" in page, page
+    assert "`[image.<id>.knobs.net] max_sockets`" in page, page
+    assert "  - `8` if the image uses X" in page and "  - `4` otherwise" in page, page
+    assert "Sockets \\| slots" in page, "a `|` in a summary must not split the table row"
+    assert "Line one.\nLine two." in page, "help is dedented"
+    assert HEADING.findall(page) == ["net.max_sockets"]
+    assert rows_problems(page, {"net.max_sockets"}) == []
+    assert rows_problems(page, {"net.max_sockets", "log.level"}) == [
+        "`log.level` is a public knob in the registry and is not on the page"]
+    assert rows_problems(page, set()) == [
+        "`net.max_sockets` is on the page and is not a public knob in the registry"]
+    # A registry knob's symbol takes the row's class, whatever the evidence says.
+    assert classify("CONFIG_NROS_X", "carrier", set(), set()) == "knob:carrier"
+    assert classify("CONFIG_NROS_Y", None, set(), {"CONFIG_NROS_Y"}) == "dead"
+    assert classify("CONFIG_NROS_Y", None, {"CONFIG_NROS_Y"}, {"CONFIG_NROS_Y"}) == "public"
+    assert classify("CONFIG_NROS_Y", None, {"CONFIG_NROS_Y"}, set()) == "derived"
 
 
 def main():
-    if "--self-test" in sys.argv:
-        self_test()
-        return 0
-    # On the NORMAL path too, not only when asked: a gate whose own invariants
-    # are checked only under a flag is a gate nobody checks. If the discovery
-    # regexes stop matching, every run would otherwise report a cheerful zero.
     self_test()
-    syms = kconfig_symbols()
-    fwd = forwarded_knobs()
-    kinds = readers(syms)
-    has_prompt = prompted(syms)
-    krefs = kconfig_internal_refs(syms)
-    classes, unclassified = classify(syms, kinds, fwd, has_prompt, krefs)
-    body = book_pages.relink(render(syms, fwd, classes, kinds, krefs, unclassified), "reference/configuration-surface.md")
-    if "--stdout" in sys.argv:
-        # phase-532 W8: check-book-audience reads the page without writing it.
-        sys.stdout.write(body)
+    if "--self-test" in sys.argv:
+        print("gen-config-surface self-test: OK")
         return 0
-    if "--check" in sys.argv:
-        # Ratchet BEFORE freshness: a new unclassified knob is the failure this
-        # exists to catch, and it should be named as such rather than as
-        # "the page is stale".
-        if len(unclassified) > RATCHET:
-            added = "\n".join(f"    {u}" for u in unclassified[:8])
-            print(f"error: {len(unclassified)} unclassified config knobs, "
-                  f"ratchet is {RATCHET}.\n"
-                  "  A new knob must be declared public, carrier or dead in\n"
-                  "  scripts/gen-config-surface.py's FACTS/DEAD tables.\n"
-                  f"{added}", file=sys.stderr)
-            return 1
-        cur = open(OUT, encoding="utf-8").read() if os.path.exists(OUT) else ""
-        if cur != body:
-            print("error: the configuration surface page is stale.\n"
-                  "  Regenerate + commit:  python3 scripts/gen-config-surface.py",
+    check = "--check" in sys.argv
+    public, row_classes = registry_public_keys()
+
+    if check:
+        failures = []
+        dead = sorted(s for s, c in kconfig_classes(row_classes).items() if c == "dead")
+        for s in dead:
+            failures.append(f"{s} is declared in zephyr/Kconfig and read by nothing: delete it, "
+                            "or wire it")
+        page = open(OUT, encoding="utf-8").read() if os.path.exists(OUT) else ""
+        failures += rows_problems(page, public)
+        if failures:
+            print("gen-config-surface: FAIL\n  " + "\n  ".join(failures) +
+                  "\n  Regenerate the page with python3 scripts/gen-config-surface.py and commit it.",
                   file=sys.stderr)
             return 1
-        print(f"config-surface OK — {len(syms)} symbol(s), "
-              f"{len(unclassified)} unclassified.")
+        cli = cli_path()
+        why = None if cli else "no in-tree nros CLI (`just setup-cli`, or NROS_CLI)"
+        if cli and not why:
+            s = stale(cli)
+            if s:
+                why = f"the in-tree nros CLI is stale against its sources ({s}); rebuild it"
+        if why:
+            import check_skip
+
+            return check_skip.unverified(
+                NAME, f"{why}, so {PAGE} is checked against the registry rows only, "
+                      "not against `nros knob list`")
+        fresh = book_pages.relink(render(cli_items(cli), owners()), PAGE)
+        if fresh != page:
+            print(f"gen-config-surface: STALE -- book/src/{PAGE} differs from `nros knob list`.\n"
+                  "  Regenerate with python3 scripts/gen-config-surface.py and commit it.",
+                  file=sys.stderr)
+            return 1
+        print(f"config-surface OK -- {len(public)} public knobs, the page and `nros knob list` "
+              f"agree; {len(row_classes)} registry rows, no dead Kconfig symbol")
+        return 0
+
+    cli = cli_path()
+    if not cli:
+        sys.exit("gen-config-surface: no in-tree nros CLI (`just setup-cli`, or NROS_CLI)")
+    s = stale(cli)
+    if s:
+        sys.exit(f"gen-config-surface: the in-tree nros CLI is stale against its sources ({s}); "
+                 "rebuild it with `just setup-cli`")
+    body = book_pages.relink(render(cli_items(cli), owners()), PAGE)
+    problems = rows_problems(body, public)
+    if problems:
+        sys.exit("gen-config-surface: `nros knob list` and the registry rows disagree:\n  " +
+                 "\n  ".join(problems) +
+                 "\n  The CLI reads the registry compiled into it: regenerate the registry "
+                 "(python3 scripts/gen-knob-registry.py) and rebuild the CLI.")
+    if "--stdout" in sys.argv:
+        sys.stdout.write(body)
         return 0
     os.makedirs(os.path.dirname(OUT), exist_ok=True)
-    open(OUT, "w", encoding="utf-8").write(body)
-    print(f"wrote {OUT} — {len(syms)} symbol(s), {len(unclassified)} unclassified")
+    with open(OUT, "w", encoding="utf-8") as fh:
+        fh.write(body)
+    print(f"wrote book/src/{PAGE} -- {len(public)} public knobs")
     return 0
 
 

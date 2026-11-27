@@ -93,14 +93,13 @@ book-identifiers:
 # `book/docs/…`). Buildless: reads tracked files, resolves paths, no mdbook.
 [private]
 book-links:
-    # Two chapters are GENERATED and no longer tracked, so on a fresh clone they
-    # do not exist and every link to them reads as dead. `just book` and the
-    # docs workflow already generate them before mdbook; this gate has to as
-    # well, and it cannot rely on `check-{pool-inventory,config-surface}`
-    # running first — `check-fast` runs gates in PARALLEL, so that would be a
-    # race that passes locally and fails in CI, or vice versa.
+    # The pool inventory is GENERATED and not tracked, so on a fresh clone it
+    # does not exist and every link to it reads as dead. `just book` and the
+    # docs workflow already generate it before mdbook; this gate has to as
+    # well, and it cannot rely on `check-pool-inventory` running first —
+    # `check-fast` runs gates in PARALLEL, so that would be a race that passes
+    # locally and fails in CI, or vice versa.
     @python3 scripts/gen-pool-inventory.py >/dev/null
-    @python3 scripts/gen-config-surface.py >/dev/null
     @python3 scripts/check-book-links.py
 
 # phase-532 W8 (RFC-0123 D8) — each book holds only its reader's pages. Folds
@@ -265,19 +264,15 @@ config-knob-census:
 knob-ends:
     @python3 scripts/check/check-knob-ends.py
 
-# Issue 0934 — one fact, up to nine spellings. Most are CARRIERS (how a decision
-# crosses a layer), not decisions; nothing recorded which was which, so a reader
-# saw nine ways to set a locator. This enumerates every Kconfig symbol and
-# demands each be declared public, carrier or dead. RATCHETED rather than
-# absolute: 55 of 74 are unclassified today, and a gate that demanded zero would
-# be switched off on day one.
+# phase-569 W2c (RFC-0133 D2) — the configuration reference is COMMITTED,
+# generated from `nros knob list --json`. Three comparisons: the registry's
+# public rows (read from the TOML, no CLI needed) against the page's knobs;
+# the page against a fresh render from this checkout's CLI (NOT VERIFIED when
+# the CLI is missing or stale); and every zephyr/Kconfig symbol classified --
+# a registry knob's symbol by its row's `class` -- with none dead (issue 0934).
 [private]
 config-surface:
-    # WRITES the page rather than diffing a committed copy: it is generated
-    # and no longer tracked, so `--check` would report "stale" on every fresh
-    # clone. The assertions that matter (the knob scan and its self-test) run
-    # either way; the artifact the book needs falls out.
-    @python3 scripts/gen-config-surface.py
+    @python3 scripts/gen-config-surface.py --check
 
 # issue 0936 — a `just <recipe>` printed in a DOCUMENT must name a recipe that
 # exists. `check-just-recipe-refs` covers justfiles and workflows and hands

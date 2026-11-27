@@ -901,7 +901,7 @@ path = "reference/configuration-surface.md"
 action = "keep"
 batch = "w4-reference"
 generated = "scripts/gen-config-surface.py"
-note = "gitignored; written by `just book` before mdbook"
+note = "Configuration reference (phase-569 W2c): committed, generated from `nros knob list --json`; the gate compares it with the registry rows and with the CLI"
 sidebar_group = "config"
 
 [[page]]

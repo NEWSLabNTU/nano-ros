@@ -1829,7 +1829,8 @@ config NROS_LOG_DYNAMIC_LOGGERS
       past the capacity falls back to the parent logger and warns once.
 
       Size it from a measurement: the boot report records the slots in use
-      against this capacity, and `just mem-report` prices the arenas.
+      against this capacity, and a static-memory report of the image prices
+      the arenas.
       A board states its own default in [knobs.log] dynamic_loggers;
       this Kconfig value outranks it, and the environment outranks both.
 
@@ -2795,7 +2796,8 @@ config NROS_SERVICE_INBOX_BYTES
 
       Per queryable the ring costs
         NROS_SERVICE_INBOX_DEPTH x (NROS_SERVICE_INBOX_BYTES + 12)
-      plus a fixed header; the map (just mem-report) prices it exactly.
+      plus a fixed header; a static-memory report of the image prices it
+      exactly.
 
 
 # prompt: Service inbox ring depth

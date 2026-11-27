@@ -333,6 +333,13 @@ fn list(args: ListArgs) -> Result<()> {
         })?),
         None => None,
     };
+    list_resolved(&args, ladder)
+}
+
+/// `nros knob list` over an already resolved ladder. `nros config explain`
+/// is this verb's older spelling (RFC-0133 D2) and reaches it here, with a
+/// ladder it resolved itself (it also takes `--platforms-dir`).
+pub fn list_resolved(args: &ListArgs, ladder: Option<Ladder>) -> Result<()> {
     let mut items = public_items(ladder.as_ref());
     let cat = workspace_catalog(args.workspace.as_deref())?;
     items.extend(package_items(&cat));
@@ -472,30 +479,8 @@ fn class_word(c: KnobClass) -> &'static str {
 }
 
 /// Why a non-public knob is not set directly, in user words.
-fn note(r: &KnobRow) -> Option<String> {
-    match r.class {
-        KnobClass::Public => None,
-        KnobClass::Carrier => Some(match r.carries {
-            Some(c) => match KNOBS.iter().find(|k| k.id == c) {
-                Some(k) => format!(
-                    "not set directly: it carries `{}`; set that instead",
-                    k.image_key
-                ),
-                None if c.contains('.') && !c.contains(' ') => {
-                    format!(
-                        "not set directly: it carries the board's `[knobs] {c}`; set that instead"
-                    )
-                }
-                None => format!("not set directly: it carries {c}"),
-            },
-            None => "not set directly".to_string(),
-        }),
-        KnobClass::Internal => Some("not set in a project: a test or tooling hook".to_string()),
-        KnobClass::Retired => Some(format!(
-            "retired: {}",
-            r.retired.unwrap_or("it no longer exists")
-        )),
-    }
+pub fn note(r: &KnobRow) -> Option<String> {
+    nros_zephyr_build::not_public_note(r)
 }
 
 /// `text` with each knob's env, retired or Kconfig spelling replaced by the
