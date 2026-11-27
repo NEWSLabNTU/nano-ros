@@ -86,3 +86,28 @@ same question. If it has the same defect, file it.
   against host `CLOCK_MONOTONIC`. Drift stays under 0.1 % over a minute.
   The unloaded case is the control.
 - The ASI control loop on `freertos-posix` holds 33.33 Hz under host load.
+
+## Measured, with the ruled fix applied locally (2026-11-28)
+
+The patch is committed on a local `nano-ros` branch of the kernel
+submodule, and is unpushed until the fork exists. Harness: a
+standalone program built from the pinned kernel sources with this board's
+`FreeRTOSConfig.h`. One task runs `vTaskDelay(pdMS_TO_TICKS(1000))` 60
+times, and the tick count's elapsed time is compared with host
+`CLOCK_MONOTONIC`. Host: 20 cores.
+
+| | load avg | tick time vs host | worst 1000 ms delay |
+|---|---|---|---|
+| unpatched, ambient | ~5 | 9.31 % slow | 1145.7 ms |
+| unpatched, 40 busy loops | 14 → 37 | 12.60 % slow | 1328.0 ms |
+| patched, ambient | ~5 | −0.000 % | 1000.2 ms |
+| patched, 40 busy loops | 14 → 37 | −0.001 % | 1008.0 ms |
+
+The unpatched port loses time even on a lightly loaded host: each
+`usleep(1000)` overshoots, and nothing recovers the overshoot. That is
+larger than the ~2.3 % first seen, which came from a different host and
+load. Patched, the drift is about 100 times inside the 0.1 % acceptance
+bound. The control-rate half of the acceptance (ASI holding 33.33 Hz) and a
+committed regression test are still to do.
+
+The other host-simulated port has the same defect: issue 3017.
