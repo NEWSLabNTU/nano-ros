@@ -71,6 +71,10 @@ const BOOT_BEFORE_OPEN: Duration = Duration::from_millis(2000);
 /// than a missing line: 10 s handshake deadline plus boot.
 const WAIT: Duration = Duration::from_secs(30);
 
+/// How long after the budget line the session-open failure line may take to
+/// be read: the image prints both at once, so this is only the reader's lag.
+const AFTER_GIVING_UP: Duration = Duration::from_secs(10);
+
 fn image() -> PathBuf {
     nros_tests::fixtures::lane::require_platform_in_lane(
         &[PlatformId::ZephyrNativeSim],
@@ -102,14 +106,25 @@ fn assert_gave_up_naming_the_budget(out: &str, locator: &str) {
     );
 }
 
-/// Boot the image against `locator` and return the output once the budget
-/// line has printed, with the instant it was seen.
+/// Boot the image against `locator` and return the output once the open has
+/// given up, with the instant the budget line was seen.
+///
+/// Issue 3000 -- the budget line comes first and the session-open failure
+/// after it, so returning at the budget line raced the assertion that reads
+/// the later line: on a loaded host it was not read yet (the image printed
+/// it, stamped the same instant). The time is taken at the budget line, the
+/// output once the failure line is in too.
 fn boot_until_given_up(bin: &Path, locator: &str) -> (String, Instant, Instant) {
     let spawned = Instant::now();
     let zephyr = ZephyrProcess::start_with_locator(bin, ZephyrPlatform::NativeSim, locator)
         .expect("failed to start the native_sim image");
-    let out = zephyr.wait_for_pattern(ZENOH_OPEN_BUDGET_SPENT_PREFIX, WAIT);
+    let first = zephyr.wait_for_pattern(ZENOH_OPEN_BUDGET_SPENT_PREFIX, WAIT);
     let seen = Instant::now();
+    if !first.contains(ZENOH_OPEN_BUDGET_SPENT_PREFIX) {
+        // Never gave up: the assertion names that, with this output.
+        return (first, spawned, seen);
+    }
+    let out = zephyr.wait_for_pattern(SESSION_OPEN_FAILED_MARKER, AFTER_GIVING_UP);
     (out, spawned, seen)
 }
 
