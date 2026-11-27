@@ -228,7 +228,7 @@ Acceptance: the report runs daily and names such a lane.
 
 ## Related issues
 
-- [issue 3006](../issues/3006-unsafe-census-concurrent-row-edits.md): two PRs
+- [issue 3006](../issues/archived/3006-unsafe-census-concurrent-row-edits.md): two PRs
   that each add one `unsafe` block to one crate make the identical baseline
   edit and merge clean and wrong, so the queue ejects the second one for a
   defect neither has. Fixed by per-change census fragments.

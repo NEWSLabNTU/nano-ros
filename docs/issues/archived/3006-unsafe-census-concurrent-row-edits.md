@@ -1,7 +1,9 @@
 ---
 id: 3006
 title: "A committed count every PR edits merges clean and wrong: two PRs bumping one crate's unsafe census row leave one increment uncounted, and the queue ejects the second"
-status: open
+status: resolved
+resolved: 2026-11-27
+resolved_in: "the change that archives this issue"
 type: bug
 area: [ci, gates]
 severity: medium
@@ -9,7 +11,7 @@ related: [issue-0883, issue-0884, issue-1236, phase-472, phase-591]
 found: 2026-11-27
 ---
 
-**Home: [phase-591](../roadmap/phase-591-ci-feedback-latency.md)**, whose
+**Home: [phase-591](../../roadmap/phase-591-ci-feedback-latency.md)**, whose
 subject is how long a red takes to reach its author: a queue ejection for a
 defect neither PR has costs a whole batch.
 
@@ -140,3 +142,31 @@ ejection.
 
 Design approved 2026-11-27 (manager): fragments, baseline + sum, a fold in
 the release step, and stale-fragment refusal.
+
+## Resolution (2026-11-27)
+
+`scripts/check-unsafe-census.py`, as designed above:
+
+- `--write-fragment <slug> --reason TEXT` writes
+  `.config/unsafe-census.d/<slug>.toml`. `delta` = measured − (baseline +
+  the fragments already on the branch), over the crates the branch touched.
+- The gate judges the census against `baseline + Σ delta`. It refuses a
+  fragment that is malformed, has a zero delta, has no reason, or is STALE
+  (its `from` is not the baseline's current row).
+- `--fold` writes the census into the baseline and deletes the fragments.
+  It refuses while the census and `baseline + fragments` disagree, so the
+  baseline is exact. `just release-bump` runs it, and its
+  `git commit -am` takes the deletions.
+- `--write-baseline` refuses while fragments exist, and the failure text
+  names `--write-fragment`.
+
+Tests: the self-test grows to 27 cases. Two concurrent `+1` fragments allow
++2 and refuse +3; fold agrees and refuses; a stale fragment is refused; a
+zero delta and a missing reason are refused; the writer records the delta,
+not the total. Mutation: with the stale check disabled, the stale case
+fails.
+
+End to end on the real tree: one `unsafe {}` added to `nros-node` makes the
+gate fail (939 -> 940). `--write-fragment` writes `from = 939, delta = 1`, and
+the gate passes. With the block removed, `--fold` refuses (940 against 939).
+

@@ -48,16 +48,47 @@ old count unobserved (phase-472 W9, `scripts/lib/ratchet.py`). A crate absent fr
 baseline may not carry unsafe at all — that is what makes a NEW crate's unsafe
 visible rather than grandfathered.
 
-Run:  python3 scripts/check-unsafe-census.py [--self-test] [--show] [--write-baseline]
+## Fragments, so two PRs never collide on one row (issue 3006)
+
+The baseline is a committed number every unsafe-touching PR used to edit. Two
+PRs that each add one block to one crate made the IDENTICAL edit (30 -> 31),
+a three-way merge takes identical edits as clean, and `main` recorded 31 for
+32 sites, so the queue ejected the second PR for a defect neither had.
+
+A PR now writes `.config/unsafe-census.d/<slug>.toml` instead:
+
+    [[change]]
+    crate = "nros-node"
+    kind = "block"
+    from = 30          # the baseline row when the fragment was written
+    delta = 1          # this PR's own change, never its measured total
+    reason = "why this unsafe is the decision it is"
+
+The gate judges the census against `baseline + sum(delta)`. Fragment names are
+unique, so concurrent PRs never edit one line. A fragment whose `from` the
+baseline no longer holds is STALE (written before a fold) and refused, so an
+increment already folded cannot stand as slack. `--fold` (the release step)
+writes the measured census into the baseline and deletes the fragments, and
+refuses while the census and `baseline + fragments` disagree, so the baseline
+is exact at every tag.
+
+Run:  python3 scripts/check-unsafe-census.py [--self-test] [--show]
+          [--write-fragment SLUG --reason TEXT] [--fold] [--write-baseline]
 """
 import json
 import re
+
+try:
+    import tomllib
+except ImportError:  # python < 3.11
+    import tomli as tomllib
 import subprocess
 import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
 BASELINE = REPO / ".config" / "unsafe-census-baseline.txt"
+FRAGMENTS = REPO / ".config" / "unsafe-census.d"
 sys.path.insert(0, str(REPO / "scripts" / "lib"))
 from ratchet import Move, fell_instructions, judge  # noqa: E402  phase-472 W9
 from git_history import HistoryUnknown, history_git, tree_present  # noqa: E402  issue 2442
@@ -319,6 +350,101 @@ def write_baseline(now):
     BASELINE.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
+def read_fragments(base, frag_dir=None):
+    """({(crate, kind): sum of delta}, [errors], [paths]) over the fragments.
+
+    A fragment is refused when it is malformed, moves nothing, gives no
+    reason, or is STALE: its `from` is not the baseline's current value for
+    that row, which means a fold has run since it was written and its
+    increment may already be in the baseline.
+    """
+    frag_dir = FRAGMENTS if frag_dir is None else frag_dir
+    adds, errors, paths = {}, [], []
+    if not frag_dir.is_dir():
+        return adds, errors, paths
+    for path in sorted(frag_dir.glob("*.toml")):
+        paths.append(path)
+        name = path.name
+        try:
+            doc = tomllib.loads(path.read_text(encoding="utf-8"))
+        except (OSError, tomllib.TOMLDecodeError) as e:
+            errors.append(f"{name}: cannot parse: {e}")
+            continue
+        changes = doc.get("change")
+        if not isinstance(changes, list) or not changes:
+            errors.append(f"{name}: no [[change]] entry")
+            continue
+        for ch in changes:
+            crate, kind = ch.get("crate"), ch.get("kind")
+            frm, delta = ch.get("from"), ch.get("delta")
+            reason = str(ch.get("reason", "")).strip()
+            if not isinstance(crate, str) or kind not in KINDS \
+                    or not isinstance(frm, int) or not isinstance(delta, int):
+                errors.append(f"{name}: a [[change]] needs `crate`, `kind` (one of "
+                              f"{', '.join(KINDS)}), integer `from` and `delta`: {ch}")
+                continue
+            if delta == 0:
+                errors.append(f"{name}: {crate} {kind}: delta 0 moves nothing; drop it")
+                continue
+            if not reason:
+                errors.append(f"{name}: {crate} {kind}: give the `reason` the "
+                              "change was made")
+                continue
+            have = base.get(crate, {}).get(kind, 0)
+            if frm != have:
+                errors.append(
+                    f"{name}: {crate} {kind}: STALE -- written against {frm}, the "
+                    f"baseline now records {have} (a fold ran since). Delete it and "
+                    "re-run --write-fragment, so an increment already folded is not "
+                    "counted twice")
+                continue
+            adds[(crate, kind)] = adds.get((crate, kind), 0) + delta
+    return adds, errors, paths
+
+
+def effective(base, adds):
+    """The baseline plus every fragment's delta, as {crate: {kind: n}}."""
+    out = {c: dict(r) for c, r in base.items()}
+    for (crate, kind), d in adds.items():
+        out.setdefault(crate, {k: 0 for k in KINDS})[kind] += d
+    return {c: r for c, r in out.items() if any(r.values())}
+
+
+def fragment_changes(now, base, eff, mine):
+    """The [[change]] rows a fragment needs: every (crate, kind) whose measured
+    count differs from `baseline + fragments`, in the crates this branch
+    touched (all, when unknowable)."""
+    rows = []
+    for crate in sorted(set(now) | set(eff)):
+        if mine is not None and crate not in mine:
+            continue
+        for k in KINDS:
+            d = now.get(crate, {}).get(k, 0) - eff.get(crate, {}).get(k, 0)
+            if d:
+                rows.append((crate, k, base.get(crate, {}).get(k, 0), d))
+    return rows
+
+
+def fragment_text(rows, reason):
+    out = ["# The unsafe census moved in this change (scripts/check-unsafe-census.py).",
+           "# Folded into .config/unsafe-census-baseline.txt at release.", ""]
+    for crate, k, frm, d in rows:
+        out += ["[[change]]", f'crate = "{crate}"', f'kind = "{k}"', f"from = {frm}",
+                f"delta = {d}", "reason = " + json.dumps(reason), ""]
+    return "\n".join(out)
+
+
+def fold_diff(now, eff):
+    """Rows where the measured census and `baseline + fragments` disagree."""
+    out = []
+    for crate in sorted(set(now) | set(eff)):
+        for k in KINDS:
+            a, b = eff.get(crate, {}).get(k, 0), now.get(crate, {}).get(k, 0)
+            if a != b:
+                out.append(f"  {crate} {k}: baseline + fragments = {a}, measured {b}")
+    return out
+
+
 def _row_text(name, row):
     return name + "  " + "  ".join(str(row.get(k, 0)) for k in KINDS)
 
@@ -356,7 +482,7 @@ def verdict(now, base, mine):
                               (_row_text(c, now[c]) if c in now else None))
         fails.extend(fell_instructions(
             rows, str(BASELINE.relative_to(REPO)), spell,
-            "python3 scripts/check-unsafe-census.py --write-baseline"))
+            "python3 scripts/check-unsafe-census.py --write-fragment <slug> --reason '...'"))
     return fails, inherited
 
 
@@ -411,6 +537,52 @@ def self_test():
                   file=sys.stderr)
             failures += 1
     cases = cases + ratchet
+    # Fragments (issue 3006): two PRs that each add one block to one crate,
+    # each with its own fragment, sum to 2 -- the collision the baseline edit had.
+    import tempfile
+    base_ = {"a": row(block=30)}
+
+    def frag(d, slug, **kw):
+        kw.setdefault("reason", "r")
+        body = "[[change]]\n" + "".join(
+            f"{k} = {json.dumps(v)}\n" for k, v in kw.items())
+        (d / f"{slug}.toml").write_text(body)
+
+    with tempfile.TemporaryDirectory() as t:
+        d = Path(t)
+        frag(d, "pr1", crate="a", kind="block", **{"from": 30, "delta": 1})
+        frag(d, "pr2", crate="a", kind="block", **{"from": 30, "delta": 1})
+        adds, errs, _ = read_fragments(base_, d)
+        eff = effective(base_, adds)
+        frag_cases = [
+            ("two concurrent +1 fragments allow +2", not errs and not verdict(
+                {"a": row(block=32)}, eff, {"a"})[0]),
+            ("…and still refuse +3", bool(verdict({"a": row(block=33)}, eff, {"a"})[0])),
+            ("fold agrees when the census matches", fold_diff({"a": row(block=32)}, eff) == []),
+            ("fold refuses when it does not", fold_diff({"a": row(block=31)}, eff) != []),
+        ]
+        # After a fold the baseline holds 32; a fragment still saying from = 30
+        # is stale and refused.
+        _, errs2, _ = read_fragments({"a": row(block=32)}, d)
+        frag_cases.append(("a fragment written before the fold is refused as stale",
+                           len(errs2) == 2 and all("STALE" in e for e in errs2)))
+        (d / "pr1.toml").unlink()
+        (d / "pr2.toml").unlink()
+        frag(d, "zero", crate="a", kind="block", **{"from": 30, "delta": 0})
+        frag(d, "noreason", crate="a", kind="fn", reason="", **{"from": 0, "delta": 1})
+        _, errs3, _ = read_fragments(base_, d)
+        frag_cases.append(("a zero delta and a missing reason are refused", len(errs3) == 2))
+        # The writer records this PR's own change: a branch carrying another
+        # PR's fragment (+1) and measuring 32 owes only +1 more.
+        rows_ = fragment_changes({"a": row(block=32)}, base_,
+                                 effective(base_, {("a", "block"): 1}), {"a"})
+        frag_cases.append(("the fragment writer records the delta, not the total",
+                           rows_ == [("a", "block", 30, 1)]))
+    for desc, ok in frag_cases:
+        if not ok:
+            print(f"  self-test FAIL: fragments: {desc}", file=sys.stderr)
+            failures += 1
+    cases = cases + frag_cases
     if failures:
         print(f"check-unsafe-census self-test: {failures} case(s) FAILED", file=sys.stderr)
         return 1
@@ -437,12 +609,67 @@ def main():
         return 1
 
     if "--write-baseline" in sys.argv:
+        if any(FRAGMENTS.glob("*.toml")):
+            print(f"check-unsafe-census: {FRAGMENTS.relative_to(REPO)} holds fragments; "
+                  "rewriting the baseline would strand them. A PR writes "
+                  "--write-fragment; the release runs --fold.", file=sys.stderr)
+            return 1
         write_baseline(now)
         total = sum(sum(r.values()) for r in now.values())
         print(f"check-unsafe-census: baseline written — {len(now)} crate(s), {total} site(s).")
         return 0
 
     base = read_baseline()
+    adds, frag_errors, frag_paths = read_fragments(base)
+    if frag_errors:
+        print("check-unsafe-census: FAIL -- a census fragment is refused:", file=sys.stderr)
+        for e in frag_errors:
+            print(f"  {e}", file=sys.stderr)
+        return 1
+    eff = effective(base, adds)
+
+    if "--fold" in sys.argv:
+        diff = fold_diff(now, eff)
+        if diff:
+            print("check-unsafe-census: --fold refused: the census and the baseline "
+                  "plus its fragments disagree, so the folded baseline would not be "
+                  "exact:", file=sys.stderr)
+            for line in diff:
+                print(line, file=sys.stderr)
+            return 1
+        write_baseline(now)
+        for p_ in frag_paths:
+            p_.unlink()
+        print(f"check-unsafe-census: folded {len(frag_paths)} fragment(s) into "
+              f"{BASELINE.relative_to(REPO)}.")
+        return 0
+
+    if "--write-fragment" in sys.argv:
+        i = sys.argv.index("--write-fragment")
+        slug = sys.argv[i + 1] if i + 1 < len(sys.argv) else ""
+        reason = (sys.argv[sys.argv.index("--reason") + 1]
+                  if "--reason" in sys.argv and sys.argv.index("--reason") + 1 < len(sys.argv)
+                  else "")
+        if not re.fullmatch(r"[a-z0-9][a-z0-9._-]*", slug) or not reason.strip():
+            print("usage: --write-fragment <slug> --reason TEXT (slug: lower-case, "
+                  "unique to this change)", file=sys.stderr)
+            return 2
+        target = FRAGMENTS / f"{slug}.toml"
+        if target.exists():
+            print(f"check-unsafe-census: {target.relative_to(REPO)} exists; pick "
+                  "another slug", file=sys.stderr)
+            return 1
+        rows = fragment_changes(now, base, eff, changed_crates(workspace_crates() or []))
+        if not rows:
+            print("check-unsafe-census: nothing to record -- every touched crate is "
+                  "at baseline + fragments.")
+            return 0
+        FRAGMENTS.mkdir(exist_ok=True)
+        target.write_text(fragment_text(rows, reason), encoding="utf-8")
+        print(f"check-unsafe-census: wrote {target.relative_to(REPO)} "
+              f"({len(rows)} change(s)).")
+        return 0
+
     if "--show" in sys.argv:
         for name in sorted(now):
             print(f"  {name:44} " + "  ".join(f"{k}={now[name][k]}" for k in KINDS))
@@ -450,7 +677,7 @@ def main():
     mine = changed_crates(workspace_crates() or [])
     scope = ("every crate (no merge base with origin/main — failing closed)"
              if mine is None else f"{len(mine)} crate(s) this branch touched")
-    fails, inherited = verdict(now, base, mine)
+    fails, inherited = verdict(now, eff, mine)
 
     # Growth in a crate this branch never touched is INHERITED — see
     # `changed_crates`. It is still recorded, and the baseline still has to move,
@@ -462,8 +689,8 @@ def main():
         )
         for line in inherited:
             print("  " + line)
-        print("  Record them with --write-baseline; the decision was made in the "
-              "commit that made it.")
+        print("  They are recorded at the next fold (release); the decision was "
+              "made in the commit that made it.")
 
     if fails:
         print("check-unsafe-census: FAIL\n", file=sys.stderr)
@@ -474,8 +701,10 @@ def main():
             "  counts are legitimate (issue 1221). It is that a NEW unsafe site\n"
             "  should be a decision someone made, not a diff nobody objected to,\n"
             "  and that a REMOVED one is locked in by the change that removed it.\n"
-            "  If a growth is intended, say so in the commit and re-run with\n"
-            "      python3 scripts/check-unsafe-census.py --write-baseline",
+            "  If a growth is intended, record it, with its reason, in a fragment:\n"
+            "      python3 scripts/check-unsafe-census.py --write-fragment <slug> "
+            "--reason '...'\n"
+            "  (never --write-baseline: two PRs editing one row merge clean and wrong)",
             file=sys.stderr,
         )
         return 1
