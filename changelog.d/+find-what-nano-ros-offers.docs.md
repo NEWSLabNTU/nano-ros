@@ -1,0 +1,1 @@
+The book has a new page, "Find what nano-ros offers", which walks the `nros` commands that list and show the RMW backends, boards, templates, settings, runners, diagnostic codes and a workspace's images, with their `--json` output and shell completion.

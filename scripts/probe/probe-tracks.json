@@ -861,6 +861,27 @@
       "awaits": [
         "a Nucleo-F767ZI attached to the machine the probe runs on: no CI runner has a board, so the starter's `nros flash --monitor` is run by hand on a bench. The step never exits, so it gains `probe-run` and the output to expect once a bench run measures them"
       ]
+    },
+    {
+      "track": "find-offers",
+      "chapter": "guide/build/find-what-nano-ros-offers.md",
+      "variant": "",
+      "weekly": true,
+      "lang": "rust"
+    },
+    {
+      "track": "find-offers-c",
+      "chapter": "guide/build/find-what-nano-ros-offers.md",
+      "variant": "",
+      "weekly": true,
+      "lang": "c"
+    },
+    {
+      "track": "find-offers-cpp",
+      "chapter": "guide/build/find-what-nano-ros-offers.md",
+      "variant": "",
+      "weekly": true,
+      "lang": "cpp"
     }
   ]
 }

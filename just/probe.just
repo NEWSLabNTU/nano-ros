@@ -117,6 +117,21 @@ lab-qos-c: (platform "lab-qos-c")
 [group("main")]
 lab-qos-cpp: (platform "lab-qos-cpp")
 
+# book/src/guide/build/find-what-nano-ros-offers.md — Find what nano-ros offers
+# (Rust) (phase-569 W10).
+[group("main")]
+find-offers: (platform "find-offers")
+
+# book/src/guide/build/find-what-nano-ros-offers.md — Find what nano-ros offers
+# (C) (phase-569 W10).
+[group("main")]
+find-offers-c: (platform "find-offers-c")
+
+# book/src/guide/build/find-what-nano-ros-offers.md — Find what nano-ros offers
+# (C++) (phase-569 W10).
+[group("main")]
+find-offers-cpp: (platform "find-offers-cpp")
+
 # book/src/tutorial/two-tiers.md — Lab: two sched tasks keep a promise (Rust),
 # after Tutorial 1 (phase-537 W5, issue 2269).
 [group("main")]

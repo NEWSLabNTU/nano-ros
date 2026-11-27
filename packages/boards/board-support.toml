@@ -1526,3 +1526,23 @@ weekly = false
 row = "nros-board-nucleo-f767zi-zephyr@ZephyrNucleoF767zi"
 notes = "phase-537 W13 — the Nucleo-F767ZI starter on a bench: the renode-nucleo track's steps, then the starter's `nros flash --monitor` onto an attached board (its `variant=bench` step). It fails up front until a runner with a board exists."
 
+[[probe]]
+track = "find-offers"
+chapter = "guide/build/find-what-nano-ros-offers.md"
+lang = "rust"
+weekly = true
+notes = "phase-569 W10 — Find what nano-ros offers, in its rust tab: every discovery verb's list and show (rmw, board, template, knob, runner, code, image), `--json` and the completion line, on the installed release with no checkout."
+
+[[probe]]
+track = "find-offers-c"
+chapter = "guide/build/find-what-nano-ros-offers.md"
+lang = "c"
+weekly = true
+notes = "phase-569 W10 — Find what nano-ros offers, in its c tab: every discovery verb's list and show (rmw, board, template, knob, runner, code, image), `--json` and the completion line, on the installed release with no checkout."
+
+[[probe]]
+track = "find-offers-cpp"
+chapter = "guide/build/find-what-nano-ros-offers.md"
+lang = "cpp"
+weekly = true
+notes = "phase-569 W10 — Find what nano-ros offers, in its cpp tab: every discovery verb's list and show (rmw, board, template, knob, runner, code, image), `--json` and the completion line, on the installed release with no checkout."
