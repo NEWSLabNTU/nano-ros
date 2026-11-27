@@ -168,6 +168,15 @@ nros_zephyr_sdk_env() {
     [ -n "$zephyr_tree" ] && [ -f "$zephyr_tree/SDK_VERSION" ] || return 0
     want="$(tr -d '[:space:]' < "$zephyr_tree/SDK_VERSION")"
     [ -n "$want" ] || return 0
+    # Issue 3004 -- a caller's ZEPHYR_SDK_INSTALL_DIR that names no SDK is
+    # refused here (the resolver says why), never passed over for the
+    # registry below.
+    if [ -n "${ZEPHYR_SDK_INSTALL_DIR:-}" ]; then
+        sdk="$(bash "$(dirname "${BASH_SOURCE[0]}")/../lib/zephyr-sdk.sh" --version "$want" resolve)" || return 1
+        nros_zephyr_sdk_has_board_toolchain "$board" "$zephyr_tree" "$sdk" || return 1
+        printf 'ZEPHYR_SDK_INSTALL_DIR=%s' "$sdk"
+        return 0
+    fi
     if sdk="$(bash "$(dirname "${BASH_SOURCE[0]}")/../lib/zephyr-sdk.sh" --version "$want" resolve 2>/dev/null)" \
         && [ -n "$sdk" ]; then
         nros_zephyr_sdk_has_board_toolchain "$board" "$zephyr_tree" "$sdk" || return 1

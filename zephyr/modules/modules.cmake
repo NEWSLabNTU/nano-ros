@@ -26,3 +26,7 @@ include("${CMAKE_CURRENT_LIST_DIR}/../cmake/nros_discovered_config.cmake")
 nros_discovered_config_pre()
 include("${CMAKE_CURRENT_LIST_DIR}/../cmake/nros_image_kconfig.cmake")
 nros_image_kconfig_hook()
+# Issue 3004 -- a ZEPHYR_SDK_INSTALL_DIR one level above the SDK root is
+# resolved (or refused) here, before dts.cmake hands it to find_package.
+include("${CMAKE_CURRENT_LIST_DIR}/../cmake/nros_zephyr_sdk_dir.cmake")
+nros_zephyr_sdk_dir_check()
