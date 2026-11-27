@@ -85,7 +85,8 @@ fn rust_target_board<'a>(
     if let Some(d) = zephyr_board.and_then(|zb| resolve_board(catalog, zb)) {
         return Ok(d);
     }
-    resolve_board(catalog, image_board).ok_or_else(|| eyre!("{}", unresolved_board(image_board)))
+    resolve_board(catalog, image_board)
+        .ok_or_else(|| eyre!("{}", unresolved_board(catalog, image_board)))
 }
 
 /// Issue 2204 — does `descriptor`'s `[board.zephyr] rust_target` disagree with
@@ -505,13 +506,10 @@ pub fn resolve_board<'a>(catalog: &'a BoardCatalog, board: &str) -> Option<&'a B
 /// Why `board` resolved to no descriptor: a retired key's replacement
 /// (phase-500 W1 — `native` is `linux`), else the generic refusal. The callers
 /// of [`resolve_board`] that refuse a miss share this text.
-pub fn unresolved_board(board: &str) -> String {
-    use crate::diag::{Diag, DiagExt};
+pub fn unresolved_board(catalog: &BoardCatalog, board: &str) -> String {
     nros_entry_lower::retired_board_key_hint(board).unwrap_or_else(|| {
-        Diag::BoardUnknown
-            .refusal(format_args!(
-                "board `{board}` is claimed by no board descriptor"
-            ))
+        catalog
+            .unknown_board(&format!("board key `{board}`"), board)
             .to_string()
     })
 }
