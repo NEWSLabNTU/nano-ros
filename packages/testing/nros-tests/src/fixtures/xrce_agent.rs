@@ -357,6 +357,17 @@ impl XrceAgent {
     pub fn is_running(&mut self) -> bool {
         matches!(self.handle.try_wait(), Ok(None))
     }
+
+    /// Everything the agent has written to stdout and stderr so far. Empty
+    /// when it wrote nothing; the SDK agent is built without its logger, so
+    /// only what it prints itself (a dropped oversized sample, issue 2978)
+    /// shows up here.
+    pub fn output(&self) -> String {
+        self.log
+            .as_ref()
+            .and_then(|l| std::fs::read_to_string(&l.path).ok())
+            .unwrap_or_default()
+    }
 }
 
 /// Why an agent did not come up — split so `start_unique` can tell a port a

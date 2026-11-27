@@ -34,7 +34,8 @@
 	branch = nano-ros
 [submodule "third-party/xrce/agent"]
 	path = third-party/xrce/agent
-	url = https://github.com/eProsima/Micro-XRCE-DDS-Agent.git
+	url = https://github.com/NEWSLabNTU/Micro-XRCE-DDS-Agent.git
+	branch = nano-ros-2.4.3
 [submodule "third-party/nuttx/nuttx"]
 	path = third-party/nuttx/nuttx
 	url = https://github.com/jerry73204/nuttx.git

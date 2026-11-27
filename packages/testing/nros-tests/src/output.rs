@@ -60,6 +60,11 @@ pub const TALKER_READY_MARKER: &str = TALKER_LOG_PREFIX;
 /// the strict wait is what made the breakage visible.
 pub const LISTENER_READY_MARKER: &str = "Subscriber created for topic:";
 
+/// The line the patched XRCE Agent prints when it drops a sample whose DATA
+/// submessage is over 65,535 bytes, instead of wedging the client's stream
+/// (issue 2978).
+pub const XRCE_AGENT_DROPPED_OVERSIZED: &str = "dropped a sample for client";
+
 /// RFC-0071 D16 (phase-545 W3) — printed once by the out-of-tree `acme` RMW
 /// backend (`fixtures/out-of-tree-rmw/src/acme_rmw`, its `PUBLISH_MARKER`) on
 /// the first sample published THROUGH it, so a test can tell a sample that

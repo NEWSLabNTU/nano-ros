@@ -8,6 +8,7 @@ Every submodule that tracks a patch branch, and what it adds to a pinned upstrea
 | --- | --- | --- |
 | [zenoh-pico](#zenoh-pico) | `eclipse-zenoh/zenoh-pico` | `1.10.1` |
 | [cyclonedds](#cyclonedds) | `eclipse-cyclonedds/cyclonedds` | `0.10.5` |
+| [xrce-agent](#xrce-agent) | `eProsima/Micro-XRCE-DDS-Agent` | `v2.4.3` |
 | [lwip](#lwip) | `lwip-tcpip/lwip` | `STABLE-2_2_1_RELEASE` |
 | [threadx](#threadx) | `eclipse-threadx/threadx` | `v6.4.5.202504_rel` |
 | [netxduo](#netxduo) | `eclipse-threadx/netxduo` | `v6.4.5.202504_rel` |
@@ -225,6 +226,41 @@ gh api "repos/eclipse-cyclonedds/cyclonedds/compare/$base...$head" --jq '.ahead_
 [Back to the list of forks](#forks-nano-ros-carries)
 
 <!-- /fork: cyclonedds -->
+
+<!-- fork: xrce-agent -->
+
+<a id="xrce-agent"></a>
+
+## The xrce-agent fork
+
+nano-ros builds `third-party/xrce/agent` from the fork [NEWSLabNTU/Micro-XRCE-DDS-Agent](https://github.com/NEWSLabNTU/Micro-XRCE-DDS-Agent), branch `nano-ros-2.4.3`, not from upstream [eProsima/Micro-XRCE-DDS-Agent](https://github.com/eProsima/Micro-XRCE-DDS-Agent).
+
+| | |
+| --- | --- |
+| Upstream base | `v2.4.3` (merge base [73622810d984](https://github.com/eProsima/Micro-XRCE-DDS-Agent/commit/73622810d984349b80bbac0ef55fc0b694d62222)) |
+| Commits on top | 1 |
+| Upstream commits the pin lacks | 0 |
+| Files changed | 1, +22/−0 |
+
+**Pinned commit:** `4c92c06c90c1e3a6a32fe2b2a0ac314503c69bbd`
+
+### Commits on top of upstream
+
+| commit | subject <!-- no-just-ok: quoted commit subjects --> |
+| --- | --- |
+| [4c92c06c90](https://github.com/NEWSLabNTU/Micro-XRCE-DDS-Agent/commit/4c92c06c90c1e3a6a32fe2b2a0ac314503c69bbd) | Drop a sample whose DATA submessage is over 65535 bytes instead of wedging |
+
+Reproduce:
+
+```bash
+base=v2.4.3
+head=NEWSLabNTU:Micro-XRCE-DDS-Agent:4c92c06c90c1e3a6a32fe2b2a0ac314503c69bbd
+gh api "repos/eProsima/Micro-XRCE-DDS-Agent/compare/$base...$head" --jq '.ahead_by'
+```
+
+[Back to the list of forks](#forks-nano-ros-carries)
+
+<!-- /fork: xrce-agent -->
 
 <!-- fork: lwip -->
 
