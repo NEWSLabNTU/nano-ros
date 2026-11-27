@@ -147,6 +147,12 @@ dd if=/dev/zero of="$w2/build/sizes-probe/rustc-new/k2/lib.rlib" bs=1M count=3 s
 dd if=/dev/zero of="$w2/build/zephyr-workspace-builds/3.7/build-leaf/zephyr.elf" bs=1M count=3 status=none
 dd if=/dev/zero of="$w2/examples/ws/build/app.o" bs=1M count=2 status=none
 touch -t "$old" "$w2/build/sizes-probe/rustc-old/k1/lib.rlib"
+# issue 2840 (c2) -- the shared class build dirs, `fixture-classes/<root>/<key>`:
+# in no area when they landed (60 GiB on newslab-118), so never evicted.
+mkdir -p "$w2/build/fixture-classes/nros-class/cold" "$w2/build/fixture-classes/nros-class/warm"
+dd if=/dev/zero of="$w2/build/fixture-classes/nros-class/cold/lib.rlib" bs=1M count=1 status=none
+dd if=/dev/zero of="$w2/build/fixture-classes/nros-class/warm/lib.rlib" bs=1M count=1 status=none
+touch -t "$old" "$w2/build/fixture-classes/nros-class/cold/lib.rlib"
 # A west build leaf holds thousands of files. `_newest_mtime` listed them into
 # `sort | head -1`, and once that listing outgrew the pipe `sort` printed
 # `write error` into the job log for every such entry (run 41784686434, 11-04).
@@ -170,6 +176,15 @@ if [ -n "$old_line" ] && [ -n "$new_line" ] && [ "$old_line" -lt "$new_line" ]; 
     ok "a sizes-probe key is an eviction unit, and the retired toolchain's goes first"
 else
     fail "sizes-probe keys were not evicted oldest-first:
+$out2"
+fi
+cold_line="$(printf '%s\n' "$out2" | grep -n 'rm -rf .*/fixture-classes/nros-class/cold' | head -1 | cut -d: -f1)"
+warm_line="$(printf '%s\n' "$out2" | grep -n 'rm -rf .*/fixture-classes/nros-class/warm' | head -1 | cut -d: -f1)"
+if [ -n "$cold_line" ] && [ -n "$warm_line" ] && [ "$cold_line" -lt "$warm_line" ] \
+   && ! nros_grep_q -E '^ +[0-9.]+ [KMG]iB +.*/fixture-classes' <<<"$out2"; then
+    ok "a shared class build dir key is a fixtures eviction unit, coldest first, never unbudgeted"
+else
+    fail "fixture-classes keys are not fixtures-area units (or still reported unbudgeted):
 $out2"
 fi
 if nros_grep_q 'rm -rf .*/zephyr-workspace-builds/3.7/build-leaf' <<<"$out2"; then
