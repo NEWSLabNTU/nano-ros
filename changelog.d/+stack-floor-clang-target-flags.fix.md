@@ -1,0 +1,1 @@
+The stack-floor check now types the C of a 64-bit Arm image: a GCC target flag clang rejects (`-mabi=lp64` on aarch64) is dropped when it only restates GCC's default, so the walk binds C function-pointer calls by type instead of to every function C can hold, and its floors tighten (about 20 % on a Cortex-A53 Zephyr image).
