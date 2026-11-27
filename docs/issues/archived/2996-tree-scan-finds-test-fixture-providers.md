@@ -40,6 +40,15 @@ An ignore marker at the root of both fixture trees,
 A test that uses a fixture as its workspace names it as the root, so it is
 still scanned.
 
+A workspace INSIDE the nano-ros tree used to be dropped as a search root,
+because the tree walk covered it. Under a marker the walk no longer does, so
+`provider_scan::search_path_over_scoped` keeps such a workspace as its own
+root when an ignore marker sits on it or on a directory between it and the
+tree. Without that, the out-of-tree-rmw build tests (which copy the fixture
+under the checkout's `tmp/`, below a marker) lost their `acme` provider:
+they had been passing on the tracked fixture the tree walk found, not on the
+copy they built.
+
 ## Test
 
 `packages/cli/nros-cli-core/tests/tree_scan_excludes_fixtures.rs`:
@@ -49,7 +58,12 @@ still scanned.
 - the catalog of an empty workspace (what `nros knob list` prints) has no
   knob from a package that is not built in;
 - the negative control: the out-of-tree-rmw fixture named as the root is still
-  scanned and its provider found.
+  scanned and its provider found;
+- `provider_scan::a_nested_workspace_under_an_ignore_marker_is_its_own_root`:
+  a workspace under a marked directory in the tree is its own root, an unmarked
+  sibling stays covered.
+
+`just check cli-tests` passes, including the three out-of-tree-rmw build tests.
 
 With the two markers removed, all three fail, listing the two fixture
 packages and their two knobs.

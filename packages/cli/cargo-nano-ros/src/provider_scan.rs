@@ -460,6 +460,22 @@ pub const IN_TREE_RUNNERS_DIR: &str = "packages/runners";
 /// Where a nano-ros tree keeps its RMW backends (RFC-0071 D14).
 pub const IN_TREE_RMW_DIR: &str = "packages/rmw";
 
+/// Whether the tree walk from `tree` reaches `dir`: no directory below
+/// `tree` on the way down to `dir`, `dir` included, holds an ignore marker.
+fn reached_from(tree: &Path, dir: &Path) -> bool {
+    let Ok(rel) = dir.strip_prefix(tree) else {
+        return false;
+    };
+    let mut at = tree.to_path_buf();
+    for c in rel.components() {
+        at.push(c);
+        if is_ignored_dir(&at) {
+            return false;
+        }
+    }
+    true
+}
+
 /// [`search_path_over`] with the in-tree root narrowed to `scope`.
 ///
 /// The narrowed root is what the nested-source rule compares against, so a
@@ -498,9 +514,16 @@ pub fn search_path_over_scoped(
     let underlay = out.roots.first().map(|r| r.path.clone());
 
     for root in &sources.roots {
-        let nested = matches!(root.origin, RootOrigin::Workspace | RootOrigin::BasePaths)
-            && underlay.as_ref().is_some_and(|u| root.path.starts_with(u));
-        if nested {
+        // A source root inside the nano-ros tree is the tree walk's to find,
+        // unless the walk cannot reach it: an ignore marker on the root or on
+        // a directory between it and the tree prunes it (issue 2996 -- the
+        // test fixture trees carry one, and a workspace built in place under
+        // one, or copied under one, still has to see its own providers).
+        let covered = matches!(root.origin, RootOrigin::Workspace | RootOrigin::BasePaths)
+            && underlay
+                .as_ref()
+                .is_some_and(|u| root.path.starts_with(u) && reached_from(u, &root.path));
+        if covered {
             continue;
         }
         push_root(
@@ -1797,6 +1820,37 @@ mod tests {
             vec![outside],
             "an out-of-tree consumer with no nano-ros source still scans its own \
              workspace",
+        );
+    }
+
+    /// Issue 2996 — a nested workspace the tree walk cannot reach (an ignore
+    /// marker on it or on a directory above it, inside the tree) is its own
+    /// root again, so a fixture built in place under a marked fixture tree
+    /// still finds its providers. Its sibling without a marker stays covered.
+    #[test]
+    fn a_nested_workspace_under_an_ignore_marker_is_its_own_root() {
+        let tmp = tempfile::tempdir().unwrap();
+        let nros = tmp.path().join("nano-ros");
+        let fixtures = nros.join("packages/testing/fixtures");
+        let marked = fixtures.join("out-of-tree-rmw");
+        let unmarked = nros.join("examples/linux");
+        std::fs::create_dir_all(&marked).unwrap();
+        std::fs::create_dir_all(&unmarked).unwrap();
+        std::fs::write(fixtures.join("COLCON_IGNORE"), "").unwrap();
+
+        assert_eq!(
+            default_search_path(Some(&nros), &marked),
+            vec![nros.clone(), marked.clone()],
+        );
+        assert_eq!(
+            default_search_path(Some(&nros), &unmarked),
+            vec![nros.clone()]
+        );
+        // A marker on the workspace itself prunes it from the walk too.
+        std::fs::write(unmarked.join("COLCON_IGNORE"), "").unwrap();
+        assert_eq!(
+            default_search_path(Some(&nros), &unmarked),
+            vec![nros.clone(), unmarked.clone()],
         );
     }
 
