@@ -1485,6 +1485,10 @@ def linked_away(names) -> bool:
 # (32-64 B) with no fault. Recorded in the report, which `just check max-frame`
 # reads over the fixture builds; the gate, not this walk, decides what is ours.
 BIG_FRAMES: list[tuple[str, int]] = []
+# Issue 2998: how much of the image's C the bind could type, for report.json
+# (`c_typing`): linked C TUs, how many clang compiled, and the GCC target
+# flags dropped because clang rejects them and they restate GCC's default.
+C_TYPING: dict = {}
 
 
 def big_frames(g: "Graph", cap: int) -> list[tuple[str, int]]:
@@ -2843,6 +2847,7 @@ def c_ir_texts(compile_commands: list[str], linked: set[str], target: str,
                     uncovered.add(nm.split(".", 1)[0])
     note = f"{len(texts)} of {len(entries)} linked C TU(s)"
     dropped = sorted({f for d, _ in drops.values() for f in d})
+    C_TYPING.update(linked=len(entries), typed=len(texts), dropped_flags=dropped)
     if dropped:
         note += f"; GCC target flag(s) clang rejects, dropped with the ABI unchanged: {', '.join(dropped)}"
     kept = sorted({why for _, why in drops.values() if why})
@@ -4064,6 +4069,8 @@ def write_report(path: str, args: argparse.Namespace, results: dict, stacks: dic
         "raise": raises or [],
         # issue 2815: [[function, bytes], ...] over the table's `max_frame`
         "big_frames": [[fn, n] for fn, n in BIG_FRAMES],
+        # issue 2998: {linked, typed, dropped_flags}, or {} when no C was typed
+        "c_typing": dict(C_TYPING),
     }
     import tempfile
     out = Path(path)
