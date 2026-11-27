@@ -1,6 +1,6 @@
 # Phase 584 — `just ci gate` is one nextest run
 
-**Status (2026-11-26). Every work item DONE; archive once this PR merges.
+**Status (2026-11-27). COMPLETE, archived: every work item DONE.
 Owner: nros 142.** Design approved by the user 2026-11-20. The phase
 acceptance, measured on host 142:
 - a full `just ci gate` on a clean tree is green: 763/763 (W5's a2 and a3);
@@ -9,7 +9,7 @@ acceptance, measured on host 142:
   minute baseline below; 2874 s on a cold tree;
 - every former step appears by name in the lane's listing, checked by a test:
   `check-lane-step-duplicates`' reach rule (W6). Implements
-[RFC-0131](../design/0131-gates-are-nextest-tests.md) D2/D3 as amended
+[RFC-0131](../../design/0131-gates-are-nextest-tests.md) D2/D3 as amended
 2026-11-20 (the `gate` tier and the `ci` lane), and the preconditions of D5.
 
 Each item is one PR, claimed with `just claim phase-584-wN` before it starts.
