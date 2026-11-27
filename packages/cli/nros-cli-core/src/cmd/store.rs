@@ -48,6 +48,10 @@ pub struct ListArgs {
     // Never an absolute literal (RFC-0095 D2).
     #[arg(long)]
     pub root: Option<PathBuf>,
+    /// Also measure each entry: its size and when it was last used. This
+    /// reads every file in the store, which takes minutes on a large one
+    #[arg(long)]
+    pub usage: bool,
 }
 
 #[derive(Debug, ClapArgs)]
@@ -90,6 +94,42 @@ pub fn run(args: Args) -> Result<()> {
     }
 }
 
+/// The listing without `--usage`: what is installed and in what state, from
+/// directory names alone.
+fn list_heads(root: &std::path::Path) -> String {
+    render_heads(&store::scan_heads(root))
+}
+
+fn render_heads(heads: &[store::EntryHead]) -> String {
+    if heads.is_empty() {
+        return "  (empty)\n".to_string();
+    }
+    let width = heads
+        .iter()
+        .map(|h| h.state.label().len())
+        .chain(std::iter::once("STATE".len()))
+        .max()
+        .unwrap_or(0);
+    let mut out = format!("\n{:<width$}  ENTRY\n", "STATE");
+    for h in heads {
+        out.push_str(&format!(
+            "{:<width$}  {}\n",
+            h.state.label(),
+            h.display_id()
+        ));
+    }
+    let installed = heads
+        .iter()
+        .filter(|h| h.state == store::EntryState::Installed)
+        .count();
+    out.push_str(&format!(
+        "\n{} entries, {installed} installed. `--usage` adds each entry's size and last use \
+         (it reads every file in the store).\n",
+        heads.len()
+    ));
+    out
+}
+
 fn resolve_root(explicit: Option<PathBuf>) -> (PathBuf, String) {
     match explicit {
         Some(p) => (p, "--root".to_string()),
@@ -102,6 +142,11 @@ fn list(args: ListArgs) -> Result<()> {
     println!("store root: {}   (from {origin})", root.display());
     if !root.is_dir() {
         println!("  (no store here yet — nothing is provisioned)");
+        return Ok(());
+    }
+
+    if !args.usage {
+        print!("{}", list_heads(&root));
         return Ok(());
     }
 
@@ -351,5 +396,36 @@ fn report_plan(plan: &GcPlan, now: std::time::SystemTime, older_than: &str) {
             format_age(age),
             entry.evidence.label()
         );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn store_with_entries() -> tempfile::TempDir {
+        let root = tempfile::tempdir().unwrap();
+        for rel in ["sdk/corrosion/0.6.1", "toolchains/0.4.0"] {
+            let dir = root.path().join(rel);
+            std::fs::create_dir_all(dir.join("lib/deep")).unwrap();
+            std::fs::write(dir.join("lib/deep/file"), b"x").unwrap();
+        }
+        root
+    }
+
+    /// Issue 2999: the listing reads directory names, never an entry's files.
+    #[test]
+    fn list_without_usage_walks_no_entry() {
+        let root = store_with_entries();
+        store::MEASURED.with(|n| n.set(0));
+        let text = list_heads(root.path());
+        assert_eq!(store::MEASURED.with(std::cell::Cell::get), 0, "{text}");
+        assert!(text.contains("sdk/corrosion/0.6.1"), "{text}");
+        assert!(text.contains("toolchains/0.4.0"), "{text}");
+        // The negative control: the measured scan walks every entry.
+        store::MEASURED.with(|n| n.set(0));
+        let entries = store::scan(root.path());
+        assert_eq!(store::MEASURED.with(std::cell::Cell::get), entries.len());
+        assert!(entries.len() >= 2);
     }
 }
