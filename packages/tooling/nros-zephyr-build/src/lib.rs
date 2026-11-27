@@ -1887,8 +1887,9 @@ mod tests {
                 .collect();
             assert_eq!(env, row.legacy, "knob {}", row.id);
         }
-        // 32 retired by phase-484 W8, 33 by phase-581 W5's renames, 14 by W6's.
-        assert_eq!(KNOBS.iter().map(|r| r.legacy.len()).sum::<usize>(), 79);
+        // 32 retired by phase-484 W8, 33 by phase-581 W5's renames, 14 by W6's,
+        // 2 by issue 2918 (`NROS_BAREMETAL_STACK_KB`, `NROS_HEAP_SIZE`).
+        assert_eq!(KNOBS.iter().map(|r| r.legacy.len()).sum::<usize>(), 81);
     }
 
     /// RFC-0140 D4 (phase-581 W6) -- EVERY statement's retired build variable is
