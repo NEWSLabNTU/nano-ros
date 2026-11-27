@@ -136,6 +136,15 @@ evidence = "3/3, 4 suite runs. Issue 1495: one gid in three readings — our get
 issue = "1495"
 
 [[verdict]]
+cell = "native-lifecycle-c-zenoh"
+date = "2026-11-27"
+verdict = "pass"
+tests = ["rclc_lifecycle_node_answers_ros2_lifecycle"]
+run = "just linux test-ros2-c-lifecycle"
+where = "host 241 (Ubuntu 22.04, Humble, rmw_zenoh_cpp), main 5067703e37 with fixtures built there"
+evidence = "2 of 2 runs passed (9.5 s and 9.4 s): stock `ros2 lifecycle` drove the c-lifecycle-node image, one node bound with rclc_executor_node_init, through configure, activate, deactivate and cleanup"
+
+[[verdict]]
 cell = "native-lifecycle-rust-zenoh"
 date = "2026-09-07"
 verdict = "pass"
@@ -220,6 +229,15 @@ run = "just linux test-ros2-params-per-node"
 where = "aeon's workstation, Ubuntu 22.04 host, ROS 2 Humble apt (rmw_zenoh_cpp, rmw_cyclonedds_cpp, rmw_fastrtps_cpp); fixtures rebuilt at main 6a36a9402d plus comment-only #1914"
 evidence = "First run of this cell. xrce_set_parameters_naming_25_declared_lands passed (2.7 s) against the XRCE Agent, together with the other three params_per_node_interop cases (5/5)."
 issue = "1758"
+
+[[verdict]]
+cell = "native-params-c-zenoh"
+date = "2026-11-27"
+verdict = "pass"
+tests = ["rclc_parameter_server_answers_ros2_param"]
+run = "just linux test-ros2-c-param-server"
+where = "host 241 (Ubuntu 22.04, Humble, rmw_zenoh_cpp), main 5067703e37 with fixtures built there"
+evidence = "2 of 2 runs passed (17.7 s and 20.1 s): stock `ros2 param` answered against the rclc parameter server in the c-parameters image"
 
 [[verdict]]
 cell = "native-params-per-node-rust-cyclone"
