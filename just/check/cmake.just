@@ -1061,3 +1061,19 @@ toolchain-paths-persist:
 workspace-probes:
     @bash scripts/check-workspace-probes.sh
 
+
+# issue 2989 -- the end-of-configure answer to an unseeded reader: a DERIVED
+# composed answer stops the configure ("the defaults can be smaller"), a
+# non-derived one, which agrees with itself, is a detail line and no WARNING.
+# Both arms run the real function under `cmake -P`; seconds.
+[group('needs:cmake')]
+promise-unseeded:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if ! command -v cmake >/dev/null 2>&1; then
+        # shellcheck source=scripts/build/check-skip.sh
+        source scripts/build/check-skip.sh
+        nros_check_skip promise-unseeded "missing host tool(s): cmake"
+        exit 0
+    fi
+    ./tests/cmake-promise-unseeded-tests.sh

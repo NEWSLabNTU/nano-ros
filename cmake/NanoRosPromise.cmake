@@ -391,24 +391,30 @@ function(_nros_promise_check_unseeded _path _label)
                 set(_derived TRUE)
             endif()
         endif()
-        set(_text
-            "nros: ${_label} was composed after this configure's readers ran, and no "
-            "`nros configure` seeded them, so they used their defaults (Kconfig and "
-            "crate values, which can be smaller than this image needs), while the late "
-            "consumers of this configure read the composed answer (${_path}).")
-        string(CONCAT _text ${_text})
         if(_derived)
             # RFC-0120 D5.
             message(FATAL_ERROR
-                "${_text}\n"
+                "nros: ${_label} was composed after this configure's readers ran, and "
+                "no `nros configure` seeded them, so they used their defaults (Kconfig "
+                "and crate values, which can be smaller than this image needs), while "
+                "the late consumers of this configure read the composed answer "
+                "(${_path}).\n"
                 "  The composed answer is DERIVED, so the two halves of this image "
                 "disagree. ${_fix}: the fragment now holds this configure's answer, so "
                 "the next configure reads it.")
         endif()
-        message(WARNING "${_text} ${_fix_before}.")
-        nros_message_detail(
-            "nros: a configure takes one pass; `nros configure` seeds the readers that "
-            "run before the composition (RFC-0120 D5).")
+        # Issue 2989 -- nothing was derived, so the readers' defaults and the
+        # composed answer are the same configured values and the image agrees
+        # with itself. That is not a fault, so it is a STATUS line, not a
+        # WARNING: a warning on every such configure teaches readers to skip
+        # the FATAL above, which matters.
+        message(STATUS
+            "nros: ${_label} was composed after this configure's readers ran, and no "
+            "`nros configure` seeded them, so they used their defaults. Nothing was "
+            "derived, so the composed answer (${_path}) uses the configured values "
+            "too, and this image is sized as configured. Once its sizes can be "
+            "derived (for message bounds, once every type it uses is bounded): "
+            "${_fix_before}.")
         return()
     endif()
     # RFC-0120 D5.
