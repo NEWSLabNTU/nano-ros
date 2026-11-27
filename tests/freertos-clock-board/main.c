@@ -131,6 +131,19 @@ static void clock_task(void* arg) {
     uint64_t waited = timed_point();
     CHECK("the point waited out the 300 ms window", waited >= 300000000ULL);
     CHECK("...and then returned (under 5 s)", waited < 5000000000ULL);
+#elif defined(CASE_BOARD_RESYNC) || defined(CASE_BOARD_ONCE)
+    /* source = board, a hook that answers the instant once and the instant
+     * + 1 h after. RESYNC re-asks every 100 ms
+     * (clock.board_resync_interval_ms); ONCE states no interval. */
+    check_before_point(NROS_WALL_CLOCK_SOURCE_BOARD);
+    (void)timed_point();
+    uint64_t first = nros_platform_time_now_ns();
+    CHECK("right after the point the reading is the first answer",
+          first + 2000000ULL >= BOARD_NS && first < BOARD_NS + 1000000000ULL);
+    uint64_t m0 = host_mono_ns();
+    while (host_mono_ns() - m0 < 600000000ULL) {
+        vTaskDelay(pdMS_TO_TICKS(10));
+    }
 #elif defined(CASE_PLATFORM_HOST) || defined(CASE_PLATFORM_NONE)
     check_before_point(NROS_WALL_CLOCK_SOURCE_BOARD);
     (void)timed_point();
@@ -156,6 +169,19 @@ static void clock_task(void* arg) {
     int calls = hook_calls;
     nros_platform_freertos_clock_resolve_point();
     CHECK("a second call of the point asks nothing", hook_calls == calls);
+#elif defined(CASE_BOARD_RESYNC)
+    /* 600 ms at a 100 ms interval: re-asked several times, so the stepped
+     * answer is installed (a re-answer by the latched source is no step). */
+    CHECK("the board was re-asked", hook_calls >= 3);
+    CHECK("the reading followed the board's step (+1 h)",
+          t >= BOARD_NS + 3600000000000ULL && t < BOARD_NS + 3600000000000ULL + 5000000000ULL);
+    CHECK("state: synced, board", st.synced && st.source == NROS_WALL_CLOCK_SOURCE_BOARD);
+#elif defined(CASE_BOARD_ONCE)
+    /* No interval: asked once at the point, so the step never arrives. */
+    CHECK("the board was asked once", hook_calls == 1);
+    CHECK("state: synced, board", st.synced && st.source == NROS_WALL_CLOCK_SOURCE_BOARD);
+    CHECK("the reading never followed the step",
+          t + 2000000ULL >= BOARD_NS && t < BOARD_NS + 5000000000ULL);
 #elif defined(CASE_BOARD_NEVER)
     CHECK("reading is 0 (unstamped)", t == 0ULL);
     CHECK("state: not synced", !st.synced);

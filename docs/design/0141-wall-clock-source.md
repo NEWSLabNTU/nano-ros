@@ -295,6 +295,24 @@ module's library. The rule as built:
   (`tests/data/clock-selection-cases.tsv`), each in its own test, so they
   cannot drift apart. Copies that differed would make the wall clock depend
   on archive scan order.
+- **Re-asking the board.** *(Amended 2026-11-24, issue 2866.)* Once `board`
+  has answered, it is asked again only if `clock.board_resync_interval_ms` is
+  above 0 (default 0: asked once, as before). Each re-answer goes through
+  D3's setter, so `clock.upgrade` decides what it may change, exactly as at
+  boot. A re-answer by the latched `board` is no counted step. The re-ask
+  runs on a task of its own, so the task reading the clock never waits on the
+  hook. Its stack is `clock.board_resync_stack_bytes` (default 8,192 B), a
+  floor that each port raises to its own minimum. The hook is the board's
+  own code, of a depth nano-ros cannot know, so a fixed stack would be the
+  SNTP re-sync's first defect again. The loop is one shared helper
+  (`nros/clock_resync.h`), started by the POSIX and FreeRTOS ports once the
+  resolution is latched. The SNTP re-sync can use the same helper.
+
+  The interval is the image's MONOTONIC time, and that is deliberate. It is
+  not an oversight to "fix" to match D5. SNTP is paced on the server's clock
+  to keep the rate it queries a remote server at real time on a racing
+  simulator. A board hook is local code, so a faster re-ask costs the image
+  CPU and nothing else, and there is no remote rate to protect.
 
 ### D3 — One offset store, one setter
 
@@ -517,6 +535,9 @@ a stub board clock (`docs/reference/source-timestamps.md`, gate
   on a port that has a wall clock, so a list ending in it reaches
   `epoch_failure` on Zephyr, bare-metal FreeRTOS and ThreadX, and `halt` can
   halt (the freertos-posix board has the host's clock, so it answers there).
+- 2026-11-24: D2 amended (issue 2866): `board` is re-asked on
+  `clock.board_resync_interval_ms` (default 0), on its own task with the
+  stack `clock.board_resync_stack_bytes`, paced on monotonic time on purpose.
 - 2026-11-23: D2 amended (issue 2865): FreeRTOS resolves at an explicit boot
   point that the board entries call after network bring-up and log-writer
   registration, not lazily on the first read. Reads before it read 0 and

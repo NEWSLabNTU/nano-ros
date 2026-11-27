@@ -281,6 +281,14 @@ KNOB_CLASS = {
         "infra",
         "how long each wall-clock source (here `board`) gets to answer; a time, not a size. The posix and freertos ports' builds read it to define their resolution policy (RFC-0141 D2, phase-582 W1d)",
     ),
+    "NROS_CLOCK_BOARD_RESYNC_INTERVAL_MS": (
+        "infra",
+        "how often the board's wall-clock hook is asked again after boot, 0 = once; a time, not a size. The posix and freertos ports' builds read it for the re-ask task (RFC-0141 D2, issue 2866)",
+    ),
+    "NROS_CLOCK_BOARD_RESYNC_STACK_BYTES": (
+        "sizing",
+        "the board wall-clock re-ask task's stack, a floor the port raises; the hook is the board's own code, so its depth is stated, never derivable (RFC-0141 D2, issue 2866)",
+    ),
     "NROS_TRACE_TAKES": (
         "infra",
         "phase-474 I3 take-event toggle for the callback trace; a bool, so it has no rung",

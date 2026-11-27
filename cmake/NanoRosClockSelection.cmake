@@ -18,13 +18,30 @@
 #     plus NROS_CLOCK_UPGRADE / NROS_CLOCK_EPOCH_FAILURE when stated, plus
 #     NROS_CLOCK_FALLBACK_SETTLE_MS=<n>u when stated (a number, else refused),
 #     plus NROS_CLOCK_HAS_BOARD=1 and the selection-named TU when it names
-#     `board`.
+#     `board`, and then NROS_CLOCK_BOARD_RESYNC_{INTERVAL_MS,STACK_BYTES}=<n>u
+#     when stated.
 # Choice values are refused by the cargo reader (`stated_choice`), which every
 # cmake image runs too; this file does not re-check them.
 
 include_guard(GLOBAL)
 
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosImageEnv.cmake")
+
+# Append `<name>=<value>u` to the list <out> when <value> is stated; refuse a
+# value that is not a number.
+function(_nros_clock_selection_number _out _name _value)
+    if("${_value}" STREQUAL "")
+        return()
+    endif()
+    string(STRIP "${_value}" _value)
+    if(NOT _value MATCHES "^[0-9]+$")
+        message(FATAL_ERROR
+            "nano-ros: ${_name}='${_value}' is not a number (`[knobs.clock]`, an integer).")
+    endif()
+    set(_l ${${_out}})
+    list(APPEND _l "${_name}=${_value}u")
+    set(${_out} "${_l}" PARENT_SCOPE)
+endfunction()
 
 # nros_clock_selection_apply(<target> <api-include-dir>)
 #
@@ -72,6 +89,15 @@ function(nros_clock_selection_apply _target _api_include)
     endif()
     if(_board)
         list(APPEND _defs "NROS_CLOCK_HAS_BOARD=1")
+        # The board re-ask knobs, only beside `board` (no other source reads
+        # them); unstated, the board TU's registry defaults apply.
+        # Each read names its knob literally: the knob-road coverage table
+        # proves a cmake reader is carried by finding the name inside
+        # `nros_image_env_value(...)`.
+        nros_image_env_value(_bri NROS_CLOCK_BOARD_RESYNC_INTERVAL_MS)
+        _nros_clock_selection_number(_defs NROS_CLOCK_BOARD_RESYNC_INTERVAL_MS "${_bri}")
+        nros_image_env_value(_brs NROS_CLOCK_BOARD_RESYNC_STACK_BYTES)
+        _nros_clock_selection_number(_defs NROS_CLOCK_BOARD_RESYNC_STACK_BYTES "${_brs}")
         get_filename_component(_tu
             "${_api_include}/../c/nros_clock_board__set_by__knobs_clock_source.c" ABSOLUTE)
         if(NOT EXISTS "${_tu}")

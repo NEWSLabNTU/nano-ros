@@ -1610,6 +1610,12 @@ void nros_platform_freertos_clock_resolve_point(void) {
                                                   nros_freertos_clock_report, NULL);
         nros_freertos_clock_report_took(start_ns);
         __atomic_store_n(&s_wall_clock_phase, NROS_FREERTOS_CLOCK_RESOLVED, __ATOMIC_RELEASE);
+#ifdef NROS_CLOCK_HAS_BOARD
+        /* `clock.board_resync_interval_ms`: re-ask the board on its own task
+         * (nothing when the interval is 0), after the verdict is published so
+         * its first install meets a resolved clock. */
+        nros_clock_board_resync_start__set_by__knobs_clock_source();
+#endif
         return;
     }
     while (!nros_freertos_clock_resolved()) {

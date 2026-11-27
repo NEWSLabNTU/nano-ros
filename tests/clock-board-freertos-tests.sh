@@ -24,6 +24,12 @@
 #   board-early the same hook, a read early, then MORE than the window passes
 #               before the network is up and the point runs: the early read
 #               spent no window, so the board's answer is still installed;
+#   board-resync source = board, clock.board_resync_interval_ms = 100, a hook
+#               that answers the instant once and the instant + 1 h after: the
+#               re-ask task (its stack the knob's 4096 B, a floor) installs the
+#               step, so a read 600 ms on follows it;
+#   board-once  the same hook with no interval: asked once, the step never
+#               reaches a read;
 #   board-never source = board, window 300 ms, a hook that never answers: the
 #               point returns after the window, reads 0, {unsynced, board},
 #               and says so once;
@@ -42,6 +48,7 @@
 # bound (the hook's delay, the window).
 # Negative controls, each against a mutated port that must FAIL:
 #   - a point that resolves nothing fails board-late;
+#   - a port that never starts the re-ask fails board-resync;
 #   - resolving lazily on the first read (the shape this replaced, which ran
 #     before the network was up) fails board-net and board-early.
 #
@@ -82,7 +89,8 @@ build() {
     local d="$tmp/$name"
     # nros-cmake-prefix-exempt: pure-C FreeRTOS port harness, no Rust.
     if ! env -u NROS_CLOCK_SOURCE -u NROS_CLOCK_UPGRADE -u NROS_CLOCK_EPOCH_FAILURE \
-        -u NROS_CLOCK_FALLBACK_SETTLE_MS "$@" \
+        -u NROS_CLOCK_FALLBACK_SETTLE_MS -u NROS_CLOCK_BOARD_RESYNC_INTERVAL_MS \
+        -u NROS_CLOCK_BOARD_RESYNC_STACK_BYTES "$@" \
         cmake -S "$harness" -B "$d" -DFREERTOS_DIR="$freertos_dir" \
         -DCLOCK_TEST_CASE="$case" -DCLOCK_TEST_HOOK="$hook" -DCLOCK_TEST_BAREMETAL="$bare" \
         >"$d.log" 2>&1; then
@@ -134,6 +142,16 @@ echo "== board-early"
 build board-early CASE_BOARD_EARLY 3 OFF NROS_CLOCK_SOURCE=board NROS_CLOCK_FALLBACK_SETTLE_MS=300
 run board-early
 once board-early "nros: wall clock from board"
+
+echo "== board-resync"
+build board-resync CASE_BOARD_RESYNC 4 OFF NROS_CLOCK_SOURCE=board NROS_CLOCK_FALLBACK_SETTLE_MS=300 \
+    NROS_CLOCK_BOARD_RESYNC_INTERVAL_MS=100 NROS_CLOCK_BOARD_RESYNC_STACK_BYTES=4096
+run board-resync
+once board-resync "nros: wall clock from board"
+
+echo "== board-once"
+build board-once CASE_BOARD_ONCE 4 OFF NROS_CLOCK_SOURCE=board NROS_CLOCK_FALLBACK_SETTLE_MS=300
+run board-once
 
 echo "== board-never"
 build board-never CASE_BOARD_NEVER 0 OFF NROS_CLOCK_SOURCE=board NROS_CLOCK_FALLBACK_SETTLE_MS=300
@@ -247,4 +265,19 @@ must_fail lazy-net 'FAIL ...and never asks the hook'
 harness="$tmp/lazy-harness" build lazy-early CASE_BOARD_EARLY 3 OFF NROS_CLOCK_SOURCE=board \
     NROS_CLOCK_FALLBACK_SETTLE_MS=300
 must_fail lazy-early "FAIL reading is the board's instant"
-echo "clock-board-freertos: OK (negative controls: an inert point fails board-late; lazy-on-first-read fails board-net and board-early)"
+
+# 3. A port that never starts the re-ask fails board-resync: the step needs a
+#    re-ask, so nothing else can make the reading follow it.
+mutant noreask '
+import sys
+p = sys.argv[1]
+s = open(p).read()
+n = "        nros_clock_board_resync_start__set_by__knobs_clock_source();\n"
+if s.count(n) != 1:
+    sys.exit("the re-ask start was not found")
+open(p, "w").write(s.replace(n, ""))
+'
+harness="$tmp/noreask-harness" build noreask CASE_BOARD_RESYNC 4 OFF NROS_CLOCK_SOURCE=board \
+    NROS_CLOCK_FALLBACK_SETTLE_MS=300 NROS_CLOCK_BOARD_RESYNC_INTERVAL_MS=100
+must_fail noreask 'FAIL the board was re-asked'
+echo "clock-board-freertos: OK (negative controls: an inert point fails board-late; lazy-on-first-read fails board-net and board-early; a port that never re-asks fails board-resync)"

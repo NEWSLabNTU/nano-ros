@@ -5,6 +5,8 @@
 id	cargo	cmake	west	note
 ACTION_INBOX_BYTES	yes	yes	yes	
 ACTION_INBOX_DEPTH	yes	yes	yes	
+CLOCK_BOARD_RESYNC_INTERVAL_MS	yes	yes	yes	
+CLOCK_BOARD_RESYNC_STACK_BYTES	yes	yes	yes	
 CLOCK_EPOCH_FAILURE	yes	yes	yes	
 CLOCK_FALLBACK_SETTLE_MS	yes	yes	yes	
 CLOCK_HLC_INTERVAL_MS	?	?	yes	
