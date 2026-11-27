@@ -124,3 +124,32 @@ ASI has stated what it needs from this issue:
   not an extra.
 - **Priority:** not on ASI's critical path yet. ASI keeps its own
   implementation until this lands.
+
+## Status against phase-582 (2026-11-27)
+
+Checked against main and autoware-safety-island CI runs 45075448610
+(nano-ros 9e9deb715f) and 45946528825 (0e4afce2fa).
+
+**Met: first acquisition.** On the FreeRTOS AN536 lane,
+`nros_platform_epoch_us()` returns absolute time once SNTP answers, verified
+by running the image in both runs: `Stamp clock: absolute ... synced,
+source 3`. The source is `board` (RFC-0141 D2): ASI's
+`platform/freertos/board_wall_clock.cpp` answers the hook.
+
+**User ruling (2026-11-27): the board hook is THE FreeRTOS answer.** On
+FreeRTOS the supported wall-clock source is `source = "board"`, answered by
+an SNTP task (or RTC, GNSS) the board or application owns. nano-ros does not
+ship an lwIP SNTP client. ASI's `platform/freertos/board_wall_clock.cpp` is
+the worked example. That retires the "lwIP's SNTP" wording in the
+Acceptance above. The book's "Set the wall clock from the board" now states
+the path and links the example.
+
+**Closes on three things:**
+1. A doc that states the board hook as the FreeRTOS path, with ASI's file
+   as the worked example: the book page above (this change).
+2. Issue 2866's board re-ask interval landing. The board source latches its
+   first answer and is never asked again, so both runs report `steps 0`,
+   while ASI's acceptance covers every later re-sync. It waits on the next
+   release dispatch.
+3. Evidence of a later re-sync once 2866 is in: a run whose stamp line
+   reports `steps` above 0.

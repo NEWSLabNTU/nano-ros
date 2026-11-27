@@ -13,6 +13,13 @@ the executor all read it, and `[knobs.clock] source` says where it comes
 from. With `source = "board"`, nano-ros asks a function your board or
 application defines, `nros_board_wall_clock_ns`, until it answers.
 
+On bare-metal FreeRTOS this is how an image gets a wall clock: nano-ros has
+no SNTP client of its own on lwIP, so an SNTP task in your board or
+application keeps the time and answers this function. The Autoware Safety
+Island's FreeRTOS images do exactly that; their
+[`board_wall_clock.cpp`](https://github.com/NEWSLabNTU/autoware-safety-island/blob/nano-ros-next/actuation_module/src/asi_common/src/platform/freertos/board_wall_clock.cpp)
+is a worked example of the task and the function together.
+
 ## Before you start
 
 - An image on Linux (POSIX) or FreeRTOS, bare metal or `freertos-posix`.
