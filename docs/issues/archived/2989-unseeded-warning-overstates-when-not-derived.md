@@ -1,11 +1,13 @@
 ---
 id: 2989
 title: "The unseeded-configure WARNING says the defaults 'can be smaller than this image needs' when nothing larger was derived"
-status: open
+status: resolved
 type: ux
 severity: low
 area: [cmake, configure, diagnostics]
 found: 2026-11-27
+resolved: 2026-11-27
+resolved_in: "fix-2989-unseeded-warning"
 related: [2983]
 ---
 
@@ -58,3 +60,24 @@ that this line was not a remnant of issue 2983.
 
 The user ruled on 2026-11-27, via the release session, that this is
 post-release work.
+
+## Fix (2026-11-27)
+
+The non-derived arm no longer warns. It prints a STATUS line instead, which
+says that the readers used their defaults and that the composed answer uses
+the configured values too, so the image is sized as configured. It also
+says what would make the sizes derived. It stays a visible line rather than
+a verbose-only one, because two gates read it: `resolved-seed` reads "they
+used their defaults", and `sizing-descriptor-reader` reads the label.
+The "can be smaller than this image needs" wording moved into the derived
+arm's FATAL, the only arm it is true of.
+
+`just check promise-unseeded` (`tests/cmake-promise-unseeded-tests.sh`) runs
+both arms of the real function under `cmake -P`:
+- derived: the configure stops, saying the defaults can be smaller and that
+  the answer is derived;
+- not derived: the configure goes on, with no WARNING, no "can be smaller",
+  and the "sized as configured" line.
+
+On main's code the three not-derived checks fail, as they should.
+

@@ -307,21 +307,27 @@ $CONFIGURE_OUT"
 fi
 WARN_OUT="$(cmake -G Ninja -S "$SRC" -B "$TEST_TMPDIR/warn-build" 2>&1)"
 check
-if nros_grep_q -F 'CMake Warning' <<<"$WARN_OUT" && nros_grep_q -F 'they used their defaults' <<<"$WARN_OUT"; then
-    log_success "a non-derived unseeded answer is a WARNING"
+# Issue 2989 -- a non-derived answer agrees with the readers' defaults, so it
+# is reported (a status line) and is NOT a warning, and it never claims the
+# defaults can be smaller: only the derived arm, the FATAL, can say that.
+if nros_grep_q -F 'they used their defaults' <<<"$WARN_OUT" \
+   && nros_grep_q -F 'sized as configured' <<<"$WARN_OUT" \
+   && ! nros_grep_q -F 'CMake Warning' <<<"$WARN_OUT" \
+   && ! nros_grep_q -F 'can be smaller' <<<"$WARN_OUT"; then
+    log_success "a non-derived unseeded answer is reported, not warned"
 else
-    fail "a non-derived unseeded answer did not warn:
+    fail "a non-derived unseeded answer warned, overstated, or was not reported:
 $WARN_OUT"
 fi
 # Review N2 -- a derived SUB-field under a refused top-level status is not a
-# derived answer: WARNING, never the FATAL.
+# derived answer: reported, never the FATAL.
 SUB_RC=0
 SUB_OUT="$(cmake -G Ninja -S "$SRC" -B "$TEST_TMPDIR/subfield-build" \
     -DPROBE_SUBFIELD_DERIVED=ON 2>&1)" || SUB_RC=$?
 check
 if [ "$SUB_RC" -eq 0 ] && nros_grep_q -F 'they used their defaults' <<<"$SUB_OUT" \
    && ! nros_grep_q -F 'The composed answer is DERIVED' <<<"$SUB_OUT"; then
-    log_success "a derived sub-field under a refused fragment WARNS and configures"
+    log_success "a derived sub-field under a refused fragment reports and configures"
 else
     fail "a derived SUB-field stopped the configure as if the answer were derived (rc=$SUB_RC):
 $SUB_OUT"
