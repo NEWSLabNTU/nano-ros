@@ -1061,3 +1061,20 @@ toolchain-paths-persist:
 workspace-probes:
     @bash scripts/check-workspace-probes.sh
 
+
+# issue 3004 -- the Zephyr module hook checks ZEPHYR_SDK_INSTALL_DIR before
+# Zephyr hands it to find_package: an SDK root is left alone, the store's
+# `<version>/` directory one level above it resolves to it, and a value naming
+# no SDK stops the configure instead of letting CMake take the registry's.
+# A fake store under `cmake -P`; seconds.
+[group('needs:cmake')]
+zephyr-sdk-dir:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if ! command -v cmake >/dev/null 2>&1; then
+        # shellcheck source=scripts/build/check-skip.sh
+        source scripts/build/check-skip.sh
+        nros_check_skip zephyr-sdk-dir "missing host tool(s): cmake"
+        exit 0
+    fi
+    ./tests/cmake-zephyr-sdk-dir-tests.sh

@@ -81,6 +81,28 @@ selftest() {
         "$(probe "$tmp/home-other" mps2/an385 ZEPHYR_SDK_INSTALL_DIR="$tmp/opt/zephyr-sdk-$other")" \
         "rc=0 out=ZEPHYR_SDK_INSTALL_DIR=$tmp/opt/zephyr-sdk-$other"
 
+    # Issue 3004 -- a fake store laid out both ways. The store nests the root
+    # one level below its version directory; naming either level resolves to
+    # the root, and a value naming no SDK is REFUSED, never passed over for
+    # the registry (which here holds the pinned version, so a silent fallback
+    # would answer rc=0 with the registry's SDK).
+    up="$tmp/store-up/sdk/zephyr-sdk"
+    mk_sdk "$up/$other/zephyr-sdk-$other" "$other"
+    expect "the store's version directory names the root below it" \
+        "$(probe "$tmp/home-both" mps2/an385 ZEPHYR_SDK_INSTALL_DIR="$up/$other")" \
+        "rc=0 out=ZEPHYR_SDK_INSTALL_DIR=$up/$other/zephyr-sdk-$other"
+    expect "the root itself still names itself" \
+        "$(probe "$tmp/home-both" mps2/an385 ZEPHYR_SDK_INSTALL_DIR="$up/$other/zephyr-sdk-$other")" \
+        "rc=0 out=ZEPHYR_SDK_INSTALL_DIR=$up/$other/zephyr-sdk-$other"
+    mk_sdk "$up/$want/zephyr-sdk-$want" "$want"
+    expect "two levels up names no SDK: refused, not the registry's" \
+        "$(probe "$tmp/home-both" mps2/an385 ZEPHYR_SDK_INSTALL_DIR="$up")" "rc=1 out="
+    nros_grep_q 'nros locate tool zephyr-sdk' "$tmp/err" \
+        || fail "the refusal names no remedy: $(cat "$tmp/err")"
+    expect "a path that does not exist: refused, not the registry's" \
+        "$(probe "$tmp/home-both" mps2/an385 ZEPHYR_SDK_INSTALL_DIR="$tmp/nowhere")" "rc=1 out="
+    nros_grep_q 'does not exist' "$tmp/err" || fail "the refusal says nothing: $(cat "$tmp/err")"
+
     expect "a third-party variant asks nothing of the SDK" \
         "$(probe "$tmp/home-other" mps2/an385 ZEPHYR_TOOLCHAIN_VARIANT=gnuarmemb)" "rc=0 out="
 

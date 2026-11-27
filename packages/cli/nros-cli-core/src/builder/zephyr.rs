@@ -559,6 +559,78 @@ pub fn toolchain_variant(board: &str, env_variant: Option<&str>) -> String {
 
 /// True when `dir` is an SDK root of `version`: it exists and, where it
 /// carries `sdk_version`, that file names `version` (`_nros_zephyr_sdk_is`).
+/// The SDK root a caller's `ZEPHYR_SDK_INSTALL_DIR` names, or why it names
+/// none.
+///
+/// Issue 3004 -- the rule `scripts/lib/zephyr-sdk.sh` and the Zephyr module
+/// hook (`zephyr/cmake/nros_zephyr_sdk_dir.cmake`) also apply, rung for rung:
+/// 1. `dir` is an SDK root (it holds `sdk_version`, or is named
+///    `zephyr-sdk-*`);
+/// 2. `dir/zephyr-sdk-<want>` exists (the parent spelling);
+/// 3. exactly one `zephyr-sdk-*` child of `dir` holds `sdk_version` (the
+///    store's `<version>/` directory, one level above the root).
+///
+/// Anything else is refused: a caller's SDK that resolves to nothing used to
+/// be skipped here, and CMake, which reads the same variable, then took
+/// another SDK from its registry without a word.
+///
+/// # Errors
+///
+/// `dir` is missing, or holds no SDK root this rule can choose.
+pub fn callers_sdk(dir: &Path, want: &str) -> Result<PathBuf, String> {
+    let named = dir
+        .file_name()
+        .and_then(|n| n.to_str())
+        .is_some_and(|n| n.starts_with("zephyr-sdk-"));
+    if dir.join("sdk_version").is_file() || (named && dir.is_dir()) {
+        return Ok(dir.to_path_buf());
+    }
+    let pinned = dir.join(format!("zephyr-sdk-{want}"));
+    if pinned.is_dir() {
+        return Ok(pinned);
+    }
+    let mut roots: Vec<PathBuf> = std::fs::read_dir(dir)
+        .map(|es| {
+            es.flatten()
+                .map(|e| e.path())
+                .filter(|p| {
+                    p.file_name()
+                        .and_then(|n| n.to_str())
+                        .is_some_and(|n| n.starts_with("zephyr-sdk-"))
+                        && p.join("sdk_version").is_file()
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    roots.sort();
+    if roots.len() == 1 {
+        return Ok(roots.remove(0));
+    }
+    let found = if !dir.is_dir() {
+        "it does not exist".to_string()
+    } else if roots.is_empty() {
+        "it holds no `sdk_version`, and no `zephyr-sdk-*` directory below it does".to_string()
+    } else {
+        format!(
+            "it holds no `sdk_version`, and {} `zephyr-sdk-*` directories below it do ({})",
+            roots.len(),
+            roots
+                .iter()
+                .map(|r| r.display().to_string())
+                .collect::<Vec<_>>()
+                .join(", ")
+        )
+    };
+    Err(format!(
+        "ZEPHYR_SDK_INSTALL_DIR={} names no Zephyr SDK: {found}. Refusing rather \
+         than letting the build take whichever SDK the CMake registry holds.\n\
+         Remedy: set ZEPHYR_SDK_INSTALL_DIR to the SDK root itself, the directory \
+         holding `sdk_version` (`nros locate tool zephyr-sdk` prints the pinned one), \
+         or unset it.",
+        dir.display()
+    ))
+}
+
 fn sdk_is(dir: &Path, version: &str) -> bool {
     if !dir.is_dir() {
         return false;
@@ -742,18 +814,7 @@ pub fn resolve_toolchain(
     // 1. The caller's, at any version, under either spelling (the SDK, or
     //    its parent).
     if let Some(env) = inputs.env_sdk.filter(|p| !p.as_os_str().is_empty()) {
-        let named = env
-            .file_name()
-            .and_then(|n| n.to_str())
-            .is_some_and(|n| n.starts_with("zephyr-sdk-"));
-        let cand = if named {
-            env.to_path_buf()
-        } else {
-            env.join(format!("zephyr-sdk-{want}"))
-        };
-        if cand.is_dir() {
-            return done(Some(cand));
-        }
+        return done(Some(callers_sdk(env, &want)?));
     }
     // 2. The store, 3. the legacy checkout copy, 4. the registry: each only
     //    at exactly the pinned version.
@@ -1338,6 +1399,53 @@ mod toolchain_tests {
         assert_eq!(t.sdk, None);
     }
 
+    /// Issue 3004 -- a fake store laid out both ways. The store nests the
+    /// root one level below its version directory
+    /// (`<v>/zephyr-sdk-<v>/sdk_version`); naming either level resolves to
+    /// the root, and a directory that holds no SDK, or several, is refused
+    /// with the path to set rather than skipped.
+    #[test]
+    fn a_callers_sdk_one_level_up_resolves_to_its_root_or_is_refused() {
+        let tmp = tempfile::tempdir().unwrap();
+        let version_dir = tmp.path().join("sdk/zephyr-sdk/0.16.9");
+        let root = sdk(&version_dir, "0.16.9");
+        // The root itself, and the store's version directory above it.
+        assert_eq!(callers_sdk(&root, "0.16.9").unwrap(), root);
+        assert_eq!(callers_sdk(&version_dir, "0.16.9").unwrap(), root);
+        // One level up names one SDK whatever the tree pins.
+        assert_eq!(callers_sdk(&version_dir, "0.16.8").unwrap(), root);
+        // Two levels up holds two version directories and no root: refused.
+        sdk(&tmp.path().join("sdk/zephyr-sdk/0.16.8"), "0.16.8");
+        let err = callers_sdk(&tmp.path().join("sdk/zephyr-sdk"), "0.16.9").unwrap_err();
+        assert!(
+            err.contains("no `zephyr-sdk-*` directory below it"),
+            "{err}"
+        );
+        assert!(err.contains("nros locate tool zephyr-sdk"), "{err}");
+        // A directory with several SDK roots below it: refused, naming them.
+        let several = tmp.path().join("several");
+        sdk(&several, "0.16.8");
+        sdk(&several, "0.17.0");
+        let err = callers_sdk(&several, "0.16.9").unwrap_err();
+        assert!(err.contains("2 `zephyr-sdk-*` directories"), "{err}");
+        // ... unless one of them is the pinned version.
+        assert!(
+            callers_sdk(&several, "0.16.8")
+                .unwrap()
+                .ends_with("zephyr-sdk-0.16.8")
+        );
+        // A path that does not exist is refused, not skipped for the store.
+        let z = tree(tmp.path(), "0.16.9");
+        let missing = tmp.path().join("nowhere");
+        let inputs = ToolchainInputs {
+            env_sdk: Some(&missing),
+            store: vec![root.clone()],
+            ..Default::default()
+        };
+        let err = resolve_toolchain("mps2/an385", &z, &inputs).unwrap_err();
+        assert!(err.contains("it does not exist"), "{err}");
+    }
+
     #[test]
     fn the_callers_sdk_wins_under_either_spelling() {
         let tmp = tempfile::tempdir().unwrap();
@@ -1350,16 +1458,12 @@ mod toolchain_tests {
                 store: vec![store.clone()],
                 ..Default::default()
             };
-            let want = if env == mine {
-                mine.clone()
-            } else {
-                // The parent spelling joins the PINNED version, so it misses
-                // `zephyr-sdk-0.17.4` and falls to the store.
-                store.clone()
-            };
+            // Issue 3004 -- the parent spelling names exactly one SDK, so it
+            // is that one at any version, as the root spelling is. It used to
+            // join the PINNED version, miss, and fall to the store.
             assert_eq!(
                 resolve_toolchain("mps2/an385", &z, &inputs).unwrap().sdk,
-                Some(want)
+                Some(mine.clone())
             );
         }
     }

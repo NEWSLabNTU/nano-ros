@@ -151,12 +151,12 @@ nros_zephyr_sdk_resolve() {
     local version="${1:-}" root="${2:-}" cand
     [ -n "$version" ] || version="$(nros_zephyr_sdk_version)"
 
+    # Issue 3004 -- the operator's choice is resolved or REFUSED, never
+    # skipped: CMake reads the same variable, and a value that names no SDK
+    # let it take another from its registry without a word.
     if [ -n "${ZEPHYR_SDK_INSTALL_DIR:-}" ]; then
-        case "$(basename "${ZEPHYR_SDK_INSTALL_DIR%/}")" in
-            zephyr-sdk-*) cand="${ZEPHYR_SDK_INSTALL_DIR%/}" ;;
-            *)            cand="${ZEPHYR_SDK_INSTALL_DIR%/}/zephyr-sdk-$version" ;;
-        esac
-        [ -d "$cand" ] && { printf '%s\n' "$cand"; return 0; }
+        nros_zephyr_sdk_callers "$ZEPHYR_SDK_INSTALL_DIR" "$version"
+        return
     fi
 
     # The store and checkout arms must hold the version ASKED for, not merely
@@ -171,6 +171,49 @@ nros_zephyr_sdk_resolve() {
     cand="$(nros_zephyr_sdk_checkout_dir "$version" "$root")"
     _nros_zephyr_sdk_is "$cand" "$version" && { printf '%s\n' "$cand"; return 0; }
 
+    return 1
+}
+
+# nros_zephyr_sdk_callers <dir> <want>
+#
+# The SDK root a caller's `ZEPHYR_SDK_INSTALL_DIR` names, or a refusal on
+# stderr and status 1. Issue 3004 -- the same rule as the CLI's
+# `builder::zephyr::callers_sdk` and the Zephyr module hook, rung for rung:
+#   1. <dir> is an SDK root (holds `sdk_version`, or is named zephyr-sdk-*);
+#   2. <dir>/zephyr-sdk-<want> exists (the parent spelling);
+#   3. exactly one zephyr-sdk-* child of <dir> holds `sdk_version` (the
+#      store's `<version>/` directory, one level above the root).
+nros_zephyr_sdk_callers() {
+    local dir="${1%/}" want="$2" c found="" n=0
+    case "$(basename "$dir")" in
+        zephyr-sdk-*) [ -d "$dir" ] && { printf '%s\n' "$dir"; return 0; } ;;
+    esac
+    [ -f "$dir/sdk_version" ] && { printf '%s\n' "$dir"; return 0; }
+    [ -d "$dir/zephyr-sdk-$want" ] && { printf '%s\n' "$dir/zephyr-sdk-$want"; return 0; }
+    for c in "$dir"/zephyr-sdk-*; do
+        [ -f "$c/sdk_version" ] || continue
+        n=$((n + 1))
+        found="${found:+$found, }$c"
+    done
+    if [ "$n" -eq 1 ]; then
+        printf '%s\n' "$found"
+        return 0
+    fi
+    {
+        if [ ! -d "$dir" ]; then
+            echo "error: ZEPHYR_SDK_INSTALL_DIR=$dir names no Zephyr SDK: it does not exist."
+        elif [ "$n" -eq 0 ]; then
+            echo "error: ZEPHYR_SDK_INSTALL_DIR=$dir names no Zephyr SDK: it holds no"
+            echo "       \`sdk_version\`, and no \`zephyr-sdk-*\` directory below it does."
+        else
+            echo "error: ZEPHYR_SDK_INSTALL_DIR=$dir names no Zephyr SDK: it holds no"
+            echo "       \`sdk_version\`, and $n \`zephyr-sdk-*\` directories below it do ($found)."
+        fi
+        echo "       Refusing rather than letting the build take whichever SDK the CMake"
+        echo "       registry holds. Remedy: set ZEPHYR_SDK_INSTALL_DIR to the SDK root itself,"
+        echo "       the directory holding \`sdk_version\` (\`nros locate tool zephyr-sdk\`"
+        echo "       prints the pinned one), or unset it."
+    } >&2
     return 1
 }
 

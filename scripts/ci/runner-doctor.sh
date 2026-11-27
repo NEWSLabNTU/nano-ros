@@ -203,12 +203,22 @@ _nros_runner_zephyr_sdk_path() {
     local want="$1" root="$2" from_registry=""
 
     if [ -n "${ZEPHYR_SDK_INSTALL_DIR:-}" ]; then
-        # Both spellings are in the wild: the SDK itself, or its parent.
-        case "$(basename "$ZEPHYR_SDK_INSTALL_DIR")" in
-            zephyr-sdk-*) printf '%s\tZEPHYR_SDK_INSTALL_DIR' "$ZEPHYR_SDK_INSTALL_DIR" ;;
-            *)            printf '%s/zephyr-sdk-%s\tZEPHYR_SDK_INSTALL_DIR' \
-                              "${ZEPHYR_SDK_INSTALL_DIR%/}" "$want" ;;
-        esac
+        # Issue 3004 -- the one rule (`nros_zephyr_sdk_callers`): the SDK root,
+        # its parent, or the store's `<version>/` directory above it. A value
+        # that names no SDK is reported at the path the parent spelling would
+        # mean, so the check below fails on it rather than passing over it.
+        local _lib _r=""
+        _lib="$(cd "$(dirname "${BASH_SOURCE[0]}")/../lib" 2>/dev/null && pwd)/zephyr-sdk.sh"
+        if [ -r "$_lib" ]; then
+            _r="$(. "$_lib" && nros_zephyr_sdk_callers "$ZEPHYR_SDK_INSTALL_DIR" "$want" 2>/dev/null)" || _r=""
+        fi
+        if [ -z "$_r" ]; then
+            case "$(basename "${ZEPHYR_SDK_INSTALL_DIR%/}")" in
+                zephyr-sdk-*) _r="${ZEPHYR_SDK_INSTALL_DIR%/}" ;;
+                *)            _r="${ZEPHYR_SDK_INSTALL_DIR%/}/zephyr-sdk-$want" ;;
+            esac
+        fi
+        printf '%s\tZEPHYR_SDK_INSTALL_DIR' "$_r"
         return 0
     fi
 
@@ -1118,6 +1128,16 @@ _nros_runner_self_test() {
     got="$(ZEPHYR_SDK_INSTALL_DIR="$tmp/parent" _st_resolve "$d")"
     _st_expect "ZEPHYR_SDK_INSTALL_DIR naming the parent appends the version" \
         "$got" "$tmp/parent/zephyr-sdk-${_stv}	ZEPHYR_SDK_INSTALL_DIR"
+
+    # Issue 3004 -- the store's `<version>/` directory, one level above the
+    # SDK root, resolves to the one root below it even when its name is not
+    # the pinned version.
+    d="$(_st_stage env_one_level_up)"
+    mkdir -p "$tmp/up/0.0.0-other/zephyr-sdk-0.0.0-other"
+    echo 0.0.0-other > "$tmp/up/0.0.0-other/zephyr-sdk-0.0.0-other/sdk_version"
+    got="$(ZEPHYR_SDK_INSTALL_DIR="$tmp/up/0.0.0-other" _st_resolve "$d")"
+    _st_expect "ZEPHYR_SDK_INSTALL_DIR one level above the SDK root names that root" \
+        "$got" "$tmp/up/0.0.0-other/zephyr-sdk-0.0.0-other	ZEPHYR_SDK_INSTALL_DIR"
 
 
     # The whole zephyr check, on a host shaped like the runner that failed:
