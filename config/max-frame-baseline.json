@@ -39,7 +39,7 @@
     },
     {
       "function": "_RINvNtC19nros_board_freertos5entry19app_task_entry_bareNtC30nros_board_mps2_an385_freertos9Mps2An385NCNvC22isr_wake_freertos_mps24main0NtNtNtC9nros_node8executor5types9NodeErrorEB_",
-      "bytes": 10056,
+      "bytes": 4224,
       "seen_in": "isr_wake_freertos_mps2_bringup@freertos (packages/testing/nros-tests/bins/isr-wake-freertos-mps2/target/nros-stack-floor)"
     },
     {
@@ -119,8 +119,8 @@
     },
     {
       "function": "_RINvNtC4nros12node_runtime11out_of_lineINtNtC4core6result6ResultuNtNtB_4node13NodeDeclErrorENCNvXB_NtB_12ExecutorSinkNtB_9FrameSink13create_entitys3_0EB_",
-      "bytes": 4536,
-      "seen_in": "action_bringup@mps2-an385-freertos (examples/workspaces/rust/target-fixtures/freertos-action-client/nros-stack-floor)"
+      "bytes": 4544,
+      "seen_in": "pubsub_bringup@zephyr_cortex_m_talker_clock_sntp_resync (<zephyr-builds>/3.7/build-ws-rust-mps2-talker-clock-sntp-resync-zenoh/nros/stack-floor)"
     },
     {
       "function": "_RINvNtC4nros12node_runtime11out_of_lineINtNtC4core6result6ResultuNtNtB_4node13NodeDeclErrorENCNvXB_NtB_12ExecutorSinkNtB_9FrameSink13create_entitys6_0EB_",
@@ -134,8 +134,8 @@
     },
     {
       "function": "_RINvNtC4nros12node_runtime29install_in_with_launch_paramsNtC10talker_pkg6TalkerKj2_Kj1_Kj0_KB_KB_KB_KB_EB_",
-      "bytes": 7960,
-      "seen_in": "demo_bringup@qemu-armv7a-nuttx (examples/workspaces/rust/target-fixtures/nuttx/nros-stack-floor)"
+      "bytes": 8048,
+      "seen_in": "pubsub_bringup@zephyr_cortex_m_talker_clock_sntp_resync (<zephyr-builds>/3.7/build-ws-rust-mps2-talker-clock-sntp-resync-zenoh/nros/stack-floor)"
     },
     {
       "function": "_RINvNtC4nros12node_runtime29install_in_with_launch_paramsNtC12listener_pkg8ListenerKj2_Kj0_KB_KB_KB_KB_KB_EB_",
@@ -231,6 +231,11 @@
       "function": "_RNCNvNtC18qemu_rtic_main_e2e10___nros_app10___nros_run0B_",
       "bytes": 4112,
       "seen_in": "qemu_rtic_main_e2e_bringup@mps2-an385-baremetal (packages/testing/nros-tests/bins/rtic-run-plan-e2e/target/nros-stack-floor)"
+    },
+    {
+      "function": "_RNvC22isr_wake_freertos_mps213open_executor",
+      "bytes": 5512,
+      "seen_in": "isr_wake_freertos_mps2_bringup@freertos (packages/testing/nros-tests/bins/isr-wake-freertos-mps2/target/nros-stack-floor)"
     },
     {
       "function": "_RNvMNtNtC14nros_rmw_zenoh4shim7sessionNtB_12ZenohSession24names_and_types_filtered",
