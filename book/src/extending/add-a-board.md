@@ -38,6 +38,7 @@ your RTOS yet, [add the platform](add-a-platform.md) first.
 
    next:
      export NROS_EXTRA_BOARD_PATH=./boards   # how this board is reached
+     nros check my-board   # resolves the board, its announcement, network and projection
    ```
 
    The command writes two files: the descriptor `nros-board.toml`, which says

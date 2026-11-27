@@ -44,6 +44,7 @@ image row, so adding a board is adding a row, never a package.
    ✓ Created the workspace host_ws
      src/host_node/   the node: a rust talker (library)
      src/host_node_bringup/   what it runs on: `linux`, image `linux`, zenoh
+     …
    ```
 
 2. Add a node package. Run `nros new` from the workspace root; `--to` adds its

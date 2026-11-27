@@ -71,7 +71,6 @@ shares them.
    ```text
    nros setup: linux (rmw zenoh) needs 3 package(s):
      rust                   already present (rustup, default stable-x86_64-unknown-linux-gnu)
-     rust target            no cross target for this board
      …
    (--dry-run: nothing installed)
    ```

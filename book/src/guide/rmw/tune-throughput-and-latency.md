@@ -35,9 +35,9 @@ embedded image has no run-time configuration.
    ```text
    knob                     value      set by
    ----                     -----      ------
-   zenoh.tx_batch           true       platform
-   zenoh.tx_split_lock      true       platform
-   zenoh.tx_batch_flush_ms  50         platform
+   zenoh.tx_batch                     true       platform  [no env knob on this platform]
+   zenoh.tx_split_lock                true       platform  [no env knob on this platform]
+   zenoh.tx_batch_flush_ms            50         platform  [no env knob on this platform]
    ```
 
 2. Turn on transmit batching for an image that publishes many small or
