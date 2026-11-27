@@ -170,9 +170,10 @@ pub fn scaffold_project(p: &WorkspaceProject<'_>) -> Result<PathBuf> {
     if let Some(bytes) = p.main_stack {
         std::fs::write(bringup_dir.join(STACK_CONF), stack_conf(p, bytes))?;
     }
-    if let Some(contract) = bringup_contract(&p.node) {
-        std::fs::write(bringup_dir.join(crate::cmd::ws::LEAF_CONTRACT), contract)?;
-    }
+    std::fs::write(
+        bringup_dir.join(crate::cmd::ws::LEAF_CONTRACT),
+        bringup_contract(&p.node),
+    )?;
     std::fs::write(
         p.dir.join(".gitignore"),
         "/build/\n/generated/\n/target/\n/.cargo/\nCargo.lock\n/src/*/metadata/\n",
@@ -528,31 +529,39 @@ pub fn stack_floor_report_path(report_dir: &std::path::Path, key: &str) -> std::
     }
 }
 
-/// The bringup's `system.contract.yaml`: what the node DECLARES, or `None`.
+/// The bringup's `system.contract.yaml`: what the node DECLARES.
 ///
 /// Issue 2270. Without one, every buffer the declarations would size keeps a
 /// default or a worst case, and a scaffolded talker's first build reported
-/// six of them. The scaffold states what its own code does: the talker's
-/// timer path, its VOLATILE publisher, and no parameters.
+/// six of them. The scaffold states what its own code does: its timers, its
+/// endpoint, and no parameters.
 ///
 /// **A contract that names a node is that node's ENTITY declaration, so it
 /// must be complete.** The first version declared the talker's publisher and
-/// not its timer, and wrote `params: {}` alone for every other role. Wherever
-/// the probe sidecar is not fresh, the contract is all the derivation reads.
-/// A release is one such place, because it shipped no
+/// not its timer. Wherever the probe sidecar is not fresh, the contract is all
+/// the derivation reads. A release is one such place, because it shipped no
 /// `probe-source-dirs.txt`, so every sidecar read stale. There a talker
 /// counted zero callbacks, and nros-0.6.0-nros7's own First Project failed
-/// to compile on `max_cbs 0` (phase-523 round two). So only the role whose
-/// whole surface is written here gets a contract. The others get none, which
-/// is the documented "no contract" road: they keep the board's configured
-/// pool knobs until a user states theirs.
-fn bringup_contract(node: &NodePackage<'_>) -> Option<String> {
-    if node.template != Role::Talker {
-        return None;
-    }
+/// to compile on `max_cbs 0` (phase-523 round two). The rows come from
+/// [`contract_node_rows`], which states every role's whole surface per
+/// language, the same rows `--to` adds.
+///
+/// Every role gets one (issue 2772). With no contract an image's parameter
+/// declarations are unknown, not zero, so the parameter store kept its
+/// default bounds: about 62 KB of a listener's, server's or action server's
+/// executor backing, which overflowed a 264 KiB board. `params: {}` says
+/// the node declares none, and the store is sized for the one parameter the
+/// runtime seeds.
+fn bringup_contract(node: &NodePackage<'_>) -> String {
     let ros = node.ros_name();
-    let (rows, _) = contract_node_rows(node);
-    Some(format!(
+    let (rows, w) = contract_node_rows(node);
+    let external = match w.side {
+        "pub" => "sub",
+        "sub" => "pub",
+        "server" => "client",
+        _ => "server",
+    };
+    format!(
         "# What this image's node DECLARES, beside system.toml. The build sizes its\n\
          # buffers and its callback table from this, so it must list everything the\n\
          # node creates: when you add a timer, a publisher, a subscription or a\n\
@@ -560,13 +569,19 @@ fn bringup_contract(node: &NodePackage<'_>) -> Option<String> {
          # `nros build --explain-sizing` lists anything still left to a default.\n\
          \nversion: 1\n\nnodes:\n\
          {rows}\
-         \ntopics:\n\
-         \x20 /chatter:\n\
-         \x20   type: std_msgs/msg/String\n\
-         \x20   pub: [{ros}/chatter]\n\
-         \x20   # Read outside this workspace, by `ros2 topic echo` or a ROS 2 node.\n\
-         \x20   external: sub\n"
-    ))
+         \n{section}:\n\
+         \x20 {name}:\n\
+         \x20   type: {type_}\n\
+         \x20   {side}: [{ros}/{local}]\n\
+         \x20   # The other side runs outside this workspace: a `ros2` command or a\n\
+         \x20   # ROS 2 node.\n\
+         \x20   external: {external}\n",
+        section = w.section,
+        name = w.name,
+        type_ = w.type_,
+        side = w.side,
+        local = w.local,
+    )
 }
 
 /// One endpoint a scaffolded node joins: under the contract's top-level
@@ -1363,15 +1378,40 @@ mod tests {
     /// of `package.xml` + `system.toml`, with no `launch/` and no root build
     /// file; the node names no board and is no cargo root of its own.
     #[test]
-    fn only_a_role_whose_whole_surface_is_known_gets_a_contract() {
-        // A contract that names a node is its entity declaration, so a partial
-        // one under-sizes the callback table; every role but the talker
-        // writes none and keeps the board's configured pools.
-        for role in Role::ALL {
-            let mut node = talker("x_node");
-            node.template = role;
-            let contract = bringup_contract(&node);
-            assert_eq!(contract.is_some(), role == Role::Talker, "{}", role.name());
+    fn every_role_declares_no_parameters_and_its_one_endpoint() {
+        // issue 2772 -- a role with no contract left its parameter store at
+        // the default bounds. Every role, in every language, now states
+        // `params: {}` and the endpoint it serves, marked external.
+        for lang in [
+            nros_lang::Language::Rust,
+            nros_lang::Language::C,
+            nros_lang::Language::Cpp,
+        ] {
+            for role in Role::ALL {
+                let mut node = talker("x_node");
+                node.template = role;
+                node.lang = lang;
+                let text = bringup_contract(&node);
+                let doc: serde_yaml_ng::Value =
+                    serde_yaml_ng::from_str(&text).expect("the contract parses");
+                let n = &doc["nodes"]["x_node"];
+                assert!(n["params"].is_mapping(), "{}: {text}", role.name());
+                assert!(
+                    n["params"].as_mapping().unwrap().is_empty(),
+                    "{}: {text}",
+                    role.name()
+                );
+                let (_, w) = contract_node_rows(&node);
+                let entry = &doc[w.section][w.name];
+                assert_eq!(entry["type"].as_str(), Some(w.type_), "{text}");
+                assert_eq!(
+                    entry[w.side][0].as_str(),
+                    Some(format!("x_node/{}", w.local).as_str()),
+                    "{text}"
+                );
+                assert!(entry["external"].as_str().is_some(), "{text}");
+                assert_ne!(entry["external"].as_str(), Some(w.side), "{text}");
+            }
         }
     }
 

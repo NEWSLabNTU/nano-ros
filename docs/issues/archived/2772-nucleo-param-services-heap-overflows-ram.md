@@ -1,0 +1,317 @@
+---
+id: 2772
+title: "The stock node-interfaces default answers for every image alike: the Nucleo-F767ZI Rust action server no longer links, and an RTIC image is refused"
+status: resolved
+type: bug
+severity: high
+area: [orchestration, zephyr, sizing]
+related: [phase-556, issue-2647, issue-2559, issue-1766, phase-590]
+found: 2026-11-21
+resolved: 2026-11-27
+resolved_in: "fix-2772-pico-queryables"
+---
+
+**Home: [phase-556](../../roadmap/phase-556-ros2-compat-audit.md) W13 fallout.**
+Both symptoms trace to 6229085857 ("every image serves the stock node
+interfaces by default"). Neither 57c19cd7df nor 67d36cb764 moved a Rust
+Nucleo image: Rust with `param_services` had a 192 KiB heap before and after
+57c19cd7df, which only shrank the undeclared store from 32 slots to 8, and
+67d36cb764 reads only the two ThreadX boards' rungs.
+
+## What happens
+
+1. **Tier 2 stops in BUILD.** `baremetal_levels_rtic_entry`
+   (`examples/workspaces/rust/src/levels_bringup`, `framework = "rtic"`) is
+   refused by `nros::main!`: "this system declares `param_services` but the
+   RTIC framework entry does not register the runtime's parameter or lifecycle
+   services". The refusal is right. The default put the stock set on an image
+   whose entry cannot serve it. Every other RTIC image had opted out by hand;
+   this one, added later, had not.
+2. **A Nucleo-F767ZI Rust image no longer links.** The stack-floor drift row
+   `action-server/rust/zenoh@nucleo-f767zi-zephyr` (a fresh `nros new` +
+   `nros build`, the user's road) fails with
+   `region 'RAM' overflowed by 108992 bytes` against the board's 384 KiB
+   SRAM. The image now gets `param_services`, so the Kconfig heap default goes
+   from 128 KiB (`default 131072 if RUST`) to 192 KiB
+   (`default 196608 if RUST && NROS_CAPABILITY_PARAM_SERVICES`), and the
+   executor backing grows by the 8-slot store (about 8.9 KiB a slot,
+   issue 2647). Measured by the reporter: heap 196,608 B, `EXECUTOR_BACKING`
+   110,224 B, main stack 77,728 B. Lowering the heap to the C images'
+   112 KiB alone frees 81,920 B, short of the overflow by about 27 KiB, so no
+   single default fixes it.
+
+## Fix
+
+1. (RTIC) The default is derived from the entry's capability:
+   `nros_orchestration_ir::FRAMEWORKS_WITHOUT_NODE_SERVICES` names the
+   frameworks whose entry registers no runtime node services, and
+   `node_interfaces::entry_default` gives such an image `none` when no table
+   states a switch and it declares no stock axis itself. A stated switch or a
+   declared axis still reaches the macro's refusal.
+2. (Nucleo) The Rust branch of the heap default is gone. A Rust image with
+   param_services and no lifecycle gets the 112 KiB C and C++ already had:
+   the branch's 114,144 B came from an image declaring both axes, and split,
+   features' zephyr_rust_params on native_sim peaks at 45,840 B. The
+   action-server row links with about 4.6 KiB of RAM spare, and in its Renode
+   twin the heap peaks at 47,880 of 115,200 B. Still open: that row's stack
+   walk rose to 109,184 B (a type-bound indirect edge, not a deeper call) now
+   that the image links; the row and the drift check's handling of it are
+   issue 2783's, and peak-sized stacks give the template back about 44 KB.
+
+## Acceptance
+
+- `baremetal_levels_rtic_entry` builds; tier 2 reaches its cells.
+- The three Nucleo stack-floor drift rows build and link.
+- Every in-tree small-SRAM image is checked for the same overflow.
+
+## Status (2026-11-24)
+
+- **Point 1, done.** Tier 2 reaches its cells again: run 45339477050 reports
+  "cells ran and FAILED", past BUILD, so `baremetal_levels_rtic_entry` builds.
+- **Point 2, done on the record.** The three Nucleo drift rows link:
+  `config/stack-floors.toml` records each re-walked on 2026-11-22/23 after
+  the 112 KiB heap. The nightly drift lane itself verified no Zephyr row from
+  2026-11-21 (its SDK sits outside the SDK store and read as unpinned; fixed
+  in #4782), so the next nightly with that fix is the lane's own
+  confirmation.
+- **Point 3, open: the small-SRAM sweep below.** Its first run is recorded
+  under "Sweep result" at the end.
+
+### The small-SRAM images
+
+SRAM is read from each board's Zephyr devicetree (Zephyr 3.7,
+`zephyr,sram`):
+
+| Board key | Zephyr board | SRAM | In the sweep |
+| --- | --- | --- | --- |
+| `nucleo-f767zi-zephyr` | `nucleo_f767zi` | 384 KiB | yes |
+| `rpi-pico-w-zephyr` | `rpi_pico/rp2040/w` | 264 KiB | yes |
+| `s32z270-rtu0-zephyr` | `s32z2xxdc2@D/s32z270/rtu0` | 1 MiB | no |
+| `mps2-an385-zephyr` | `mps2/an385` | 4 MiB | no |
+| `fvp-aemv8r-smp`, `zephyr` (native_sim) | | large / host | no |
+
+The 2772 overflow came on the user's road (`nros new` + `nros build`), so
+the sweep covers every use-case template on both small boards:
+`talker`, `listener`, `server` and `action-server`, each in `rust`, `c` and
+`cpp`, on zenoh. That is 24 images. It also covers the one in-tree bringup
+image on a small board, `examples/zephyr/c/talker`'s `[image.nucleo_serial]`.
+The Pico W has no twin and no bench (`runs = "none"`), so a link check is
+the only evidence it can get today.
+
+### Recipe (a host with the Zephyr 3.7 SDK; one image at a time)
+
+```bash
+source ./activate.sh
+out=build/sram-sweep; mkdir -p "$out"; : > "$out/results.tsv"
+for board in nucleo-f767zi-zephyr rpi-pico-w-zephyr; do
+  for uc in talker listener server action-server; do
+    for lang in rust c cpp; do
+      name="sram_${uc}_${lang}_${board//-/_}"
+      rm -rf "$out/$name"
+      ( cd "$out" && nros new "$name" --board "$board" --lang "$lang" \
+          --rmw zenoh --template "$uc" ) > "$out/$name.log" 2>&1 || {
+        printf '%s\t%s\t%s\tNEW-FAILED\n' "$board" "$uc" "$lang" >> "$out/results.tsv"; continue; }
+      rc=0; ( cd "$out/$name" && nros build ) >> "$out/$name.log" 2>&1 || rc=$?
+      over="$(grep -o "region .RAM. overflowed by [0-9]* bytes" "$out/$name.log" | head -1)"
+      printf '%s\t%s\t%s\t%s\t%s\n' "$board" "$uc" "$lang" "rc=$rc" "${over:-}" >> "$out/results.tsv"
+    done
+  done
+done
+# the bringup image
+rc=0; ( cd examples/zephyr/c/talker && nros build nros_zephyr_talker_c_bringup:nucleo_serial ) \
+  > "$out/bringup_nucleo_serial.log" 2>&1 || rc=$?
+printf 'nucleo-f767zi-zephyr\tbringup:nucleo_serial\tc\trc=%s\n' "$rc" >> "$out/results.tsv"
+column -t -s $'\t' "$out/results.tsv"
+```
+
+**Passes when** every row is `rc=0` with no `RAM overflowed`. For each row
+that does not, record its log tail here: the overflow in bytes, and whether
+`nros new` refused the combination (a refusal naming why is an answer, not a
+failure). A row that overflows is this issue's class again, and its fix is
+the image's default, never a per-project knob.
+
+### Sweep result (2026-11-25, main e5dcabd3ca, nros 241)
+
+The recipe above, run with `--template` (an earlier copy said `--use-case`,
+which `nros new` does not take).
+
+- **`nucleo-f767zi-zephyr`: all 12 rows `rc=0`, no RAM overflow.** The
+  bringup image `nucleo_serial` builds too (`rc=0`).
+- **`rpi-pico-w-zephyr`: all 12 rows refused at build (`rc=101`)**, before
+  any link, each with the same message from `nros-zpico-build`:
+  "NROS_ZENOH_MAX_QUERYABLES=1 is below this image's DERIVED floor of 11".
+
+That refusal is a third symptom of this issue's class: a board default that
+answers for every image alike. The Pico's board package pinned
+`max_queryables = 1`, written when its only image was a C talker with no
+node interfaces. Every template now serves the stock node interfaces (six
+parameter services per node, plus the transient-local publishers' cache
+queryables), so no template could build there.
+
+Why the 2026-11-14 opt-out did not catch it: that ruling kept the board's
+cap and had a scaffolded Pico image state `node_interfaces = "none"`, but
+only the single-package scaffolder wrote it. The workspace scaffolder
+(`nros new <ws> --board <b> --template <t>`, the sweep's road) never did.
+
+User ruling (2026-11-25), superseding the 2026-11-14 opt-out: the board
+states what fits; the templates keep the stock interfaces. The fix drops
+the board's queryable cap, so the table derives from each image's
+declarations (`CONFIG_NROS_MAX_QUERYABLES` = -1), as on the Nucleo, and
+drops the single-package scaffolder's Pico opt-out, so both roads write the
+same image.
+
+### Pico sweep with the cap dropped (2026-11-25, 61476d0bb2, nros 241)
+
+264 KiB = 270,336 B of SRAM. RAM is the linker's `RAM:` line.
+
+| Template | Lang | Result | RAM |
+| --- | --- | --- | --- |
+| talker | c | builds | 181,528 B (67.15 %) |
+| talker | cpp | builds | 180,736 B (66.86 %) |
+| listener | c | RAM overflow | over by 4,832 B |
+| listener | cpp | RAM overflow | over by 296 B |
+| server | c | RAM overflow | over by 6,160 B |
+| server | cpp | RAM overflow | over by 4,928 B |
+| action-server | c | RAM overflow | over by 18,992 B |
+| action-server | cpp | RAM overflow | over by 17,608 B |
+| all four | rust | `portable-atomic` fails to compile | (no link) |
+
+So the ruling's premise, that the stock interfaces fit once the cap is
+dropped, holds for the talkers only. The derived queryable table is not what
+overflows: the talker carries the same stock interfaces (eleven queryables)
+at 67 %, while the listener, which adds one subscription and no queryable,
+needs about 94 KB more (275,168 B against 181,528 B). Where that 94 KB goes
+is the next measurement.
+
+The Rust rows' compile error is a separate bug,
+PR #4847:
+the `zephyr` crate enables `portable-atomic`'s `critical-section` while
+nano-ros libraries set the single-core cfg, and portable-atomic refuses
+both. With that fixed and a queryable cap of 8 stated per image, nros 118
+linked the three talkers on this board: Rust 72.9 %, C++ 67.2 %, C 67.5 %
+of RAM.
+
+### Where the listener's RAM goes (2026-11-25, nros 118)
+
+Rust rows with PR #4847's portable-atomic fix and this issue's board change
+(no queryable cap), fresh `nros new --template <t>` plus `nros build`:
+
+| Template | Result |
+| --- | --- |
+| talker | links, 196,120 B (72.55 %) |
+| listener | over by 16,344 B |
+| server | over by 18,216 B |
+| action-server | over by 33,152 B |
+
+Top RAM symbols, the talker from `just mem-report` and the listener from
+its failed link's `zephyr_pre0.map`:
+
+| Symbol | Talker | Listener |
+| --- | --- | --- |
+| executor backing (`EXECUTOR_BACKING`) | 14,688 | 102,296 |
+| platform heap (`HEAP`) | 34,512 | 34,512 |
+| thread stacks + `z_main_stack` | 65,536 | 65,536 |
+| `g_sessions` | 17,936 | 17,856 |
+| Zephyr `system_heap` | 16,384 | 16,384 |
+| zenoh shim `BUILTIN_INBOX` | 624 | 6,264 |
+
+The gap is the executor backing, 87,608 B more in the listener, five times
+the overflow. The heap and the stacks are the same in both images.
+
+### What the backing holds: the parameter store (2026-11-25, nros 118)
+
+It is NOT the subscription's receive region. A `system.contract.yaml`
+stating `KEEP_LAST(1)` for the listener's topic joins (the descriptor
+states `depth = 1`), and the overflow stays 16,344 B; a 1,024-byte
+subscription buffer on top changes nothing either.
+
+It is the parameter store, carved from the same backing. The talker
+template's code declares a parameter, so its store bounds are derived (one
+parameter, a 12-byte name, no strings). The listener, server and
+action-server declare none: their parameter status is `absent`, which by
+design is not "zero parameters", so every bound falls to the crate default
+(32 parameters, 64-byte names, 256-byte strings, 8 store slots). They
+still serve the parameter services, so that store is built. Stating
+`[image.<id>.knobs.params] max_parameters = 1` alone, with no contract:
+
+| Template | Default store | `max_parameters = 1` | Backing, default to 1 |
+| --- | --- | --- | --- |
+| listener | over by 16,344 B | 224,632 B (83.1 %) | 102,296 to 40,248 B |
+| server | over by 18,216 B | 226,504 B (83.8 %) | 104,344 to 42,296 B |
+| action-server | over by 33,152 B | 241,440 B (89.3 %) | 110,232 to 48,184 B |
+
+Even at one parameter the backing stays about 25 KB above the talker's,
+because the name and string bounds keep their 64 and 256 B defaults. A
+smaller second gap: the zenoh shim's `BUILTIN_INBOX` is 6,264 B in every
+non-talker row against 624 B in the talker.
+
+Why the talker alone was sized: `nros new --template talker` wrote a
+`system.contract.yaml` with `params: {}` (a declaration of zero
+parameters), and the other roles wrote no contract, so their declarations
+were unknown. Every role's whole surface was already stated per language
+for `nros new --to`, so the fix is that every role writes its contract,
+`params: {}` included.
+
+### Pico with every template's contract (2026-11-25, nros 118)
+
+This branch at 0bb7113d8b, so every role writes its contract
+(`params: {}` included), on a fresh `nros new --template <t>` plus
+`nros build`, zenoh. The Rust rows also carry PR #4847's portable-atomic fix,
+applied uncommitted, because without it no Rust image compiles for this
+board. The C row is this branch alone. Zephyr is v3.7.2 with SDK 0.16.9
+(the rows above were v3.7.0 with 0.16.8). RAM is the link summary's "used",
+of 270,336 B.
+
+| Template | Lang | RAM | Executor storage | `BUILTIN_INBOX` |
+| --- | --- | --- | --- | --- |
+| listener | rust | 194,392 B (71.91 %) | 15,648 | 624 |
+| server | rust | 196,264 B (72.60 %) | 17,696 | 624 |
+| action-server | rust | 211,200 B (78.12 %) | 23,584 | none (see below) |
+| listener | c | 182,888 B (67.65 %) | 21,424 | 624 |
+
+**All four fit.**
+- The executor storage and the shim inbox are back to the talker's size.
+  The listener's backing fell from 102,296 B to 15,648 B, and its
+  `BUILTIN_INBOX` from 6,264 B to 624 B. Both came from the same cause: a
+  role with no contract.
+- The action-server links no `BUILTIN_INBOX`. Its services are served
+  through `USER_SERVICE_INBOX` (4,176 B) and `ACTION_INBOX` (768 B).
+- A C image has no `EXECUTOR_BACKING` symbol. Its executor storage is
+  `__nros_executor_storage`, sized by `NROS_CPP_EXECUTOR_STORAGE_SIZE`.
+
+So the board's default fits every template once each role states its
+declarations, which is the 2026-11-25 ruling's premise. The Rust rows still
+need PR #4847 to compile for this board at all.
+
+## Acceptance met (2026-11-27, nros 133)
+
+**Point 3, every small-SRAM image checked.** The issue's own recipe
+(`nros new --template <t>` plus `nros build`) at this branch's head
+40970e69b8, with PR #4847 (af7904f663) applied uncommitted, exactly its 12
+files, which the Rust rows need. Zephyr 3.7 SDK. RAM is the linker's `RAM:`
+line. All 24 template rows and the `nucleo_serial` bringup row exit 0, with
+no RAM overflow and no refusal.
+
+| Board | Template | rust | c | cpp |
+| --- | --- | --- | --- | --- |
+| nucleo-f767zi-zephyr (384 KiB) | talker | 237,056 B (60.29 %) | 221,824 B (56.41 %) | 221,056 B (56.22 %) |
+| | listener | 239,744 B (60.97 %) | 224,640 B (57.13 %) | 220,096 B (55.97 %) |
+| | server | 236,992 B (60.27 %) | 224,320 B (57.05 %) | 223,040 B (56.72 %) |
+| | action-server | 251,264 B (63.90 %) | 243 KB (63.28 %) | 247,424 B (62.92 %) |
+| rpi-pico-w-zephyr (264 KiB) | talker | 194,792 B (72.06 %) | 180,192 B (66.65 %) | 179,400 B (66.36 %) |
+| | listener | 193,064 B (71.42 %) | 181,552 B (67.16 %) | 177,008 B (65.48 %) |
+| | server | 194,704 B (72.02 %) | 182,648 B (67.56 %) | 181,408 B (67.10 %) |
+| | action-server | 208,968 B (77.30 %) | 207,176 B (76.64 %) | 205,792 B (76.12 %) |
+
+The C action-server row on the Nucleo reads "243 KB" because Zephyr prints
+that line in KB, not bytes.
+
+Points 1 and 2 are met in the Status section above.
+
+**Caveats:**
+- The Rust rows need PR #4847 (the portable-atomic fix, gate-green), so
+  this lands after it.
+- PR #4995 adds one session to every Rust image's `.bss`. Whichever of this
+  and #4995 lands second re-checks the Pico rows. Today's worst Pico row is
+  the Rust action server, at 77.30 %.
+

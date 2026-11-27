@@ -1,0 +1,1 @@
+The Raspberry Pi Pico W on Zephyr no longer opts out of the stock node interfaces. Its board no longer caps the queryable table at one; a new Pico project derives the table from what its image declares, so every `nros new` template builds there and serves the parameter services and `/rosout` like any other image.

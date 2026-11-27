@@ -30,11 +30,15 @@
 # W1 rerun).
 #
 # They are board facts: one RAM, and one link (serial only), so every image
-# here pays for the same budget. Two of them cap what an image may declare:
-# `max_subscribers = 1` and `max_queryables = 1` (one service server, and a
-# node with parameter or lifecycle services claims more). An image that needs
-# more states the knob itself, in `[image.<id>.knobs.zenoh]`, and that wins
-# (RFC-0049).
+# here pays for the same budget. One of them caps what an image may declare:
+# `max_subscribers = 1`. An image that needs more states the knob itself, in
+# `[image.<id>.knobs.zenoh]`, and that wins (RFC-0049).
+#
+# The queryable table is NOT capped here (issue 2772). Every image serves the
+# stock node interfaces by default, and their parameter services alone claim
+# six queryables per node, so a board cap of 1 refused every template at
+# build. The table derives from each image's own declarations instead
+# (`CONFIG_NROS_MAX_QUERYABLES` = -1), as on the Nucleo-F767ZI.
 #
 # The 32 KiB heap is the Nucleo ethernet image's number: below the C talker's
 # measured 15,152-byte boot peak plus the 24,576-byte headroom floor (39,728
@@ -127,7 +131,6 @@ rust_targets = ["thumbv6m-none-eabi"]
 max_large_subscribers = 0
 max_subscribers = 1
 service_buffer_bytes = 1024
-max_queryables = 1
 
 [knobs.memory]
 heap_bytes = 32768

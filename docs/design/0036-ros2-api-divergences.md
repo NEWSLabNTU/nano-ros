@@ -132,7 +132,7 @@ What still diverges, by name:
 | every rclcpp node subscribes to `/parameter_events`, to follow `use_sim_time` (an rclpy node does not) | no subscription | not needed: a set of `use_sim_time` is acted on where the parameter service applies it, so there is no event to follow | phase-556 W11 (decided) |
 | `use_sim_time` declared (bool, default false) on every node; true subscribes `/clock` per node | declared on every node that serves parameters (the `sim_time` feature, in the stock set); true subscribes `/clock` once per executor, and the image's ROS time follows it | the simulated clock is one per image (`nros_core::Clock`), so one subscription serves every node; it is reserved in the pools whenever the feature is built in, because the set can arrive at any time | [issue 2483](../issues/archived/2483-use-sim-time-not-declared.md), phase-556 W11 |
 | a refused `SetParameters` result's reason, which rclcpp and rclpy word differently | rclcpp's wording, measured against a Humble rclcpp node, for every refusal the parameter services give: an undeclared name, a read-only parameter, a value of the wrong type, a delete of a statically typed parameter, a value out of range or off its step. A reason that names a long parameter gives way to a fixed one when the reply buffer has no room for it. A refused `SetParametersAtomically` carries one fixed reason, not the refused parameter's | rclcpp by user ruling (2026-11-19); the reply buffer is priced at the fixed reasons' length; no `ros2 param` verb sends the atomic set | [issue 2484](../issues/archived/2484-param-service-undeclared-replies.md), [issue 2731](../issues/archived/2731-param-set-undeclared-reason.md) (both resolved), phase-556 W12 and W2 |
-| every node has them | the Pico W and PX4 example images declare `node_interfaces = "none"` once the default flips | the two opt-outs the ruling names, where memory or the backend does not afford them | phase-556 W13 step 3 |
+| every node has them | the PX4 example images declare `node_interfaces = "none"` once the default flips (the Pico W did too, until issue 2772) | the opt-out the ruling names, where the backend does not afford them | phase-556 W13 step 3 |
 
 No longer a divergence: `/parameter_events` has one publisher per node, as
 stock, since phase-556 W14
@@ -234,9 +234,10 @@ liveliness token and gid; on DDS each node has an ordinary writer.
   `use_sim_time` is acted on where the parameter service applies it); and in
   a multi-node image
   only the first node publishes `/parameter_events` (phase-556 W14). The
-  opt-outs are exactly three: the Pico W (its board budget holds one service
-  server), PX4 (the flight stack serves its own parameters), and the RTIC
-  entry, which registers neither interface (issue 2559).
+  opt-outs are exactly two: PX4 (the flight stack serves its own
+  parameters) and the RTIC entry, which registers neither interface (issue
+  2559). The Pico W was a third until issue 2772: its board now derives the
+  queryable table from each image instead of capping it at one.
 - **No parameter callbacks**; parameters are read/write only.
 - **No lifecycle-node graph** — a simplified state model for embedded executors.
 
@@ -321,6 +322,10 @@ meanwhile, where deleting one re-opens every row it covers.
      different placement.
 
 ## Changelog
+
+- 2026-11-25 -- the Pico W keeps the stock node interfaces: its board derives
+  its queryable table per image instead of capping it at one (user ruling,
+  issue 2772). The opt-outs are PX4 and the RTIC entry.
 
 - 2026-11-14 -- the stock node interfaces (six parameter services, `/rosout`,
   `/parameter_events`) are on by default with a per-image off switch; the
