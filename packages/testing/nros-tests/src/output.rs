@@ -2565,3 +2565,12 @@ pub const LARGE_MSG_RECV_DONE: &str = "LARGE_RECV_DONE:";
 /// followed by `host_s= tick_s= drift_pct= worst_period_ms=` fields.
 /// `drift_pct` is positive when the tick runs slow.
 pub const TICK_DRIFT_RESULT_PREFIX: &str = "TICK_DRIFT ";
+
+/// Issue 2428 -- what `bins/lifecycle-driver` prints after each step:
+/// `LC_PHASE <phase> ok=<bool> state=<label> rx=<count>`, where `phase` is
+/// `boot`, `configure`, `activate` or `deactivate`, `ok` the transition's reply,
+/// `state` what `get_state` answers afterwards and `rx` the messages heard in
+/// the window. The driver's `main.rs` prints these exact words.
+pub const LC_PHASE: &str = "LC_PHASE ";
+/// See [`LC_PHASE`]: printed once the last step is reported.
+pub const LC_DONE: &str = "LC_DONE";

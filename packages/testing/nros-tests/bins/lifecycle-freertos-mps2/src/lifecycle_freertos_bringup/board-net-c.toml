@@ -1,0 +1,4 @@
+# The board network file for image `freertos_c` (RFC-0109 D4).
+[eth0]
+network = "qemu"
+host = 98

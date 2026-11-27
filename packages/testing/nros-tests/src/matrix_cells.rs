@@ -139,6 +139,13 @@ const CELLS_GENERATED: &[Cell] = &[
     // REP-2002 machine Kconfig's flat lifecycle heap arm could not hold. It
     // states no heap, so it holds the derived floor to a second machine.
     cell(ZephyrQemuCortexM, C, Xrce, Lifecycle, Workspace, Runtime),
+    // Issue 2428's embedded acceptance -- a managed talker on FreeRTOS QEMU
+    // (zenoh) that boots unconfigured publishes nothing until configured and
+    // activated, and nothing after it deactivates. Driven by
+    // `bins/lifecycle-driver`, a nano-ros lifecycle client, so it needs no ROS 2.
+    cell(FreertosMps2, C, Zenoh, Lifecycle, Workspace, Runtime),
+    cell(FreertosMps2, Cpp, Zenoh, Lifecycle, Workspace, Runtime),
+    cell(FreertosMps2, Rust, Zenoh, Lifecycle, Workspace, Runtime),
     // phase-544 W2 (issue 2273) -- the contract-violation channel on an emulated
     // Cortex-M: `violation-cpp`'s handler overruns once before arming and once
     // after, and the one stored `max-latency-runtime` verdict is measured on the

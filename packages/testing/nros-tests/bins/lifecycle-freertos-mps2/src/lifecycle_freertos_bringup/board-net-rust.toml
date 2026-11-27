@@ -1,0 +1,4 @@
+# The board network file for image `freertos_rust` (RFC-0109 D4).
+[eth0]
+network = "qemu"
+host = 100
