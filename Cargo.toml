@@ -141,6 +141,8 @@ members = [
     "packages/api/nros-c",
     # C++ API (header-only C++14 library + Rust FFI staticlib)
     "packages/api/nros-cpp",
+    # Device ports: accelerators, cameras and other job devices (phase-579)
+    "packages/api/nros-device",
     # LAN9118 Ethernet driver for smoltcp
     "packages/drivers/net/lan9118-smoltcp",
     # NVIDIA Tegra IVC driver (Orin SPE — Phase 100). Default build is
