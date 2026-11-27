@@ -236,52 +236,37 @@ pub(crate) fn observe_node_create(reg: ObservedNodeCreate<'_>) {
     }
 }
 
-// Issue 2985.
-/// Which kind of executor callback slot the Rust code created, as the census
-/// tells them apart (`nros::node_metadata::TimerKind`, which this crate sits
-/// below).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CallbackSlotKind {
-    /// A repeating timer on the steady clock.
-    Wall,
-    /// A repeating timer on a chosen clock.
-    Clock,
-    /// A timer that fires once.
-    Oneshot,
-    /// A repeating timer in a named callback group.
-    InGroup,
-    /// A guard condition: one slot, no period.
-    GuardCondition,
-}
+// Issues 2984 and 2985.
+pub use super::callback_slot::CallbackSlotKind;
 
-/// A timer or guard condition created through a Rust `Node` method.
+/// One executor callback slot a timer, guard condition or device claimed.
 ///
-/// Timers and guard conditions never reach the RMW, so the census counts them
-/// only when a hook reports them. `nros::census_hooks::on_timer_create` and
-/// `on_guard_condition_create` are called by the C, C++ and declarative Rust
-/// routes. The imperative Rust routes -- `Node::create_guard_condition` and
-/// the `Node::create_timer_*` family -- live in this crate, below `nros`, so
-/// they reported nothing, and a census of Rust code that created a guard or a
-/// timer that way (a component reaching its executor through
-/// `NodeRuntime::executor_mut`) was one callback slot short for each: an
-/// `ExecutorFull` at boot on an image sized from it.
-///
-/// Only those `Node` methods report here. The `Executor::register_*`
-/// primitives they forward to are also what the C and C++ shims and the
-/// declarative route call, and those record through their own hook; observing
-/// there would count each of their slots twice.
+/// These never reach the RMW, so a census counts them only when something
+/// reports them. The report comes from the executor's own registration
+/// funnels, which every route crosses whatever language called it: the C and
+/// C++ shims, the declarative and imperative Rust routes, and a device port.
+/// So each slot is reported exactly once, and no API layer reports it again.
+/// (Before, each API layer called a census hook after its own registration,
+/// and a route with no hook went uncounted: the imperative Rust timers and
+/// guards, a direct device registration, the C graph-change guard.)
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ObservedCallbackSlot {
+pub struct ObservedCallbackSlot<'a> {
     /// The kind of slot.
     pub kind: CallbackSlotKind,
     /// A timer's period in milliseconds, as the code passed it; `None` for a
-    /// guard condition.
+    /// guard condition or a device.
     pub period_ms: Option<u64>,
+    /// The slot's sequence number: its synthetic id is
+    /// `<kind.id_prefix()><seq>`. One sequence for every slot kind, shared by
+    /// the census and the profile, so both files name a slot alike.
+    pub seq: usize,
+    /// The node the registration named, as `(name, namespace)`; `None` when
+    /// it named none (the census then files the slot under its current node).
+    pub owner: Option<(&'a str, &'a str)>,
 }
 
-/// A sink a metadata probe installs to hear every imperative Rust timer and
-/// guard condition.
-pub type CallbackSlotObserver = fn(ObservedCallbackSlot);
+/// A sink a metadata probe installs to hear every callback slot.
+pub type CallbackSlotObserver = fn(ObservedCallbackSlot<'_>);
 
 static CALLBACK_SLOT_OBSERVER: Mutex<Option<CallbackSlotObserver>> = Mutex::new(None);
 
@@ -296,16 +281,12 @@ pub fn clear_callback_slot_observer() {
     CALLBACK_SLOT_OBSERVER.with(|slot| *slot = None);
 }
 
-/// Report one imperative timer or guard condition. A no-op when nothing is
-/// listening.
+/// Report one callback slot. A no-op when nothing is listening.
 ///
 /// Called BEFORE the executor answers, like `observe_node_create`: a slot the
 /// full callback table refuses is exactly the one the census must count.
-///
-/// Gated like [`observe`]: its only callers are `Node` methods, which exist
-/// only with an RMW seam.
-#[cfg(any(has_rmw, test))]
-pub(crate) fn observe_callback_slot(reg: ObservedCallbackSlot) {
+#[cfg(all(feature = "registration-observer", any(has_rmw, test)))]
+pub(crate) fn observe_callback_slot(reg: ObservedCallbackSlot<'_>) {
     // Released before the sink runs, as in `observe`.
     let sink = CALLBACK_SLOT_OBSERVER.with(|slot| *slot);
     if let Some(sink) = sink {

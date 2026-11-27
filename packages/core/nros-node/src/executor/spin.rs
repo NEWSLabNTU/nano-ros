@@ -10359,6 +10359,40 @@ impl<'s> Executor<'s> {
     /// `rcl_timer_init2(..., autostart = false)`): it never fires until
     /// [`reset_timer`](Self::reset_timer) starts it.
     #[allow(clippy::too_many_arguments)]
+    // Issues 2984 and 2985.
+    /// Report one callback slot a registration is about to claim, from the
+    /// funnel every route crosses, and return its sequence number for the
+    /// profile label. See
+    /// [`ObservedCallbackSlot`](super::registration_observer::ObservedCallbackSlot).
+    /// Compiles to nothing without `registration-observer` or `profile-mode`.
+    #[inline]
+    #[cfg_attr(not(feature = "registration-observer"), allow(unused_variables))]
+    fn report_callback_slot(
+        &self,
+        node_id: Option<super::node_record::NodeId>,
+        kind: super::callback_slot::CallbackSlotKind,
+        period_ms: Option<u64>,
+    ) -> SlotSeq {
+        #[cfg(any(feature = "registration-observer", feature = "profile-mode"))]
+        {
+            let seq = super::callback_slot::next_slot_seq();
+            #[cfg(feature = "registration-observer")]
+            super::registration_observer::observe_callback_slot(
+                super::registration_observer::ObservedCallbackSlot {
+                    kind,
+                    period_ms,
+                    seq,
+                    owner: node_id
+                        .and_then(|n| self.nodes.get(n.index()))
+                        .map(|r| (r.name.as_str(), r.namespace.as_str())),
+                },
+            );
+            SlotSeq { kind, seq }
+        }
+        #[cfg(not(any(feature = "registration-observer", feature = "profile-mode")))]
+        SlotSeq
+    }
+
     pub(crate) fn register_timer_entry_with<F, M>(
         &mut self,
         node_id: Option<super::node_record::NodeId>,
@@ -10375,6 +10409,19 @@ impl<'s> Executor<'s> {
         F: FnMut(&TimerCallInfo) + 'static,
         M: FnOnce(*mut core::ffi::c_void) -> F,
     {
+        let reported = self.report_callback_slot(
+            node_id,
+            if oneshot {
+                super::callback_slot::CallbackSlotKind::Oneshot
+            } else if group.is_some() {
+                super::callback_slot::CallbackSlotKind::InGroup
+            } else if matches!(source, TimerClockSource::Steady) {
+                super::callback_slot::CallbackSlotKind::Wall
+            } else {
+                super::callback_slot::CallbackSlotKind::Clock
+            },
+            Some(period.as_millis()),
+        );
         let slot = self.next_entry_slot()?;
         let capture_len = Self::capture_trailing_len(capture);
         // No capture keeps the exact pre-W2 allocation, so a timer that captures
@@ -10424,6 +10471,7 @@ impl<'s> Executor<'s> {
             drop_fn: drop_entry::<TimerEntry<F>>,
         };
         self.emplace_entry(slot, meta, TraceName::TimerPeriod(period.as_micros()));
+        reported.label();
         // Phase 273 — apply group sched binding (group > node default > SC 0).
         self.apply_node_default_sched(slot, node_id, group);
         Ok(self.handle_for(slot))
@@ -12017,6 +12065,11 @@ impl<'s> Executor<'s> {
     where
         F: FnMut() + 'static,
     {
+        let reported = self.report_callback_slot(
+            node_id,
+            super::callback_slot::CallbackSlotKind::GuardCondition,
+            None,
+        );
         let slot = self.next_entry_slot()?;
         let offset = self.arena_alloc::<GuardConditionEntry<F>>()?;
 
@@ -12064,6 +12117,7 @@ impl<'s> Executor<'s> {
                 drop_fn: drop_entry::<GuardConditionEntry<F>>,
             };
             self.emplace_entry(slot, meta, TraceName::Slot("guard", slot));
+            reported.label();
             self.apply_node_default_sched(slot, node_id, None);
 
             Ok((self.handle_for(slot), guard_handle))
@@ -12100,6 +12154,11 @@ impl<'s> Executor<'s> {
     where
         F: FnMut() + 'static,
     {
+        let reported = self.report_callback_slot(
+            node_id,
+            super::callback_slot::CallbackSlotKind::Device,
+            None,
+        );
         let slot = self.next_entry_slot()?;
         let offset = self.arena_alloc::<DeviceEntry<F>>()?;
 
@@ -12142,6 +12201,7 @@ impl<'s> Executor<'s> {
                 drop_fn: drop_entry::<DeviceEntry<F>>,
             };
             self.emplace_entry(slot, meta, TraceName::Slot("device", slot));
+            reported.label();
             self.apply_node_default_sched(slot, node_id, None);
 
             Ok((self.handle_for(slot), completion))
@@ -19858,5 +19918,32 @@ mod band_wake_routing_tests {
         );
         assert_eq!(ctx.ready.take(), SlotMask::bit(HIGH));
         drop(waker);
+    }
+}
+
+// Issues 2984 and 2985.
+/// A reported callback slot's sequence number, kept until the registration
+/// lands so the profile can label the slot it just recorded. Empty without
+/// `registration-observer` or `profile-mode`.
+#[cfg(any(feature = "registration-observer", feature = "profile-mode"))]
+#[must_use]
+struct SlotSeq {
+    #[cfg_attr(not(feature = "profile-mode"), allow(dead_code))]
+    kind: super::callback_slot::CallbackSlotKind,
+    #[cfg_attr(not(feature = "profile-mode"), allow(dead_code))]
+    seq: usize,
+}
+
+#[cfg(not(any(feature = "registration-observer", feature = "profile-mode")))]
+#[must_use]
+struct SlotSeq;
+
+impl SlotSeq {
+    /// Name the slot just registered on this thread by its synthetic id, so a
+    /// profile and a census of the same image name it alike.
+    #[inline]
+    fn label(self) {
+        #[cfg(feature = "profile-mode")]
+        super::profile::label_last(&alloc::format!("{}{}", self.kind.id_prefix(), self.seq));
     }
 }

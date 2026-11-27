@@ -1,11 +1,13 @@
 ---
 id: 2985
 title: "A timer or guard condition Rust code creates through a `Node` method is not counted by the census, so a census-sized image is one callback slot short for each"
-status: open
+status: resolved
 type: bug
 severity: medium
 area: [census, rust-api, executor]
 found: 2026-11-27
+resolved: 2026-11-27
+resolved_in: "the change that archived it"
 related: [2670, 2681, phase-463]
 ---
 
@@ -101,3 +103,19 @@ them the primitive the `Node` methods forward to, but they are `pub`.
 Counting them needs the C and C++ shims to stop recording at the call site
 and the primitive to record instead. That is a larger change, tracked here
 until it is made.
+
+## Resolution (2026-11-27)
+
+Fixed with issue 2984, which found the same gap one level down: every Rust
+executor primitive (`Executor::register_timer`, `register_guard_condition`
+and the rest, the spellings in-tree Rust code actually uses), not only the
+`Node` methods. An observer on the `Node` methods alone, which was this
+issue's first fix, left those uncounted. One on the primitives would have
+double-counted the C and C++ shims, which call them too.
+
+The slot is now reported once, from the executor's registration funnels
+that every route crosses, and the per-language hooks are gone. See issue
+2984's resolution for the change and its proof. This issue's test,
+`imperative_timer_census`, kept its coverage of every `Node` method. Its kinds
+now follow what the slot is (a steady-clock timer in a group is `in_group`
+whichever method made it), and it gained a declarative-route case.

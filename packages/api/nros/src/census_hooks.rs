@@ -9,11 +9,12 @@
 //! carries no node — by that layer the owning node is resolved away — so a
 //! backend alone yields a census whose entities belong to no node.
 //!
-//! Four hooks close that: [`on_node_create`] opens a node and makes it current
+//! Three hooks and one recorder close that: [`on_node_create`] opens a node and makes it current
 //! (`configure()` / `register()` declares one node's entities at a time, so a
-//! cursor is exact, not a guess); [`on_timer_create`] and
-//! [`on_guard_condition_create`] record a callback slot the backend never sees;
-//! [`on_param_declare`] records a parameter as the code declared it.
+//! cursor is exact, not a guess); `on_callback_slot` records a callback slot
+//! (timer, guard condition, device) the backend never sees, as `nros-node`'s
+//! registration funnels report it; [`on_param_declare`] records a parameter as
+//! the code declared it.
 //!
 //! # Why the hooks live HERE
 //!
@@ -153,87 +154,40 @@ pub fn on_node_create(_name: &str, _namespace: &str, _domain_id: u32) {
     }
 }
 
-/// A timer was registered on the executor.
+// Issues 2984 and 2985.
+/// Record one executor callback slot: a timer, guard condition or device.
 ///
-/// Timers carry no name at the C and C++ ABIs (they are bound by function
-/// identity — `bind_timer<T, &T::method>`), so the recorded id is synthetic.
-/// That is fine: the count is what the executor sizing reads.
+/// Not called by any API layer. These entities never reach the RMW, and
+/// `nros-node` reports each one from the registration funnel every route
+/// crosses (`registration_observer::ObservedCallbackSlot`), whichever language
+/// called it; `metadata_mode` routes that report here. So each slot is counted
+/// once, by construction. When API layers called a hook per entry point
+/// instead, a route with no hook went uncounted.
 ///
-/// `kind` names the entry point (wall / clock / oneshot / in-group) so the
-/// census can tell a repeating timer from a one-shot delay; the period is
-/// recorded as the code passed it.
-#[inline]
-pub fn on_timer_create(_kind: crate::node_metadata::TimerKind, _period_ms: u64) {
-    #[cfg(any(
-        feature = "metadata-mode",
-        all(feature = "profile-mode", feature = "rmw-cffi")
-    ))]
-    {
-        let id = synthetic_id("timer");
-        #[cfg(feature = "metadata-mode")]
-        record(
-            crate::node_metadata::EntityKind::Timer,
-            _kind,
-            &id,
-            Some(_period_ms),
+/// Recorded as a `timers[]` row (one slot each, which is what the sizing
+/// consumers count) whose `kind` tells a guard or a device from a timer of
+/// period 0. `owner` is the node the registration named; with none, the slot
+/// lands on the node opened last.
+#[cfg(feature = "metadata-mode")]
+pub(crate) fn on_callback_slot(
+    kind: crate::node_metadata::TimerKind,
+    id: &str,
+    period_ms: Option<u64>,
+    owner: Option<&str>,
+) {
+    ensure_scope();
+    let rec = crate::metadata_mode::EntityRecord {
+        callback_id: Some(id),
+        period_ms,
+        timer_kind: kind,
+        owner,
+        ..crate::metadata_mode::EntityRecord::new(crate::node_metadata::EntityKind::Timer, id, "")
+    };
+    if !crate::metadata_mode::record(rec) {
+        panic!(
+            "nros metadata-mode: recorder rejected `{id}` — an executor sized from \
+             this census would be too small"
         );
-        #[cfg(all(feature = "profile-mode", feature = "rmw-cffi"))]
-        profile::label_last(&id);
-    }
-}
-
-/// A guard condition was registered on the executor. One callback slot, same
-/// as a timer.
-///
-/// Recorded as `TimerKind::GuardCondition`: still a `timers[]` row (one slot
-/// each, which is what the sizing consumers count) but with
-/// `kind: "guard_condition"`, so the census does not read a guard as a timer of
-/// period 0.
-#[inline]
-pub fn on_guard_condition_create() {
-    #[cfg(any(
-        feature = "metadata-mode",
-        all(feature = "profile-mode", feature = "rmw-cffi")
-    ))]
-    {
-        let id = synthetic_id("guard");
-        #[cfg(feature = "metadata-mode")]
-        record(
-            crate::node_metadata::EntityKind::Timer,
-            crate::node_metadata::TimerKind::GuardCondition,
-            &id,
-            None,
-        );
-        #[cfg(all(feature = "profile-mode", feature = "rmw-cffi"))]
-        profile::label_last(&id);
-    }
-}
-
-/// A device event source was registered on the executor. One callback slot,
-/// as a guard condition.
-///
-/// Recorded as `TimerKind::Device`: a `timers[]` row (which every sizing
-/// consumer counts as one slot) with `kind: "device"`, so a census does not
-/// read it as a timer of period 0. Called by the C layer-1 registration, which
-/// the companion package's C and C++ routes reach; a Rust route registering on
-/// the executor directly calls it itself.
-#[inline]
-pub fn on_device_create() {
-    #[cfg(any(
-        feature = "metadata-mode",
-        all(feature = "profile-mode", feature = "rmw-cffi")
-    ))]
-    {
-        let id = synthetic_id("device");
-        #[cfg(feature = "metadata-mode")]
-        record(
-            crate::node_metadata::EntityKind::Timer,
-            crate::node_metadata::TimerKind::Device,
-            &id,
-            None,
-        );
-        #[cfg(all(feature = "profile-mode", feature = "rmw-cffi"))]
-        profile::label_last(&id);
     }
 }
 
@@ -290,20 +244,6 @@ fn ensure_scope() {
     }
 }
 
-/// The synthetic id of an executor-side entity (`timer<n>`, `guard<n>`): ONE
-/// sequence shared by the census and the profile, so a profile run and a census
-/// run of the same image name every timer identically (phase-463 W7).
-#[cfg(any(
-    feature = "metadata-mode",
-    all(feature = "profile-mode", feature = "rmw-cffi")
-))]
-fn synthetic_id(prefix: &str) -> alloc::string::String {
-    use core::sync::atomic::{AtomicUsize, Ordering};
-    static SEQ: AtomicUsize = AtomicUsize::new(0);
-    let n = SEQ.fetch_add(1, Ordering::Relaxed);
-    alloc::format!("{prefix}{n}")
-}
-
 /// A node's fully-qualified name, as the profile attributes rows to it.
 #[cfg(all(feature = "profile-mode", feature = "rmw-cffi"))]
 fn node_fqn(name: &str, namespace: &str) -> alloc::string::String {
@@ -314,28 +254,5 @@ fn node_fqn(name: &str, namespace: &str) -> alloc::string::String {
         alloc::format!("{ns}/{name}")
     } else {
         alloc::format!("/{ns}/{name}")
-    }
-}
-
-#[cfg(feature = "metadata-mode")]
-fn record(
-    kind: crate::node_metadata::EntityKind,
-    timer_kind: crate::node_metadata::TimerKind,
-    id: &str,
-    period_ms: Option<u64>,
-) {
-    ensure_scope();
-    let id = alloc::string::String::from(id);
-    let rec = crate::metadata_mode::EntityRecord {
-        callback_id: Some(&id),
-        period_ms,
-        timer_kind,
-        ..crate::metadata_mode::EntityRecord::new(kind, &id, "")
-    };
-    if !crate::metadata_mode::record(rec) {
-        panic!(
-            "nros metadata-mode: recorder rejected `{id}` — an executor sized from \
-             this census would be too small"
-        );
     }
 }

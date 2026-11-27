@@ -25,21 +25,17 @@ under-count that puts `ExecutorFull` on a board with no console.
 
 WHAT THIS REFUSES
 -----------------
-1. An executor-side entry point whose body does not call its hook, in EVERY
-   node API (the hooks live once, in `nros::census_hooks`):
-   C++ -- `nros_cpp_timer_create*` -> `on_timer_create`,
-   `nros_cpp_guard_condition_create` -> `on_guard_condition_create`,
-   `nros_cpp_node_declare_param_*` -> `on_param_declare`,
+1. An entry point whose body does not call its hook, in EVERY node API (the
+   hooks live once, in `nros::census_hooks`):
+   C++ -- `nros_cpp_node_declare_param_*` -> `on_param_declare`,
    `nros_cpp_node_create` / `_ex` -> `on_node_create` (the cursor every other
    record attributes to);
    C -- `rclc_executor_node_init` / `rclc_node_init_ex` -> `on_node_create`,
-   `rclc_executor_add_timer` / `rclc_executor_add_timer_in_group` ->
-   `on_timer_create`, `rclc_node_create_guard_condition` ->
-   `on_guard_condition_create`, the rclc parameter server's `declare`
-   (every `rclc_add_parameter` / `rclc_parameter_declare_*` funnels through it,
-   phase-491) -> `on_param_declare`;
+   the rclc parameter server's `declare` (every `rclc_add_parameter` /
+   `rclc_parameter_declare_*` funnels through it, phase-491) ->
+   `on_param_declare`;
    Rust -- `ExecutorSink::create_node` -> `on_node_create`,
-   `ExecutorSink::create_entity` -> `on_timer_create` and `on_param_declare`;
+   `ExecutorSink::create_entity` -> `on_param_declare`;
    and the imperative Rust declaration routes in `nros-node`, which sit below
    `nros` and so report through `observe_code_parameter_declare` (the observer
    `nros::metadata_mode` installs) -- `Executor::declare_parameter`,
@@ -48,12 +44,15 @@ WHAT THIS REFUSES
    (issue 2670). Those are matched by EXACT name: the `_on` forms they forward
    to are shared with the C/C++ shims, which record through their own hook,
    and must not record twice.
-   And, DERIVED rather than listed (issue 2985, after the listed rows missed
-   every Rust `Node` timer and guard method): every `pub fn` in `nros-node`'s
-   `node.rs` that calls a timer or guard primitive must call
-   `observe_callback_slot`; every executor `register_timer*` /
-   `register_guard_condition*` primitive must be in SHARED_SLOT_PRIMITIVES,
-   naming the callers that record for it.
+   Callback slots (timers, guard conditions, devices) are the exception, and
+   are DERIVED rather than listed (issues 2984 and 2985: listed routes missed
+   the Rust `Node` methods, every Rust executor primitive, a direct device
+   registration and the C graph guard). They are reported once, from the
+   executor funnel every route crosses: every `nros-node` body that installs
+   such an entry must call `report_callback_slot`, which must reach
+   `observe_callback_slot`; and nothing above it may record one -- no API
+   source calls a slot hook, no `Node` method observes, and the recorder's
+   `on_callback_slot` stays `pub(crate)`.
 2. An RMW seam in `nros-rmw-metadata` that does not record, or records without
    the QoS it was handed (a `_qos` parameter is the 2026-09 defect verbatim).
 3. A hook whose `metadata-mode` body no longer reaches the recorder.
@@ -107,6 +106,7 @@ C_PARAMS = "packages/api/nros-c/src/parameter.rs"
 RUST_SINK = "packages/api/nros/src/node_runtime.rs"
 NODE_SPIN = "packages/core/nros-node/src/executor/spin.rs"
 NODE_NODE = "packages/core/nros-node/src/executor/node.rs"
+C_DEVICE = "packages/api/nros-c/src/device.rs"
 
 SUBJECTS = (
     HOOKS,
@@ -123,6 +123,7 @@ SUBJECTS = (
     RUST_SINK,
     NODE_SPIN,
     NODE_NODE,
+    C_DEVICE,
 )
 
 # Executor-side entry points and the hook each must call. A PREFIX matches
@@ -130,21 +131,15 @@ SUBJECTS = (
 # entry or an eighth declare variant is held to the rule the day it is added.
 ENTRY_HOOKS: tuple[tuple[str, str, str], ...] = (
     # C++ (`nros-cpp`).
-    (TIMER, "nros_cpp_timer_create", "census_hooks::on_timer_create("),
-    (GUARD, "nros_cpp_guard_condition_create", "census_hooks::on_guard_condition_create("),
     (PARAMS, "nros_cpp_node_declare_param_", "census_hooks::on_param_declare("),
     (NODE, "nros_cpp_node_create", "census_hooks::on_node_create("),
     # C (`nros-c`) -- issue 1556 item 1.
     (C_NODE, "rclc_node_init_ex", "census_hooks::on_node_create("),
     (C_EXEC, "rclc_executor_node_init", "census_hooks::on_node_create("),
-    (C_EXEC, "rclc_executor_add_timer", "census_hooks::on_timer_create("),
-    (C_EXEC, "rclc_executor_add_timer_in_group", "census_hooks::on_timer_create("),
-    (C_GUARD, "rclc_node_create_guard_condition", "census_hooks::on_guard_condition_create("),
     (C_PARAMS, "declare", "census_hooks::on_param_declare("),
     # Rust (`nros::node_runtime`, the install path `nros::main!` takes) --
     # issue 1419's Rust item.
     (RUST_SINK, "create_node", "census_hooks::on_node_create("),
-    (RUST_SINK, "create_entity", "census_hooks::on_timer_create("),
     (RUST_SINK, "create_entity", "census_hooks::on_param_declare("),
     # Rust imperative declarations (`nros-node`) -- issue 2670. A trailing `$`
     # matches the name EXACTLY.
@@ -154,38 +149,27 @@ ENTRY_HOOKS: tuple[tuple[str, str, str], ...] = (
     (NODE_NODE, "declare_parameter_with_descriptor$", "observe_code_parameter_declare("),
 )
 
-# Issue 2985 -- the Rust slot routes are DERIVED, not listed. A timer or a
-# guard condition is a callback slot the RMW never sees, so it is counted only
-# when its route reports it. Rule 5 finds the routes itself:
+# Issues 2984 and 2985 -- a callback slot (timer, guard condition, device) is
+# a slot the RMW never sees, so it is counted only when something reports it.
+# It is reported ONCE, from the executor's registration funnel, which every
+# route crosses whatever language called it; no API layer reports it. Rule 5
+# derives both halves rather than listing routes, because the listed routes
+# missed whole families twice (the Rust `Node` methods, then every Rust
+# executor primitive, a direct device registration and the C graph guard):
 #
-# * every `pub fn` in `nros-node`'s `node.rs` whose body calls a slot
-#   primitive (`.register_timer*` / `.register_guard_condition*`) must call
-#   `observe_callback_slot(` -- the Rust `Node` methods, which sit below
-#   `nros` and so cannot call the hooks. A new `create_timer_*` is held to it
-#   the day it is added; the authored rows above missed the whole family;
-# * every `pub fn register_timer*` / `register_guard_condition*` on the
-#   executor is a PRIMITIVE the C and C++ shims, the declarative sink and those
-#   `Node` methods share. Each records at its CALLER (observing in the
-#   primitive would count those callers twice), so each must be listed here
-#   with the callers that record for it. A new primitive fails until someone
-#   decides who records for it, and a listed one that is gone fails too.
-SLOT_PRIMITIVE_CALL = re.compile(r"\.\s*register_(?:timer|guard_condition)\w*\s*(?:::<[^>]*>\s*)?\(")
-SLOT_PRIMITIVE_DEF = re.compile(r"\bpub\s+fn\s+(register_(?:timer|guard_condition)\w*)\s*[<(]")
+# * every `nros-node` executor body that installs a slot entry of one of these
+#   kinds (`kind: EntryKind::Timer` / `GuardCondition` / `Device`) must call
+#   `report_callback_slot(` -- a new funnel is held to it the day it is added;
+# * `report_callback_slot` must reach `observe_callback_slot(`;
+# * nothing above the executor may record a slot: the old per-language hooks
+#   are gone, no API source names them, `nros-node`'s `Node` methods do not
+#   observe (the funnel below them already does), and the recorder entry point
+#   `on_callback_slot` is `pub(crate)`, so an API crate cannot call it.
+SLOT_ENTRY_KIND = re.compile(r"\bkind\s*:\s*EntryKind::(?:Timer|GuardCondition|Device)\b")
+SLOT_REPORT = "report_callback_slot("
 SLOT_OBSERVER = "observe_callback_slot("
-SHARED_SLOT_PRIMITIVES: dict[str, str] = {
-    "register_timer": "nros-cpp `nros_cpp_timer_create` records (`on_timer_create`)",
-    "register_timer_on_clock": "nros-cpp `nros_cpp_timer_create_on_clock` records",
-    "register_timer_oneshot": "nros-cpp `nros_cpp_timer_create_oneshot` records",
-    "register_timer_with_info": "the declarative sink `create_entity` records",
-    "register_timer_with_info_on": (
-        "nros-c `rclc_executor_add_timer*` and `Node::create_timer_with_info` record"
-    ),
-    "register_timer_on": "nros-cpp's group timer and `Node::create_timer_in_group` record",
-    "register_guard_condition": "nros-cpp `nros_cpp_guard_condition_create` records",
-    "register_guard_condition_on": (
-        "nros-c `rclc_node_create_guard_condition` and `Node::create_guard_condition` record"
-    ),
-}
+RETIRED_SLOT_HOOKS = ("on_timer_create(", "on_guard_condition_create(", "on_device_create(")
+API_SOURCES = (TIMER, GUARD, PARAMS, NODE, C_NODE, C_EXEC, C_GUARD, C_PARAMS, C_DEVICE, RUST_SINK)
 
 # The RMW seams: each must record, and must pass the profile it received.
 RMW_SEAMS = ("create_publisher", "create_subscription", "create_service", "create_client")
@@ -195,10 +179,8 @@ RMW_SEAMS = ("create_publisher", "create_subscription", "create_service", "creat
 # held to `metadata_mode::record(` itself.
 HOOK_BODIES = {
     "on_node_create": "metadata_mode::begin_node(",
-    "on_timer_create": "record(",
-    "on_guard_condition_create": "record(",
+    "on_callback_slot": "metadata_mode::record(",
     "on_param_declare": "metadata_mode::record_parameter(",
-    "record": "metadata_mode::record(",
 }
 
 # phase-308 layer rule: tokens an ADAPTER must not contain (code only).
@@ -438,7 +420,7 @@ def check(files: dict[str, str]) -> tuple[list[str], dict[str, int]]:
                 f"{HOOKS}:{line_of(stripped[HOOKS], f'fn {hook}')}: `{hook}` no longer calls "
                 f"`{call})` -- an entry point that calls it records nothing"
             )
-        elif hook != "record" and "#[cfg(feature = \"metadata-mode\")]" not in files[HOOKS]:
+        elif "#[cfg(feature = \"metadata-mode\")]" not in files[HOOKS]:
             errs.append(f"{HOOKS}: the hooks are no longer gated on `metadata-mode`")
 
     # 4. The phase-308 layer rule on the adapters.
@@ -458,36 +440,46 @@ def check(files: dict[str, str]) -> tuple[list[str], dict[str, int]]:
                 )
                 break
 
-    # 5. Issue 2985 -- the Rust slot routes, derived (see SHARED_SLOT_PRIMITIVES).
-    node_code = stripped[NODE_NODE]
-    node_pub = set(re.findall(r"\bpub\s+fn\s+([A-Za-z_][A-Za-z0-9_]*)\s*[<(]", node_code))
-    routes = sorted(
-        n for n, body in bodies[NODE_NODE].items() if n in node_pub and SLOT_PRIMITIVE_CALL.search(body)
-    )
-    if not routes:
+    # 5. Issues 2984 and 2985 -- a callback slot is reported once, at the
+    #    executor funnel (see SLOT_ENTRY_KIND).
+    funnels = sorted(n for n, body in bodies[NODE_SPIN].items() if SLOT_ENTRY_KIND.search(body))
+    if not funnels:
         errs.append(
-            f"{NODE_NODE}: no `pub fn` calls a timer or guard primitive -- the Rust `Node` "
-            "methods moved and this gate did not follow, which is the vacuous-gate class"
+            f"{NODE_SPIN}: no body installs a timer, guard or device entry -- the funnels "
+            "moved and this gate did not follow, which is the vacuous-gate class"
         )
-    for name in routes:
+    for name in funnels:
         stats["entry_points"] += 1
-        if SLOT_OBSERVER not in bodies[NODE_NODE][name]:
+        if SLOT_REPORT not in bodies[NODE_SPIN][name]:
             errs.append(
-                f"{NODE_NODE}:{line_of(node_code, f'fn {name}')}: `{name}` creates a timer or "
-                f"guard condition and never calls `{SLOT_OBSERVER})` -- the census would be "
-                "one callback slot short for it"
+                f"{NODE_SPIN}:{line_of(stripped[NODE_SPIN], f'fn {name}')}: `{name}` installs "
+                f"a callback slot and never calls `{SLOT_REPORT})` -- the census would be one "
+                "slot short for every route through it"
             )
-    defined = set(SLOT_PRIMITIVE_DEF.findall(stripped[NODE_SPIN]))
-    for name in sorted(defined - SHARED_SLOT_PRIMITIVES.keys()):
+    report = bodies[NODE_SPIN].get("report_callback_slot")
+    if report is None or SLOT_OBSERVER not in report:
         errs.append(
-            f"{NODE_SPIN}:{line_of(stripped[NODE_SPIN], f'fn {name}')}: `{name}` is a new timer "
-            "or guard primitive, and nothing says who records its slot -- record at its "
-            "callers and list it in SHARED_SLOT_PRIMITIVES with them"
+            f"{NODE_SPIN}: `report_callback_slot` no longer reaches `{SLOT_OBSERVER})` -- "
+            "no callback slot reaches the census"
         )
-    for name in sorted(SHARED_SLOT_PRIMITIVES.keys() - defined):
+    if SLOT_OBSERVER in stripped[NODE_NODE]:
         errs.append(
-            f"{NODE_SPIN}: `pub fn {name}` is listed in SHARED_SLOT_PRIMITIVES and no longer "
-            "exists -- drop the row"
+            f"{NODE_NODE}:{line_of(stripped[NODE_NODE], SLOT_OBSERVER)}: a `Node` method "
+            f"calls `{SLOT_OBSERVER})` -- the funnel below it already reports the slot, so "
+            "it would be counted twice"
+        )
+    for rel in API_SOURCES:
+        for hook in RETIRED_SLOT_HOOKS + ("on_callback_slot(",):
+            if hook in stripped[rel]:
+                errs.append(
+                    f"{rel}:{line_of(stripped[rel], hook)}: an API layer records a callback "
+                    f"slot (`{hook})`) -- the executor funnel already reports it, so it would "
+                    "be counted twice"
+                )
+    if re.search(r"\bpub\s+fn\s+on_callback_slot\b", stripped[HOOKS]):
+        errs.append(
+            f"{HOOKS}: `on_callback_slot` is `pub` -- an API crate could record a slot the "
+            "funnel already reported; keep it `pub(crate)`"
         )
 
     return errs, stats
@@ -518,10 +510,13 @@ def self_test(files: dict[str, str]) -> None:
     if errs:
         raise Fail("selftest: the tree is not green, so the mutations prove nothing:\n  " + "\n  ".join(errs))
 
-    # 1. The guard-condition entry point stops calling its hook.
+    # 1. The guard-condition funnel stops reporting its slot.
     m = dict(files)
-    drop_once(GUARD, m, "nros::census_hooks::on_guard_condition_create();")
-    red("guard hook call deleted", m, "nros_cpp_guard_condition_create")
+    body_start = m[NODE_SPIN].find("pub fn register_guard_condition_on<")
+    call = m[NODE_SPIN].find("self.report_callback_slot(", body_start)
+    call_end = m[NODE_SPIN].find(");", call) + 2
+    m[NODE_SPIN] = m[NODE_SPIN][:call] + "let reported = SlotSeq;" + m[NODE_SPIN][call_end:]
+    red("guard funnel unreported", m, "`register_guard_condition_on`")
 
     # 2. One of the seven declare variants stops calling the parameter hook.
     m = dict(files)
@@ -545,16 +540,26 @@ def self_test(files: dict[str, str]) -> None:
     m[PARAMS] = m[PARAMS][:arm_body] + stmt + m[PARAMS][arm_body:]
     red("declare hook gated on the store", m, "only inside a feature-gated arm")
 
-    # 3. The one-shot timer entry stops calling its hook -- commented out, to
-    #    prove a comment is not a call.
+    # 3. An API entry point records a slot again -- commented out first, to
+    #    prove a comment is not a call; then live.
     m = dict(files)
     drop_once(
         TIMER,
         m,
-        "nros::census_hooks::on_timer_create(nros::node_metadata::TimerKind::Oneshot, delay_ms);",
-        "// nros::census_hooks::on_timer_create(nros::node_metadata::TimerKind::Oneshot, delay_ms);",
+        "    match ctx\n        .executor\n        .register_timer(",
+        "    // nros::census_hooks::on_timer_create(kind, 1);\n    match ctx\n        .executor\n        .register_timer(",
     )
-    red("oneshot hook commented out", m, "nros_cpp_timer_create_oneshot")
+    errs, _ = check(m)
+    if any("records a callback slot" in e for e in errs):
+        raise Fail("selftest: a COMMENTED hook call read as a call")
+    m = dict(files)
+    drop_once(
+        TIMER,
+        m,
+        "    match ctx\n        .executor\n        .register_timer(",
+        "    nros::census_hooks::on_timer_create(kind, 1);\n    match ctx\n        .executor\n        .register_timer(",
+    )
+    red("API layer records a slot again", m, "records a callback slot")
 
     # 4. The backend drops the QoS again -- the 2026-09 defect verbatim.
     m = dict(files)
@@ -589,18 +594,15 @@ def self_test(files: dict[str, str]) -> None:
     drop_once(
         HOOKS,
         m,
-        "fn record(\n",
-        "fn record(\n    _r: Option<nros::node_metadata::MetadataRecorder>,\n",
+        "pub(crate) fn on_callback_slot(\n",
+        "pub(crate) fn on_callback_slot(\n    _r: Option<nros::node_metadata::MetadataRecorder>,\n",
     )
     red("recorder type named in the hooks", m, "MetadataRecorder")
 
-    # 7. A C entry point loses its hook: the group timer -- issue 1556 item 1.
+    # 7. The recorder entry point is made public, so an API crate could call it.
     m = dict(files)
-    body_start = m[C_EXEC].find("fn rclc_executor_add_timer_in_group(")
-    call = m[C_EXEC].find("nros::census_hooks::on_timer_create(", body_start)
-    call_end = m[C_EXEC].find(";", call) + 1
-    m[C_EXEC] = m[C_EXEC][:call] + m[C_EXEC][call_end:]
-    red("C group timer unhooked", m, "rclc_executor_add_timer_in_group")
+    drop_once(HOOKS, m, "pub(crate) fn on_callback_slot(", "pub fn on_callback_slot(")
+    red("slot recorder made public", m, "`on_callback_slot` is `pub`")
 
     # 8. The C parameter server's one declare path loses its hook -- phase-491
     #    funnels every rclc declaration through it.
@@ -628,24 +630,26 @@ def self_test(files: dict[str, str]) -> None:
     red("Rust typed parameter builder unobserved", m, "`parameter_on`")
 
 
-    # 11. Issue 2985 -- a Rust `Node` guard method stops reporting its slot.
+    # 11. A `Node` method observes its own slot again, below which the funnel
+    #     already reports it.
     m = dict(files)
-    body_start = m[NODE_NODE].find("pub fn create_guard_condition<")
-    call = m[NODE_NODE].find("crate::executor::registration_observer::observe_callback_slot(", body_start)
-    call_end = m[NODE_NODE].find(");", call) + 2
-    m[NODE_NODE] = m[NODE_NODE][:call] + m[NODE_NODE][call_end:]
-    red("Rust guard condition unobserved", m, "`create_guard_condition`")
+    drop_once(
+        NODE_NODE,
+        m,
+        "            .register_guard_condition_on(Some(self.node_id), callback)",
+        "            .register_guard_condition_on(Some(self.node_id), callback);\n        crate::executor::registration_observer::observe_callback_slot(x)",
+    )
+    red("Node method double-reports", m, "counted twice")
 
-    # 12. A new timer primitive appears on the executor with nobody recording
-    #     its slot.
+    # 12. A new slot funnel appears on the executor and reports nothing.
     m = dict(files)
     drop_once(
         NODE_SPIN,
         m,
         "    pub fn register_timer_oneshot<F>(",
-        "    pub fn register_timer_burst<F>(&mut self) {}\n    pub fn register_timer_oneshot<F>(",
+        "    pub fn register_timer_burst(&mut self) { let _m = CallbackMeta { kind: EntryKind::Timer }; }\n    pub fn register_timer_oneshot<F>(",
     )
-    red("unlisted timer primitive", m, "`register_timer_burst`")
+    red("unreported slot funnel", m, "`register_timer_burst`")
 
 
 def main() -> int:

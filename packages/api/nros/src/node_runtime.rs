@@ -2139,20 +2139,6 @@ impl crate::node::FrameSink for ExecutorSink<'_> {
                     .view()
                     .push_timer(timer_key(metadata.id.as_str()), handle)
                     .map_err(|()| NodeDeclError::Metadata(NodeMetadataError::DuplicateId))?;
-                // Issue 1419 — a Rust timer never reaches the RMW, so this hook
-                // is how it enters the census. Recorded AFTER the tier gate
-                // above, so a sched-task entry's census holds each timer once, on
-                // the sched task that owns it. `Wall` on the steady clock, `Clock`
-                // on any other — the split the C and C++ entry points report.
-                crate::census_hooks::on_timer_create(
-                    match metadata.timer_clock {
-                        nros_node::executor::TimerClockSource::Steady => {
-                            crate::node_metadata::TimerKind::Wall
-                        }
-                        _ => crate::node_metadata::TimerKind::Clock,
-                    },
-                    period.as_millis(),
-                );
                 Ok(())
             }),
             // Phase 212.M-F.23 — service / action client + server dispatch on

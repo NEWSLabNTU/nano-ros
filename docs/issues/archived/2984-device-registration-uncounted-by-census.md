@@ -1,12 +1,14 @@
 ---
 id: 2984
 title: "A device registration claims a callback slot that the census and the metadata probe do not count"
-status: open
+status: resolved
 type: bug
 severity: medium
 area: [executor, sizing, census]
 related: [phase-579, rfc-0139, rfc-0120]
 found: 2026-11-26
+resolved: 2026-11-27
+resolved_in: "the change that archived it"
 ---
 
 ## What
@@ -57,3 +59,42 @@ The issue resolves when W4's Rust route lands.
 To check while fixing: the Rust `Node::create_guard_condition` route calls
 no hook either. If the census misses a Rust guard too, it belongs to the same
 fix (raised with the census owner on 2026-11-27).
+
+## Resolution (2026-11-27)
+
+Fixed at the root, together with issue 2985. The class was wider than the
+device: every route that registers a timer, guard condition or device
+directly on `nros-node` reached no census hook. That covered the Rust
+executor primitives (`register_timer*`, `register_guard_condition*`,
+`register_device*`), the `Node` methods, a direct device registration, and the
+C graph-change guard (`rclc_node_get_graph_guard_condition`, which called no
+hook at all). An observer on those entry points would have double-counted,
+because the C and C++ shims call the same primitives.
+
+So the slot is now reported once, from the executor's registration funnels
+that every route crosses (`register_timer_entry_with`,
+`register_guard_condition_on`, `register_device_on`), through
+`registration_observer::ObservedCallbackSlot`. The per-language hooks are
+gone: the C and C++ timer and guard hooks, the declarative Rust timer hook,
+the C device hook, and the public `census_hooks::on_timer_create`,
+`on_guard_condition_create` and `on_device_create`. The recorder entry point,
+`census_hooks::on_callback_slot`, is `pub(crate)`, so no API crate can count a
+slot twice. A profile labels the slot from the same funnel, with the same
+sequence, so the two files still join.
+
+The W4 half this issue planned (the companion package's Rust routes calling
+`on_device_create`) is no longer needed: those routes reach
+`register_device_on` like every other.
+
+Proof:
+- `nros-cpp`'s `every_route_records_each_callback_slot_exactly_once` drives a
+  C++ timer and guard, a C timer, guard and device, and a Rust executor
+  timer, guard and device, and asserts exactly eight rows.
+- `nros-rmw-metadata`'s `imperative_timer_census` covers the Rust `Node`
+  methods (one row each) and a declarative component (its one timer is one
+  row).
+- Mutations: dropping the device or timer funnel report turns those tests red.
+- `check-census-hooks-complete` now derives the funnels (every body installing
+  a timer, guard or device entry must report). It refuses a slot hook in any
+  API source, an observe call in a `Node` method, and a `pub` recorder entry
+  point, with 14 mutations red.
