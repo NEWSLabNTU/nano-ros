@@ -8141,6 +8141,24 @@ west_id = "zephyr/qemu_cortex_a53/smp/workspace-realtime-entry-c"
 west_zenoh_locator = "tcp/10.0.2.2:7591"
 skip_probe = true
 
+# Issue 2897 -- the SMP image with SNTP re-sync, built so the stack-floor walk
+# covers a 64-bit Arm image's main thread and its re-sync thread (role
+# SNTP_RESYNC). Build-only; `tests/zephyr_stack_floor_aarch64.rs` asserts its
+# `report.json`, so an aarch64 frame gap goes red in a lane.
+[[workspace_fixture]]
+id = "workspace-zephyr-c-realtime-smp-sntp-resync"
+platform = "zephyr"
+lang = "c"
+rmw = "zenoh"
+dir = "examples/workspaces/realtime-c"
+bringup = "src/smp_bringup"
+image = "zephyr_smp_sntp_resync"
+board = "qemu_cortex_a53/qemu_cortex_a53/smp"
+west_build_name = "build-ws-c-realtime-entry-smp-sntp-resync"
+west_id = "zephyr/qemu_cortex_a53/smp/workspace-realtime-entry-c-sntp-resync"
+west_zenoh_locator = "tcp/10.0.2.2:7591"
+skip_probe = true
+
 # phase-263 C2d — the C WORKSPACE entry (Approach A). Same native_sim/NSOS
 # west path as the Rust workspace entry above. phase-470 W5.b3 (issue 1288)
 # GENERATES that application — `build/zephyr-zenoh/zephyr_entry/`,

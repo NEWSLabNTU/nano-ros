@@ -6647,6 +6647,19 @@ pub fn build_zephyr_workspace_c_realtime_entry_smp() -> TestResult<PathBuf> {
     )
 }
 
+/// Issue 2897 — the SMP realtime entry with SNTP re-sync
+/// (`[image.zephyr_smp_sntp_resync]`), built so the stack-floor walk covers a
+/// 64-bit Arm image's main thread and its re-sync thread. Returns the build's
+/// stack-floor `report.json`, after checking the image it describes is fresh.
+pub fn build_zephyr_workspace_c_realtime_smp_sntp_resync_report() -> TestResult<PathBuf> {
+    let dir = zephyr_build_root().join("build-ws-c-realtime-entry-smp-sntp-resync");
+    require_prebuilt_binary_fresh_zephyr(
+        &dir.join("zephyr/zephyr.elf"),
+        ZephyrLeafSource::zenoh("examples/workspaces/realtime-c", "c"),
+    )?;
+    Ok(dir.join("nros/stack-floor/report.json"))
+}
+
 /// Phase 118.C — collapsed-shape ThreadX-RV64 C / C++ example resolver.
 pub fn build_threadx_rv64_cmake_example_rmw(
     lang: &str,

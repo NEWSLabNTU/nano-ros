@@ -135,3 +135,15 @@ the 32-bit image's clock and sntp knobs, plus board fragments under
 `method` is how its peak was taken. **When 2897's step 3 records the row:**
 decide whether the 8,192 B default is still right for 64-bit, update the
 knob's help with the in-tree 64-bit figure, and close this issue.
+
+## Progress: 64-bit walk completes (2026-11-27)
+
+Issue 2897 closed the frame gap on aarch64, so the qemu_cortex_a53 image's
+re-sync thread is walked: `[image.zephyr_smp_sntp_resync]` in realtime-c's
+`smp_bringup` reports SNTP_RESYNC from `nros_zephyr_sntp_resync_loop`
+against `CONFIG_NROS_CLOCK_SNTP_RESYNC_STACK_BYTES=8192`, floor 173,592 B.
+That floor is an UPPER BOUND through a machine-bound edge
+(`dns_resolve_name -> publish_trampoline`), not a size: do not size the
+64-bit stack from it. Still open here: the 64-bit `[[observed]]` row (a
+thread-analyzer peak under QEMU, as the 32-bit row was taken), and the
+looseness, issue 2998 (aarch64 C untyped) then RFC-0143.
