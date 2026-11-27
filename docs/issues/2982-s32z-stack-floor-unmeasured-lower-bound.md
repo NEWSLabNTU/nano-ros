@@ -112,3 +112,29 @@ buffers, would halve or remove it.
    path that crosses a bound indirect edge; and keep a refused role's path
    in `report.json`.
 3. Separately, share one splice buffer in `action_client_raw_try_process`.
+
+## Progress (2026-11-27): the S32Z refusal is still step 1
+
+NXP's ASI run (main 0e4afce2fa) reports the S32Z Zephyr main walk still
+refusing: UNMEASURED, at least 193,996 B, so its 32 KB main stack cannot
+be settled from the walk. That is this issue's step 1, unchanged: the
+Cortex-R image calls frameless code directly, the toolchain's
+thumb/v7+fp/hard libgcc (`__aeabi_uidiv*`, no row in
+`config/stack-builtins.toml`) and Zephyr's arm assembly (`arch_cpu_idle`,
+`z_arm_cortex_r_svc`, `z_arm_int_exit`).
+
+The aarch64 half of the same class closed with issue 2897: frameless
+assembled code is decoded off the linked objects (`apply_assembled_objects`,
+`stack_builtins.ASSEMBLED_ARCHES = ("aarch64",)`). Step 1 here is that
+step's arm extension (`ASSEMBLED_ARCHES` gains `arm`, re-measuring the
+Cortex-M images it also moves) plus the measured Cortex-R libgcc row. It
+lands in this issue's own change, with step 2 (the warning's wording).
+
+**Held until nros12 is published (2026-11-27, 243, release owner).**
+Both steps are post-release: the user ruled that the S32Z stack-walk gap
+is not a release blocker. Work may be written as an unarmed draft, and
+nothing is armed until the publish is announced.
+
+The other edge the same run reports, `Logger::dispatch` bound to an
+escaped callback "by type", is not this issue's: it is the `dyn`
+over-binding phase-592 W2 removes (RFC-0143 D1).
