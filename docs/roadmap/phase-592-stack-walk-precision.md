@@ -1,12 +1,13 @@
 # Phase 592 — Stack-floor walk precision
 
-**Status (2026-11-27). OPEN: design drafted in RFC-0143, waiting on its four
-questions; no code before the ruling.** Implements
+**Status (2026-11-27). OPEN: RFC-0143 ruled 2026-11-27; W2 and W3 run in
+parallel (Q2), nothing started.** Implements
 [RFC-0143](../design/0143-stack-walk-precision.md). Closes
 [issue 2550](../issues/2550-stack-walk-order-dependent-under-cycles.md) and
 [issue 2658](../issues/2658-stack-floor-walk-over-estimates-graph-and-param-images.md).
 Follows [phase-557](phase-557-stack-floor-measured-frames.md), whose W7f
-(field-sensitive binding) stopped at its checkpoint and reopens here as W3.
+(field-sensitive binding) stopped at its checkpoint and reopens here as W3,
+alongside W2 (ruled 2026-11-27, RFC-0143 Q2).
 
 ## Baseline
 
@@ -43,8 +44,8 @@ Recorded before W1, so each item's effect is a measured delta:
 
 - **Owner:** unassigned.
 - **Status:** OPEN
-- Only if W2's measurement leaves the SCC too large for W4 (Q2). Nested
-  initialisers, the return-value channel, and the parameter channel; a cast,
+- In parallel with W2 (RFC-0143 Q2, ruled 2026-11-27); it does not wait on
+  W2's measurement. Nested initialisers, the return-value channel, and the parameter channel; a cast,
   `memcpy` or escape keeps the coarse binding.
 - **Acceptance:** the share of C sites binding through a trusted channel, on
   the baseline images, against W7f's 37-43 %; the walks re-measured.
@@ -54,7 +55,9 @@ Recorded before W1, so each item's effect is a measured delta:
 - **Owner:** unassigned.
 - **Status:** OPEN
 - SCC condensation; exact DAG depths outside SCCs; `deepest_simple` inside
-  them, under a node budget per root; a spent budget handled as ruled (Q3);
+  them, under a node budget per root; a spent budget refuses on an image
+  with an `[[observed]]` row and warns on an unmeasured one, reporting the
+  budget and the SCC size (Q3, ruled);
   true recursion refused by name. `WALK_ORDERS` retires.
 - **Acceptance:** issue 2550's four-node self-test reads 121 B (the true
   depth), and the same image gives one depth for any callee order; every
