@@ -1,12 +1,14 @@
 ---
 id: 2970
 title: "An XRCE session never noticed a DDS participant leave when the participant's last ros_discovery_info sample did not reach it"
-status: open
+status: resolved
 type: bug
 severity: high
 area: [rmw-xrce, graph, interop]
 related: [issue-2106, phase-590]
 found: 2026-11-25
+resolved: 2026-11-25
+resolved_in: "#4865 (b3ffe8a739): the XRCE session re-syncs its graph every xrce.graph_resync_ms, so a departure is seen without its last sample"
 ---
 
 ## Symptom
@@ -166,3 +168,21 @@ same loss, and it is arguably intended DDS behaviour. ROS 2 makes no delivery
 promise for the last sample either. A report would first need the same
 starvation repro against a bare Fast-DDS reader. Either way, the fix here
 holds, because the re-sync does not depend on the last sample.
+
+## Resolution
+
+Fixed by #4865 (`b3ffe8a739`, 2026-11-25), the graph re-sync described above.
+It is in the nros12 cut (tracker item B37).
+
+The cell `xrce_a_peer_leaving_fires_the_graph_change_guard` has passed in every
+live-peer run on main since the fix:
+
+| run | head | date |
+| --- | --- | --- |
+| 45684816443 | 01388e07a3 | 2026-11-25 |
+| 45742791109 | d92c369a14 | 2026-11-26 |
+| 45753606904 | d92c369a14 | 2026-11-26 |
+| 45820902343 | ebbb3a570d | 2026-11-26 |
+| 45868139877 | 52fcb58126 | 2026-11-26 |
+
+The file stayed open only because the fixing commit did not archive it.
