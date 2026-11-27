@@ -293,15 +293,14 @@ test verbose="": build-fixtures
     #!/usr/bin/env bash
     bash scripts/dev/deprecated-scope-alias.sh zephyr test "just test zephyr"
     set -e
-    source scripts/build/cargo.sh
-    cargo_nextest_args=($(nros_cargo_nextest_args))
-    args=(-p nros-tests --test zephyr --no-fail-fast)
-    if [ -z "{{verbose}}" ]; then
-        args+=(--failure-output never)
-    else
-        args+=(--success-output immediate --failure-output immediate)
-    fi
-    cargo nextest run "${cargo_nextest_args[@]}" "${args[@]}"
+    # Issue 2997 -- every consumer of the Zephyr boards' Runtime cells
+    # (`matrix::consumer_of`), DERIVED, not `--test zephyr` alone, which left
+    # eleven of twelve consumers to other lanes. Through `_nextest-platform`,
+    # so the run gets the junit rewrite and the skip budget the other modules
+    # have, and is scoped to the board's coordinates: a sibling board's cell
+    # lane-skips. Gate: `check platform-lane-cells`.
+    if ! bins="$(bash scripts/test/module-consumers.sh zephyr)"; then exit 1; fi
+    just _nextest-platform "$bins" '{{verbose}}' '' ''
 
 # Run all Zephyr tests (zenoh + XRCE + C)
 [group("full-matrix")]

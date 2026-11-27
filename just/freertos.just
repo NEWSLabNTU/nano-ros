@@ -454,7 +454,13 @@ test verbose="": build-fixtures
     #
     # Issue 2507 -- and `freertos_stack_guard`: a task stack overflow on the
     # mps2-an385 board hits its MPU guard and names the task.
-    just _nextest-platform 'rtos_e2e realtime_sched_tasks_e2e freertos_posix freertos_stack_guard' '{{verbose}}' '' 'test(Freertos) | binary(=realtime_sched_tasks_e2e) | binary(=freertos_posix) | binary(=freertos_stack_guard)'
+    # Issue 2997 -- the module's targets are DERIVED: every consumer of a
+    # Runtime cell of its platforms (`matrix::consumer_of`), never a hand
+    # list, which ran a subset of the cells. No name filter: the run is scoped
+    # to this board's coordinates, so a sibling platform's cell in a shared
+    # target lane-skips by coordinate. Gate: `check platform-lane-cells`.
+    if ! bins="$(bash scripts/test/module-consumers.sh freertos)"; then exit 1; fi
+    just _nextest-platform "$bins freertos_stack_guard" '{{verbose}}' '' ''
 
 # Run all FreeRTOS tests including networked E2E
 [group("full-matrix")]

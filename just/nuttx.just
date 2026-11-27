@@ -517,7 +517,13 @@ test verbose="": build-fixtures-arm
     # `realtime_sched_tasks_e2e` holds both boards' realtime rows
     # (`workspace-*-nuttx{,-riscv}-realtime`, phase-466 W5), which no NuttX job
     # selected before. The scope deselects the sibling board's rows.
-    just _nextest-platform 'rtos_e2e realtime_sched_tasks_e2e c_riscv_nuttx_e2e' '{{verbose}}' '' 'test(Nuttx) | binary(=realtime_sched_tasks_e2e) | binary(=c_riscv_nuttx_e2e)'
+    # Issue 2997 -- the module's targets are DERIVED: every consumer of a
+    # Runtime cell of its platforms (`matrix::consumer_of`), never a hand
+    # list, which ran a subset of the cells. No name filter: the run is scoped
+    # to this board's coordinates, so a sibling platform's cell in a shared
+    # target lane-skips by coordinate. Gate: `check platform-lane-cells`.
+    if ! bins="$(bash scripts/test/module-consumers.sh nuttx)"; then exit 1; fi
+    just _nextest-platform "$bins" '{{verbose}}' '' ''
 
 # Run all NuttX tests including networked E2E
 [group("full-matrix")]

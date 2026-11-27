@@ -168,7 +168,13 @@ test verbose="": build-fixtures
     # lane reported PASS with no ThreadX, no NetX Duo and no router. The file's
     # own header already said the substance lived in `rtos_e2e` — this selects
     # those cells, which is what the lane was always meant to run.
-    just _nextest-platform rtos_e2e '{{verbose}}' '' 'test(ThreadxLinux)'
+    # Issue 2997 -- the module's targets are DERIVED: every consumer of a
+    # Runtime cell of its platforms (`matrix::consumer_of`), never a hand
+    # list, which ran a subset of the cells. No name filter: the run is scoped
+    # to this board's coordinates, so a sibling platform's cell in a shared
+    # target lane-skips by coordinate. Gate: `check platform-lane-cells`.
+    if ! bins="$(bash scripts/test/module-consumers.sh threadx_linux)"; then exit 1; fi
+    just _nextest-platform "$bins" '{{verbose}}' '' ''
 
 # Run all ThreadX Linux tests including networked E2E
 [group("full-matrix")]
