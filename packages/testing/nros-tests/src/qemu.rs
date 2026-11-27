@@ -473,10 +473,15 @@ impl QemuProcess {
     /// An idle one (`wfi`) still advances at wall-clock speed (`sleep=on`,
     /// which the network needs), so a bound measured across an idle stretch
     /// carries the host's scheduling jitter.
-    pub fn start_mps2_an385_networked_measured(binary: &Path) -> TestResult<Self> {
-        Self::start(
-            binary,
-            mps2_an385_networked_boot()?.arg("icount", MPS2_AN385_CORE_ICOUNT),
+    pub fn start_mps2_an385_networked_measured(
+        binary: &Path,
+    ) -> TestResult<crate::guest_time::MeasuredQemu> {
+        crate::guest_time::MeasuredQemu::new(
+            Self::start(
+                binary,
+                mps2_an385_networked_boot()?.arg("icount", MPS2_AN385_CORE_ICOUNT),
+            )?,
+            MPS2_AN385_CORE_ICOUNT,
         )
     }
 
@@ -498,11 +503,16 @@ impl QemuProcess {
     /// [`Self::start_zephyr_networked`] on the Zephyr MPS2-AN385 board at a
     /// fixed `-icount` ([`MPS2_AN385_CORE_ICOUNT`]), for a cell that asserts a
     /// bound on the guest's own clock (issue 2252).
-    pub fn start_zephyr_mps2_an385_networked_measured(binary: &Path) -> TestResult<Self> {
-        Self::start(
-            binary,
-            crate::zephyr::west_qemu_boot(MPS2_AN385_ZEPHYR, binary)?
-                .arg("icount", MPS2_AN385_CORE_ICOUNT),
+    pub fn start_zephyr_mps2_an385_networked_measured(
+        binary: &Path,
+    ) -> TestResult<crate::guest_time::MeasuredQemu> {
+        crate::guest_time::MeasuredQemu::new(
+            Self::start(
+                binary,
+                crate::zephyr::west_qemu_boot(MPS2_AN385_ZEPHYR, binary)?
+                    .arg("icount", MPS2_AN385_CORE_ICOUNT),
+            )?,
+            MPS2_AN385_CORE_ICOUNT,
         )
     }
 

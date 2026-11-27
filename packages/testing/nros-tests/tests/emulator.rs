@@ -42,6 +42,7 @@ use nros_tests::{
         is_arm_toolchain_available, is_qemu_available, is_socat_available, or_unmet,
         parse_test_results, qemu_baremetal_capi_binary, require_xrce_agent, require_zenoh_pico_arm,
     },
+    guest_time::FixedIcount,
     matrix::{Lang, PlatformId, Rmw, Workload},
     platform, wait_for_port,
 };
@@ -949,6 +950,7 @@ fn test_qemu_rtic_levels_preempt_and_wake_on_time() {
     // 1000 activations: 10 s of guest time, ~50 burns.
     let output = qemu.collect_until_count("URGENT_FIRE ", 1000, Duration::from_secs(120));
     qemu.kill();
+    let icount = qemu.icount();
 
     let (fires, burns) = rtic_levels_trace(&output);
     let tail = || output.lines().rev().take(40).collect::<Vec<_>>().join("\n");
@@ -988,13 +990,17 @@ fn test_qemu_rtic_levels_preempt_and_wake_on_time() {
         tail()
     );
 
-    check_rtic_levels_timer(&fires, burns.len());
+    check_rtic_levels_timer(icount, &fires, burns.len());
 }
 
 /// TIMER: deadlines on the timer's grid, activations not early, the busy
 /// ones within [`RTIC_LEVELS_BOUND_US`], the idle ones within
 /// [`RTIC_LEVELS_IDLE_CAP_US`].
-fn check_rtic_levels_timer(fires: &[UrgentFire], burns: usize) {
+///
+/// The busy bound is a bound on guest time spent working, so it needs the
+/// guest's clock to count instructions: `_icount` proves the run was at a
+/// fixed shift (`nros_tests::guest_time`, issue 2971).
+fn check_rtic_levels_timer(_icount: FixedIcount, fires: &[UrgentFire], burns: usize) {
     let first_deadline = fires[0].at_us - fires[0].late_us;
     let mut off_grid = Vec::new();
     let mut early = Vec::new();
@@ -1328,7 +1334,12 @@ fn cases_bound_to_matrix_cells() {
 
 /// What [`check_rtic_levels_timer`] refuses, over synthetic traces.
 mod rtic_levels_check {
-    use super::{RTIC_LEVELS_PERIOD_US, UrgentFire, check_rtic_levels_timer};
+    use super::{FixedIcount, RTIC_LEVELS_PERIOD_US, UrgentFire, check_rtic_levels_timer};
+
+    /// The traces below stand for a run at the launcher's fixed `shift=5`.
+    fn at_shift_5() -> FixedIcount {
+        FixedIcount::for_a_recorded_console(5)
+    }
 
     /// 1000 activations on the 10 ms grid, every fourth inside a burn;
     /// `late(i, in_burn)` gives each one's lateness.
@@ -1347,8 +1358,9 @@ mod rtic_levels_check {
     }
 
     fn refused(fires: Vec<UrgentFire>) -> String {
-        let err = std::panic::catch_unwind(move || check_rtic_levels_timer(&fires, 50))
-            .expect_err("the check must refuse this trace");
+        let err =
+            std::panic::catch_unwind(move || check_rtic_levels_timer(at_shift_5(), &fires, 50))
+                .expect_err("the check must refuse this trace");
         err.downcast_ref::<String>()
             .cloned()
             .or_else(|| err.downcast_ref::<&str>().map(|s| s.to_string()))
@@ -1368,7 +1380,7 @@ mod rtic_levels_check {
                 300
             }
         });
-        check_rtic_levels_timer(&fires, 50);
+        check_rtic_levels_timer(at_shift_5(), &fires, 50);
     }
 
     /// Without the level wake the urgent level waits for the boot level's
