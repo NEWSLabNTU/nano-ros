@@ -1,12 +1,14 @@
 ---
 id: 2984
 title: "A device registration claims a callback slot that the census and the metadata probe do not count"
-status: open
+status: resolved
 type: bug
 severity: medium
 area: [executor, sizing, census]
 related: [phase-579, rfc-0139, rfc-0120]
 found: 2026-11-26
+resolved: 2026-11-27
+resolved_in: "phase-579-w4a1-nros-device"
 ---
 
 ## What
@@ -54,6 +56,18 @@ Split between phase 579 W3a and W4, agreed with W4's owner:
 
 The issue resolves when W4's Rust route lands.
 
-To check while fixing: the Rust `Node::create_guard_condition` route calls
-no hook either. If the census misses a Rust guard too, it belongs to the same
-fix (raised with the census owner on 2026-11-27).
+## Resolved (2026-11-27)
+
+W3a's half landed with #4936. W4's half lands with the `nros-device` crate:
+its two Rust registration routes, `Stage::open` and `Source::open`, each call
+`nros::census_hooks::on_device_create` once, right after
+`Executor::register_device` claims the slot. So every route that claims a
+device slot is counted once: the C entry point inside
+`nros_executor_register_device`, and the Rust routes in the companion crate.
+The C and C++ layer-2 routes (phase 579 W4a-2) build on the C entry point and
+add no second call.
+
+The Rust `Node::create_guard_condition` route calls no hook either. Whether
+the census misses a Rust guard condition was raised with the census owner on
+2026-11-27. It is a separate question from this issue, since no device
+registration is involved.

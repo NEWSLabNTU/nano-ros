@@ -100,7 +100,7 @@ device. RFC-0139's Motivation has the measurements and the driver survey.
   executor through `nros_completion_t`) is met by the same handle.
 - Declared entities count a device's slot (the `device` entity kind). The
   census and the metadata probe do not yet; W4's registration routes add that
-  ([issue 2984](../issues/2984-device-registration-uncounted-by-census.md)).
+  ([issue 2984](../issues/archived/2984-device-registration-uncounted-by-census.md)).
 
 ### W3p — The large-message pool, with per-slot claim and release
 
@@ -133,19 +133,38 @@ device. RFC-0139's Motivation has the measurements and the driver survey.
 ### W4 — The companion package, in three languages
 
 - **Owner:** nros 139 (2026-11-26).
-- **Status:** OPEN. Design half done: RFC-0139's amendment (the Rust shape,
-  and the capture time as a monotonic and wall-clock pair in all three
-  languages) was accepted by the user's rulings of 2026-11-26. Implementation
-  follows W2 and W3, which it builds on.
+- **Status:** OPEN. Design done: RFC-0139's amendment (the Rust shape, and the
+  capture time as a monotonic and wall-clock pair in all three languages) was
+  accepted by the user's rulings of 2026-11-26. Split on 2026-11-27, as W3 was,
+  because the slot-based parts need W3b's owned slots and the acceptance does
+  not:
+  - **W4a-1 (in review):** the Rust crate `nros-device`. The `WorkerPort` and
+    `SourcePort` implementor traits; `PortCell`; operation tables built at
+    compile time, so a Rust port serves a C node through `WorkerPortOps` /
+    `SourcePortOps`; typed `WorkerHandle` / `SourceHandle` statics with an ABI
+    check at open and `from_c` for a C port; the closure tier (`Worker`,
+    `Stage`, `Source`) over `Executor::register_device`, one job in flight per
+    worker; the capture pair carried from submit to result; the mock worker
+    and mock source; and the conformance checks, run against any handle. Its
+    Rust routes call the census hook, which resolves
+    [issue 2984](../issues/archived/2984-device-registration-uncounted-by-census.md).
+    Jobs carry the ABI's raw buffers.
+  - **W4a-2:** the C `<nros/device.h>` and C++ `<nros/device.hpp>` layer 2 over
+    `nros_executor_register_device`, the `NanoRos::Device` CMake target, the C++
+    implementor base, and their api-parity ledger rows.
+  - **W4a-3:** the acceptance below.
+  - **W4b (after W3b):** `Slot<T>`, slot views, and the per-class typed modules
+    (inference, 2D operation, camera frame, sensor batch). The component tier
+    (R2) and its extension accessor land with it or before it. So do the
+    mocks' timed modes (D11): a configured job time and a source's configured
+    rate, from a timer interrupt on an RTOS image and a thread on a host. W4a's
+    mocks complete at once, or when a test (or an interrupt handler) says so.
 - `nros-device` (crate), `NanoRos::Device` (CMake), `<nros/device.h>`,
   `<nros/device.hpp>` (D7): worker and source registration, stages, slot
   views, the per-class headers for inference, 2D operation, camera frame and
   sensor batch. The C++ implementor base and the Rust implementor trait.
 - The mock worker and mock source (RFC-0139 D11), and the port conformance
   tests that any adapter, real or mock, must pass.
-- Every device registration route calls a census hook, so the census and the
-  metadata probe count a device's callback slot
-  ([issue 2984](../issues/2984-device-registration-uncounted-by-census.md)).
 - **Acceptance:** one fake device adapter written in C is driven by a C node,
   a C++ node and a Rust node, and one written in Rust by a C node. That proves
   the ABI is the one seam in both directions.

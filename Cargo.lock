@@ -1337,6 +1337,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "nros-device"
+version = "0.6.0"
+dependencies = [
+ "nros",
+ "nros-node",
+ "nros-platform-cffi",
+ "nros-rmw-cffi",
+ "portable-atomic",
+]
+
+[[package]]
 name = "nros-diagnostic-codes"
 version = "0.6.0"
 
