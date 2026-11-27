@@ -224,6 +224,23 @@ is about. RAM is of 270,336 B.
   `record_node_metadata_seeded_watching_prose`, which the harness calls once
   phase-566 W4 lands (PR #4861).
 
+## Progress (2026-11-27): the Rust harness arms the watch
+
+`record_node_metadata_seeded_watching_prose` now arms the parameter watch
+(`probe-param-watch`) and breaks it on what its rows cannot hold: a node
+opting into undeclared parameters, an imperative declaration, a refused row.
+With `metadata-mode` also compiled in, it reads that module's watch and count
+too. A launch seed is not a declaration: `seed_launch_text_on` writes the
+store and fires no declare observer, so a seeded image still reads as whole.
+Measured on the no-contract Pico listener (nros 118):
+
+- as scaffolded: watched, 194,392 B;
+- with `allow_undeclared_parameters(true)`: not watched, overflows by
+  16,344 B (the negative control).
+
+Still owed for acceptance: the same measurement on the Rust server and
+action-server templates.
+
 ## The second gap: the zenoh builtin inbox (same cause)
 
 The Pico measurement showed the zenoh shim's `BUILTIN_INBOX` at 6,264 B in
