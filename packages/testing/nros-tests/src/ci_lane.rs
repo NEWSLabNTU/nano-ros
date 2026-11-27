@@ -41,7 +41,7 @@
 //! | [`CiLane::Tier2`] | 1-wise p, l, r, k, config + the violation-channel cell | 20 | 14 | 23 % |
 //! | [`CiLane::Tier2Nightly`] | pairwise p × l × r × k + platform × config + every realtime-tiers cell | 55 | 42 | 75 % |
 //! | [`CiLane::Merge`] | every zenoh Example cell, Rust/C/C++, on each host witness board (not a cover) | 54 | 9 | 16 % |
-//! | tier 3 | everything | 296 | 56 | 100 % |
+//! | tier 3 | everything | 299 | 56 | 100 % |
 //!
 //! Added 2026-11-12 (phase-535 W8, RFC-0122 D8): the merge lane. It is not
 //! a rung of the ladder below: it is the set a per-merge cadence on the host
@@ -54,6 +54,11 @@
 //! Zephyr Cortex-M board joined at an existing coordinate (ZephyrQemuCortexM,
 //! C, xrce). It is not zenoh and its config is the default, so tiers 1, 2,
 //! nightly and merge are unchanged; tier 3 went 295 -> 296 over the same 56.
+//!
+//! Re-measured 2026-11-27 (issue 2428): the FreeRTOS lifecycle cells, one per
+//! language, joined at existing coordinates (freertos, {c,cpp,rust}, zenoh)
+//! in the default config. The lane rows are unchanged; tier 3 went 296 -> 299
+//! over the same 56.
 //!
 //! Re-measured 2026-11-24 (phase-554 W9): the lifecycle-pair interop cells
 //! joined on Cyclone DDS and XRCE (Linux, C and C++), at existing
@@ -1502,8 +1507,8 @@ _tier-build:
         // tier-3 row was only ever checked for its coordinates.
         let total_cells = all_runtime_cells().count();
         assert_eq!(
-            total_cells, 296,
-            "the table's tier-3 cell count (296) is stale; recomputed {total_cells}"
+            total_cells, 299,
+            "the table's tier-3 cell count (299) is stale; recomputed {total_cells}"
         );
         assert_eq!(
             total_coords, 56,
