@@ -276,6 +276,23 @@ impl<'s> Executor<'s> {
         backing: &'s mut [MaybeUninit<u64>],
         sizing: super::storage::ExecutorSizing,
     ) -> Result<Self, NodeError> {
+        // SAFETY: forwarded from this fn's contract; no external slot.
+        unsafe { Self::open_in_with_session_slot(config, backing, sizing, None) }
+    }
+
+    /// [`open_in`](Self::open_in), with the owned session written into a slot
+    /// the caller keeps outside the backing (see
+    /// [`open_multi_in_with_session_slot`](Self::open_multi_in_with_session_slot)).
+    ///
+    /// # Safety
+    /// As [`open_in`](Self::open_in), and `session_slot` as
+    /// `open_multi_in_with_session_slot` requires.
+    pub(crate) unsafe fn open_in_with_session_slot(
+        config: &ExecutorConfig<'_>,
+        backing: &'s mut [MaybeUninit<u64>],
+        sizing: super::storage::ExecutorSizing,
+        session_slot: Option<core::ptr::NonNull<MaybeUninit<session::ConcreteSession>>>,
+    ) -> Result<Self, NodeError> {
         use nros_rmw::Rmw;
 
         // Phase 128.A.3 / 249 P4b.1 — manifest-driven backend selection.
@@ -367,7 +384,9 @@ impl<'s> Executor<'s> {
         })?;
         // SAFETY: forwarded from this fn's contract — `backing`/`sizing` sized
         // + alive for `'s`.
-        let mut executor = unsafe { Self::from_session_in(session, backing, sizing) };
+        let mut executor = unsafe {
+            Self::from_session_in_with_session_slot(session, backing, sizing, session_slot)
+        };
         {
             // `config.clock_us` overrides the constructor's platform default
             // (issue: assigning `None` here clobbered it and re-enabled the
@@ -451,6 +470,9 @@ impl Executor<'static> {
         config: &ExecutorConfig<'_>,
         sizing: super::storage::ExecutorSizing,
     ) -> Result<Self, NodeError> {
+        // Issue 2845 -- this opens its own session, so the backing it allocates
+        // carves the owned-session slot whatever `sizing` said.
+        let sizing = sizing.owning();
         // SAFETY: the backing is exactly `sizing.u64_len()` words, `'static`,
         // uniquely owned by the returned executor; a failed open gives it back.
         with_default_backing(sizing, |backing| unsafe {
@@ -476,7 +498,7 @@ impl Executor<'static> {
     /// [`open_multi_in`](crate::executor::ffi::ExecutorFfi::open_multi_in) (leaks a default backing).
     #[cfg(feature = "rmw-cffi")]
     pub fn open_multi(specs: &[SessionSpec<'_>]) -> Result<Self, NodeError> {
-        let sizing = super::storage::ExecutorSizing::DEFAULT;
+        let sizing = super::storage::ExecutorSizing::DEFAULT.owning();
         // SAFETY: the backing is exactly `sizing.u64_len()` words, `'static`;
         // a failed open gives it back.
         with_default_backing(sizing, |backing| unsafe {
@@ -502,7 +524,7 @@ impl Executor<'static> {
     /// [`open_with_rmw_in`](Self::open_with_rmw_in) (leaks a default backing).
     #[cfg(feature = "rmw-cffi")]
     pub fn open_with_rmw(rmw_name: &str, config: &ExecutorConfig<'_>) -> Result<Self, NodeError> {
-        let sizing = super::storage::ExecutorSizing::DEFAULT;
+        let sizing = super::storage::ExecutorSizing::DEFAULT.owning();
         // SAFETY: the backing is exactly `sizing.u64_len()` words, `'static`;
         // a failed open gives it back.
         with_default_backing(sizing, |backing| unsafe {
@@ -527,6 +549,26 @@ impl<'s> Executor<'s> {
         backing: &'s mut [MaybeUninit<u64>],
         sizing: super::storage::ExecutorSizing,
     ) -> Result<Self, NodeError> {
+        // SAFETY: forwarded from this fn's contract; no external slot.
+        unsafe { Self::open_multi_in_with_session_slot(specs, backing, sizing, None) }
+    }
+
+    /// [`open_multi_in`](Self::open_multi_in), with the owned session written
+    /// into `session_slot` when the caller keeps it OUTSIDE the backing: the
+    /// C++ context, whose executor's backing is the C executor's `_opaque` and
+    /// must not grow. `None` uses the backing's own slot, if its
+    /// sizing carves one.
+    ///
+    /// # Safety
+    /// As [`open_multi_in`](Self::open_multi_in), and `session_slot` as
+    /// `SessionStore::owned` requires: derived by a raw field projection from
+    /// a raw pointer, never through a reference to its container.
+    pub(crate) unsafe fn open_multi_in_with_session_slot(
+        specs: &[SessionSpec<'_>],
+        backing: &'s mut [MaybeUninit<u64>],
+        sizing: super::storage::ExecutorSizing,
+        session_slot: Option<core::ptr::NonNull<MaybeUninit<session::ConcreteSession>>>,
+    ) -> Result<Self, NodeError> {
         // Phase 249 P4b.1 — backends self-registered via their
         // `.init_array` ctor before `main`; no runtime section walk.
         let primary = specs
@@ -536,7 +578,9 @@ impl<'s> Executor<'s> {
             nros_rmw_cffi::CffiRmw::open_with_rmw(primary.rmw, &primary.to_rmw_config())
                 .map_err(NodeError::Transport)?;
         // SAFETY: forwarded from this fn's contract.
-        let mut executor = unsafe { Self::from_session_in(primary_session, backing, sizing) };
+        let mut executor = unsafe {
+            Self::from_session_in_with_session_slot(primary_session, backing, sizing, session_slot)
+        };
         executor.set_node_identity("", "/");
         // Phase 156 — see `Executor::open` for primary-identity
         // recording rationale.
@@ -732,55 +776,50 @@ impl<'cfg> SessionSpec<'cfg> {
 /// The C API creates a session in `rclc_support_init()` before the
 /// executor. `Borrowed` lets the executor use that session without owning it.
 ///
-/// Phase-573 W3 (RFC-0108 D9) -- an owned session that is SHARED (the
-/// per-sched-task model: [`Executor::session_handle`]) must not live inline in
-/// its owner. A pointer into the owner is a child of the owner's reference, so
-/// the owner's next `&mut self` write disables it and every borrower reads
-/// through a dead pointer. So under `alloc` the owner puts its session in its
-/// own allocation (`Heap`), and owner and borrowers reach it through the same
-/// raw pointer, as equals. An inline session is never shared: `Owned` is the
-/// store when that allocation fails (and then [`Executor::session_handle`]
-/// refuses), and without `alloc`, where the shared model is the C++
-/// `open_with_session_handle_in` path and the session stays inline until the
-/// session can be carved from the executor's backing (issue 2845).
+/// An owned session that is SHARED (the per-sched-task model:
+/// [`Executor::session_handle`]) must not live inline in its owner. A pointer
+/// into the owner is a child of the owner's reference, so the owner's next
+/// `&mut self` write disables it and every borrower reads through a dead
+/// pointer. So an owning executor's session is `Carved`: written into a slot
+/// of the caller-supplied backing, reached through a raw pointer derived from
+/// the backing, and the owner and its borrowers reach it as equals. `Owned`
+/// (inline) is left only for an owner whose sizing carved no slot, and
+/// [`Executor::session_handle`] refuses to share it.
+// Phase-573 W3 put a shared owned session on the heap under `alloc`; W6
+// (issue 2845) carves it from the backing in every build, and the heap store
+// is gone (user ruling 2026-11-27).
 #[allow(clippy::large_enum_variant)]
 pub(crate) enum SessionStore {
-    /// The owner's session in its own allocation, from `try_box`.
-    #[cfg(feature = "alloc")]
-    Heap(core::ptr::NonNull<session::ConcreteSession>),
+    /// The owner's session in its backing's slot, written at open and dropped
+    /// in place when the store drops.
+    Carved(core::ptr::NonNull<session::ConcreteSession>),
     Owned(session::ConcreteSession),
     Borrowed(*mut session::ConcreteSession),
 }
 
 impl SessionStore {
-    /// The store for a session this executor owns.
-    pub(crate) fn owned(session: session::ConcreteSession) -> Self {
-        #[cfg(feature = "alloc")]
-        {
-            Self::owned_via(session, nros_rmw::fallible::try_box)
-        }
-        #[cfg(not(feature = "alloc"))]
-        {
-            SessionStore::Owned(session)
-        }
-    }
-
-    /// [`owned`](Self::owned) with the allocation as a parameter, so a test can
-    /// fail it. A failed allocation keeps the session inline, which is never
-    /// shared, rather than reaching the out-of-memory handler (issue 1551).
-    #[cfg(feature = "alloc")]
-    pub(crate) fn owned_via(
+    /// The store for a session this executor owns: written into `slot` when
+    /// its sizing carved one (`Carved`), else held inline and never shared.
+    ///
+    /// # Safety
+    /// `slot`, when `Some`, points at an uninitialised, suitably aligned
+    /// `ConcreteSession` that lives as long as the executor and that nothing
+    /// else reaches, and it was derived from a raw pointer (the backing's, or a
+    /// raw field projection), never through a reference that a later
+    /// reborrow of its container would be a sibling of.
+    pub(crate) unsafe fn owned(
         session: session::ConcreteSession,
-        alloc: impl FnOnce(
-            session::ConcreteSession,
-        ) -> Result<
-            alloc::boxed::Box<session::ConcreteSession>,
-            session::ConcreteSession,
-        >,
+        slot: Option<core::ptr::NonNull<core::mem::MaybeUninit<session::ConcreteSession>>>,
     ) -> Self {
-        match alloc(session) {
-            Ok(b) => SessionStore::Heap(core::ptr::NonNull::from(alloc::boxed::Box::leak(b))),
-            Err(session) => SessionStore::Owned(session),
+        match slot {
+            Some(slot) => {
+                let p = slot.as_ptr() as *mut session::ConcreteSession;
+                // SAFETY: the caller's contract above.
+                unsafe { p.write(session) };
+                // SAFETY: `slot` is non-null.
+                SessionStore::Carved(unsafe { core::ptr::NonNull::new_unchecked(p) })
+            }
+            None => SessionStore::Owned(session),
         }
     }
 
@@ -791,28 +830,24 @@ impl SessionStore {
     }
 
     /// The session as a pointer another executor may share, or `None` for a
-    /// session held inline under `alloc` (see the type's doc).
+    /// session held inline (see the type's doc).
     fn shareable_ptr(&mut self) -> Option<*mut session::ConcreteSession> {
         match self {
-            #[cfg(feature = "alloc")]
-            SessionStore::Heap(p) => Some(p.as_ptr()),
+            SessionStore::Carved(p) => Some(p.as_ptr()),
             SessionStore::Borrowed(p) => Some(*p),
-            #[cfg(feature = "alloc")]
             SessionStore::Owned(_) => None,
-            #[cfg(not(feature = "alloc"))]
-            SessionStore::Owned(s) => Some(s as *mut session::ConcreteSession),
         }
     }
 }
 
-#[cfg(feature = "alloc")]
 impl Drop for SessionStore {
     fn drop(&mut self) {
-        if let SessionStore::Heap(p) = *self {
-            // SAFETY: `p` came from `Box::leak` in `owned_via` and is freed
-            // only here, when its owner drops; borrowers outlive no owner
-            // (`session_handle`'s contract).
-            drop(unsafe { alloc::boxed::Box::from_raw(p.as_ptr()) });
+        // Keyed on the variant, never on the sizing: a borrowing executor whose
+        // backing happens to carry a slot never wrote it.
+        if let SessionStore::Carved(p) = *self {
+            // SAFETY: `owned` wrote the session there and nothing else drops
+            // it; borrowers outlive no owner (`session_handle`'s contract).
+            unsafe { core::ptr::drop_in_place(p.as_ptr()) };
         }
     }
 }
@@ -821,9 +856,8 @@ impl core::ops::Deref for SessionStore {
     type Target = session::ConcreteSession;
     fn deref(&self) -> &session::ConcreteSession {
         match self {
-            // SAFETY: the allocation lives until this store drops.
-            #[cfg(feature = "alloc")]
-            SessionStore::Heap(p) => unsafe { p.as_ref() },
+            // SAFETY: the slot lives until this store drops.
+            SessionStore::Carved(p) => unsafe { p.as_ref() },
             SessionStore::Owned(s) => s,
             SessionStore::Borrowed(ptr) => unsafe { &**ptr },
         }
@@ -834,8 +868,7 @@ impl core::ops::DerefMut for SessionStore {
     fn deref_mut(&mut self) -> &mut session::ConcreteSession {
         match self {
             // SAFETY: as `deref`.
-            #[cfg(feature = "alloc")]
-            SessionStore::Heap(p) => unsafe { p.as_mut() },
+            SessionStore::Carved(p) => unsafe { p.as_mut() },
             SessionStore::Owned(s) => s,
             SessionStore::Borrowed(ptr) => unsafe { &mut **ptr },
         }
@@ -2809,6 +2842,7 @@ impl<'s> Executor<'s> {
             slot_tags,
             params: param_slots,
             param_home,
+            owned_session: _,
         } = slices;
         // phase-382 W3' — only an executor that can build a store keeps the
         // carved slots; without `param-services` the region (sized by the
@@ -3016,8 +3050,31 @@ impl<'s> Executor<'s> {
         backing: &'s mut [MaybeUninit<u64>],
         sizing: super::storage::ExecutorSizing,
     ) -> Self {
-        let slices = unsafe { super::storage::carve(backing, sizing) };
-        Self::assemble(SessionStore::owned(session), slices)
+        // SAFETY: forwarded from this fn's contract; no external slot.
+        unsafe { Self::from_session_in_with_session_slot(session, backing, sizing, None) }
+    }
+
+    /// [`from_session_in`](crate::executor::ffi::ExecutorFfi::from_session_in) with an external owned-session slot (see
+    /// [`open_multi_in_with_session_slot`](Self::open_multi_in_with_session_slot)).
+    ///
+    /// # Safety
+    /// As `from_session_in`, and `session_slot` as `SessionStore::owned` requires.
+    pub(crate) unsafe fn from_session_in_with_session_slot(
+        session: session::ConcreteSession,
+        backing: &'s mut [MaybeUninit<u64>],
+        sizing: super::storage::ExecutorSizing,
+        session_slot: Option<core::ptr::NonNull<MaybeUninit<session::ConcreteSession>>>,
+    ) -> Self {
+        let mut slices = unsafe { super::storage::carve(backing, sizing) };
+        // Issue 2845 -- the session goes into a slot derived from a raw pointer:
+        // the caller's (outside the backing), else the backing's own when the
+        // sizing carved one, so a pointer shared to it is not the executor's.
+        let carved = slices.owned_session.take();
+        let slot = session_slot.or(carved);
+        // SAFETY: `carve` derived `slot` from the backing's raw pointer, sized
+        // and aligned for one session, and handed it to nothing else.
+        let store = unsafe { SessionStore::owned(session, slot) };
+        Self::assemble(store, slices)
     }
 
     /// Create a borrowing executor over caller-supplied `backing`, sized by
@@ -3047,7 +3104,7 @@ impl Executor<'static> {
     /// the macro / `open_in` instead.
     #[cfg(feature = "alloc")]
     pub fn from_session(session: session::ConcreteSession) -> Self {
-        let sizing = super::storage::ExecutorSizing::DEFAULT;
+        let sizing = super::storage::ExecutorSizing::DEFAULT.owning();
         // SAFETY: the backing is exactly `sizing.u64_len()` words,
         // `'static`, and uniquely owned by this executor.
         unsafe { Self::from_session_in(session, default_backing(sizing), sizing) }
@@ -18688,6 +18745,143 @@ impl<'s> Drop for Executor<'s> {
     }
 }
 
+// Phase-573 W6, issue 2845.
+/// An owned session carved OUTSIDE its owner:
+/// in the backing, or in a slot beside it reached by raw field projection.
+/// Built WITHOUT `alloc` too (no `Box`, static backings), which is the build
+/// the inline session used to be shared from.
+///
+/// Run under Miri with Tree Borrows by `just check miri-executor-reentry`.
+#[cfg(all(test, not(feature = "rmw-cffi")))]
+// `&mut *&raw mut STATIC` is how a test takes a `static mut` backing: a direct
+// reference to a `static mut` is refused, so the raw pointer is the point.
+#[allow(clippy::deref_addrof)]
+mod w6_owned_session_tests {
+    use super::Executor;
+    use crate::{
+        executor::storage::{ExecutorSizing, OwnedSessionSlot},
+        mock::MockSession,
+    };
+    use core::{mem::MaybeUninit, time::Duration};
+
+    const OWNING: ExecutorSizing = ExecutorSizing::DEFAULT.owning();
+    const OWNING_WORDS: usize = OWNING.u64_len();
+    const BORROWING_WORDS: usize = ExecutorSizing::DEFAULT.u64_len();
+
+    /// The session lives in the owner's backing, so the pointer a borrower
+    /// holds is the backing's: the owner's writes, and moving the owner, leave
+    /// it valid.
+    #[test]
+    fn a_carved_session_pointer_survives_its_owner_spinning() {
+        static mut OWNER: [MaybeUninit<u64>; OWNING_WORDS] = [MaybeUninit::uninit(); OWNING_WORDS];
+        static mut BORROWER: [MaybeUninit<u64>; BORROWING_WORDS] =
+            [MaybeUninit::uninit(); BORROWING_WORDS];
+        // SAFETY: each static is taken once, by this test, for its whole run.
+        let mut primary =
+            unsafe { Executor::from_session_in(MockSession::new(), &mut *&raw mut OWNER, OWNING) };
+        let handle = primary
+            .session_handle()
+            .expect("a carved session is shared");
+        // SAFETY: `primary` outlives `borrowed`.
+        let mut borrowed = unsafe {
+            Executor::open_with_session_handle_in(
+                handle,
+                &mut *&raw mut BORROWER,
+                ExecutorSizing::DEFAULT,
+            )
+        };
+        for _ in 0..2 {
+            let _ = primary.spin_once(Duration::ZERO);
+            let _ = borrowed.spin_once(Duration::ZERO);
+        }
+        // The owner moves; the session does not.
+        let mut moved = primary;
+        let _ = moved.spin_once(Duration::ZERO);
+        let _ = borrowed.spin_once(Duration::ZERO);
+        drop(borrowed);
+    }
+
+    /// The C++ context's shape: the session slot sits in a container beside
+    /// the executor, the slot pointer comes from a raw field projection, and
+    /// every guarded call later makes a whole `&mut` of the container
+    /// (`CtxRef::deref_mut`). That reborrow is a child of the projection's tag,
+    /// so the owner's next session write stays sound.
+    #[test]
+    fn a_projected_session_slot_survives_a_whole_context_reborrow() {
+        #[repr(C)]
+        struct Context {
+            session_slot: OwnedSessionSlot,
+            marker: u64,
+        }
+        static mut BACKING: [MaybeUninit<u64>; BORROWING_WORDS] =
+            [MaybeUninit::uninit(); BORROWING_WORDS];
+        static mut CONTEXT: MaybeUninit<Context> = MaybeUninit::uninit();
+        let ctx_ptr = (&raw mut CONTEXT).cast::<Context>();
+        // SAFETY: `ctx_ptr` points at the static; nothing else reaches it.
+        unsafe { core::ptr::addr_of_mut!((*ctx_ptr).marker).write(0) };
+        // The slot, by raw field projection: never through a reference.
+        let slot =
+            OwnedSessionSlot::as_raw(unsafe { core::ptr::addr_of_mut!((*ctx_ptr).session_slot) });
+        // SAFETY: the backing is taken once; `slot` is a raw projection.
+        let mut owner = unsafe {
+            Executor::from_session_in_with_session_slot(
+                MockSession::new(),
+                &mut *&raw mut BACKING,
+                ExecutorSizing::DEFAULT,
+                slot,
+            )
+        };
+        let _ = owner.spin_once(Duration::ZERO);
+        for _ in 0..2 {
+            // What `CtxRef::deref_mut` does on every guarded call.
+            // SAFETY: no other reference to the context is live here.
+            let whole: &mut Context = unsafe { &mut *ctx_ptr };
+            whole.marker += 1;
+            let _ = owner.spin_once(Duration::ZERO);
+        }
+        assert!(
+            owner.session_handle().is_some(),
+            "a slotted session is shared"
+        );
+    }
+
+    /// Negative control for the test above, run by hand under Miri: the slot
+    /// pointer derived THROUGH a `&mut Context` is a sibling of the next whole
+    /// reborrow, which freezes it, and the next session write is UB that Miri
+    /// reports. Ignored: it exists to fail.
+    #[test]
+    #[ignore = "negative control: must FAIL under `cargo miri test` with Tree Borrows"]
+    fn control_a_slot_derived_through_a_reference_is_frozen_by_the_reborrow() {
+        #[repr(C)]
+        struct Context {
+            session_slot: OwnedSessionSlot,
+            marker: u64,
+        }
+        static mut BACKING: [MaybeUninit<u64>; BORROWING_WORDS] =
+            [MaybeUninit::uninit(); BORROWING_WORDS];
+        static mut CONTEXT: MaybeUninit<Context> = MaybeUninit::uninit();
+        let ctx_ptr = (&raw mut CONTEXT).cast::<Context>();
+        unsafe { core::ptr::addr_of_mut!((*ctx_ptr).marker).write(0) };
+        // The defect: the slot pointer comes through a reference.
+        let through_ref: &mut Context = unsafe { &mut *ctx_ptr };
+        let slot = OwnedSessionSlot::as_raw(&mut through_ref.session_slot);
+        let mut owner = unsafe {
+            Executor::from_session_in_with_session_slot(
+                MockSession::new(),
+                &mut *&raw mut BACKING,
+                ExecutorSizing::DEFAULT,
+                slot,
+            )
+        };
+        let _ = owner.spin_once(Duration::ZERO);
+        for _ in 0..2 {
+            let whole: &mut Context = unsafe { &mut *ctx_ptr };
+            whole.marker += 1;
+            let _ = owner.spin_once(Duration::ZERO);
+        }
+    }
+}
+
 /// Phase 274.W1 — borrowed-executor session sharing + active-groups gating.
 ///
 /// Validates three primitives introduced for RFC-0015 Model 1:
@@ -18719,18 +18913,18 @@ mod p274_w1_sched_task_executor_tests {
         drop(borrowed);
     }
 
-    /// Phase-573 W3 -- when the owned session's own allocation fails, it is
-    /// held inline, and an inline session is never shared: the handle is
-    /// refused rather than handed out as a pointer the owner's next write
-    /// would disable.
+    /// Phase-573 W3/W6 -- an owned session held inline (its sizing carved no
+    /// slot) is never shared: the handle is refused rather than handed out as
+    /// a pointer the owner's next write would disable. A carved one is.
     #[test]
     fn an_inline_session_is_never_shared() {
         let mut primary = alloc::boxed::Box::new(Executor::from_session(MockSession::new()));
         assert!(
             primary.session_handle().is_some(),
-            "a heap session is shared"
+            "a carved session is shared"
         );
-        primary.session = super::SessionStore::owned_via(MockSession::new(), Err);
+        // SAFETY: no slot.
+        primary.session = unsafe { super::SessionStore::owned(MockSession::new(), None) };
         assert!(
             primary.session_handle().is_none(),
             "an inline session is refused"

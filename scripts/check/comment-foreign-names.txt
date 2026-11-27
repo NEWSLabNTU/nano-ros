@@ -455,7 +455,6 @@ clippy::manual_contains
 clippy::unnecessary_sort_by
 default_alloc_error_hook
 default_constructed_unit_structs
-deref_addrof
 explicit_auto_deref
 external_body
 fn_call_width

@@ -1,6 +1,6 @@
 # Phase 573 — a callback that calls back into its executor is sound
 
-**Status (2026-11-25). OPEN: W1, W2, W2b, W3, W4 and W5a-W5e are done, which resolves issue 2675; W6 is open.** Fixes
+**Status (2026-11-27). DONE: W1, W2, W2b, W3, W4, W5a-W5e and W6 are done; W1-W5 resolve issue 2675, W6 resolves issue 2845.** Fixes
 [issue 2675](../issues/archived/2675-callback-reentry-aliases-executor.md) by amending
 [RFC-0108](../design/0108-executor-preemption-levels.md) ("Re-entry from a
 callback"). Ahead of [phase-572](archived/phase-572-rust-component-graph-query.md),
@@ -175,7 +175,7 @@ As built:
   equals. If that allocation fails the session stays inline and is never
   shared: `session_handle` returns `None`. Without `alloc` it stays inline
   and shared until it can be carved from the executor's backing
-  ([issue 2845](../issues/2845-owned-session-from-executor-backing.md)).
+  ([issue 2845](../issues/archived/2845-owned-session-from-executor-backing.md)).
   Cases: `a_session_pointer_survives_its_owner_spinning` (UB before) and
   `an_inline_session_is_never_shared`, both in `miri-executor-reentry`.
 
@@ -307,9 +307,9 @@ an empty target dir. The measurements are in the issue.
 
 ### W6 — Without `alloc`, the owned session is carved from the executor's backing
 
-- **Status:** OPEN
+- **Status:** DONE (2026-11-27)
 
-[Issue 2845](../issues/2845-owned-session-from-executor-backing.md). W3 left
+[Issue 2845](../issues/archived/2845-owned-session-from-executor-backing.md). W3 left
 an inline owned session that `session_handle` still shares when there is no
 `alloc`, and the owner's next write disables that pointer. Carve the session
 from the caller-supplied backing, as the arena is, so its tag is the

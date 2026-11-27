@@ -128,8 +128,18 @@ use super::storage::ExecutorSizing;
 /// override (a literal). Kept rather than `cfg`'d: it is what the override is
 /// judged against, and a constant that disappears with its consumer cannot be
 /// compared to anything.
+// Issue 2845 -- the entry's executor OPENS its session, so its backing carves
+// the owned-session slot: a pointer shared to that session (a sched task's
+// borrow) is derived from the backing, not from the executor.
 #[allow(dead_code)]
-pub const EXECUTOR_BACKING_DEFAULT_U64S: usize = ExecutorSizing::DEFAULT.u64_len();
+pub const EXECUTOR_BACKING_DEFAULT_U64S: usize = ExecutorSizing::DEFAULT.owning().u64_len();
+
+// Issue 2845.
+/// One SPAWNED sched task executor's backing words: a default executor's
+/// tables with no owned-session slot, because a spawned sched task BORROWS the
+/// boot task's session.
+#[allow(dead_code)]
+pub const SCHED_TASK_BACKING_SLOT_U64S: usize = ExecutorSizing::DEFAULT.u64_len();
 
 /// The words the DEFAULT backing spends on the carved
 /// parameter store: zero unless the build implies a store
@@ -381,8 +391,9 @@ pub(crate) fn is_taken() -> bool {
 // become linker-visible `.bss`.
 
 /// One spawned sched task executor's backing: exactly the words an
-/// executor opened with [`ExecutorSizing::DEFAULT`] carves.
-pub type SchedTaskExecutorBackingSlot = [MaybeUninit<u64>; EXECUTOR_BACKING_DEFAULT_U64S];
+/// executor opened with [`ExecutorSizing::DEFAULT`] carves, which borrows its
+/// session and so carves no owned-session slot.
+pub type SchedTaskExecutorBackingSlot = [MaybeUninit<u64>; SCHED_TASK_BACKING_SLOT_U64S];
 
 /// The spawned sched tasks' executor backing, `N` slots in ONE named
 /// static that the ENTRY owns.
@@ -419,7 +430,7 @@ impl<const N: usize> SchedTaskExecutorBacking<N> {
         Self {
             taken: portable_atomic::AtomicBool::new(false),
             slots: core::cell::UnsafeCell::new(
-                [[MaybeUninit::uninit(); EXECUTOR_BACKING_DEFAULT_U64S]; N],
+                [[MaybeUninit::uninit(); SCHED_TASK_BACKING_SLOT_U64S]; N],
             ),
         }
     }
