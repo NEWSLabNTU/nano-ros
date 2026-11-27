@@ -200,6 +200,46 @@ pub const PROBE: Preset = Preset {
 /// Every preset nano-ros owns. A name outside this list is the user's.
 pub const PRESETS: &[Preset] = &[RELWITHDEBINFO, ITERATE, MINSIZEREL, INSPECT, PROBE];
 
+/// Every profile an image's `profile` (and `nros build --profile=`) names
+/// without defining it, with what it is for, in the order `nros profile list`
+/// prints them: cargo's own two, then nano-ros's [`PRESETS`]. A test holds
+/// this to both tables, so a preset added there is listed with no CLI edit
+/// once it has a line here.
+pub const BUILTIN: &[(&str, &str)] = &[
+    (
+        "dev",
+        "cargo's debug profile: debuggable, minimal optimisation",
+    ),
+    (
+        RELWITHDEBINFO.name,
+        "opt-level 2, debug info, no LTO: the development default",
+    ),
+    (MINSIZEREL.name, "opt-level s, fat LTO: the smallest images"),
+    (
+        "release",
+        "cargo's release profile: opt-level 3, fat LTO, the fastest code",
+    ),
+    (
+        ITERATE.name,
+        "the development default plus incremental compilation, for local edit-build loops",
+    ),
+    (
+        INSPECT.name,
+        "release with LTO off, so code size can be attributed per crate",
+    ),
+    (
+        PROBE.name,
+        "the development default without debug info, for the C/C++ metadata probe",
+    ),
+];
+
+/// What [`BUILTIN`] says `profile` is for, or `None` for a profile nano-ros
+/// does not know (a user's own).
+#[must_use]
+pub fn summary(profile: &str) -> Option<&'static str> {
+    BUILTIN.iter().find(|(n, _)| *n == profile).map(|(_, s)| *s)
+}
+
 /// The profile NuttX Rust images must be built at.
 ///
 /// Phase 177.8.c: at `lto = "off"` a non-deterministic `armv7a-nuttx-eabihf`
@@ -459,6 +499,20 @@ pub fn toml_value(setting: &Setting) -> String {
 
 #[cfg(test)]
 mod tests {
+    /// Every preset and every build type's profile has one [`BUILTIN`] line,
+    /// and every line names one of them.
+    #[test]
+    fn builtin_lists_every_named_profile_once() {
+        use super::*;
+        let mut want: Vec<&str> = PRESETS.iter().map(|p| p.name).collect();
+        want.extend(BUILD_TYPE_MAP.iter().map(|(_, p)| *p));
+        want.sort_unstable();
+        want.dedup();
+        let mut got: Vec<&str> = BUILTIN.iter().map(|(n, _)| *n).collect();
+        got.sort_unstable();
+        assert_eq!(got, want);
+    }
+
     /// Issue 0608 — `platform_profile` mirrors `nros_cargo_platform_profile` in
     /// `scripts/build/cargo.sh`, and a mirror that nobody compares is how the
     /// builder and the resolver came to disagree in the first place. So READ the

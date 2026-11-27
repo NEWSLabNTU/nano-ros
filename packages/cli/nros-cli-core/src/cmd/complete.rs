@@ -189,6 +189,16 @@ pub fn profiles() -> Vec<CompletionCandidate> {
     sorted(cargo.chain(cmake))
 }
 
+/// Every built-in profile `nros profile show` takes, each with what it is
+/// for: [`profiles`] plus the cargo-only presets.
+pub fn builtin_profiles() -> Vec<CompletionCandidate> {
+    sorted(
+        nros_cargo_profile::BUILTIN
+            .iter()
+            .map(|(n, s)| CompletionCandidate::new(*n).help(Some((*s).into()))),
+    )
+}
+
 /// The toolchain versions installed in the store (`toolchains/<version>`),
 /// a directory listing and nothing more.
 pub fn toolchains() -> Vec<CompletionCandidate> {
