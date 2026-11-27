@@ -1,7 +1,9 @@
 ---
 id: 2958
 title: "Pushes skip the pre-push hook on hosts that never ran `just setup-hooks` (host 142: every checkout), and where it runs, `check fast` judges the working tree, not the pushed commit"
-status: open
+status: resolved
+resolved: 2026-11-27
+resolved_in: "b2c9fd08b4 (the hook judges the pushed commit); host 142 ran `just setup-hooks` 2026-11-27"
 type: bug
 area: [ci, gates]
 severity: low
@@ -9,7 +11,7 @@ found: 2026-11-25
 related: [0840, 0196, 2955, 1964, phase-489]
 ---
 
-**Home: [phase-489](../roadmap/phase-489-ci-build-speedup.md)**, which owns
+**Home: [phase-489](../../roadmap/phase-489-ci-build-speedup.md)**, which owns
 the fast line's run time and its gate issues (2669, 2955 shape).
 
 ## What happened
@@ -151,3 +153,31 @@ Disabling the refusal fails three of those cases.
 Still open: the hook is opt-in (`just setup-hooks`) and absent on host 142.
 Installing it there, or turning the provisioning NOTE into a FAIL, is the
 host owner's decision and is not part of this change.
+
+## Resolution (2026-11-27)
+
+Both halves are closed.
+
+- **The hook judges what is pushed:** `b2c9fd08b4` (2026-11-25, the section
+  above). `.githooks/pre-push` refuses a push whose working tree differs from
+  the pushed commit, so `check fast` reads exactly what it is judging.
+- **Host 142 now runs the hook.** On 2026-11-27, nros 142 ran
+  `just setup-hooks` in its main checkout (`/home/aeon/repos/nano-ros`):
+
+  ```
+  git config core.hooksPath .githooks
+  git config diff.submodule log
+  git config status.submoduleSummary true
+  git config push.recurseSubmodules check
+  hooks installed: core.hooksPath -> .githooks
+  ```
+
+  `core.hooksPath` is repository config, which every linked worktree shares,
+  so pushes from all of 142's worktrees run `.githooks/pre-push`. It was
+  checked in a worktree (w2984): `git config --get core.hooksPath` reads
+  `.githooks`, and the hook resolves and is executable.
+
+Per the manager's ruling, the provisioning check stays a NOTE, not a FAIL. A
+new host that never ran `just setup-hooks` is told so by `just doctor` /
+`setup-worktree`, not refused.
+
