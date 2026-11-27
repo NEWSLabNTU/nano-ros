@@ -99,8 +99,9 @@ device. RFC-0139's Motivation has the measurements and the driver survey.
   image. W1b's acceptance (a C image's interrupt handler wakes a parked
   executor through `nros_completion_t`) is met by the same handle.
 - Declared entities count a device's slot (the `device` entity kind). The
-  census and the metadata probe do not yet; W4's registration routes add that
-  ([issue 2984](../issues/2984-device-registration-uncounted-by-census.md)).
+  census and the metadata probe count it from the executor's registration
+  funnel, whatever route registered it
+  ([issue 2984](../issues/archived/2984-device-registration-uncounted-by-census.md)).
 
 ### W3p — The large-message pool, with per-slot claim and release
 
@@ -143,9 +144,11 @@ device. RFC-0139's Motivation has the measurements and the driver survey.
   sensor batch. The C++ implementor base and the Rust implementor trait.
 - The mock worker and mock source (RFC-0139 D11), and the port conformance
   tests that any adapter, real or mock, must pass.
-- Every device registration route calls a census hook, so the census and the
-  metadata probe count a device's callback slot
-  ([issue 2984](../issues/2984-device-registration-uncounted-by-census.md)).
+- The census and the metadata probe count a device's callback slot. Nothing
+  to do here: the executor reports it from its registration funnel, so a
+  registration route must NOT call a census hook (it would count the slot
+  twice)
+  ([issue 2984](../issues/archived/2984-device-registration-uncounted-by-census.md)).
 - **Acceptance:** one fake device adapter written in C is driven by a C node,
   a C++ node and a Rust node, and one written in Rust by a C node. That proves
   the ABI is the one seam in both directions.

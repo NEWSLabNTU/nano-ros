@@ -66,8 +66,6 @@ pub unsafe extern "C" fn nros_executor_register_device(
     let wrapper = move || unsafe { cb(context) };
     match rust_exec.register_device(wrapper) {
         Ok((handle_id, done)) => {
-            // A callback slot the recording backend never sees (issue 2984).
-            nros::census_hooks::on_device_create();
             unsafe {
                 *out_handle = handle_id.to_raw();
                 *out_done = nros_completion_t { _slot: done.as_raw() };

@@ -236,6 +236,64 @@ pub(crate) fn observe_node_create(reg: ObservedNodeCreate<'_>) {
     }
 }
 
+// Issues 2984 and 2985.
+pub use super::callback_slot::CallbackSlotKind;
+
+/// One executor callback slot a timer, guard condition or device claimed.
+///
+/// These never reach the RMW, so a census counts them only when something
+/// reports them. The report comes from the executor's own registration
+/// funnels, which every route crosses whatever language called it: the C and
+/// C++ shims, the declarative and imperative Rust routes, and a device port.
+/// So each slot is reported exactly once, and no API layer reports it again.
+/// (Before, each API layer called a census hook after its own registration,
+/// and a route with no hook went uncounted: the imperative Rust timers and
+/// guards, a direct device registration, the C graph-change guard.)
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ObservedCallbackSlot<'a> {
+    /// The kind of slot.
+    pub kind: CallbackSlotKind,
+    /// A timer's period in milliseconds, as the code passed it; `None` for a
+    /// guard condition or a device.
+    pub period_ms: Option<u64>,
+    /// The slot's sequence number: its synthetic id is
+    /// `<kind.id_prefix()><seq>`. One sequence for every slot kind, shared by
+    /// the census and the profile, so both files name a slot alike.
+    pub seq: usize,
+    /// The node the registration named, as `(name, namespace)`; `None` when
+    /// it named none (the census then files the slot under its current node).
+    pub owner: Option<(&'a str, &'a str)>,
+}
+
+/// A sink a metadata probe installs to hear every callback slot.
+pub type CallbackSlotObserver = fn(ObservedCallbackSlot<'_>);
+
+static CALLBACK_SLOT_OBSERVER: Mutex<Option<CallbackSlotObserver>> = Mutex::new(None);
+
+/// Install the callback-slot sink. Same contract as [`set_observer`]: only
+/// `nros::metadata_mode` calls it, and the last caller wins.
+pub fn set_callback_slot_observer(observer: CallbackSlotObserver) {
+    CALLBACK_SLOT_OBSERVER.with(|slot| *slot = Some(observer));
+}
+
+/// Remove the callback-slot sink.
+pub fn clear_callback_slot_observer() {
+    CALLBACK_SLOT_OBSERVER.with(|slot| *slot = None);
+}
+
+/// Report one callback slot. A no-op when nothing is listening.
+///
+/// Called BEFORE the executor answers, like `observe_node_create`: a slot the
+/// full callback table refuses is exactly the one the census must count.
+#[cfg(all(feature = "registration-observer", any(has_rmw, test)))]
+pub(crate) fn observe_callback_slot(reg: ObservedCallbackSlot<'_>) {
+    // Released before the sink runs, as in `observe`.
+    let sink = CALLBACK_SLOT_OBSERVER.with(|slot| *slot);
+    if let Some(sink) = sink {
+        sink(reg);
+    }
+}
+
 // Issue 2670.
 /// A parameter that Rust code declared through one of the executor's own
 /// declaration routes.

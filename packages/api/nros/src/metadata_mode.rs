@@ -440,6 +440,21 @@ pub fn listen_for_registrations() {
             );
         }
     });
+    // Issues 2984 and 2985 -- every timer, guard condition and device, from
+    // the executor funnel every route crosses, so each is counted once.
+    nros_node::executor::registration_observer::set_callback_slot_observer(|reg| {
+        use nros_node::executor::registration_observer::CallbackSlotKind as K;
+        let kind = match reg.kind {
+            K::Wall => crate::node_metadata::TimerKind::Wall,
+            K::Clock => crate::node_metadata::TimerKind::Clock,
+            K::Oneshot => crate::node_metadata::TimerKind::Oneshot,
+            K::InGroup => crate::node_metadata::TimerKind::InGroup,
+            K::GuardCondition => crate::node_metadata::TimerKind::GuardCondition,
+            K::Device => crate::node_metadata::TimerKind::Device,
+        };
+        let id = alloc::format!("{}{}", reg.kind.id_prefix(), reg.seq);
+        crate::census_hooks::on_callback_slot(kind, &id, reg.period_ms, reg.owner.map(|o| o.0));
+    });
     nros_node::executor::registration_observer::set_observer(|reg| {
         // A dropped `false` here is a fact silently lost, which is the shape
         // every other recorder entry point is `#[must_use]` against. It is NOT

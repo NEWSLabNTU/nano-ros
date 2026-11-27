@@ -520,6 +520,171 @@ mod census_fixture_tests {
         );
         assert_eq!(unsafe { nros_cpp_fini(exec) }, NROS_CPP_RET_OK);
     }
+
+    unsafe extern "C" fn c_timer_noop(_timer: *mut nros_c::rcl_timer_t, _last: i64) {}
+
+    /// An executor over the `metadata` backend with one node, and that node's
+    /// C face over the same executor. Leaked: a test process.
+    fn open_with_c_face(
+        name: &core::ffi::CStr,
+    ) -> (
+        *mut c_void,
+        &'static mut nros_c::rcl_node_t,
+        *mut nros_c::rclc_executor_t,
+    ) {
+        let storage = alloc::boxed::Box::leak(alloc::boxed::Box::new(
+            MaybeUninit::<ExecutorStorage>::uninit(),
+        ));
+        let exec = storage.as_mut_ptr().cast::<c_void>();
+        let rc = unsafe {
+            nros_cpp_init_rmw(
+                c"metadata".as_ptr(),
+                core::ptr::null(),
+                0,
+                name.as_ptr(),
+                c"/".as_ptr(),
+                exec,
+            )
+        };
+        assert_eq!(rc, NROS_CPP_RET_OK);
+        let node = alloc::boxed::Box::leak(alloc::boxed::Box::new(
+            MaybeUninit::<nros_cpp_node_t>::uninit(),
+        ));
+        let opts = nros_cpp_node_options_t::default();
+        let rc = unsafe { nros_cpp_node_create_ex(exec, name.as_ptr(), &opts, node.as_mut_ptr()) };
+        assert_eq!(rc, NROS_CPP_RET_OK);
+        let c_node = alloc::boxed::Box::leak(alloc::boxed::Box::new(
+            nros_c::rcl_get_zero_initialized_node(),
+        ));
+        let mut c_exec: *mut c_void = core::ptr::null_mut();
+        let rc = unsafe {
+            crate::nros_cpp_node_bind_c(
+                node.as_ptr(),
+                (&raw mut *c_node).cast::<c_void>(),
+                &mut c_exec,
+            )
+        };
+        assert_eq!(rc, NROS_CPP_RET_OK);
+        (exec, c_node, c_exec.cast::<nros_c::rclc_executor_t>())
+    }
+
+    /// Issues 2984 and 2985 -- every callback slot is one census row, whatever
+    /// route made it.
+    ///
+    /// The slot is reported from the executor's registration funnel, and no API
+    /// layer reports it again. So a C++ timer and guard, a C timer, guard and
+    /// device, and a Rust timer, guard and device straight on the executor
+    /// primitives are exactly eight `timers[]` rows. A route with no report
+    /// would make fewer (the defect: a Rust executor timer or guard, or a
+    /// direct device registration, counted nothing), and an API layer that
+    /// still reported would make more. Two executors, because this build's
+    /// callback table holds four slots.
+    #[test]
+    fn every_route_records_each_callback_slot_exactly_once() {
+        nros::metadata_mode::reset();
+
+        // First executor: C++ timer and guard, C timer and guard.
+        let (exec, c_node, c_exec) = open_with_c_face(c"slots_a");
+        let mut handle_id = 0usize;
+        let rc = unsafe {
+            nros_cpp_timer_create(exec, 11, Some(noop), core::ptr::null_mut(), &mut handle_id)
+        };
+        assert_eq!(rc, NROS_CPP_RET_OK);
+        let mut guard = MaybeUninit::<nros_node::GuardCondition>::uninit();
+        let rc = unsafe {
+            nros_cpp_guard_condition_create(
+                exec,
+                Some(noop),
+                core::ptr::null_mut(),
+                guard.as_mut_ptr().cast::<c_void>(),
+                core::ptr::null_mut(),
+            )
+        };
+        assert_eq!(rc, NROS_CPP_RET_OK);
+        let mut timer = nros_c::rcl_get_zero_initialized_timer();
+        let rc = unsafe {
+            nros_c::rclc_timer_init_default(
+                &mut timer,
+                core::ptr::null_mut(),
+                22_000_000,
+                Some(c_timer_noop),
+            )
+        };
+        assert_eq!(rc, nros_c::RCL_RET_OK);
+        assert_eq!(
+            unsafe { nros_c::rclc_executor_add_timer(c_exec, &mut timer) },
+            nros_c::RCL_RET_OK
+        );
+        let mut c_guard = nros_c::rcl_guard_condition_t::default();
+        let rc = unsafe {
+            nros_c::rclc_node_create_guard_condition(
+                c_node,
+                &mut c_guard,
+                Some(noop),
+                core::ptr::null_mut(),
+            )
+        };
+        assert_eq!(rc, nros_c::RCL_RET_OK);
+
+        // Second executor: a C device, then a Rust timer, guard and device on
+        // the executor primitives no API layer wraps.
+        let (exec_b, _c_node_b, c_exec_b) = open_with_c_face(c"slots_b");
+        let mut device_handle = 0usize;
+        let mut done = MaybeUninit::<nros_c::nros_completion_t>::uninit();
+        let rc = unsafe {
+            nros_c::nros_executor_register_device(
+                c_exec_b,
+                Some(noop),
+                core::ptr::null_mut(),
+                &mut device_handle,
+                done.as_mut_ptr(),
+            )
+        };
+        assert_eq!(rc, nros_c::RCL_RET_OK);
+        {
+            let mut ctx = unsafe { crate::cpp_ctx_checked(exec_b) }.expect("a live context");
+            ctx.executor
+                .register_timer(nros_node::TimerDuration::from_millis(33), || {})
+                .expect("a Rust executor timer registers");
+            ctx.executor
+                .register_guard_condition(|| {})
+                .expect("a Rust executor guard registers");
+            ctx.executor
+                .register_device(|| {})
+                .expect("a Rust executor device registers");
+        }
+
+        let export = nros::node_metadata::SourceMetadataExport::new("fixture_pkg", "slots")
+            .executable("slots")
+            .language("cpp");
+        let json = nros::metadata_mode::to_json(&export).expect("serialize");
+        let mut kinds: alloc::vec::Vec<&str> = alloc::vec::Vec::new();
+        for (at, _) in json.match_indices("\"timers\":") {
+            let timers = array_between(&json[at..], "\"timers\":");
+            kinds.extend(timers.match_indices("\"kind\":\"").map(|(k, m)| {
+                let rest = &timers[k + m.len()..];
+                &rest[..rest.find('"').unwrap_or(0)]
+            }));
+        }
+        kinds.sort_unstable();
+        assert_eq!(
+            kinds,
+            [
+                "device",
+                "device",
+                "guard_condition",
+                "guard_condition",
+                "guard_condition",
+                "wall",
+                "wall",
+                "wall",
+            ],
+            "eight slots, one row each: {json}"
+        );
+        assert_eq!(unsafe { nros_cpp_fini(exec_b) }, NROS_CPP_RET_OK);
+        assert_eq!(unsafe { nros_cpp_fini(exec) }, NROS_CPP_RET_OK);
+        nros::metadata_mode::reset();
+    }
 }
 
 /// Issue 1679 -- a C++ image built WITHOUT the parameter store still records

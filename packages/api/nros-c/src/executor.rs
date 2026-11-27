@@ -3059,22 +3059,7 @@ pub unsafe extern "C" fn rclc_executor_add_timer(
     timer: *mut rcl_timer_t,
 ) -> rcl_ret_t {
     match unsafe { add_timer_inner(executor, timer, None) } {
-        Ok((period_ms, on_clock)) => {
-            // Issue 1556 item 1 — a timer never reaches the RMW, so the
-            // recording backend cannot see it; this hook is how a C timer
-            // enters the census. `Clock` when the timer was initialised on a
-            // clock, `Wall` otherwise — the same split `nros-cpp`'s entry
-            // points report. No-op unless `metadata-mode` is on.
-            nros::census_hooks::on_timer_create(
-                if on_clock {
-                    nros::node_metadata::TimerKind::Clock
-                } else {
-                    nros::node_metadata::TimerKind::Wall
-                },
-                period_ms,
-            );
-            RCL_RET_OK
-        }
+        Ok(()) => RCL_RET_OK,
         Err(ret) => ret,
     }
 }
@@ -3094,11 +3079,8 @@ pub unsafe extern "C" fn rclc_executor_add_timer(
 /// with `autostart = false`, or `rcl_timer_cancel`led before being added) is
 /// registered cancelled and starts at `rcl_timer_reset`.
 ///
-/// Returns the period in whole milliseconds and whether the timer runs on a
-/// clock (vs the wall), for the CALLER's
-/// census hook: each `extern "C"` entry point calls
-/// `census_hooks::on_timer_create` itself, which is what
-/// `check-census-hooks-complete` holds it to.
+/// The census hears the timer from the executor's registration funnel
+/// (issues 2984 and 2985), so no entry point here reports it.
 ///
 /// # Safety
 /// All non-NULL pointers must be valid and point to initialized objects.
@@ -3106,7 +3088,7 @@ unsafe fn add_timer_inner(
     executor: *mut rclc_executor_t,
     timer: *mut rcl_timer_t,
     group: Option<&str>,
-) -> Result<(u64, bool), rcl_ret_t> {
+) -> Result<(), rcl_ret_t> {
     if executor.is_null() || timer.is_null() {
         return Err(RCL_RET_INVALID_ARGUMENT);
     }
@@ -3207,7 +3189,7 @@ unsafe fn add_timer_inner(
 
             executor.handle_count += 1;
             executor.timer_count += 1;
-            Ok((period_us / 1_000, !timer_ref.clock.is_null()))
+            Ok(())
         }
         Err(_) => Err(RCL_RET_ERROR),
     }
@@ -3377,22 +3359,7 @@ pub unsafe extern "C" fn rclc_executor_add_timer_in_group(
         if s.is_empty() { None } else { Some(s) }
     };
     match unsafe { add_timer_inner(executor, timer, group_str) } {
-        Ok((period_ms, on_clock)) => {
-            // Issue 1556 item 1 — as `rclc_executor_add_timer`, under the
-            // in-group kind `nros-cpp`'s group entry point reports (a NULL or
-            // empty group is the plain registration's kind).
-            nros::census_hooks::on_timer_create(
-                if group_str.is_some() {
-                    nros::node_metadata::TimerKind::InGroup
-                } else if on_clock {
-                    nros::node_metadata::TimerKind::Clock
-                } else {
-                    nros::node_metadata::TimerKind::Wall
-                },
-                period_ms,
-            );
-            RCL_RET_OK
-        }
+        Ok(()) => RCL_RET_OK,
         Err(ret) => ret,
     }
 }

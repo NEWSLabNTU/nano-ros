@@ -123,6 +123,7 @@ HEADER_CASTS = {
     ("nros-c/src/subscription.rs", "rcl_subscription_fini"): "body-scoped header read",
     ("nros-c/src/subscription.rs", "rclc_subscription_get_actual_qos"): "body-scoped header read",
     ("nros-cpp/src/metadata_hooks.rs", "a_c_component_gets_the_hosts_executor_and_node"): "census, before any spin",
+    ("nros-cpp/src/metadata_hooks.rs", "open_with_c_face"): "census test helper, before any spin",
 }
 
 FLAG_ACCESS = {
