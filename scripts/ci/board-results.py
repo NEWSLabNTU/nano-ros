@@ -80,17 +80,32 @@ def rows_by_platform(status: dict) -> dict[str, list[dict]]:
     return out
 
 
+def artifact_of(root: Path, f: Path) -> str:
+    """The artifact a downloaded file came from: its first directory under
+    `root` (download-artifact puts each artifact in a directory of its name),
+    or "" for a file at the top."""
+    rel = f.relative_to(root).parts
+    return rel[0] if len(rel) > 1 else ""
+
+
 def read_ledgers(root: Path) -> list[dict]:
+    """Every ledger line, each tagged `_artifact` with the artifact (the JOB)
+    it came from, so its verdict is read from that job's junit."""
     lines = []
     for f in sorted(root.rglob("*.jsonl")):  # walk-ok: one run's downloaded artifacts
         for raw in f.read_text().splitlines():
             if raw.strip():
-                lines.append(json.loads(raw))
+                lines.append({**json.loads(raw), "_artifact": artifact_of(root, f)})
     return lines
 
 
-def read_junit(root: Path) -> dict[tuple[str, str], str]:
-    """(binary, test) -> passed|failed|skipped, from every junit under `root`.
+def read_junit(root: Path) -> dict[tuple[str, str, str], str]:
+    """(artifact, binary, test) -> passed|failed|skipped, from every junit
+    under `root`. Keyed by ARTIFACT (issue 2997): one test name runs in
+    several jobs, lane-skipped in all but its own, so a run-wide (binary,
+    test) key let the last job read overwrite the job that ran it. NuttxRiscv's
+    lane skips of the `rtos_e2e` Nuttx cases erased NuttxArm's passes every
+    night, and the board read "no verdict".
     A `junit-real.xml` (lane skips rewritten as skips) wins over its sibling
     `junit.xml`; a failure whose message is a lane skip is a skip."""
     files = sorted(root.rglob("junit*.xml"))  # walk-ok: one run's downloaded artifacts
@@ -112,7 +127,7 @@ def read_junit(root: Path) -> dict[tuple[str, str], str]:
                 verdict = "skipped" if SKIP_MARKER.search(text) else "failed"
             else:
                 verdict = "passed"
-            out[(binary, name)] = verdict
+            out[(artifact_of(root, f), binary, name)] = verdict
     return out
 
 
@@ -154,7 +169,8 @@ def collect(jobs: list[dict], ledgers: list[dict], junit: dict, status: dict,
                 "registry row carries: give the board a row in "
                 "packages/boards/board-support.toml")
             continue
-        verdict = junit.get((ln.get("binary", ""), ln.get("test", "")), "unknown")
+        verdict = junit.get(
+            (ln.get("_artifact", ""), ln.get("binary", ""), ln.get("test", "")), "unknown")
         if verdict == "skipped":
             continue
         cell = f"{ln['platform']}/{ln['lang']}/{ln['rmw']}"
@@ -324,8 +340,8 @@ def self_test() -> int:
         {"binary": "emulator", "test": "skipped_one", "row": "r4", "platform": "freertos",
          "lang": "cpp", "rmw": "zenoh"},
     ]
-    junit = {("emulator", "tx_pubsub"): "failed", ("emulator", "fr_pubsub"): "passed",
-             ("owned", "linux_talker"): "passed", ("emulator", "skipped_one"): "skipped"}
+    junit = {("", "emulator", "tx_pubsub"): "failed", ("", "emulator", "fr_pubsub"): "passed",
+             ("", "owned", "linux_talker"): "passed", ("", "emulator", "skipped_one"): "skipped"}
     b, errs = collect(jobs, ledgers, junit, status, tokens, "nightly.yml")
     check("a failed cell fails its board", b["tx@ThreadxLinux"]["outcome"] == "failed")
     check("the failing cell is named",
@@ -369,10 +385,31 @@ def self_test() -> int:
             '</testsuite></testsuites>')
         j = read_junit(p)
         check("junit: pass, fail and a lane skip read as such",
-              j == {("emulator", "ok"): "passed", ("emulator", "bad"): "failed",
-                    ("emulator", "lane"): "skipped", ("emulator", "bare"): "skipped"})
+              j == {("a", "emulator", "ok"): "passed", ("a", "emulator", "bad"): "failed",
+                    ("a", "emulator", "lane"): "skipped", ("a", "emulator", "bare"): "skipped"})
         (p / "a" / "1.jsonl").write_text('{"test": "ok"}\n\n{"test": "bad"}\n')
         check("ledgers: one record per line", len(read_ledgers(p)) == 2)
+
+    # Issue 2997 -- one test name in two jobs: it RAN in NuttxArm and was
+    # lane-skipped in NuttxRiscv, whose artifact sorts later. Each job's
+    # ledger line reads its own job's verdict, so NuttxArm's pass stands.
+    with tempfile.TemporaryDirectory() as d:
+        p = Path(d)
+        case = ('<testsuites><testsuite name="nros-tests::rtos_e2e">'
+                '<testcase classname="nros-tests::rtos_e2e" name="t::Nuttx"{}</testsuite></testsuites>')
+        for job, body in (("nightly-NuttxArm-junit", "/>"),
+                          ("nightly-NuttxRiscv-junit",
+                           '><failure message="[SKIPPED:lane] out of lane"/></testcase>')):
+            (p / job / "nextest").mkdir(parents=True)
+            (p / job / "nextest" / "junit.xml").write_text(case.format(body))
+        (p / "nightly-NuttxArm-junit" / "1.jsonl").write_text(
+            '{"binary": "rtos_e2e", "test": "t::Nuttx", "row": "r", "platform": "nuttx",'
+            ' "lang": "c", "rmw": "zenoh"}\n')
+        b, _ = collect([{"name": "NuttxArm", "conclusion": "success", "steps": []}],
+                       read_ledgers(p), read_junit(p), status, tokens, "nightly.yml")
+        check("a test lane-skipped in another job keeps the verdict of the job that ran it",
+              b["nx@NuttxArm"]["outcome"] == "passed"
+              and [c["verdict"] for c in b["nx@NuttxArm"]["cells"]] == ["passed"])
     for f in fails:
         print(f"board-results self-test FAIL: {f}", file=sys.stderr)
     print(f"board-results self-test: {'OK' if not fails else f'{len(fails)} failed'}")
