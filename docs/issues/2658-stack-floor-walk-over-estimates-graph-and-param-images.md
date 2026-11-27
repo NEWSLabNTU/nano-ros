@@ -6,7 +6,7 @@ type: limitation
 area: build, stack-floor, zephyr
 severity: medium
 found: 2026-11-16
-related: [issue-2360, issue-2202, issue-2402, phase-557]
+related: [issue-2360, issue-2202, issue-2402, issue-2784, phase-557]
 ---
 
 **Home: [phase-557](../roadmap/phase-557-stack-floor-measured-frames.md).** The
@@ -327,3 +327,17 @@ What remains is the `c_type` binding of C sites by coarse signature. On the
 Nucleo action server, removing it takes the walk to 81,088 B (-21 %). The
 classifier measured for it in 2026-11-22 above did not move these images,
 so it stays open here.
+
+## Absorbed from issue 2784 (2026-11-27)
+
+Issue 2784 (each sched task's stack checked against its walked floor)
+landed and is resolved. Its one remaining item is this issue's:
+
+- **Root each sched task at its own callbacks.** Today every task's role is
+  rooted at the board's shared runner entry (`freertos_sched_task`,
+  `zephyr_sched_task`, `~sched_task_entry`, `~nuttx_level_trampoline`,
+  `~level_task_entry`), so each task's floor is the deepest path through
+  ANY task's callbacks. Each `__nros_entry_setup_sched_task_<i>` loads only
+  its task's callbacks, so a per-task root is feasible, but it narrows
+  nothing until the type-bound internal calls every task shares are
+  narrowed, which is what this issue is about.

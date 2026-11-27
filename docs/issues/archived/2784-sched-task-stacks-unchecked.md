@@ -1,11 +1,13 @@
 ---
 id: 2784
 title: "No sched task's stack is checked against its walked floor, on any RTOS: only the thread an image boots on is"
-status: open
+status: resolved
+resolved: 2026-11-27
+resolved_in: "the change that adds this line"
 type: limitation
 severity: medium
 area: [memory, stack-floor, freertos, nuttx, zephyr, threadx]
-related: [2400, 2732, phase-557]
+related: [2400, 2732, 2658, phase-557]
 found: 2026-11-21
 ---
 
@@ -186,3 +188,16 @@ The two items the ThreadX entry above leaves open:
   floors are upper bounds through type-bound calls that every task shares.
   2658's link-map fix narrows them, but it is not enough to separate one
   task's callbacks from another's. Not attempted.
+
+## Resolved (2026-11-27)
+
+What this issue asked for has landed: every sched task on FreeRTOS, Zephyr,
+NuttX and ThreadX, from a C or a Rust entry, is its own walked role,
+checked against the stack its entry reserves or the board's stated default,
+and a task none of these covers is reported as not checked, never passed.
+The C runners' fallback stacks were scoped out above, with the reason.
+
+The one item left, rooting each task at its own callbacks rather than at the
+shared runner entry, is not a gap in which threads are checked; it is how
+tight each task's floor is, which is issue 2658's over-approximation. It
+moves there (2658, "Absorbed from issue 2784").
