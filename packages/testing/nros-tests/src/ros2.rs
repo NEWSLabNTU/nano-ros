@@ -1974,6 +1974,26 @@ impl Ros2DdsProcess {
         Self::spawn_bash(&cmd, format!("ros2-dds topic pub {topic}"))
     }
 
+    /// Run a Python peer script (an rclpy node from `fixtures/`) with the ROS 2
+    /// DDS environment on a specific domain. Bounded by [`DEFAULT_PUB_WINDOW`]
+    /// like a `topic pub`, and unbuffered so its output is readable while it
+    /// runs.
+    pub fn python_peer_with_domain(
+        script: &std::path::Path,
+        args: &str,
+        distro: &str,
+        domain_id: u8,
+    ) -> TestResult<Self> {
+        let env_setup = ros2_env_setup_dds_with_domain(distro, domain_id);
+        let secs = DEFAULT_PUB_WINDOW.as_secs().max(1);
+        let deadline = crate::process::deadline(secs);
+        let cmd = format!(
+            "{env_setup} && {deadline} python3 -u {} {args}",
+            script.display()
+        );
+        Self::spawn_bash(&cmd, format!("rclpy peer {}", script.display()))
+    }
+
     /// Start a ROS 2 DDS service call
     ///
     /// # Arguments

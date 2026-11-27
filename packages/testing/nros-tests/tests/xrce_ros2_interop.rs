@@ -229,6 +229,87 @@ fn test_ros2_to_xrce_pubsub(xrce_listener_binary: PathBuf) {
     eprintln!("[PASS] ROS 2 DDS → XRCE pub/sub works");
 }
 
+/// A stock publisher's sample too large for one XRCE DATA submessage, between
+/// small ones: the agent drops it and says so, and every small sample after it
+/// still reaches the XRCE listener.
+///
+/// Issue 2978. A DATA submessage states its length in 16 bits, and the agent's
+/// reliable stream counted the fragmented bytes in 16 bits too, so a relayed
+/// sample over 65,535 bytes never finished fragmenting; its reader retried it
+/// forever, and the client received nothing more on that session. The fix is
+/// in the agent (the `nano-ros-2.4.3` patch line), so this case needs that
+/// agent: against an unpatched one the listener stops after the first sample.
+#[rstest]
+fn an_oversized_relayed_sample_is_dropped_and_the_stream_goes_on(xrce_listener_binary: PathBuf) {
+    use std::process::Command;
+
+    require_xrce_agent();
+    require_ros2_dds();
+
+    const AFTER: usize = 3;
+    let agent = XrceAgent::start_unique().expect("Failed to start XRCE Agent");
+    let addr = agent.addr();
+    let domain_id = unique_ros_domain_id();
+
+    let mut listener_cmd = Command::new(&xrce_listener_binary);
+    listener_cmd
+        .env("NROS_LOCATOR", &addr)
+        .env("XRCE_AGENT_ADDR", &addr)
+        .env("ROS_DOMAIN_ID", domain_id.to_string())
+        // The first small sample and the AFTER ones; the big one never arrives.
+        .env("XRCE_MSG_COUNT", (1 + AFTER).to_string())
+        .env("RUST_LOG", "info");
+    let mut listener = ManagedProcess::spawn_image(listener_cmd, "xrce-listener")
+        .expect("Failed to start listener");
+    let _ = listener.wait_for_output_pattern(
+        nros_tests::output::LISTENER_READY_MARKER,
+        Duration::from_secs(5),
+    );
+
+    let peer = nros_tests::project_root()
+        .join("packages/testing/nros-tests/fixtures/xrce-oversized-relay/relay_peer.py");
+    let mut ros2_publisher = match Ros2DdsProcess::python_peer_with_domain(
+        &peer,
+        &format!("/chatter 70000 {AFTER}"),
+        DEFAULT_ROS_DISTRO,
+        domain_id,
+    ) {
+        Ok(p) => p,
+        Err(e) => {
+            listener.kill();
+            nros_tests::unmet!("the rclpy relay peer could not start: {e}");
+        }
+    };
+
+    // Every small sample, or whatever had arrived when the wait ran out: an
+    // unpatched agent stops the stream after the first.
+    let listener_output = match listener.wait_for_output_count(
+        nros_tests::output::LISTENER_LOG_PREFIX,
+        1 + AFTER,
+        Duration::from_secs(15),
+    ) {
+        Ok(out) => out,
+        Err(e) => format!("{e}"),
+    };
+    ros2_publisher.kill();
+    listener.kill();
+    let agent_output = agent.output();
+    drop(agent);
+
+    let received = count_pattern(&listener_output, nros_tests::output::LISTENER_LOG_PREFIX);
+    assert!(
+        agent_output.contains(nros_tests::output::XRCE_AGENT_DROPPED_OVERSIZED),
+        "the agent did not report dropping the 70,000-character sample. Is it the patched \
+         agent (issue 2978)? Its output:\n{agent_output}\nListener:\n{listener_output}"
+    );
+    assert_eq!(
+        received,
+        1 + AFTER,
+        "the listener should receive the first small sample and all {AFTER} after the \
+         oversized one; it received {received}. Listener:\n{listener_output}"
+    );
+}
+
 // =============================================================================
 // XRCE Service Server + ROS 2 DDS Client
 // =============================================================================
