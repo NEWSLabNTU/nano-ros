@@ -40,10 +40,157 @@ pub const TRUNCATION_MARKER: &str = "\n[nros-tests: console truncated, ";
 const MARKER_SUFFIX: &str = " bytes dropped]\n";
 
 /// Append a chunk a reader got from a child, keeping `capture` bounded.
+///
+/// Issue 2825: also the chunk's copy into this process's [`term_tail`], which
+/// a nextest kill prints ([`install_term_dump`]).
 pub fn append(capture: &mut String, bytes: &[u8]) {
+    term_tail::record(bytes);
+    append_copy(capture, bytes);
+}
+
+/// [`append`] for a SECOND copy of a chunk already appended once (a reader
+/// that keeps stdout and stderr apart beside the merged capture), so the
+/// kill-time tail holds each byte once.
+pub fn append_copy(capture: &mut String, bytes: &[u8]) {
     capture.push_str(&String::from_utf8_lossy(bytes));
     if capture.len() > CAP_BYTES + SLACK_BYTES {
         compact(capture);
+    }
+}
+
+// Issue 2825.
+/// What this test process has read from its fixtures, kept for a nextest kill.
+///
+/// A test that waits longer than nextest's kill timeout is killed mid-wait,
+/// and every reader here prints what it collected only when its wait
+/// RETURNS, so the verdict was a bare TIMEOUT with no output: tier-2's
+/// `zephyr_cortex_m_cpp_zenoh_pubsub_e2e` waited 90 s under a 60 s kill and
+/// left nothing to read. nextest runs each test in its own process, so this
+/// process-wide tail IS the test's: every chunk [`append`] takes is copied in
+/// (the last [`term_tail::TAIL_BYTES`]), and nextest's SIGTERM, which comes
+/// before its SIGKILL, prints it to stderr, where nextest's failure output
+/// shows it, and exits 143.
+///
+/// Whether a test's wait FITS its kill is a separate, static question that
+/// nextest 0.9.99 cannot answer (`show-config` resolves no per-test
+/// timeout); phase-591 W9 carries it.
+pub mod term_tail {
+    use std::sync::{Mutex, Once};
+
+    /// How much of the most recent fixture output a kill prints.
+    pub const TAIL_BYTES: usize = 64 * 1024;
+
+    /// The header a kill prints before the tail; tests match it.
+    pub const DUMP_HEADER: &str = "[nros-tests: SIGTERM (a nextest kill?) while the test was waiting; the last fixture output it had read:]";
+
+    static TAIL: Mutex<Vec<u8>> = Mutex::new(Vec::new());
+    static INSTALL: Once = Once::new();
+
+    /// Copy `bytes` into the tail (and install the SIGTERM dump, once).
+    pub fn record(bytes: &[u8]) {
+        install_term_dump();
+        if let Ok(mut t) = TAIL.lock() {
+            push(&mut t, bytes);
+        }
+    }
+
+    /// Append to a tail buffer, trimming it back to [`TAIL_BYTES`] once it
+    /// passes twice that (so a trim is amortised over many chunks).
+    pub(crate) fn push(t: &mut Vec<u8>, bytes: &[u8]) {
+        t.extend_from_slice(bytes);
+        if t.len() > 2 * TAIL_BYTES {
+            let cut = t.len() - TAIL_BYTES;
+            t.drain(..cut);
+        }
+    }
+
+    /// A tail buffer as text, newest last, at most [`TAIL_BYTES`] bytes: the
+    /// lossy conversion can widen a split character, so the bound is applied
+    /// after it, at a character boundary.
+    pub(crate) fn text(t: &[u8]) -> String {
+        let start = t.len().saturating_sub(TAIL_BYTES);
+        let s = String::from_utf8_lossy(&t[start..]).into_owned();
+        let mut cut = s.len().saturating_sub(TAIL_BYTES);
+        while !s.is_char_boundary(cut) {
+            cut += 1;
+        }
+        s[cut..].to_string()
+    }
+
+    /// This process's tail as text ([`text`]).
+    #[must_use]
+    pub fn snapshot() -> String {
+        text(&TAIL.lock().map(|t| t.clone()).unwrap_or_default())
+    }
+
+    #[cfg(unix)]
+    static PIPE_W: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(-1);
+
+    #[cfg(unix)]
+    extern "C" fn on_term(_: libc::c_int) {
+        // Async-signal-safe: one write(2) wakes the dumping thread.
+        let fd = PIPE_W.load(std::sync::atomic::Ordering::Relaxed);
+        if fd >= 0 {
+            let b = 1u8;
+            // SAFETY: a valid fd and a one-byte buffer that outlives the call.
+            unsafe { libc::write(fd, (&raw const b).cast(), 1) };
+        } else {
+            // SAFETY: async-signal-safe, ends the process as SIGTERM's default would.
+            unsafe { libc::_exit(143) };
+        }
+    }
+
+    /// Install the SIGTERM handler: a self-pipe the handler writes to, read
+    /// by a thread that prints [`DUMP_HEADER`] and the tail to stderr, then
+    /// exits 143 (what a SIGTERM death reports to a shell). Idempotent.
+    /// Installed by the first [`record`], so a test that never read a
+    /// fixture keeps SIGTERM's default.
+    pub fn install_term_dump() {
+        #[cfg(unix)]
+        INSTALL.call_once(|| {
+            let mut fds = [0i32; 2];
+            // SAFETY: a two-element array for pipe(2) to fill.
+            if unsafe { libc::pipe(fds.as_mut_ptr()) } != 0 {
+                return;
+            }
+            let (r, w) = (fds[0], fds[1]);
+            // Close-on-exec: a fixture child must not hold the pipe.
+            // SAFETY: fds pipe(2) just returned.
+            unsafe {
+                libc::fcntl(r, libc::F_SETFD, libc::FD_CLOEXEC);
+                libc::fcntl(w, libc::F_SETFD, libc::FD_CLOEXEC);
+            }
+            PIPE_W.store(w, std::sync::atomic::Ordering::Relaxed);
+            let spawned = std::thread::Builder::new()
+                .name("nros-term-dump".into())
+                .spawn(move || {
+                    let mut b = 0u8;
+                    // SAFETY: a valid fd and a one-byte buffer.
+                    let n = unsafe { libc::read(r, (&raw mut b).cast(), 1) };
+                    if n == 1 {
+                        let text = snapshot();
+                        use std::io::Write as _;
+                        let mut err = std::io::stderr().lock();
+                        let _ = writeln!(err, "\n{DUMP_HEADER}");
+                        let _ = err.write_all(text.as_bytes());
+                        let _ = writeln!(err, "\n[nros-tests: end of the fixture output]");
+                        let _ = err.flush();
+                    }
+                    // SAFETY: ends the process with SIGTERM's conventional status.
+                    unsafe { libc::_exit(143) };
+                });
+            if spawned.is_err() {
+                return;
+            }
+            // SAFETY: a zeroed sigaction with a handler of the right type.
+            unsafe {
+                let mut sa: libc::sigaction = std::mem::zeroed();
+                sa.sa_sigaction = on_term as extern "C" fn(libc::c_int) as usize;
+                libc::sigemptyset(&raw mut sa.sa_mask);
+                sa.sa_flags = libc::SA_RESTART;
+                libc::sigaction(libc::SIGTERM, &raw const sa, std::ptr::null_mut());
+            }
+        });
     }
 }
 
@@ -168,5 +315,108 @@ mod tests {
         }
         assert!(capture.len() <= CAP_BYTES + SLACK_BYTES);
         assert!(dropped_bytes(&capture) > 0);
+    }
+
+    // Issue 2825 -- a SIGTERM mid-wait prints the fixture output read so far.
+    // Each test below is also its own SUBJECT: run with `SUBJECT_ENV` set, it
+    // reads (or not) and then waits to be killed, in a child process,
+    // because the dump ends the process it runs in.
+    const SUBJECT_ENV: &str = "NROS_TERM_TAIL_SUBJECT";
+    const READ_MARK: &str = "fixture-line-the-dump-must-show";
+
+    /// In the subject child: read (if `read`), say so, wait to be killed.
+    /// Never returns: the parent's SIGTERM ends it, and a subject nobody
+    /// killed fails rather than passing.
+    #[cfg(unix)]
+    fn be_subject(read: bool) -> ! {
+        if read {
+            let mut capture = String::new();
+            append(&mut capture, format!("{READ_MARK}\n").as_bytes());
+        }
+        println!("SUBJECT-READY");
+        std::thread::sleep(std::time::Duration::from_secs(30));
+        panic!("the subject was never killed");
+    }
+
+    /// In the parent: run `test` as the subject child, SIGTERM it once it is
+    /// waiting, and return its exit code, signal and stderr.
+    #[cfg(unix)]
+    fn run_subject(test: &str) -> (Option<i32>, Option<i32>, String) {
+        use std::{
+            io::{BufRead as _, BufReader},
+            os::unix::process::ExitStatusExt as _,
+        };
+        let mut child = std::process::Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", test, "--nocapture"])
+            .env(SUBJECT_ENV, "1")
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .unwrap();
+        let out = child.stdout.take().unwrap();
+        let mut lines = BufReader::new(out).lines();
+        let ready = lines.any(|l| l.is_ok_and(|l| l.contains("SUBJECT-READY")));
+        assert!(ready, "the subject never reached its wait");
+        // SAFETY: signalling our own child by its pid.
+        unsafe { libc::kill(i32::try_from(child.id()).unwrap(), libc::SIGTERM) };
+        let got = child.wait_with_output().unwrap();
+        (
+            got.status.code(),
+            got.status.signal(),
+            String::from_utf8_lossy(&got.stderr).into_owned(),
+        )
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_sigterm_mid_wait_prints_what_the_test_had_read() {
+        if std::env::var_os(SUBJECT_ENV).is_some() {
+            be_subject(true);
+        }
+        let (code, _, err) =
+            run_subject("capture::tests::a_sigterm_mid_wait_prints_what_the_test_had_read");
+        assert_eq!(code, Some(143), "stderr:\n{err}");
+        assert!(
+            err.contains(term_tail::DUMP_HEADER),
+            "no dump header:\n{err}"
+        );
+        assert!(
+            err.contains(READ_MARK),
+            "the read line is missing from the dump:\n{err}"
+        );
+    }
+
+    // Negative control: a test that read nothing keeps SIGTERM's default, so
+    // it dies by the signal with no dump. The dump above is the mechanism's.
+    #[cfg(unix)]
+    #[test]
+    fn a_test_that_read_nothing_keeps_the_default_sigterm() {
+        if std::env::var_os(SUBJECT_ENV).is_some() {
+            be_subject(false);
+        }
+        let (code, sig, err) =
+            run_subject("capture::tests::a_test_that_read_nothing_keeps_the_default_sigterm");
+        assert_eq!((code, sig), (None, Some(libc::SIGTERM)), "stderr:\n{err}");
+        assert!(
+            !err.contains(term_tail::DUMP_HEADER),
+            "dumped anyway:\n{err}"
+        );
+    }
+
+    // On a local buffer: under `cargo test` every test shares this process's
+    // tail, and the compaction tests above append megabytes to it.
+    #[test]
+    fn the_tail_keeps_the_newest_bytes_only() {
+        let mut t = Vec::new();
+        term_tail::push(&mut t, &vec![b'a'; 3 * term_tail::TAIL_BYTES]);
+        term_tail::push(&mut t, b"END");
+        assert!(t.len() <= 2 * term_tail::TAIL_BYTES);
+        let s = term_tail::text(&t);
+        assert!(s.len() <= term_tail::TAIL_BYTES, "{}", s.len());
+        assert!(s.ends_with("END"));
+        // A cut through a multi-byte character still stays in bounds.
+        let mut u = Vec::new();
+        term_tail::push(&mut u, "é".repeat(term_tail::TAIL_BYTES).as_bytes());
+        assert!(term_tail::text(&u).len() <= term_tail::TAIL_BYTES);
     }
 }
