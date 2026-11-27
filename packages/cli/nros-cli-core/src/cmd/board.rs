@@ -207,21 +207,6 @@ fn platform_of(d: &BoardDescriptor) -> String {
         .unwrap_or_else(|| d.platform.kebab().to_string())
 }
 
-/// The registry rows that speak for a board key: those that answer to it,
-/// else those of its package.
-fn rows_for<'a>(
-    status: &'a crate::cmd::board_support::Status,
-    key: &str,
-    krate: &str,
-) -> Vec<&'a crate::cmd::board_support::Row> {
-    let named = status.rows_named(key);
-    if named.is_empty() {
-        status.rows_for_crate(krate)
-    } else {
-        named
-    }
-}
-
 /// Every board key in the catalog under `root`, sorted.
 pub fn board_items(
     catalog: &BoardCatalog,
@@ -235,7 +220,12 @@ pub fn board_items(
         .filter_map(|d| {
             let (key, aliases) = d.names.split_first()?;
             let krate = crate_of(d, root);
-            let rows = rows_for(status, key, &krate);
+            // Issue 2995 -- the rows that CLAIM this key (`board_keys`), else
+            // its package's, as `nros doctor` reads them. Matching by name
+            // instead put every row of every package sharing the word in one
+            // cell (`linux`: the host, the musl cross board and the descriptor
+            // directory).
+            let rows = status.rows_for_board(key, Some(&krate));
             Some(BoardItem {
                 key: key.clone(),
                 aliases: aliases.to_vec(),
@@ -456,7 +446,12 @@ fn show(args: ShowArgs) -> Result<()> {
         .iter()
         .find(|d| d.answers_to(&args.name));
     let krate = desc.map(|d| crate_of(d, &root));
-    let mut rows = status.rows_named(&args.name);
+    // A board key reads the rows that claim it, as `list` does (issue 2995);
+    // a package or registry key reads the rows that answer to that name.
+    let mut rows = match desc {
+        Some(_) => status.rows_for_board(&args.name, krate.as_deref()),
+        None => status.rows_named(&args.name),
+    };
     if rows.is_empty()
         && let Some(k) = &krate
     {
@@ -1104,6 +1099,32 @@ fn main() -> ! {"""
         assert_eq!(
             super::evidence_page("book/src/reference/board-support-levels.md#fvp"),
             "reference/board-support-levels.html#fvp"
+        );
+    }
+
+    /// Issue 2995: a board key's status is the registry rows that claim it
+    /// (else its package's), never every row whose name shares a word.
+    #[test]
+    fn each_board_key_lists_only_its_own_registry_rows() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
+        let catalog =
+            crate::orchestration::board_descriptor::BoardCatalog::load_with_extra(&root, &[])
+                .expect("catalog");
+        let status = crate::cmd::board_support::Status::load(&root).expect("registry");
+        let items = super::board_items(&catalog, &root, &status, "2026-11-27");
+        let item = |k: &str| items.iter().find(|i| i.key == k).cloned().expect(k);
+        let linux = item("linux");
+        assert_eq!(linux.status.len(), 1, "one claiming row: {linux:?}");
+        assert_eq!(linux.cadence.len(), 1, "{linux:?}");
+        assert!(!linux.status[0].contains("Infrastructure"), "{linux:?}");
+        let freertos = item("freertos");
+        assert!(!freertos.status.is_empty(), "{freertos:?}");
+        assert!(
+            freertos
+                .status
+                .iter()
+                .all(|s| !s.contains("Infrastructure")),
+            "its package's evidence row, not a platform page's: {freertos:?}"
         );
     }
 

@@ -1,0 +1,1 @@
+`nros board list` and `nros board show <board>` now show only the support rows that belong to that board, instead of every registry row whose name shares a word with it (`linux` used to read "Verified on host (daily); Not supported; Infrastructure").
