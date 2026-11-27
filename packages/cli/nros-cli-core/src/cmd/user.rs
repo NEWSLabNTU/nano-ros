@@ -67,6 +67,7 @@ pub const GROUPS: &[(&str, &[&str])] = &[
     (
         "Find what nano-ros offers",
         &[
+            "search",
             "board",
             "platform",
             "rmw",

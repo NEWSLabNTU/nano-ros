@@ -267,15 +267,21 @@ pub fn render_list(items: &[BoardItem]) -> String {
     t.render()
 }
 
-fn list(args: ListArgs) -> Result<()> {
-    let root = catalog_root(args.workspace)?;
+/// Every board key `nros board list` reports for `workspace` (or the
+/// directory the command runs in), with the notes it prints after the table.
+pub(crate) fn collect(workspace: Option<PathBuf>) -> Result<(Vec<BoardItem>, Vec<String>)> {
+    let root = catalog_root(workspace)?;
     let catalog = BoardCatalog::load(&root).map_err(|e| eyre!("load board catalog: {e}"))?;
     // phase-522 W5 — the status word and cadence of every row, read from the
     // registry this root ships.
     let status = crate::cmd::board_support::Status::load(&root)?;
     let (notes, _other) = crate::cmd::board_support::other_copy(&root, own_sdk_root().as_deref());
     let today = crate::cmd::board_support::today();
-    let items = board_items(&catalog, &root, &status, &today);
+    Ok((board_items(&catalog, &root, &status, &today), notes))
+}
+
+fn list(args: ListArgs) -> Result<()> {
+    let (items, notes) = collect(args.workspace)?;
     if args.json {
         return crate::cmd::frame::print_json(LIST_SCHEMA, "items", &items, &[]);
     }

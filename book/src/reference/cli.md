@@ -70,6 +70,7 @@ Workspace:
   graph        Print the workspace's packages in dependency order, each with the workspace packages it depends on
 
 Find what nano-ros offers:
+  search       Find a word in every board, RMW, platform, knob, profile, template, runner, interface, package, diagnostic code and image, with the command that shows each
   board        Inspect supported boards
   platform     List the platforms boards build on, or show one: its boards and capabilities
   rmw          List the RMW backends, or show one: its host side and its boards
@@ -1248,6 +1249,23 @@ Options:
 ```
 
 ## Find what nano-ros offers
+
+### `nros search`
+
+```text
+Find a word in every board, RMW, platform, knob, profile, template, runner, interface, package, diagnostic code and image, with the command that shows each
+
+Usage: nros search [OPTIONS] <WORD>
+
+Arguments:
+  <WORD>  The word to look for, in names, other names and descriptions
+
+Options:
+      --json                   Print one JSON object instead of a table
+      --workspace <WORKSPACE>  Workspace root. Defaults to the one the current directory is in
+  -h, --help                   Print help
+  -V, --version                Print version
+```
 
 ### `nros board`
 

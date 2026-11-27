@@ -65,6 +65,7 @@
 - packages/cli/nros-cli-core/src/cmd/reserved.rs
 - packages/cli/nros-cli-core/src/cmd/runner_verb.rs
 - packages/cli/nros-cli-core/src/cmd/sdk_front.rs
+- packages/cli/nros-cli-core/src/cmd/search.rs
 - packages/cli/nros-cli-core/src/cmd/template_verb.rs
 - packages/cli/nros-cli-core/src/cmd/user.rs
 - packages/cli/nros-cli-core/src/codegen/entry/emit/tests_c.rs

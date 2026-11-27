@@ -83,6 +83,7 @@ pub mod scaffold_deploy;
 pub mod sdk_front;
 pub mod sdk_path;
 pub mod sdk_root;
+pub mod search;
 pub mod setup;
 /// phase-440 W6 — `nros store list|gc` (RFC-0095 D11).
 pub mod sizing_descriptor;
@@ -433,6 +434,11 @@ pub enum Cmd {
     /// List the node roles `nros new --template` scaffolds, or show one
     #[command(subcommand)]
     Template(template_verb::Args),
+
+    /// Find a word in every board, RMW, platform, knob, profile, template,
+    /// runner, interface, package, diagnostic code and image, with the
+    /// command that shows each
+    Search(search::Args),
 
     /// List the workspace's images, or show one: what it declares and what
     /// the build resolves for it
