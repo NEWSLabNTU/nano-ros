@@ -1,15 +1,17 @@
 ---
 id: 2772
 title: "The stock node-interfaces default answers for every image alike: the Nucleo-F767ZI Rust action server no longer links, and an RTIC image is refused"
-status: open
+status: resolved
 type: bug
 severity: high
 area: [orchestration, zephyr, sizing]
 related: [phase-556, issue-2647, issue-2559, issue-1766, phase-590]
 found: 2026-11-21
+resolved: 2026-11-27
+resolved_in: "fix-2772-pico-queryables"
 ---
 
-**Home: [phase-556](../roadmap/phase-556-ros2-compat-audit.md) W13 fallout.**
+**Home: [phase-556](../../roadmap/phase-556-ros2-compat-audit.md) W13 fallout.**
 Both symptoms trace to 6229085857 ("every image serves the stock node
 interfaces by default"). Neither 57c19cd7df nor 67d36cb764 moved a Rust
 Nucleo image: Rust with `param_services` had a 192 KiB heap before and after
@@ -280,3 +282,36 @@ of 270,336 B.
 So the board's default fits every template once each role states its
 declarations, which is the 2026-11-25 ruling's premise. The Rust rows still
 need PR #4847 to compile for this board at all.
+
+## Acceptance met (2026-11-27, nros 133)
+
+**Point 3, every small-SRAM image checked.** The issue's own recipe
+(`nros new --template <t>` plus `nros build`) at this branch's head
+40970e69b8, with PR #4847 (af7904f663) applied uncommitted, exactly its 12
+files, which the Rust rows need. Zephyr 3.7 SDK. RAM is the linker's `RAM:`
+line. All 24 template rows and the `nucleo_serial` bringup row exit 0, with
+no RAM overflow and no refusal.
+
+| Board | Template | rust | c | cpp |
+| --- | --- | --- | --- | --- |
+| nucleo-f767zi-zephyr (384 KiB) | talker | 237,056 B (60.29 %) | 221,824 B (56.41 %) | 221,056 B (56.22 %) |
+| | listener | 239,744 B (60.97 %) | 224,640 B (57.13 %) | 220,096 B (55.97 %) |
+| | server | 236,992 B (60.27 %) | 224,320 B (57.05 %) | 223,040 B (56.72 %) |
+| | action-server | 251,264 B (63.90 %) | 243 KB (63.28 %) | 247,424 B (62.92 %) |
+| rpi-pico-w-zephyr (264 KiB) | talker | 194,792 B (72.06 %) | 180,192 B (66.65 %) | 179,400 B (66.36 %) |
+| | listener | 193,064 B (71.42 %) | 181,552 B (67.16 %) | 177,008 B (65.48 %) |
+| | server | 194,704 B (72.02 %) | 182,648 B (67.56 %) | 181,408 B (67.10 %) |
+| | action-server | 208,968 B (77.30 %) | 207,176 B (76.64 %) | 205,792 B (76.12 %) |
+
+The C action-server row on the Nucleo reads "243 KB" because Zephyr prints
+that line in KB, not bytes.
+
+Points 1 and 2 are met in the Status section above.
+
+**Caveats:**
+- The Rust rows need PR #4847 (the portable-atomic fix, gate-green), so
+  this lands after it.
+- PR #4995 adds one session to every Rust image's `.bss`. Whichever of this
+  and #4995 lands second re-checks the Pico rows. Today's worst Pico row is
+  the Rust action server, at 77.30 %.
+
