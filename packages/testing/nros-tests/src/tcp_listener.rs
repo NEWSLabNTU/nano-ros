@@ -136,6 +136,53 @@ pub fn holder(pid: u32, port: u16) -> Holder {
     }
 }
 
+/// Issue 2949 -- what `holder(pid, port)` saw, for a failure message: every
+/// member of `pid`'s tree with its `comm` and `exe`, and each fd that links to
+/// one of the port's LISTEN inodes. The negative control's one recorded red
+/// read `Ours` from a `sleep` with no children, which the code cannot explain,
+/// so the next red must carry the evidence rather than a bare `left: Ours`.
+#[cfg(test)]
+fn describe_holder(pid: u32, port: u16) -> String {
+    let inodes = listener_inodes(port).unwrap_or_default();
+    let proc_dir = |p: u32| Path::new("/proc").join(p.to_string());
+    let mut out = format!("port {port} LISTEN inodes {inodes:?}; tree of {pid}:");
+    for p in tree(pid) {
+        let comm = std::fs::read_to_string(proc_dir(p).join("comm"))
+            .map(|c| c.trim().to_string())
+            .unwrap_or_else(|e| format!("<comm: {e}>"));
+        let exe = std::fs::read_link(proc_dir(p).join("exe"))
+            .map(|e| e.display().to_string())
+            .unwrap_or_else(|e| format!("<exe: {e}>"));
+        let ppid = std::fs::read_to_string(proc_dir(p).join("stat"))
+            .ok()
+            .and_then(|st| {
+                let rest = &st[st.rfind(')')? + 2..];
+                rest.split(' ').nth(1).map(str::to_string)
+            })
+            .unwrap_or_else(|| "?".into());
+        let mut held = Vec::new();
+        if let Ok(fds) = std::fs::read_dir(proc_dir(p).join("fd")) {
+            for fd in fds.flatten() {
+                if let Ok(link) = std::fs::read_link(fd.path()) {
+                    let link = link.display().to_string();
+                    let hit = link
+                        .strip_prefix("socket:[")
+                        .and_then(|l| l.strip_suffix(']'))
+                        .and_then(|i| i.parse::<u64>().ok())
+                        .is_some_and(|i| inodes.contains(&i));
+                    if hit {
+                        held.push(format!("fd {} -> {link}", fd.file_name().to_string_lossy()));
+                    }
+                }
+            }
+        }
+        out.push_str(&format!(
+            "\n  pid {p} (ppid {ppid}) comm {comm:?} exe {exe}: holds {held:?}"
+        ));
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -159,6 +206,13 @@ mod tests {
             return; // no /proc/net/tcp on this host: `Unknown` is the answer
         }
         assert_eq!(holder(std::process::id(), port), Holder::Ours);
+        // The diagnostic below must name a real holder when there is one, or a
+        // red would print nothing useful (issue 2949).
+        let own = describe_holder(std::process::id(), port);
+        assert!(
+            own.contains("-> socket:["),
+            "the holder's fd is named: {own}"
+        );
         // Negative control: the same listener, seen from a process tree that
         // does not hold it (a child that inherited no socket), is a stranger's.
         let mut child = std::process::Command::new("sleep")
@@ -166,9 +220,17 @@ mod tests {
             .spawn()
             .unwrap();
         let seen = holder(child.id(), port);
+        // Issue 2949: read what `holder` saw before the child is reaped, so a
+        // red names the process and fd that made it `Ours`.
+        let evidence = (seen != Holder::Other).then(|| describe_holder(child.id(), port));
         let _ = child.kill();
         let _ = child.wait();
-        assert_eq!(seen, Holder::Other);
+        assert_eq!(
+            seen,
+            Holder::Other,
+            "a child that inherited no socket read as holding it: {}",
+            evidence.unwrap_or_default()
+        );
         drop(l);
         assert_eq!(holder(std::process::id(), port), Holder::Unknown);
     }

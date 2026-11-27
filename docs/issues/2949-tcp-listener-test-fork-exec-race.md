@@ -63,3 +63,18 @@ in `tree(sleep_pid)` must hold a fd whose inode is one of the port's LISTEN
 rows, and `sleep` has no children. The next red should be read with that in
 hand: log `tree(child.id())` and each member's matching fd when the negative
 control fails, before choosing a fix. Kept open, severity low.
+
+## Diagnostics on the next red (2026-11-28)
+
+The negative control's failure message now carries what `holder` saw,
+read before the child is reaped (`describe_holder` in `tcp_listener.rs`):
+the port's LISTEN inodes, and every member of `tree(child.id())` with its
+ppid, `comm`, `exe` and each fd that links to one of those inodes. The test
+also points the diagnostic at its own process, which does hold the
+listener, and asserts that it names the socket fd, so the diagnostic is
+known to work before it is needed.
+
+No fix is landed: the stated fork/exec cause was measured false (above),
+and nothing in the code explains `Ours` from a `sleep` with no children.
+The issue stays open until a red with this evidence names the process and
+fd that made it `Ours`.
