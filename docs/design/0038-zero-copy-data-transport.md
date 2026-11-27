@@ -367,6 +367,47 @@ D2 window. The `is_plain` gate (DDS) decides per type whether the borrowed path
 is available. The borrowed-deserialization codegen is **issue #7 / RFC-0033**
 (owned / heap / borrowed modes); this RFC provides the borrow window it needs.
 
+### D5. A core slot pool with per-slot claim and release (amendment, 2026-11-27)
+
+D1's pools are backend-internal: they hold receive samples inside the
+zenoh-pico backend, and their shared claim/release form is deferred (D1's
+implementation note, "Q-pool"). [RFC-0139](0139-device-ports.md) D6 needs
+something D1 never specified: a pool in **core**, whose slots a caller claims,
+hands to a device job as an owned handle, and releases wherever that job ends.
+This section specifies that pool. The user ruled on its five open questions on
+2026-11-27, as proposed:
+
+- **Home: core, not a backend (ruling Q1).** The pool lives in `nros-node`, or a
+  small `no_std` crate beside it, and depends on no RMW backend, because a
+  device is not RMW traffic. A backend's receive pool (D1's Q-pool) may later
+  adopt it; nothing here requires that.
+- **Classes: D1's size classes (ruling Q2).** The same `small` and `large`
+  classes as D1, each with a fixed `slot_size` and a slot `count`. Both are
+  build knobs, stated in the image's sizing descriptor
+  ([RFC-0100](0100-rmw-agnostic-sizing-model.md)) like every other pool, so a sizing
+  consumer reads them and never re-derives them. A class whose count is zero
+  claims nothing.
+- **Concurrency: lock-free, and release is interrupt-safe (ruling Q3).** Claim
+  and release are callable from any thread with no lock. Release is also
+  callable from an interrupt handler, because a device's completion path may
+  free an input slot. Ownership is a bitmap of the class's slots, one bit per
+  slot, changed only by compare-and-swap. A bit names a slot, so a stale read
+  cannot hand out a slot twice (no ABA), and claim makes at most a bounded
+  number of attempts per word before it moves on.
+- **Exhaustion: refuse (ruling Q4).** A claim with no free slot in its class
+  returns none. It never blocks, never waits for a release and never allocates.
+  Each class counts its refusals, and the counter is readable, so a deployment
+  sized too small says so rather than failing silently.
+- **Placement: a default static (ruling Q5).** Each class's storage is a
+  `.bss` static until phase 574 W3's placement hook (a named linker section per
+  pool) is accepted. The pool then takes that hook like any other pool, with no
+  change to its interface.
+
+What a slot holds and how ownership moves (the owned handle, `move`, the debug
+assertion on use after move) is RFC-0139 D6's, built on this pool. This
+section is the allocator only. Implemented by phase 579 W3p; the owned handle
+is W3b.
+
 ## Transport portability — network, serial, and other links
 
 The in-place design sits **above** the link layer and is therefore
@@ -582,3 +623,10 @@ All seven open questions are resolved (2026-06; discussion folded in here):
 - Non-zpico backends keep working via buffered fallback; no regression.
 - `just ci` green; the existing `lending` / safety-e2e in-place tests pass
   against the new default dispatch.
+
+## Changelog
+
+- 2026-06 — created; seven open questions resolved.
+- 2026-08-31 — survey amendment (DDS loan take).
+- 2026-11-27 — D5 added: a core slot pool with per-slot claim and release, for
+  RFC-0139 D6's owned slots. The user ruled on its five questions as proposed.
