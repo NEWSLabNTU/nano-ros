@@ -1,12 +1,14 @@
 ---
 id: 2420
 title: "`rmw_coordinate_truth`: the freertos-posix zenoh C entry once refused its session after waiting for its baked router port"
-status: open
+status: resolved
 type: bug
 severity: low
 area: [tests, rmw-zenoh, freertos]
-related: [2416, 1819, 1933]
+related: [2416, 1819, 1933, 2994, 2950]
 found: 2026-11-10
+resolved: 2026-11-27
+resolved_in: "#4943 (issue 2994, release blocker B46): a connect a signal interrupted is finished, not failed"
 ---
 
 ## Measured
@@ -189,3 +191,42 @@ every lane: a deterministic setup failure, not this start race. It passed at
 The freertos-posix zenoh row registered in every run read. This stays a watch
 item; the next recurrence of the refused-session shape is what decides
 between the two remedies above.
+
+## Resolution (2026-11-27): issue 2994's EINTR, not a start race
+
+The cause is [issue 2994](2994-freertos-posix-zenoh-connect-eintr.md),
+fixed for release blocker B46 by #4943 (`ffa575c7a2`, with issue 2950's
+`679add46e1`, zenoh-pico fork pin `4e93fb95`).
+
+It is the same image (`workspace-c-freertos-posix-zenoh`) and the same baked
+port (11130). The FreeRTOS POSIX tick is a SIGALRM without `SA_RESTART`,
+and Linux never restarts a `connect()` on a socket with `SO_RCVTIMEO` set.
+So a tick landing inside the one-attempt connect returned EINTR, which the
+zenoh-pico helper reported as a refusal. That fits everything above:
+
+- the open failed at once, within budget, while the router was listening
+  (2994 measured `[0.002]`);
+- it happened only in loaded lanes, where a tick is likelier to land inside
+  the call, both times;
+- it never happened solo (50 of 50 on 2026-11-22).
+
+The start race this issue suspected is ruled out by 2994's measurement. A
+router stopped after it listened makes the image fail only at the 10 s
+handshake bound, not in milliseconds.
+
+Verified on host 241 with this issue's own test at main (B46 in, fork pin
+`4e93fb95`), `rmw_coordinate_truth a_rows_entry_registers_its_nodes_at_runtime`,
+with the `workspace-c-freertos-posix-zenoh` row freshly built:
+
+| run | result |
+| --- | --- |
+| plain | 10 of 10 pass; the row registers in about 140 ms |
+| an `LD_PRELOAD` shim makes the image's first TCP `connect()` report EINTR | 10 of 10 pass; the shim fired in each run (logged per pid) |
+
+Under the shim the real call had returned EINPROGRESS: issue 2950 made the
+one-attempt connect non-blocking. So the injected EINTR is a signal landing
+in a connect that is still going on. The fixed helper waits for writability
+and reads `SO_ERROR`, so the same attempt completes. Issue 2994 measured the
+other direction on the same image: before the fix, one injected EINTR failed
+the open with rc 156 in 2 ms, the nightly's exact line. Its offline check is
+`just check zpico-connect-eintr`.
