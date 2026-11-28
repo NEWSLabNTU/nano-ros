@@ -1325,7 +1325,8 @@ def load_linked_symbols(elf: str, readobj: str) -> dict[int, set[str]]:
     return funcs
 
 
-def image_data_pointers(elf: str, funcs: dict[int, set[str]]) -> set[str]:
+def image_data_pointers(elf: str, funcs: dict[int, set[str]],
+                        sections: set[str] | None = None) -> set[str]:
     """Issue 2658: the functions whose address the linked image holds: a
     pointer-sized word, at any byte offset, equal to the function's address
     (Thumb bit either way), in any allocated section with contents.
@@ -1336,40 +1337,34 @@ def image_data_pointers(elf: str, funcs: dict[int, set[str]]) -> set[str]:
     address, with no relocation. Executable sections count too: a literal
     pool, or a vector table a linker script writes with `LONG()`. A word that
     equals an address by coincidence only adds a target, which keeps the walk
-    an upper bound; measured, the widening moves neither image's walk."""
+    an upper bound; measured, the widening moves neither image's walk.
+
+    Issue 3027 measured the opposite: a coincidental word DOES move a walk,
+    with any layout change, so the walk itself asks `image_held_pointers`,
+    which keeps this scan only for `sections` (by name) and for the report.
+    """
     import struct
     out: set[str] = set()
     try:
         raw = Path(elf).read_bytes()
     except OSError:
         return out
-    if raw[:4] != b"\x7fELF" or raw[5] not in (1, 2):
+    secs = _elf_sections(raw)
+    if secs is None:
         return out
-    is64, end = raw[4] == 2, "<" if raw[5] == 1 else ">"
-    if is64:
-        shoff, = struct.unpack_from(end + "Q", raw, 0x28)
-        shentsize, shnum = struct.unpack_from(end + "HH", raw, 0x3A)
-        word, wfmt = 8, "Q"
-    else:
-        shoff, = struct.unpack_from(end + "I", raw, 0x20)
-        shentsize, shnum = struct.unpack_from(end + "HH", raw, 0x2E)
-        word, wfmt = 4, "I"
+    end = secs[0]["end"] if secs else "<"
+    word, wfmt = (8, "Q") if secs and secs[0]["is64"] else (4, "I")
     want: dict[int, set[str]] = {}
     for a, names in funcs.items():
         for v in (a, a | 1):
             want.setdefault(v, set()).update(names)
     sht_nobits, shf_alloc = 8, 0x2
-    for i in range(shnum):
-        h = shoff + i * shentsize
-        if is64:
-            sh_type, sh_flags = struct.unpack_from(end + "IQ", raw, h + 4)
-            sh_off, sh_size = struct.unpack_from(end + "QQ", raw, h + 0x18)
-        else:
-            sh_type, sh_flags = struct.unpack_from(end + "II", raw, h + 4)
-            sh_off, sh_size = struct.unpack_from(end + "II", raw, h + 0x10)
-        if sh_type == sht_nobits or not sh_flags & shf_alloc:
+    for s in secs:
+        if s["type"] == sht_nobits or not s["flags"] & shf_alloc:
             continue
-        data = raw[sh_off:sh_off + sh_size]
+        if sections is not None and s["name"] not in sections:
+            continue
+        data = raw[s["off"]:s["off"] + s["size"]]
         # Every byte offset: a packed table can hold a pointer unaligned.
         unpack = struct.Struct(end + wfmt).unpack_from
         for off in range(0, len(data) - word + 1):
@@ -1377,6 +1372,146 @@ def image_data_pointers(elf: str, funcs: dict[int, set[str]]) -> set[str]:
             if hit:
                 out |= hit
     return out
+
+
+# Issue 3027: the sections whose function addresses a link writes with no
+# relocation, so they stay word-scanned. Zephyr's `sw_isr_table` is generated
+# from `.intList` as literal addresses, and a linker script's vector table is
+# `LONG()` expressions, which `--emit-relocs` cannot record. Matched by
+# section name.
+WORD_SCAN_SECTIONS = re.compile(r"isr_table|vector")
+
+# Absolute data relocations, the ones that write a pointer-sized address, by
+# ELF machine. A call or branch relocation is not a pointer, and the word at
+# its site is an instruction, so it is not looked up. An unknown machine
+# takes every relocation, which is the wider and therefore the safe side.
+ABS_RELOC_TYPES = {
+    3: {1},                 # EM_386: R_386_32
+    40: {2, 38},            # EM_ARM: R_ARM_ABS32, R_ARM_TARGET1
+    62: {1, 10, 11},        # EM_X86_64: R_X86_64_64, _32, _32S
+    94: {1},                # EM_XTENSA: R_XTENSA_32
+    183: {257, 258},        # EM_AARCH64: R_AARCH64_ABS64, _ABS32
+    243: {1, 2},            # EM_RISCV: R_RISCV_32, R_RISCV_64
+}
+
+# What the last image_held_pointers call found, for the report.
+IMAGE_HELD_EVIDENCE: dict = {}
+
+
+def _elf_sections(raw: bytes) -> list[dict] | None:
+    """The section headers of an ELF image, with names when it has a string
+    table; None when `raw` is not an ELF image this reader parses."""
+    import struct
+    if raw[:4] != b"\x7fELF" or raw[5] not in (1, 2) or raw[4] not in (1, 2):
+        return None
+    is64, end = raw[4] == 2, "<" if raw[5] == 1 else ">"
+    if is64:
+        e_type, e_machine = struct.unpack_from(end + "HH", raw, 0x10)
+        shoff, = struct.unpack_from(end + "Q", raw, 0x28)
+        shentsize, shnum, shstrndx = struct.unpack_from(end + "HHH", raw, 0x3A)
+        fmt = end + "IIQQQQIIQQ"
+    else:
+        e_type, e_machine = struct.unpack_from(end + "HH", raw, 0x10)
+        shoff, = struct.unpack_from(end + "I", raw, 0x20)
+        shentsize, shnum, shstrndx = struct.unpack_from(end + "HHH", raw, 0x2E)
+        fmt = end + "IIIIIIIIII"
+    out = []
+    for i in range(shnum):
+        (name, typ, flags, addr, off, size, link, info, _align,
+         entsize) = struct.unpack_from(fmt, raw, shoff + i * shentsize)
+        out.append({"name_off": name, "type": typ, "flags": flags, "addr": addr,
+                    "off": off, "size": size, "link": link, "info": info,
+                    "entsize": entsize, "name": ""})
+    if 0 < shstrndx < len(out):
+        st = out[shstrndx]
+        tab = raw[st["off"]:st["off"] + st["size"]]
+        for s in out:
+            n = s["name_off"]
+            s["name"] = tab[n:tab.find(b"\0", n)].decode(errors="replace") if n < len(tab) else ""
+    for s in out:
+        s.update(is64=is64, end=end, e_type=e_type, e_machine=e_machine)
+    return out
+
+
+def image_reloc_pointers(elf: str, funcs: dict[int, set[str]]) -> set[str] | None:
+    """Issue 3027: the functions whose address the image holds at a site an
+    absolute data relocation wrote, read from the relocation sections a
+    `--emit-relocs` link keeps. Only words the linker resolved as pointers
+    count, so a word that equals an address by coincidence does not, and the
+    answer stops moving with the layout. None when the image keeps no
+    relocation section at all (it was linked without `--emit-relocs`)."""
+    import struct
+    try:
+        raw = Path(elf).read_bytes()
+    except OSError:
+        return None
+    secs = _elf_sections(raw)
+    if secs is None:
+        return None
+    rels = [s for s in secs if s["type"] in (4, 9)]  # SHT_RELA, SHT_REL
+    if not rels:
+        return None
+    is64, end = secs[0]["is64"], secs[0]["end"]
+    word, wfmt = (8, "Q") if is64 else (4, "I")
+    abs_types = ABS_RELOC_TYPES.get(secs[0]["e_machine"])
+    want: dict[int, set[str]] = {}
+    for a, names in funcs.items():
+        for v in (a, a | 1):
+            want.setdefault(v, set()).update(names)
+    out: set[str] = set()
+    for r in rels:
+        if not 0 < r["info"] < len(secs):
+            continue
+        t = secs[r["info"]]
+        if t["type"] == 8 or not t["flags"] & 0x2:  # NOBITS, or not allocated
+            continue
+        rela = r["type"] == 4
+        ent = r["entsize"] or ((24 if rela else 16) if is64 else (12 if rela else 8))
+        efmt = end + ("QQ" if is64 else "II")
+        base = 0 if secs[0]["e_type"] == 1 else t["addr"]  # ET_REL: section-relative
+        for o in range(r["off"], r["off"] + r["size"] - ent + 1, ent):
+            r_offset, r_info = struct.unpack_from(efmt, raw, o)
+            rtype = r_info & (0xFFFFFFFF if is64 else 0xFF)
+            if abs_types is not None and rtype not in abs_types:
+                continue
+            at = r_offset - base
+            if not 0 <= at <= t["size"] - word:
+                continue
+            hit = want.get(struct.unpack_from(end + wfmt, raw, t["off"] + at)[0])
+            if hit:
+                out |= hit
+    return out
+
+
+def image_held_pointers(elf: str, funcs: dict[int, set[str]]) -> set[str]:
+    """Issue 3027: the functions the image holds, from relocations, plus
+    the word scan of the sections a link writes without one
+    (`WORD_SCAN_SECTIONS`). Every word the full scan finds that neither
+    backs is recorded in `IMAGE_HELD_EVIDENCE["unbacked"]` and printed, so a
+    real table that lost its relocation shows up by name. An image with no
+    relocation section refuses: a link that forgot `--emit-relocs` would
+    otherwise drop real pointers silently."""
+    held = image_reloc_pointers(elf, funcs)
+    if held is None:
+        raise SystemExit(
+            f"nros-stack-floor: {elf} keeps no relocation section, so the functions whose "
+            "address it holds cannot be told from coincidental words. Link the "
+            "stack-floor image with `-Wl,--emit-relocs` (the cmake and cargo roads add it).")
+    raw = Path(elf).read_bytes()
+    named = {s["name"] for s in (_elf_sections(raw) or [])
+             if WORD_SCAN_SECTIONS.search(s["name"]) and s["type"] not in (4, 9)}
+    scanned = image_data_pointers(elf, funcs, sections=named) if named else set()
+    every = image_data_pointers(elf, funcs)
+    unbacked = sorted(every - held - scanned)
+    IMAGE_HELD_EVIDENCE.clear()
+    IMAGE_HELD_EVIDENCE.update(relocated=len(held), word_scanned=len(scanned),
+                               word_scan_sections=sorted(named), unbacked=unbacked)
+    if unbacked:
+        print(f"nros-stack-floor: {len(unbacked)} function(s) a data word equals but no "
+              "relocation writes, not counted as address-taken: "
+              + ", ".join(unbacked[:12]) + (" ..." if len(unbacked) > 12 else ""),
+              file=sys.stderr)
+    return held | scanned
 
 
 def _map_member(f: str) -> str:
@@ -4100,6 +4235,9 @@ def write_report(path: str, args: argparse.Namespace, results: dict, stacks: dic
                   for role, r in results.items()},
         "stacks": stacks,
         "refused": refusals,
+        # issue 3027: how the image-held functions were found, and every
+        # word that matched an address with no relocation behind it
+        "image_held": dict(IMAGE_HELD_EVIDENCE),
         # the knob values an opted-in image is rebuilt with (`--raise`)
         "raise": raises or [],
         # issue 2815: [[function, bytes], ...] over the table's `max_frame`
@@ -4513,7 +4651,7 @@ def run(args: argparse.Namespace) -> int:
         # address only the link's discarded code takes is not evidence -- and
         # what the image's own data holds, which is evidence whatever the
         # inputs say (a table a later link stage rebuilt).
-        image_held = image_data_pointers(args.cfi_elf,
+        image_held = image_held_pointers(args.cfi_elf,
                                          load_linked_symbols(args.cfi_elf, readobj))
     for i in range(0, len(args.inputs), LOAD_CHUNK):
         load_object(g, args.inputs[i:i + LOAD_CHUNK], readobj, objdump)
@@ -5345,6 +5483,67 @@ def self_test() -> int:
               "is evidence", "packed_fn" in held)
         check(f"image data ({bits}-bit): a function no data names is not held",
               "nowhere" not in held)
+        if not is64:
+            with _tf.NamedTemporaryFile(suffix=".elf", delete=False) as tf:
+                tf.write(blob)
+            try:
+                image_held_pointers(tf.name, {0x1000: {"isr"}})
+                refused_ = False
+            except SystemExit as e:
+                refused_ = "--emit-relocs" in str(e)
+            finally:
+                os.unlink(tf.name)
+            check("image held: an image with no relocation section refuses, naming "
+                  "--emit-relocs", refused_)  # issue 3027
+
+    # issue 3027 -- relocation-backed image pointers. .data holds a relocated
+    # pointer (R_ARM_ABS32), a word that equals an address with no relocation,
+    # and a word at a call relocation's site (R_ARM_THM_CALL, not a pointer);
+    # an `.isr_table` holds a literal address and is word-scanned by name.
+    def _elf32(secs: list[tuple[str, int, int, bytes, int, int, int]]) -> bytes:
+        names = b"\0" + b"".join(n.encode() + b"\0" for n, *_ in secs) + b".shstrtab\0"
+        body, offs, off = b"", [], 0x34
+        for _n, _t, _f, blob, *_r in secs:
+            offs.append(off + len(body))
+            body += blob
+        str_off = 0x34 + len(body)
+        body += names
+        shoff = 0x34 + len(body)
+        shnum = len(secs) + 2
+        ehdr = (b"\x7fELF\x01\x01\x01" + b"\0" * 9
+                + _st.pack("<HHIIIIIHHHHHH", 2, 40, 1, 0, 0, shoff, 0, 0x34, 0, 0, 0x28,
+                           shnum, shnum - 1))
+        sh = _st.pack("<IIIIIIIIII", *([0] * 10))
+        pos = 1
+        for (n, t, f, blob, addr, link, info), o in zip(secs, offs):
+            sh += _st.pack("<IIIIIIIIII", pos, t, f, addr, o, len(blob), link, info, 4,
+                           8 if t == 9 else 0)
+            pos += len(n) + 1
+        sh += _st.pack("<IIIIIIIIII", pos, 3, 0, 0, str_off, len(names), 0, 0, 1, 0)
+        return ehdr + body + sh
+
+    funcs3027 = {0x1000: {"relocated"}, 0x2000: {"coincidence"}, 0x3000: {"call_site"},
+                 0x4000: {"isr_literal"}}
+    data3027 = _st.pack("<III", 0x1001, 0x2000, 0x3000)
+    rel3027 = _st.pack("<IIII", 0x8000, 2, 0x8008, 10)  # ABS32 at +0, THM_CALL at +8
+    blob3027 = _elf32([(".data", 1, 0x3, data3027, 0x8000, 0, 0),
+                       (".rel.data", 9, 0, rel3027, 0, 0, 1),
+                       (".isr_table", 1, 0x2, _st.pack("<I", 0x4000), 0x9000, 0, 0)])
+    with _tf.NamedTemporaryFile(suffix=".elf", delete=False) as tf:
+        tf.write(blob3027)
+    try:
+        held3027 = image_held_pointers(tf.name, funcs3027)
+    finally:
+        os.unlink(tf.name)
+    check("image held: a pointer an absolute relocation wrote is held",  # issue 3027
+          "relocated" in held3027)
+    check("image held: a word equal to an address with no relocation is not held, and is "
+          "reported", "coincidence" not in held3027
+          and "coincidence" in IMAGE_HELD_EVIDENCE.get("unbacked", []))
+    check("image held: a call relocation's site is not a pointer",
+          "call_site" not in held3027)
+    check("image held: a table a link writes with no relocation is word-scanned by name",
+          "isr_literal" in held3027)
 
     # issue 2658 -- a cargo build script's C, typed through the
     # compile_commands.json nros_cc_flags writes, matched by object identity
