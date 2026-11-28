@@ -338,6 +338,12 @@ boards self-describe their dependencies.
   RFC-0093 (Stable). Board support status is three authored primitives per registry row
   (`runs`, `cadence`, breadth), from which the book's support pages are generated → RFC-0114
   (Stable).
+- A cross Linux board (`linux-aarch64-musl`) builds a static image by default, and a dynamic
+  one when the image states `link = "dynamic"` (both roads together). C and C++ nodes on it
+  compile with the provisioned zig, or a vendor gcc as the override. A vendor's shared
+  libraries are named only in the node's own CMake, and resolve against a user-provided
+  sysroot found on the locate ladder; the build checks every dynamic symbol against that
+  sysroot before the device ever loads it → RFC-0144 (Stable).
 - ThreadX runs one executor per sched task over one shared session, stacks from a byte pool,
   preemption threshold set at creation → RFC-0053 (Stable).
 - `nros setup` as the single toolchain/SDK entrypoint, index-driven from `nros-sdk-index.toml`
