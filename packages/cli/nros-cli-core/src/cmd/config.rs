@@ -17,11 +17,13 @@ pub enum Args {
     /// Print the resolved effective config for a bringup system (from its typed
     /// `system.toml`) with per-value provenance.
     Show(ShowArgs),
-    /// Print the resolved BUILD-time knob ladder for a platform.
+    /// Print the resolved BUILD-time knob ladder for a platform: the same
+    /// table as `nros knob list --platform <p>`.
     ///
     /// Shows every knob's final value plus the rung that set it (builtin /
     /// platform / board / env).
-    // phase-290 (RFC-0049).
+    // phase-290 (RFC-0049); an alias of `knob list --platform` since
+    // phase-569 W2c (RFC-0133 D2).
     Explain(ExplainArgs),
 }
 
@@ -108,6 +110,11 @@ fn explain(args: ExplainArgs) -> Result<()> {
         println!("{}", ladder_get(&ladder, key)?);
         return Ok(());
     }
+    // phase-569 W2c (RFC-0133 D2): `config explain` is the older spelling of
+    // `nros knob list --platform <p>`: the same resolved values and the rung
+    // each came from, by knob name. It keeps its header (the platform, its
+    // root, the board) and its warnings. The table it printed before named
+    // each knob's environment carrier, which is not where anything is set.
     println!(
         "platform: {}   (platforms root: {})",
         args.platform,
@@ -120,22 +127,15 @@ fn explain(args: ExplainArgs) -> Result<()> {
         println!("capabilities: {}", ladder.capabilities.join(", "));
     }
     println!();
-    println!("{:<24} {:<10} set by", "knob", "value");
-    println!("{:<24} {:<10} ------", "----", "-----");
-    for v in &ladder.values {
-        if v.key.contains(".tx.") {
-            println!("{:<24} {:<10} {}", v.key, v.value, v.source);
-        } else {
-            println!(
-                "{:<34} {:<10} {}  [{}]",
-                v.key,
-                v.value,
-                v.source,
-                v.env.unwrap_or("no env knob on this platform")
-            );
-        }
-    }
-    for w in &ladder.warnings {
+    let warnings = ladder.warnings.clone();
+    let list = crate::cmd::knob::ListArgs {
+        json: false,
+        platform: Some(args.platform.clone()),
+        board_toml: args.board_toml.clone(),
+        workspace: args.workspace.clone(),
+    };
+    crate::cmd::knob::list_resolved(&list, Some(ladder))?;
+    for w in &warnings {
         println!("warning: {w}");
     }
     Ok(())

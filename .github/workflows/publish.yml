@@ -514,7 +514,6 @@ jobs:
         # lists it as a chapter, so it has to exist before mdbook runs.
         run: |
           python3 scripts/gen-pool-inventory.py
-          python3 scripts/gen-config-surface.py
           mdbook build book
           # RFC-0123 D7: nano-ros Internals, staged under the user book at
           # `internals/` (built separately: mdBook clears its build dir).

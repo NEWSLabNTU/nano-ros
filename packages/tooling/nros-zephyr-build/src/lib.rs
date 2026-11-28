@@ -554,6 +554,37 @@ pub fn knob_by_image_key(key: &str) -> Option<&'static KnobRow> {
     KNOBS.iter().find(|r| r.image_key == key)
 }
 
+/// Why a knob that is not public is not set in a project, and what to set
+/// instead: `None` for a public knob, whose `surface` says where it is set.
+/// One wording for `nros knob show` and the build-arguments refusal
+/// (phase-569 W2c, RFC-0133 D2).
+#[must_use]
+pub fn not_public_note(r: &KnobRow) -> Option<String> {
+    match r.class {
+        KnobClass::Public => None,
+        KnobClass::Carrier => Some(match r.carries {
+            Some(c) => match KNOBS.iter().find(|k| k.id == c) {
+                Some(k) => format!(
+                    "not set directly: it carries `{}`; set that instead",
+                    k.image_key
+                ),
+                None if c.contains('.') && !c.contains(' ') => {
+                    format!(
+                        "not set directly: it carries the board's `[knobs] {c}`; set that instead"
+                    )
+                }
+                None => format!("not set directly: it carries {c}"),
+            },
+            None => "not set directly".to_string(),
+        }),
+        KnobClass::Internal => Some("not set in a project: a test or tooling hook".to_string()),
+        KnobClass::Retired => Some(format!(
+            "retired: {}",
+            r.retired.unwrap_or("it no longer exists")
+        )),
+    }
+}
+
 /// The catalog's public knobs, in registry order (phase-569 W2): what
 /// `nros knob list` prints and the configuration reference lists.
 pub fn public_knobs() -> impl Iterator<Item = &'static KnobRow> {

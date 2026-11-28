@@ -1729,7 +1729,7 @@ Usage: nros config <COMMAND>
 
 Commands:
   show     Print the resolved effective config for a bringup system (from its typed `system.toml`) with per-value provenance
-  explain  Print the resolved BUILD-time knob ladder for a platform
+  explain  Print the resolved BUILD-time knob ladder for a platform: the same table as `nros knob list --platform <p>`
   help     Print this message or the help of the given subcommand(s)
 
 Options:
@@ -1772,7 +1772,7 @@ Options:
 #### `nros config explain`
 
 ```text
-Print the resolved BUILD-time knob ladder for a platform.
+Print the resolved BUILD-time knob ladder for a platform: the same table as `nros knob list --platform <p>`.
 
 Shows every knob's final value plus the rung that set it (builtin / platform / board / env).
 
