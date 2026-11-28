@@ -14,7 +14,13 @@
 #      attribute) starts and runs, and the port reports the refused priority
 #      once, naming EPERM;
 #   b. a second such task starts too, and the refusal is NOT reported again;
-#   c. a task that inherits (NROS_PLATFORM_PRIORITY_INHERIT) starts, as before.
+#   c. a task that inherits (NROS_PLATFORM_PRIORITY_INHERIT) starts, as before;
+#   d. (issue 3024, its own process) a task that has EXITED before its creator
+#      returns from `pthread_create` still reports the refusal once, as EPERM,
+#      and nothing reports another errno. The port is compiled with
+#      `pthread_create` wrapped so the creator resumes only after the child is
+#      gone: a port that applies the priority from the creator, to the child's
+#      id, then asks about an exited thread every time instead of under load.
 # Negative control: the same program against a port without the retry must
 # fail case a, so "it started" cannot pass on a port that refuses to spawn.
 set -uo pipefail
@@ -102,12 +108,72 @@ int main(void) {
 }
 EOF
 
-build() { # <out> <platform.c>
+cat >"$tmp/exited.c" <<'EOF'
+#include <nros/platform.h>
+#include <pthread.h>
+#include <semaphore.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <sys/resource.h>
+#include <time.h>
+
+/* The port calls this instead of `pthread_create` (-D on its compile). It
+ * returns only after the thread it created has run to completion, so the
+ * creator's next statement always meets an exited thread. */
+static sem_t gone;
+struct wrap { void *(*f)(void *); void *a; };
+static void *wrapped(void *raw) {
+    struct wrap w = *(struct wrap *) raw;
+    free(raw);
+    void *r = w.f(w.a);
+    sem_post(&gone);
+    return r;
+}
+int nros_test_pthread_create(pthread_t *t, const pthread_attr_t *at, void *(*f)(void *), void *a);
+int nros_test_pthread_create(pthread_t *t, const pthread_attr_t *at, void *(*f)(void *), void *a) {
+    struct wrap *w = malloc(sizeof *w);
+    if (w == NULL) return 11;
+    w->f = f;
+    w->a = a;
+    int rc = pthread_create(t, at, wrapped, w);
+    if (rc != 0) { free(w); return rc; }
+    sem_wait(&gone);
+    struct timespec d = {0, 50 * 1000 * 1000}; /* let the thread finish exiting */
+    nanosleep(&d, NULL);
+    return 0;
+}
+
+static volatile int ran;
+static void *entry(void *arg) { (void) arg; ran = 1; return NULL; }
+
+int main(void) {
+    struct rlimit rl = {0, 0};
+    (void) setrlimit(RLIMIT_RTPRIO, &rl);
+    sem_init(&gone, 0, 0);
+    static union { uint8_t b[NROS_PLATFORM_TASK_STORAGE_SIZE]; uint64_t u; void *p; } task;
+    nros_platform_task_attr_t attr;
+    nros_platform_task_attr_init(&attr);
+    attr.name = "prio_exited";
+    attr.stack_bytes = 65536u;
+    attr.priority = NROS_PLATFORM_PRIORITY_MAX / 2;
+    attr.flags = NROS_PLATFORM_TASK_DETACHED;
+    int8_t rc = nros_platform_task_init(task.b, &attr, entry, NULL);
+    printf("  %s d a task that exits before its creator resumes spawns\n", rc == 0 ? "ok  " : "FAIL");
+    printf("  %s d ...and ran\n", ran ? "ok  " : "FAIL");
+    return (rc == 0 && ran) ? 0 : 1;
+}
+EOF
+
+build() { # <out> <platform.c> [main.c] [extra port flags...]
+    local out="$1" port="$2" main="${3:-$tmp/main.c}"
+    shift 2
+    [ $# -gt 0 ] && shift
     local flags=(-std=c11 -Wall -Wextra -Werror -D_POSIX_C_SOURCE=200809L -I"$inc")
-    "$cc" "${flags[@]}" -c "$2" -o "$1.platform.o" 2>"$1.err" &&
-        "$cc" "${flags[@]}" -c "$src/termination.c" -o "$1.termination.o" 2>>"$1.err" &&
-        "$cc" "${flags[@]}" -c "$tmp/main.c" -o "$1.main.o" 2>>"$1.err" &&
-        "$cc" "$1.main.o" "$1.platform.o" "$1.termination.o" -o "$1" -lpthread 2>>"$1.err"
+    "$cc" "${flags[@]}" "$@" -c "$port" -o "$out.platform.o" 2>"$out.err" &&
+        "$cc" "${flags[@]}" -c "$src/termination.c" -o "$out.termination.o" 2>>"$out.err" &&
+        "$cc" "${flags[@]}" -c "$main" -o "$out.main.o" 2>>"$out.err" &&
+        "$cc" "$out.main.o" "$out.platform.o" "$out.termination.o" -o "$out" -lpthread 2>>"$out.err"
 }
 
 build "$tmp/real" "$src/platform.c" || { cat "$tmp/real.err" >&2; fail "the test did not build"; }
@@ -119,6 +185,22 @@ printf '%s\n' "$out"
 n="$(grep -c 'REFUSED (EPERM)' "$tmp/real.stderr")" || true
 [ "$n" = 1 ] || { cat "$tmp/real.stderr" >&2; fail "the refused priority was reported $n times, not once"; }
 echo "  ok   the refusal was reported once, naming EPERM"
+
+# Case d (issue 3024), a process of its own so its once-only report is fresh.
+build "$tmp/exited" "$src/platform.c" "$tmp/exited.c" -Dpthread_create=nros_test_pthread_create ||
+    { cat "$tmp/exited.err" >&2; fail "case d did not build"; }
+rc=0; out="$("${NROS_DEADLINE[@]}" 20 "$tmp/exited" 2>"$tmp/exited.stderr")" || rc=$?
+printf '%s\n' "$out"
+[ "$rc" -eq 0 ] || { cat "$tmp/exited.stderr" >&2; fail "case d FAILED (exit $rc)"; }
+n="$(grep -c 'REFUSED (EPERM)' "$tmp/exited.stderr")" || true
+[ "$n" = 1 ] || { cat "$tmp/exited.stderr" >&2; fail "case d: the refusal was reported $n times, not once"; }
+rc=0; nros_grep_q -F 'was refused (rc=' "$tmp/exited.stderr" || rc=$?
+case "$rc" in
+    1) ;;
+    0) cat "$tmp/exited.stderr" >&2; fail "case d: a refusal other than EPERM was reported (the priority was set on an exited thread)" ;;
+    *) fail "case d: could not read its stderr (grep exit $rc)" ;;
+esac
+echo "  ok   d a task gone before its creator resumes reports EPERM once, and nothing else"
 
 # Negative control: a port without the EPERM retry fails case a.
 python3 - "$src/platform.c" "$tmp/platform_noretry.c" <<'PY'
