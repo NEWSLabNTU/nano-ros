@@ -61,32 +61,19 @@ safety island's FreeRTOS POSIX parameter census read 148 declared against
 150 seeded (`ego_nearest_dist_threshold`, `ego_nearest_yaw_threshold`
 "seeded, but never declared"), where the build without it reads 150/150.
 
-Not yet diagnosed. Two readings fit the numbers:
+**Cause (diagnosed 2026-11-28, [issue 3020](3020-has-parameter-counts-unadopted-launch-seed.md)):** the defect is in nano-ros, but
+it is older than #5039. `nros_cpp_node_has_param` answers true for a launch
+seed the node has not adopted, where rclcpp answers false. Stock Autoware's
+controllers write
+`has_parameter(p) ? get_parameter<double>(p) : declare_parameter<double>(p)`,
+so once a key is seeded, the declaration is skipped. The slot then keeps the
+type inferred from the seed's text, and the census misses the key. #5039 only
+made the probe seed keys that it had left on defaults before, which exposed
+the departure. The departure is in nros12 images with or without #5039.
 
-- stock Autoware's controllers write
-  `has_parameter(p) ? get_parameter<double>(p) : declare_parameter<double>(p)`.
-  Once the probe seeds a key, `has_parameter` is true during the probe, the
-  declaration never runs, and the census misses the key;
-- partial seeding takes the agreed LAUNCH keys without intersecting them with
-  the keys the node declares, so a launch key no declaration names counts as
-  seeded.
+Two earlier readings are withdrawn. One said the island's census check was
+stricter than the runtime. The other said partial seeding must be intersected
+with the declared set; that change would drop real launch values.
 
-A later reading (2026-11-28) favours the first and says the fix was
-right. Seeded, the code takes the `get` branch, so the code declares 148 keys
-and the launch seeds 150. The image's entry seeds the same keys, and the
-store sizing already counts seeds as declarations (issue 2768), so the store
-is 150 slots either way. On that reading, the island's `check-param-seeds.py`
-rule (seeded keys must be a subset of code-declared keys) is stricter than
-the runtime. An intersect-with-declared fix would then be wrong: it drops
-those keys' launch values from the probe. The redo would be #5039 as it was,
-plus an update to the island's check. The store count has not been measured
-on target.
-
-If the parameter store is sized from that census, the image runs short of
-slots.
-
-**Re-landing needs:** the diagnosis above, then a fix where the census reads
-the same with seeding as without it. Acceptance adds a fixture for the cause
-found (a seeded key read through `has_parameter ? get : declare`, or a launch
-key the node never declares), with the census asserted equal to the build
-without seeding.
+**Re-landing needs:** issue 3020's fix first, then #5039 as it was. The
+census must read 150 declared / 150 seeded with seeding on.
