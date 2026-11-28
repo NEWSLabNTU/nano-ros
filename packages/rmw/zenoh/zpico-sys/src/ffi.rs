@@ -778,6 +778,39 @@ mod cbindgen_stubs {
         0
     }
 
+    /// Put data on a key expression with no declared publisher.
+    ///
+    /// A one-shot `z_put` on a view of `keyexpr`: no publisher slot, no
+    /// declared key resource and no write-filter interest are held after the
+    /// call returns.
+    ///
+    /// # Parameters
+    /// * `keyexpr` - Key expression string, null-terminated. Borrowed for the
+    ///   call.
+    /// * `data` - Pointer to data buffer
+    /// * `len` - Length of data in bytes
+    /// * `attachment` - Pointer to attachment buffer (may be NULL)
+    /// * `attachment_len` - Length of attachment in bytes
+    /// * `is_express` - Non-zero to bypass transmit batching
+    /// * `is_reliable` - Non-zero to wait for the transmit lock (BLOCK)
+    ///   rather than drop
+    ///
+    /// # Returns
+    /// 0 on success, negative error code on failure.
+    #[unsafe(no_mangle)]
+    pub extern "C" fn zpico_put(
+        _session: *mut zpico_session_t,
+        _keyexpr: *const c_char,
+        _data: *const u8,
+        _len: usize,
+        _attachment: *const u8,
+        _attachment_len: usize,
+        _is_express: i32,
+        _is_reliable: i32,
+    ) -> i32 {
+        0
+    }
+
     // ========================================================================
     // Queryable API (for ROS 2 Services)
     // ========================================================================

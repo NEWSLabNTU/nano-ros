@@ -71,12 +71,12 @@ nros-platform-mps2-an385                  24   6     3       8      0
 nros-platform-stm32f4                     15   6     3       2      0
 nros-port-metric-bench                     3   0     0       3      0
 nros-rmw                                  21   7    11      13      0
-nros-rmw-cffi                            414  44     8     235      0
+nros-rmw-cffi                            427  44     8     240      0
 nros-rmw-cyclonedds                        9   0     7       1      0
 nros-rmw-cyclonedds-sys                    2   0     0       1      0
 nros-rmw-metadata                          1   0     0       0      0
 nros-rmw-xrce-cffi                         4   2     0       7      0
-nros-rmw-zenoh                           148  12     5      21      0
+nros-rmw-zenoh                           149  12     5      21      0
 nros-runner-lifetime                       1   0     0       0      0
 nros-sizes-build                          32   0     0       0      0
 nros-smoltcp                             113  19     2      11      0

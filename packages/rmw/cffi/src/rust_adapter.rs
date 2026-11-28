@@ -616,6 +616,10 @@ impl<R: RustBackend> RustBackendAdapter<R> {
         // the NULL-slot inference ("a wake slot means Notify") would claim
         // Notify for a backend whose trait method ignores the callback.
         readiness_source: Some(readiness_source_trampoline::<R>),
+        // Issue 2956 -- installed for every Rust backend: the trait's default
+        // body publishes through the held writer, so a backend that ignores
+        // `on_demand` answers correctly through this slot too.
+        publish_on_demand: Some(publish_on_demand_trampoline::<R>),
         // Phase 124.A — zero-copy slots default to NULL on the
         // generic adapter; per-backend opt-in via dedicated trampolines
         // (see `nros-rmw-zenoh` for the first implementation in 124.A.4).
@@ -909,6 +913,8 @@ unsafe extern "C" fn create_publisher_trampoline<R: RustBackend>(
         // phase-301 (issue 0240) — express hint from the NULLable options
         // struct (NULL = default, not express).
         tx_express: unsafe { options.as_ref() }.is_some_and(|o| o.tx_express != 0),
+        // Issue 2956 -- the on-demand request, same struct.
+        on_demand: unsafe { options.as_ref() }.is_some_and(|o| o.on_demand != 0),
     };
     let qos_settings = qos_from_cffi(unsafe { &*qos });
     match Session::create_publisher(s, &topic, qos_settings) {
@@ -925,6 +931,44 @@ unsafe extern "C" fn create_publisher_trampoline<R: RustBackend>(
                 NROS_RMW_RET_BAD_ALLOC
             }
         },
+        Err(e) => ret_from_error(&e),
+    }
+}
+
+// Issue 2956.
+unsafe extern "C" fn publish_on_demand_trampoline<R: RustBackend>(
+    session: *const NrosRmwSession,
+    publisher: *const NrosRmwPublisher,
+    type_support: *const crate::generated::rmw_message_type_support_t,
+    topic_name: *const core::ffi::c_char,
+    domain_id: u32,
+    payload: crate::generated::rmw_byte_span_t,
+) -> NrosRmwRet {
+    let Some(s) = (unsafe { session_ref::<R::Session>(session) }) else {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    };
+    let Some(p) = (unsafe { publisher_ref::<R::Publisher>(publisher) }) else {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    };
+    let Some(ts) = (unsafe { type_support.as_ref() }) else {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    };
+    let (data, len) = (payload.data, payload.len);
+    if data.is_null() && len != 0 {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
+    // The key's three parts, borrowed for the call. Node and namespace are
+    // not part of a data key, so they are not carried.
+    let topic = TopicInfo::new(
+        unsafe { cstr_to_str(topic_name) },
+        unsafe { cstr_to_str(ts.type_name) },
+        unsafe { cstr_to_str(ts.type_hash) },
+    )
+    .with_domain(domain_id)
+    .with_on_demand(true);
+    let slice = unsafe { core::slice::from_raw_parts(data, len) };
+    match Session::publish_on_demand(s, p, &topic, slice) {
+        Ok(()) => NROS_RMW_RET_OK,
         Err(e) => ret_from_error(&e),
     }
 }
@@ -1011,6 +1055,7 @@ unsafe extern "C" fn create_subscription_trampoline<R: RustBackend>(
         arrival_rate_mhz: opts.map_or(0, |o| o.arrival_rate_mhz),
         // Subscription side — express is a publisher-only hint.
         tx_express: false,
+        on_demand: false,
     };
     let qos_settings = qos_from_cffi(unsafe { &*qos });
     match Session::create_subscription(s, &topic, qos_settings) {

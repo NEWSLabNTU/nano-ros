@@ -38,3 +38,30 @@ pub type RmwSubscriber = <ConcreteSession as Session>::SubscriptionHandle;
 pub type RmwServiceServer = <ConcreteSession as Session>::ServiceHandle;
 /// Concrete service client handle for the active RMW backend.
 pub type RmwServiceClient = <ConcreteSession as Session>::ClientHandle;
+
+// Issue 2956.
+/// Publish `data` on one of the runtime's always-held writers
+/// (`~/transition_event`, `/rosout`, `/parameter_events`), each created with
+/// [`nros_rmw::TopicInfo::with_on_demand`].
+///
+/// The topic is rebuilt here, on the stack, from what the call site already
+/// has: the name the publisher was created on, `M`'s type name and hash, and
+/// the executor's domain. On zenoh that is the whole of what a bare put on
+/// the data key needs, so these writers hold no zenoh publisher; every other
+/// backend publishes through the writer it holds.
+#[cfg(any(
+    feature = "rosout",
+    feature = "param-services",
+    feature = "lifecycle-services"
+))]
+pub(crate) fn publish_on_demand<M: nros_core::RosMessage>(
+    session: &ConcreteSession,
+    publisher: &RmwPublisher,
+    domain_id: u32,
+    data: &[u8],
+) -> Result<(), nros_rmw::TransportError> {
+    let topic = nros_rmw::TopicInfo::new(publisher.topic_name(), M::TYPE_NAME, M::TYPE_HASH)
+        .with_domain(domain_id)
+        .with_on_demand(true);
+    Session::publish_on_demand(session, publisher, &topic, data)
+}

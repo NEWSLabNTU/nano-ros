@@ -254,6 +254,19 @@ unsafe extern "C" {
         attachment: *const u8,
         attachment_len: usize,
     ) -> i32;
+    // Issue 2956.
+    /// A one-shot put on `keyexpr` (NUL-terminated, borrowed
+    /// for the call) with no declared publisher.
+    pub fn zpico_put(
+        session: *mut zpico_session_t,
+        keyexpr: *const core::ffi::c_char,
+        data: *const u8,
+        len: usize,
+        attachment: *const u8,
+        attachment_len: usize,
+        is_express: i32,
+        is_reliable: i32,
+    ) -> i32;
     pub fn zpico_undeclare_publisher(session: *mut zpico_session_t, handle: i32) -> i32;
 
     // Subscribers

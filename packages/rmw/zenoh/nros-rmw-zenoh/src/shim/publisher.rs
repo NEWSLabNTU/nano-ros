@@ -467,7 +467,12 @@ pub(super) mod transient_local {
 ///
 /// Includes RMW attachment support for rmw_zenoh compatibility.
 pub struct ZenohPublisher {
-    publisher: crate::zpico::Publisher<'static>,
+    /// The zenoh publisher this ROS publisher writes through, or `None` for
+    /// an ON-DEMAND publisher, which holds no zenoh publisher and
+    /// is published only through `Session::publish_on_demand`, as a bare put
+    /// on a key built on the stack. The liveliness token, gid and sequence
+    /// number below are kept either way, so the graph lists both alike.
+    publisher: Option<crate::zpico::Publisher<'static>>,
     /// issue 1437 — the profile `qos::admit` GRANTED for this entity, which is
     /// what [`nros_rmw::Publisher::actual_qos`] answers.
     ///
@@ -701,9 +706,15 @@ impl ZenohPublisher {
         shared: Option<crate::zpico::Publisher<'static>>,
     ) -> Result<Self, TransportError> {
         let key = DataKeyexpr::of(topic)?;
+        // Issue 2956 -- an on-demand publisher declares no zenoh publisher.
+        // TRANSIENT_LOCAL keeps one: its retention cache answers late joiners
+        // on the publisher's behalf, which a put cannot.
+        let on_demand =
+            topic.on_demand && qos.durability != nros_rmw::QoSDurabilityPolicy::TransientLocal;
         let publisher = match shared {
-            Some(p) => p,
-            None => declare_data_publisher(context, &key, topic, qos)?,
+            Some(p) => Some(p),
+            None if on_demand => None,
+            None => Some(declare_data_publisher(context, &key, topic, qos)?),
         };
 
         // phase-455 W5 / issue 1341 — the transient-local half. `admit` has
@@ -1051,8 +1062,73 @@ impl ZenohPublisher {
     /// The zenoh publisher handle this publisher publishes on: the session's
     /// data-key table keys on it, and two publishers that report the same
     /// handle share one zenoh publisher.
+    ///
+    /// `-1` for an on-demand publisher, which holds none.
     pub fn zenoh_handle(&self) -> i32 {
-        self.publisher.handle()
+        self.publisher.as_ref().map_or(-1, |p| p.handle())
+    }
+
+    // Issue 2956.
+    /// Whether this publisher holds no zenoh publisher and is
+    /// published through `Session::publish_on_demand` alone.
+    pub fn is_on_demand(&self) -> bool {
+        self.publisher.is_none()
+    }
+
+    /// The zenoh publisher, or the refusal an on-demand publisher gives a
+    /// caller that publishes it directly.
+    fn data_publisher(&self) -> Result<&crate::zpico::Publisher<'static>, TransportError> {
+        self.publisher.as_ref().ok_or(TransportError::Backend(
+            "this publisher was created on demand and holds no zenoh publisher; \
+             publish it through Session::publish_on_demand",
+        ))
+    }
+
+    // Issue 2956.
+    /// Publish `data` as a bare put on `key`, with this
+    /// publisher's own sequence number and gid in the attachment, exactly as
+    /// `publish_raw` stamps them. `key` is the data keyexpr of the topic this
+    /// publisher was created on, built by the caller on its stack.
+    pub(super) fn put_on(
+        &self,
+        context: &Context,
+        key: &DataKeyexpr,
+        data: &[u8],
+        tx_express: bool,
+    ) -> Result<(), TransportError> {
+        self.check_offered_deadline();
+        self.check_liveliness_lost();
+        self.matched.poll(now_ms());
+        #[allow(clippy::useless_conversion)] // i32→i64 on embedded, no-op on std
+        let seq: i64 = (self.sequence_counter.fetch_add(1, Ordering::Relaxed) + 1).into();
+        let ts = self.current_timestamp();
+        let reliable = self.granted_qos.reliability == nros_rmw::QoSReliabilityPolicy::Reliable;
+        let express = tx_express || self.granted_qos.tx_express;
+
+        #[cfg(not(feature = "safety-e2e"))]
+        let result = {
+            let mut att_buf = [0u8; RMW_ATTACHMENT_SIZE];
+            self.serialize_attachment(seq, ts, &mut att_buf);
+            context.put(key.as_nul_bytes(), data, Some(&att_buf), express, reliable)
+        };
+        #[cfg(feature = "safety-e2e")]
+        let result = {
+            let mut att_buf = [0u8; RMW_ATTACHMENT_SIZE_WITH_CRC];
+            self.serialize_attachment(
+                seq,
+                ts,
+                (&mut att_buf[..RMW_ATTACHMENT_SIZE]).try_into().unwrap(),
+            );
+            let crc = nros_rmw::crc32(data);
+            att_buf[RMW_ATTACHMENT_SIZE..RMW_ATTACHMENT_SIZE_WITH_CRC]
+                .copy_from_slice(&crc.to_le_bytes());
+            context.put(key.as_nul_bytes(), data, Some(&att_buf), express, reliable)
+        };
+        let result = result.map_err(TransportError::from);
+        if result.is_ok() {
+            self.last_publish_at_ms.set(now_ms());
+        }
+        result
     }
 }
 
@@ -1095,7 +1171,7 @@ impl Publisher for ZenohPublisher {
             );
 
             let r = self
-                .publisher
+                .data_publisher()?
                 .publish_with_attachment(data, Some(&att_buf))
                 .map_err(TransportError::from);
             if r.is_ok() {
@@ -1129,7 +1205,7 @@ impl Publisher for ZenohPublisher {
             );
 
             let r = self
-                .publisher
+                .data_publisher()?
                 .publish_with_attachment(data, Some(&att_buf))
                 .map_err(TransportError::from);
             if r.is_ok() {
@@ -1190,10 +1266,11 @@ impl Publisher for ZenohPublisher {
         // out-pointer per the 124.E.1 contract.
         unsafe { size_cb(&mut total as *mut usize, user_ctx) };
 
+        let publisher = self.data_publisher()?;
         let rc = unsafe {
             zpico_sys::zpico_publish_streamed(
-                self.publisher.session(),
-                self.publisher.handle(),
+                publisher.session(),
+                publisher.handle(),
                 total,
                 Some(chunk_cb),
                 user_ctx,
@@ -1516,7 +1593,7 @@ mod lending {
             // — no payload copy. Bytes consumed synchronously by
             // z_publisher_put before return on posix/embedded.
             let res = self
-                .publisher
+                .data_publisher()?
                 .publish_with_attachment_aliased(slot.bytes, Some(&att_buf))
                 .map_err(TransportError::from);
             // phase-455 W5 — the loan path DOES hold a contiguous payload (the

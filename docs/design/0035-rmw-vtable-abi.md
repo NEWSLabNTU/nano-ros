@@ -81,7 +81,7 @@ slot, and moved the transport hints (`tx_express`, `rx_buffer_hint`) out of
      first_missing_vtable_slot's require!() list. Do not hand-edit:
      `just check rmw-slot-table` fails on drift (issue 0826). -->
 
-78 slots, 17 of them required.
+79 slots, 17 of them required.
 
 | # | slot | group | required |
 |---|------|-------|----------|
@@ -163,6 +163,7 @@ slot, and moved the transport hints (`tx_express`, `rx_buffer_hint`) out of
 | 76 | `take_request_with_info` | The Jazzy contract's four ADOPT additions | optional |
 | 77 | `take_response_with_info` | The Jazzy contract's four ADOPT additions | optional |
 | 78 | `readiness_source` | The Jazzy contract's four ADOPT additions | optional |
+| 79 | `publish_on_demand` | The Jazzy contract's four ADOPT additions | optional |
 
 <!-- END GENERATED SLOT TABLE -->
 

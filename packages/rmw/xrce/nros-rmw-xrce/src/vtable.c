@@ -211,6 +211,8 @@ static const nros_rmw_vtable_t kVtable = {
      * neither) is what the runtime reads, not this slot's presence. */
     .set_wake_callback = xrce_set_wake_callback,
     .readiness_source = xrce_readiness_source,
+    /* Issue 2956 -- `publish_on_demand` stays NULL: an XRCE publisher is a
+     * DDS writer on the agent, so every publisher holds one. */
 
     /* Phase 124.A — zero-copy ABI. XRCE-DDS-Client uses micro-CDR
      * with caller-provided staging buffers; loan/borrow would

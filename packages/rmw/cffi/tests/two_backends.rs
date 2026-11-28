@@ -234,6 +234,7 @@ unsafe extern "C" fn noop_assert_liveliness(_: *const NrosRmwPublisher) -> NrosR
 static A_VTABLE: NrosRmwVtable = NrosRmwVtable {
     create_session: Some(a_open),
     readiness_source: Some(notify_readiness),
+    publish_on_demand: None,
     destroy_session: Some(noop_close),
     drive_io: Some(a_drive_io),
     create_publisher: Some(a_create_publisher),
@@ -259,6 +260,7 @@ static A_VTABLE: NrosRmwVtable = NrosRmwVtable {
 static B_VTABLE: NrosRmwVtable = NrosRmwVtable {
     create_session: Some(b_open),
     readiness_source: Some(notify_readiness),
+    publish_on_demand: None,
     destroy_session: Some(noop_close),
     drive_io: Some(b_drive_io),
     create_publisher: Some(b_create_publisher),

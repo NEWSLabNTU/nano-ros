@@ -337,6 +337,7 @@ pub const EMPTY_VTABLE: NrosRmwVtable = NrosRmwVtable {
     take_request_with_info: None,
     take_response_with_info: None,
     readiness_source: None,
+    publish_on_demand: None,
 };
 
 /// Compat alias for the generated `rmw_service_t`.
@@ -2358,6 +2359,17 @@ impl CffiSession {
         unsafe { core::ffi::CStr::from_ptr(ptr) }.to_str().ok()
     }
 
+    /// `make_view` from a shared borrow; the backend reads the view and never
+    /// writes through it.
+    fn view_shared(&self) -> NrosRmwSession {
+        NrosRmwSession {
+            node_name: self.node_name_buf.as_ptr().cast(),
+            namespace_: self.namespace_buf.as_ptr().cast(),
+            _reserved: [0u8; 8],
+            backend_data: self.backend_data,
+        }
+    }
+
     fn make_view(&mut self) -> NrosRmwSession {
         NrosRmwSession {
             node_name: self.node_name_buf.as_ptr().cast(),
@@ -3116,7 +3128,11 @@ impl Session for CffiSession {
         // field (language APIs) or `TopicInfo::with_tx_express` (direct RMW).
         let options = rmw_publisher_options_t {
             tx_express: (topic.tx_express || qos.tx_express) as u8,
-            _reserved: [0u8; 7],
+            // Issue 2956 -- asked for only where the backend has the slot that
+            // publishes such a publisher; without it `publish_on_demand`
+            // below falls back to `publish`, which needs a held writer.
+            on_demand: (topic.on_demand && self.vtable.publish_on_demand.is_some()) as u8,
+            _reserved: [0u8; 6],
         };
 
         let mut pub_state = CffiPublisher {
@@ -3222,6 +3238,52 @@ impl Session for CffiSession {
             let _ = &mut v;
         }
         Ok(pub_state)
+    }
+
+    /// Issue 2956 -- through the backend's `publish_on_demand` slot, with the
+    /// topic's key parts marshalled on the stack for the call; a NULL slot
+    /// publishes through `publish`, since `create_publisher` then never
+    /// asked for an on-demand publisher.
+    fn publish_on_demand(
+        &self,
+        publisher: &CffiPublisher,
+        topic: &TopicInfo<'_>,
+        data: &[u8],
+    ) -> Result<(), TransportError> {
+        let Some(slot) = self.vtable.publish_on_demand else {
+            return Publisher::publish_raw(publisher, data);
+        };
+        publisher.poll_status_events();
+        let mut name_buf = [0u8; NAME_BUF_LEN];
+        let mut type_buf = [0u8; NAME_BUF_LEN];
+        let mut hash_buf = [0u8; HASH_BUF_LEN];
+        let topic_ptr = to_c_str(topic.name, &mut name_buf);
+        let type_ptr = to_c_str(topic.type_name, &mut type_buf);
+        let hash_ptr = to_c_str(topic.type_hash, &mut hash_buf);
+        let session_view = self.view_shared();
+        let pub_view = publisher.view_shared();
+        // SAFETY: both views describe live entities of this session, and every
+        // pointer handed over outlives the call.
+        let ret = unsafe {
+            slot(
+                &session_view,
+                &pub_view,
+                &generated::rmw_message_type_support_t {
+                    type_name: type_ptr,
+                    type_hash: hash_ptr,
+                },
+                topic_ptr,
+                topic.domain_id,
+                generated::rmw_byte_span_t {
+                    data: data.as_ptr(),
+                    len: data.len(),
+                },
+            )
+        };
+        if ret != NROS_RMW_RET_OK {
+            return Err(error_from_ret(ret));
+        }
+        Ok(())
     }
 
     fn create_subscription(
@@ -6729,6 +6791,7 @@ mod tests {
     static STUB_VTABLE: NrosRmwVtable = NrosRmwVtable {
         create_session: Some(stub_create_session),
         readiness_source: Some(stub_readiness_notify),
+        publish_on_demand: None,
         destroy_session: Some(stub_destroy_session),
         drive_io: Some(stub_drive_io),
         create_publisher: Some(stub_create_publisher),
@@ -7391,6 +7454,123 @@ mod tests {
             domain_id: 0,
             qos_policies: mask,
         }
+    }
+
+    // Issue 2956 -- the on-demand request reaches a backend only when it has
+    // the slot that publishes such a publisher, and the slot gets the topic
+    // handed back; without the slot the publisher is held and published
+    // through `publish`.
+    mod on_demand {
+        use super::*;
+        use core::sync::atomic::{AtomicU8, AtomicU32, Ordering};
+
+        pub(super) static LAST_ON_DEMAND: AtomicU8 = AtomicU8::new(0xFF);
+        pub(super) static PUBLISHES: AtomicU32 = AtomicU32::new(0);
+        pub(super) static PUTS: AtomicU32 = AtomicU32::new(0);
+        pub(super) static PUT_DOMAIN: AtomicU32 = AtomicU32::new(0);
+        pub(super) static PUT_TOPIC_OK: AtomicU8 = AtomicU8::new(0);
+
+        pub(super) unsafe extern "C" fn create_publisher(
+            _: *const NrosRmwNode,
+            _: *const generated::rmw_message_type_support_t,
+            _: *const core::ffi::c_char,
+            _: u32,
+            _: *const NrosRmwQos,
+            options: *const rmw_publisher_options_t,
+            out: *mut NrosRmwPublisher,
+        ) -> NrosRmwRet {
+            let flag = unsafe { options.as_ref() }.map_or(0xFE, |o| o.on_demand);
+            LAST_ON_DEMAND.store(flag, Ordering::SeqCst);
+            unsafe { (*out).backend_data = core::ptr::dangling_mut::<c_void>() };
+            NROS_RMW_RET_OK
+        }
+        pub(super) unsafe extern "C" fn publish(
+            _: *const NrosRmwPublisher,
+            _: generated::rmw_byte_span_t,
+        ) -> NrosRmwRet {
+            PUBLISHES.fetch_add(1, Ordering::SeqCst);
+            NROS_RMW_RET_OK
+        }
+        pub(super) unsafe extern "C" fn put(
+            _: *const generated::rmw_session_t,
+            _: *const NrosRmwPublisher,
+            ts: *const generated::rmw_message_type_support_t,
+            topic: *const core::ffi::c_char,
+            domain_id: u32,
+            payload: generated::rmw_byte_span_t,
+        ) -> NrosRmwRet {
+            let read = |p: *const core::ffi::c_char| {
+                unsafe { core::ffi::CStr::from_ptr(p) }
+                    .to_str()
+                    .unwrap_or("")
+            };
+            let ts = unsafe { &*ts };
+            let ok = read(topic) == "/n/transition_event"
+                && read(ts.type_name) == "lifecycle_msgs/msg/TransitionEvent"
+                && read(ts.type_hash) == "RIHS01_te"
+                && payload.len == 3;
+            PUT_TOPIC_OK.store(ok as u8, Ordering::SeqCst);
+            PUT_DOMAIN.store(domain_id, Ordering::SeqCst);
+            PUTS.fetch_add(1, Ordering::SeqCst);
+            NROS_RMW_RET_OK
+        }
+    }
+
+    #[test]
+    fn an_on_demand_publisher_is_asked_for_only_where_the_slot_exists() {
+        use core::sync::atomic::Ordering::SeqCst;
+        use on_demand::*;
+        static WITH_SLOT: NrosRmwVtable = NrosRmwVtable {
+            create_publisher: Some(on_demand::create_publisher),
+            publish: Some(on_demand::publish),
+            publish_on_demand: Some(on_demand::put),
+            ..STUB_VTABLE
+        };
+        static WITHOUT_SLOT: NrosRmwVtable = NrosRmwVtable {
+            create_publisher: Some(on_demand::create_publisher),
+            publish: Some(on_demand::publish),
+            publish_on_demand: None,
+            ..STUB_VTABLE
+        };
+        let topic = TopicInfo::new(
+            "/n/transition_event",
+            "lifecycle_msgs/msg/TransitionEvent",
+            "RIHS01_te",
+        )
+        .with_domain(7)
+        .with_on_demand(true);
+
+        let mut session = ba_session(&WITH_SLOT, nros_rmw::QoSPolicyMask(u32::MAX));
+        let p = session
+            .create_publisher(&topic, QoSProfile::default())
+            .expect("publisher");
+        assert_eq!(LAST_ON_DEMAND.load(SeqCst), 1, "asked for: the slot exists");
+        session
+            .publish_on_demand(&p, &topic, &[1, 2, 3])
+            .expect("put");
+        assert_eq!(PUTS.load(SeqCst), 1);
+        assert_eq!(PUT_TOPIC_OK.load(SeqCst), 1, "the topic is handed back");
+        assert_eq!(PUT_DOMAIN.load(SeqCst), 7);
+        assert_eq!(PUBLISHES.load(SeqCst), 0, "not through `publish`");
+
+        let mut session = ba_session(&WITHOUT_SLOT, nros_rmw::QoSPolicyMask(u32::MAX));
+        let p = session
+            .create_publisher(&topic, QoSProfile::default())
+            .expect("publisher");
+        assert_eq!(
+            LAST_ON_DEMAND.load(SeqCst),
+            0,
+            "never asked for without the slot"
+        );
+        session
+            .publish_on_demand(&p, &topic, &[1, 2, 3])
+            .expect("publish");
+        assert_eq!(
+            PUBLISHES.load(SeqCst),
+            1,
+            "a held publisher goes through `publish`"
+        );
+        assert_eq!(PUTS.load(SeqCst), 1);
     }
 
     /// issue 1973 — the backend's create slot receives the RESOLVED policy,

@@ -570,6 +570,9 @@ const nros_rmw_vtable_t kVtable = {
      * being filled: a NO_FOREIGN_WAKE build without the platform's bridge has
      * no wake path and is refused at open (D5). Body in `session.cpp`. */
     /*readiness_source*/ session_readiness_source,
+    /* Issue 2956 -- NULL: this backend holds a writer for every publisher, so
+     * the runtime never asks it for an on-demand one. */
+    /*publish_on_demand*/ nullptr,
 };
 
 } // namespace

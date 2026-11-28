@@ -178,6 +178,9 @@ const nros_rmw_vtable_t kVtable = {
     /* phase-521 W8 (d), issue 2218 — RFC-0113 D4: Notify with the PX4 glue
      * linked, none without it (refused at open, D5). */
     /*readiness_source*/ session_readiness_source,
+    /* Issue 2956 -- NULL: this backend holds a writer for every publisher, so
+     * the runtime never asks it for an on-demand one. */
+    /*publish_on_demand*/ nullptr,
 };
 #pragma GCC diagnostic pop
 

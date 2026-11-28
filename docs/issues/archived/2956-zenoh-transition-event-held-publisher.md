@@ -1,7 +1,9 @@
 ---
 id: 2956
 title: "On zenoh, each managed node holds a publisher for transition_event, because a put needs a key the publisher does not keep"
-status: open
+status: resolved
+resolved: 2026-11-28
+resolved_in: "the change that adds this line"
 type: tech-debt
 area: [zenoh, lifecycle, memory]
 severity: low
@@ -97,4 +99,31 @@ three always-held writers (`~/transition_event`, `/rosout` and
 
 RFC-0128 D7's 2026-11-24 amendment ("`transition_event` stays an ordinary
 publisher on zenoh") is amended again by the change that lands this.
+
+## Resolved (2026-11-28)
+
+Done as ruled. On zenoh the three writers are created with
+`TopicInfo::on_demand` and published through `Session::publish_on_demand`
+(C ABI: `rmw_publisher_options_t::on_demand` and the `publish_on_demand`
+vtable slot). Such a publisher declares no zenoh publisher and keeps its
+liveliness token, gid and sequence number; each sample is a `zpico_put`, a
+`z_put` on a view of the data key built for the call. XRCE and Cyclone leave
+the slot NULL and keep a held writer. `entity.max_publishers` no longer
+counts these writers; their tokens stay in the liveliness pool.
+
+Measured, native `linux_rust_lifecycle` image, glibc heap in use at the first
+spin (three runs each, identical):
+
+| Build | Heap in use |
+| --- | --- |
+| Before (held publishers) | 319,856 B |
+| After (on-demand puts) | 314,800 B |
+| Saved | 5,056 B |
+
+That matches the three publishers measured one by one above
+(1,760 + 1,680 + 1,600 = 5,040 B). Live against stock ROS 2 Humble
+(`rmw_zenoh_cpp`): `ros2 topic info -v /talker/transition_event` lists one
+publisher on node `talker`, `ros2 topic list` lists `/rosout` and
+`/parameter_events`, and `ros2 topic echo /talker/transition_event` printed
+the `deactivate` event that `ros2 lifecycle set /talker deactivate` caused.
 
