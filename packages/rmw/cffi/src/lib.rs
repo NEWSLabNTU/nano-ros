@@ -6109,9 +6109,10 @@ impl nros_rmw::Rmw for CffiRmw {
 /// rule is asked. [`CffiSession`]'s own constructors stay unchecked: they are
 /// the seam a backend's own tests drive directly.
 ///
-/// Issue 3008 -- the check borrows the session and the refusal's log line is
-/// out of line, so the open path that passes it carries neither a second
-/// by-value copy of the session nor the line's format buffer.
+/// The check borrows the session and the refusal's log line is out of line,
+/// so the open path that passes it carries neither a second by-value copy of
+/// the session nor the line's format buffer.
+// Issue 3008.
 #[inline]
 pub fn refuse_without_readiness(session: CffiSession) -> Result<CffiSession, TransportError> {
     if states_no_readiness(&session) {
