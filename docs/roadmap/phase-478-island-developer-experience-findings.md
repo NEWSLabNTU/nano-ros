@@ -814,7 +814,7 @@ AN536) stay green.
 | owned west entry: deploy, workspace modules, nested bringup census, `os_config` base | fixed; used on `nano-ros-next` | issues 2861, 2862, 2864 |
 | owned west entry: `NROS_INTERFACE_SEARCH_PATH` (`asi_tests/asi_*_zephyr/CMakeLists.txt:39-40`) | done: fixed in nano-ros (2876 resolved); the island dropped its lines | issue 2876, I36 |
 | owned entry that never starts nano-ros on the host gets a census (`can_output_test_bringup` `[census] on_missing = "warn"`) | fixed, PR #4671; the island states `runs_nano_ros = false` on `nano-ros-next` `56b9971` | 2871 (archived), I45 (done) |
-| owned entry census adds the entry's workspace `<depend>`s (FreeRTOS `asi_unit_test` / `asi_dds_loopback_test` `add_subdirectory(asi_common)` fallback) | fixed 2026-11-25: the census adds the probe's closure; island fallback removal pending (T4) | issue 2899, I50 |
+| owned entry census adds the entry's workspace `<depend>`s (FreeRTOS `asi_unit_test` / `asi_dds_loopback_test` `add_subdirectory(asi_common)` fallback) | fixed 2026-11-25: the census adds the probe's closure; a nested entry (`src/asi_tests/asi_unit_test`) still missed it, issue 3011; island fallback removal pending (T4) | issue 2899, issue 3011, I50 |
 | owned census goes stale when the entry's CMakeLists changes (a stale census masked issue 2899 locally) | fixed 2026-11-25 | issue 2900, I51 |
 | the probe seeds the parameters instances agree on when they disagree on others (controller's 148 `declare_parameter` defaults, P3) | open | issue 2901, I52 |
 | `nros run` `--forbid`, `--settle`, `--zephyr-workspace` | fixed; used on `nano-ros-next` | issue 2863 |

@@ -52,14 +52,14 @@ pub struct ProbeDep {
 /// The workspace packages the member at `package_dir` needs added, in an order
 /// where each follows the workspace packages it depends on.
 ///
-/// The workspace scanned is the member's parent directory: a component lives
-/// at `<ws>/src/<pkg>`, the rule the probe's interface search root already
-/// uses. A member the scan does not find has no workspace dependencies.
+/// The workspace scanned is the member's whole `<ws>/src/`
+/// ([`workspace_src`]), at any depth. A member the scan does not find has no
+/// workspace dependencies.
 pub fn workspace_deps(package_dir: &Path) -> Result<Vec<ProbeDep>, String> {
-    let Some(root) = package_dir.parent() else {
+    let Some(root) = workspace_src(package_dir) else {
         return Ok(Vec::new());
     };
-    let (pkgs, _) = provider_scan::scan_workspace_packages(root).map_err(|e| format!("{e:#}"))?;
+    let (pkgs, _) = provider_scan::scan_workspace_packages(&root).map_err(|e| format!("{e:#}"))?;
     let Some(me) = pkgs.iter().find(|p| same_dir(&p.dir, package_dir)) else {
         return Ok(Vec::new());
     };
@@ -75,6 +75,24 @@ pub fn workspace_deps(package_dir: &Path) -> Result<Vec<ProbeDep>, String> {
         }
     }
     Ok(deps)
+}
+
+/// The `src/` directory of the workspace the package at `package_dir` is in:
+/// the directory a probe scans for its sibling packages and points its
+/// interface search path at.
+///
+/// The workspace is `model_location::workspace_root`'s, the one rule that
+/// places a package in a workspace (issue 2862), so a package nested below
+/// `src/` (`<ws>/src/asi_tests/asi_unit_test`) is in `<ws>` like any other.
+/// This was the package's parent directory, which is `<ws>/src` only for a
+/// package directly under it: a nested entry scanned `src/asi_tests`, found
+/// none of its dependencies, and its census configured without them. A
+/// package in no workspace keeps its parent, the answer it always had.
+pub fn workspace_src(package_dir: &Path) -> Option<PathBuf> {
+    match nros_orchestration_ir::model_location::workspace_root(package_dir) {
+        Ok(ws) => Some(ws.join("src")),
+        Err(_) => package_dir.parent().map(Path::to_path_buf),
+    }
 }
 
 /// `member`'s build-time dependency closure within `pkgs`, filtered to the
@@ -252,6 +270,27 @@ mod tests {
         assert_eq!(deps[1].dir, src.join("autoware"));
         assert_eq!(deps[1].needs, ["asi_common"]);
         assert!(deps[0].needs.is_empty());
+    }
+
+    /// A package nested below `src/` scans the whole workspace, not its parent:
+    /// ASI's FreeRTOS test entry at `src/asi_tests/asi_unit_test` depends on
+    /// `asi_common` at `src/asi_common`, which its parent does not hold.
+    #[test]
+    fn a_nested_package_finds_dependencies_anywhere_under_src() {
+        let t = tempfile::tempdir().unwrap();
+        let src = t.path().join("src");
+        let entry = package(
+            &src,
+            "asi_tests/asi_unit_test",
+            "asi_unit_test",
+            &[("depend", "asi_common")],
+            true,
+        );
+        package(&src, "asi_common", "asi_common", &[], true);
+        assert_eq!(workspace_src(&entry), Some(src.clone()));
+        let deps = workspace_deps(&entry).unwrap();
+        assert_eq!(names(&deps), ["asi_common"]);
+        assert_eq!(deps[0].dir, src.join("asi_common"));
     }
 
     /// Interface, CMakeLists-less and outside-workspace packages are not
