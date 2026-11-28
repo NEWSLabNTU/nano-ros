@@ -164,6 +164,58 @@ function(_nros_stack_floor_c_frame_flags _out)
     endif()
 endfunction()
 
+# The C flags the cargo road's cc-rs gets: the frame flags plus the path map
+# (issue 3027). Kept apart from `_nros_stack_floor_c_frame_flags`, which the
+# CLI's cargo road mirrors flag for flag.
+function(_nros_stack_floor_cc_flags _out)
+    _nros_stack_floor_c_frame_flags(_f)
+    _nros_stack_floor_path_map(_rmap _cmap)
+    string(STRIP "${_f} ${_cmap}" _f)
+    set(${_out} "${_f}" PARENT_SCOPE)
+endfunction()
+
+# Issue 3027: the walked image must not depend on where the checkout sits.
+# The image embeds the checkout's absolute path in its panic-location and
+# `__FILE__` strings, so a checkout at another path lays the image out
+# differently. `image_data_pointers` (issue 2658) then matches different
+# coincidental data words to function addresses, the bind walk gets a
+# different target set, and one tree walked 50,384 to 52,948 B at four paths.
+# Rewrite the checkout's prefix in those strings, in the stack-floor build's
+# own flags only (rustflags are fingerprinted, so a global change would
+# re-stale every fixture).
+#
+# C gets `-fmacro-prefix-map` and not `-ffile-prefix-map`: only `__FILE__`
+# reaches the image's loaded bytes, and the `.su` and DWARF paths the walk
+# reads stay as the compiler wrote them. RUSTFLAGS and CFLAGS are
+# space-separated, so a checkout path holding a space gets no map. It keeps
+# the old behaviour, which is correct, just path-dependent.
+#
+#   _nros_stack_floor_path_map(<rust flags out> <C flags out>)
+function(_nros_stack_floor_path_map _rust_out _c_out)
+    get_filename_component(_abs "${_NROS_STACK_FLOOR_DIR}/.." ABSOLUTE)
+    get_filename_component(_real "${_NROS_STACK_FLOOR_DIR}/.." REALPATH)
+    set(_rust "")
+    set(_c "")
+    foreach(_p IN LISTS _abs _real)
+        if(_p MATCHES " " OR "--remap-path-prefix=${_p}=/nano-ros" IN_LIST _rust)
+            continue()
+        endif()
+        list(APPEND _rust "--remap-path-prefix=${_p}=/nano-ros")
+        list(APPEND _c "-fmacro-prefix-map=${_p}=/nano-ros")
+    endforeach()
+    list(JOIN _rust " " _rust)
+    list(JOIN _c " " _c)
+    set(${_rust_out} "${_rust}" PARENT_SCOPE)
+    set(${_c_out} "${_c}" PARENT_SCOPE)
+endfunction()
+
+# The Rust half of the same flags: `-C save-temps` plus the path map.
+function(_nros_stack_floor_rust_flags _out)
+    _nros_stack_floor_path_map(_rmap _cmap)
+    string(STRIP "-Csave-temps ${_rmap}" _f)
+    set(${_out} "${_f}" PARENT_SCOPE)
+endfunction()
+
 # The cargo half: every crate of a Corrosion import keeps its post-opt bitcode
 # (`-C save-temps`), and the C that cc-rs compiles inside it writes `.su` files.
 # Call it AFTER any other helper that sets RUSTFLAGS / CFLAGS on the same import.
@@ -183,8 +235,9 @@ function(nros_stack_floor_cargo_env _target)
         message(FATAL_ERROR "nros_stack_floor_cargo_env(${_target}): no Corrosion env target "
             "`${_env_target}` -- call it after the crate is imported")
     endif()
-    _nros_stack_floor_c_frame_flags(_cflags)
-    _nros_stack_floor_merge_env(${_env_target} RUSTFLAGS "-Csave-temps")
+    _nros_stack_floor_cc_flags(_cflags)
+    _nros_stack_floor_rust_flags(_rflags)
+    _nros_stack_floor_merge_env(${_env_target} RUSTFLAGS "${_rflags}")
     _nros_stack_floor_merge_env(${_env_target} CFLAGS "${_cflags}")
     _nros_stack_floor_merge_env(${_env_target} CXXFLAGS "${_cflags}")
 endfunction()
@@ -214,9 +267,10 @@ function(nros_stack_floor_cargo_env_list _out)
     if(NOT _fam STREQUAL "freertos")
         return()
     endif()
-    _nros_stack_floor_c_frame_flags(_cflags)
+    _nros_stack_floor_cc_flags(_cflags)
+    _nros_stack_floor_rust_flags(_rflags)
     set(${_out}
-        "RUSTFLAGS=-Csave-temps"
+        "RUSTFLAGS=${_rflags}"
         "CFLAGS=${_cflags}"
         "CXXFLAGS=${_cflags}"
         PARENT_SCOPE)
@@ -309,8 +363,15 @@ endfunction()
 
 function(_nros_stack_floor_apply_closures)
     get_property(_images GLOBAL PROPERTY NROS_STACK_FLOOR_IMAGES)
+    _nros_stack_floor_path_map(_rmap _cmap)
+    separate_arguments(_cmap UNIX_COMMAND "${_cmap}")
     set(_done "")
     foreach(_exe IN LISTS _images)
+        # Issue 3027: keep the link's relocations in the image, so the walk
+        # counts a function as address-taken only where the linker wrote its
+        # address. The walk refuses an image without them. Not loaded: the
+        # bytes on the target are unchanged.
+        target_link_options("${_exe}" PRIVATE "LINKER:--emit-relocs")
         _nros_stack_floor_closure(${_exe} _closure)
         foreach(_t IN LISTS _closure)
             if("${_t}" IN_LIST _done)
@@ -323,6 +384,9 @@ function(_nros_stack_floor_apply_closures)
                 target_compile_options("${_t}" PRIVATE
                     "$<$<COMPILE_LANGUAGE:C,CXX>:-fstack-usage>"
                     "$<$<AND:$<COMPILE_LANGUAGE:C,CXX>,$<C_COMPILER_ID:GNU>>:-fcallgraph-info=su>")
+                foreach(_m IN LISTS _cmap)
+                    target_compile_options("${_t}" PRIVATE "$<$<COMPILE_LANGUAGE:C,CXX>:${_m}>")
+                endforeach()
             endif()
         endforeach()
     endforeach()
@@ -709,7 +773,8 @@ function(nros_stack_floor_zephyr_cargo_env _out)
     string(TOUPPER "${NROS_RUST_TARGET}" _t)
     string(REPLACE "-" "_" _t "${_t}")
     string(REPLACE "." "_" _t "${_t}")
-    set(${_out} "CARGO_TARGET_${_t}_RUSTFLAGS=-Csave-temps" "RUSTC_WRAPPER=" PARENT_SCOPE)
+    _nros_stack_floor_rust_flags(_rflags)
+    set(${_out} "CARGO_TARGET_${_t}_RUSTFLAGS=${_rflags}" "RUSTC_WRAPPER=" PARENT_SCOPE)
 endfunction()
 
 # The C half of the same lanes (phase-557 W9a, issue 2460): cc-rs builds C
@@ -727,7 +792,7 @@ function(nros_stack_floor_zephyr_cc_env _list_var)
     if(NOT _on OR NOT NROS_RUST_TARGET)
         return()
     endif()
-    _nros_stack_floor_c_frame_flags(_flags)
+    _nros_stack_floor_cc_flags(_flags)
     string(REPLACE "-" "_" _t "${NROS_RUST_TARGET}")
     set(_env "${${_list_var}}")
     foreach(_var IN ITEMS "CFLAGS_${_t}" "CXXFLAGS_${_t}")
@@ -772,6 +837,17 @@ function(nros_stack_floor_zephyr_check)
     zephyr_compile_options(
         "$<$<COMPILE_LANGUAGE:C,CXX>:-fstack-usage>"
         "$<$<AND:$<COMPILE_LANGUAGE:C,CXX>,$<C_COMPILER_ID:GNU>>:-fcallgraph-info=su>")
+    _nros_stack_floor_path_map(_rmap _cmap)
+    separate_arguments(_cmap UNIX_COMMAND "${_cmap}")
+    foreach(_m IN LISTS _cmap)
+        zephyr_compile_options("$<$<COMPILE_LANGUAGE:C,CXX>:${_m}>")
+    endforeach()
+    # Issue 3027: keep the final link's relocations (see
+    # _nros_stack_floor_apply_closures). `zephyr_link_libraries`, not
+    # `zephyr_ld_options`: the latter compile-checks a flag and drops it
+    # silently when the check fails, and the walk then refused every Zephyr
+    # image. Zephyr links through a compiler driver (GCC or Clang), so `-Wl,`.
+    zephyr_link_libraries(-Wl,--emit-relocs)
 
     set(_dir "${CMAKE_BINARY_DIR}/nros/stack-floor")
     file(MAKE_DIRECTORY "${_dir}")

@@ -250,6 +250,20 @@ fn config_linker(hand: &Handoff, triple: &str) -> Option<String> {
 /// flag only behind `-Wl,` and rejects a bare `-Map=`, while a direct linker
 /// (rust-lld, `ld`) takes `-Map=` and rejects `-Wl,`.
 fn map_link_arg(linker: Option<&str>, map: &Path) -> String {
+    link_arg(linker, &format!("-Map={}", map.display()))
+}
+
+/// Issue 3027 -- the rustc flag that keeps the link's relocations in the
+/// image, so the walk counts a function as address-taken only where the
+/// linker wrote its address, never for a word that equals it by chance.
+/// The sections are not loaded: the bytes on the target are unchanged.
+fn emit_relocs_link_arg(linker: Option<&str>) -> String {
+    link_arg(linker, "--emit-relocs")
+}
+
+/// A linker flag as a rustc `-Clink-arg`, behind `-Wl,` when the linker is a
+/// C compiler driver (see `map_link_arg`).
+fn link_arg(linker: Option<&str>, flag: &str) -> String {
     let driver = linker
         .map(|l| {
             let name = Path::new(l)
@@ -262,9 +276,9 @@ fn map_link_arg(linker: Option<&str>, map: &Path) -> String {
         })
         .unwrap_or(false);
     if driver {
-        format!("-Clink-arg=-Wl,-Map={}", map.display())
+        format!("-Clink-arg=-Wl,{flag}")
     } else {
-        format!("-Clink-arg=-Map={}", map.display())
+        format!("-Clink-arg={flag}")
     }
 }
 
@@ -430,8 +444,9 @@ fn plan_one(
         .map(|v| v.to_string_lossy().into_owned())
         .or_else(|| config_linker(hand, &triple));
     let map = format!(
-        "-Csave-temps {}",
-        map_link_arg(linker.as_deref(), &step.map())
+        "-Csave-temps {} {}",
+        map_link_arg(linker.as_deref(), &step.map()),
+        emit_relocs_link_arg(linker.as_deref())
     );
     let inherited = env(&rf);
     merge_env(hand, &rf, &map, inherited);
