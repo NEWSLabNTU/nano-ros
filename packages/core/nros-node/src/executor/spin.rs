@@ -967,6 +967,7 @@ fn create_param_event_pub(
             <Event as RosMessage>::TYPE_HASH,
             qos,
             super::node::ProfileOrigin::Runtime,
+            true,
         );
     }
     let node_name = exec.node_name.clone();
@@ -977,7 +978,9 @@ fn create_param_event_pub(
         <Event as RosMessage>::TYPE_HASH,
     )
     .with_domain(exec.domain_id)
-    .with_namespace(&namespace);
+    .with_namespace(&namespace)
+    // Issue 2956 -- published through `session::publish_on_demand`.
+    .with_on_demand(true);
     if !node_name.is_empty() {
         topic = topic.with_node_name(&node_name);
     }
@@ -1014,6 +1017,8 @@ fn create_rosout_pub(
         <Log as RosMessage>::TYPE_HASH,
         crate::rosout::qos_bounded(),
         super::node::ProfileOrigin::Runtime,
+        // Issue 2956 -- published through `session::publish_on_demand`.
+        true,
     )
 }
 
@@ -1026,18 +1031,30 @@ fn create_rosout_pub(
 /// the queue is process-wide and whichever executor spins first drains it, so
 /// a record from another executor's node is published under this executor's
 /// first node. Its `Log.name` still names the logger that raised it.
-#[cfg(feature = "rosout")]
+// Issue 2956 -- test-only, so gated exactly as its only callers' module
+// (`executor::tests`, which a `rmw-cffi` build compiles out).
+#[cfg(all(test, feature = "rosout", feature = "alloc", not(feature = "rmw-cffi")))]
 pub(crate) fn rosout_route<'a>(
     nodes: &'a [super::node_record::NodeRecord],
     logger: &str,
 ) -> Option<&'a session::RmwPublisher> {
+    rosout_route_on(nodes, logger).map(|(p, _)| p)
+}
+
+/// [`rosout_route`] plus the session slot the writer's node is on, which
+/// `session::publish_on_demand` publishes through (issue 2956).
+#[cfg(feature = "rosout")]
+fn rosout_route_on<'a>(
+    nodes: &'a [super::node_record::NodeRecord],
+    logger: &str,
+) -> Option<(&'a session::RmwPublisher, u8)> {
     let mut first = None;
     for r in nodes {
         let Some(p) = r.rosout.publisher() else {
             continue;
         };
         if first.is_none() {
-            first = Some(p);
+            first = Some((p, r.session_idx));
         }
         let name = r.name.as_str();
         if logger == name
@@ -1045,7 +1062,7 @@ pub(crate) fn rosout_route<'a>(
                 && logger.starts_with(name)
                 && logger.as_bytes()[name.len()] == b'.')
         {
-            return Some(p);
+            return Some((p, r.session_idx));
         }
     }
     first
@@ -6386,6 +6403,7 @@ impl<'s> Executor<'s> {
             <M as RosMessage>::TYPE_HASH,
             qos,
             super::node::ProfileOrigin::Application,
+            false,
         )?;
         // RFC-0052 W3b.4 — attach the contracted endpoint's counter cell.
         let monitor = self
@@ -6421,6 +6439,7 @@ impl<'s> Executor<'s> {
             type_hash,
             qos,
             super::node::ProfileOrigin::Application,
+            false,
         )?;
         Ok(crate::executor::handles::EmbeddedRawPublisher {
             handle,
@@ -6461,6 +6480,9 @@ impl<'s> Executor<'s> {
     /// create the backend publisher handle. Mirrors
     /// `register_subscription_buffered_raw_on`'s session resolution so a
     /// bridge's source sub + dest pub agree on topic construction.
+    // Issue 2956 -- `on_demand` is the eighth: the writer's put shape, which the
+    // topic construction below must see, so it rides with the rest.
+    #[allow(clippy::too_many_arguments)]
     fn create_raw_publisher_handle_on(
         &mut self,
         node_id: super::node_record::NodeId,
@@ -6469,6 +6491,7 @@ impl<'s> Executor<'s> {
         type_hash: &str,
         qos: QoSProfile,
         origin: super::node::ProfileOrigin,
+        on_demand: bool,
     ) -> Result<session::RmwPublisher, NodeError> {
         let (node_name, ns, session_idx, overrides) = {
             let r = self
@@ -6505,9 +6528,12 @@ impl<'s> Executor<'s> {
             nros_rmw::QoSOverrideRole::Publisher,
             overrides,
         );
+        // Issue 2956 -- `on_demand` for the runtime's always-held writers,
+        // which publish through `session::publish_on_demand`.
         let mut topic = TopicInfo::new(topic_name, type_name, type_hash)
             .with_domain(self.domain_id)
-            .with_namespace(&ns);
+            .with_namespace(&ns)
+            .with_on_demand(on_demand);
         if !node_name.is_empty() {
             topic = topic.with_node_name(&node_name);
         }
@@ -13173,7 +13199,7 @@ impl<'s> Executor<'s> {
             // SAFETY: see the matching invariant on the later call site.
             #[cfg(feature = "lifecycle-services")]
             for lc in s.lifecycle.iter_mut() {
-                let _ = unsafe { lc.state.process() };
+                let _ = unsafe { lc.state.process(&s.session, s.domain_id) };
             }
 
             // phase-474 I7 -- an idle spin is the natural slot for the queued
@@ -13880,7 +13906,7 @@ impl<'s> Executor<'s> {
         // stays live for as long as the executor (see that method's docs).
         #[cfg(feature = "lifecycle-services")]
         for lc in s.lifecycle.iter_mut() {
-            if let Ok(n) = unsafe { lc.state.process() } {
+            if let Ok(n) = unsafe { lc.state.process(&s.session, s.domain_id) } {
                 result.services_handled += n;
             }
         }
@@ -14723,10 +14749,25 @@ impl<'s> Executor<'s> {
             return;
         }
         let nodes = &self.nodes;
+        let primary = &*self.session;
+        let extras = &self.extra_sessions;
+        let domain_id = self.domain_id;
         let result = crate::rosout::pump_routed(|logger, bytes| {
-            use nros_rmw::Publisher as _;
-            match rosout_route(nodes, logger) {
-                Some(p) => p.publish_raw(bytes).map_err(|_| ()),
+            let Some((p, idx)) = rosout_route_on(nodes, logger) else {
+                return Err(());
+            };
+            // Issue 2956 -- the writer is on-demand: published through its
+            // node's session, with the topic rebuilt for the call.
+            let session = if idx == 0 {
+                Some(primary)
+            } else {
+                extras.get((idx - 1) as usize)
+            };
+            match session {
+                Some(s) => session::publish_on_demand::<nros_rcl_interfaces::msg::Log>(
+                    s, p, domain_id, bytes,
+                )
+                .map_err(|_| ()),
                 None => Err(()),
             }
         });
@@ -15560,7 +15601,10 @@ impl<'s> Executor<'s> {
                 Msg::TYPE_HASH,
             )
             .with_domain(domain_id)
-            .with_namespace(namespace);
+            .with_namespace(namespace)
+            // Issue 2956 -- published through `session::publish_on_demand`
+            // (`LifecycleRuntimeState::announce_transitions`).
+            .with_on_demand(true);
             if !node_name.is_empty() {
                 info = info.with_node_name(node_name);
             }
@@ -17244,6 +17288,10 @@ impl<'s> Executor<'s> {
                 break;
             };
             let idx = event.node.index();
+            // Issue 2956 -- the session the event's publisher is on: its
+            // node's, or the primary for the executor-identity publisher
+            // (`create_param_event_pub`).
+            let session_idx = self.nodes.get(idx).map_or(0, |r| r.session_idx);
             let mut fqn = heapless::String::<256>::new();
             match self.nodes.get(idx) {
                 Some(r) => {
@@ -17292,8 +17340,22 @@ impl<'s> Executor<'s> {
             );
             match encoded {
                 Some(n) => {
-                    use nros_rmw::Publisher as _;
-                    if publisher.publish_raw(&buffers.reply_mut()[..n]).is_err() {
+                    // Issue 2956 -- the writer is on-demand.
+                    let session = if session_idx == 0 {
+                        Some(&*self.session)
+                    } else {
+                        self.extra_sessions.get((session_idx - 1) as usize)
+                    };
+                    let sent = session.is_some_and(|s| {
+                        session::publish_on_demand::<nros_rcl_interfaces::msg::ParameterEvent>(
+                            s,
+                            publisher,
+                            self.domain_id,
+                            &buffers.reply_mut()[..n],
+                        )
+                        .is_ok()
+                    });
+                    if !sent {
                         lost = lost.saturating_add(1);
                     }
                 }

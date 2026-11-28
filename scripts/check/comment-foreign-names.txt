@@ -75,7 +75,6 @@ z_bytes_writer
 z_clock
 z_config_drop
 z_publisher_put_options::attachment
-z_put
 z_random
 z_send_ping
 z_serialize_uint32

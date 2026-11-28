@@ -200,6 +200,7 @@ static VTABLE: NrosRmwVtable = NrosRmwVtable {
     destroy_client: Some(stub_destroy_client),
     service_server_is_available: Some(stub_server_available),
     readiness_source: Some(stub_readiness),
+    publish_on_demand: None,
     supported_qos_policies: Some(stub_qos),
     ..EMPTY_VTABLE
 };

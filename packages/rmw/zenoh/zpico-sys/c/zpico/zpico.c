@@ -4274,6 +4274,62 @@ int32_t zpico_publish_with_attachment(zpico_session_t* session, int32_t handle, 
     return ZPICO_OK;
 }
 
+// Issue 2956 — a put with no declared publisher. A declared zenoh-pico
+// publisher keeps about 1.4-1.8 KB of heap for its life (its declared key
+// resource and its write-filter interest, each with a copy of the key); a
+// `z_put` on a view key holds neither once it returns. The runtime's
+// always-held writers (`~/transition_event`, `/rosout`, `/parameter_events`)
+// publish this way. The congestion rule is `zpico_declare_publisher_ex`'s,
+// per put, since there is no publisher to carry it.
+int32_t zpico_put(zpico_session_t* session, const char* keyexpr, const uint8_t* data, size_t len,
+                  const uint8_t* attachment, size_t attachment_len, int32_t is_express,
+                  int32_t is_reliable) {
+    struct zpico_session* s = (struct zpico_session*)session;
+    if (keyexpr == NULL || (data == NULL && len != 0)) {
+        return ZPICO_ERR_INVALID;
+    }
+    if (!s->session_open) {
+        return ZPICO_ERR_SESSION;
+    }
+
+    z_view_keyexpr_t ke;
+    if (z_view_keyexpr_from_str(&ke, keyexpr) < 0) {
+        return ZPICO_ERR_KEYEXPR;
+    }
+
+    z_owned_bytes_t payload;
+    if (z_bytes_copy_from_buf(&payload, data, len) < 0) {
+        return ZPICO_ERR_PUBLISH;
+    }
+
+    z_put_options_t options;
+    z_put_options_default(&options);
+    options.is_express = (is_express != 0);
+    if (is_reliable != 0) {
+        options.congestion_control = Z_CONGESTION_CONTROL_BLOCK;
+    }
+#if defined(ZPICO_TX_BATCH) && ZPICO_TX_BATCH == 1
+    options.congestion_control = Z_CONGESTION_CONTROL_BLOCK;
+#endif
+
+    z_owned_bytes_t attachment_bytes;
+    if (attachment != NULL && attachment_len > 0) {
+        if (z_bytes_copy_from_buf(&attachment_bytes, attachment, attachment_len) < 0) {
+            z_bytes_drop(z_bytes_move(&payload));
+            return ZPICO_ERR_PUBLISH;
+        }
+        options.attachment = z_bytes_move(&attachment_bytes);
+    }
+
+    if (z_put(z_session_loan(&s->session), z_view_keyexpr_loan(&ke), z_bytes_move(&payload),
+              &options) < 0) {
+        _zpico_report_link_tx_failures(s);
+        return ZPICO_ERR_PUBLISH;
+    }
+
+    return ZPICO_OK;
+}
+
 // Phase 99.F — zero-copy publish via z_bytes_from_static_buf.
 // Aliases the payload pointer instead of copying. Caller guarantees
 // `data` outlives the call (z_publisher_put consumes the alias

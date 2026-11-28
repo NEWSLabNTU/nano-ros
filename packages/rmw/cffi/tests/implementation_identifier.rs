@@ -171,6 +171,7 @@ unsafe extern "C" fn noop_reg_pub_event(
 const BASE: NrosRmwVtable = NrosRmwVtable {
     create_session: Some(open),
     readiness_source: Some(notify_readiness),
+    publish_on_demand: None,
     destroy_session: Some(noop_close),
     drive_io: Some(noop_drive_io),
     create_publisher: Some(noop_create_pub),

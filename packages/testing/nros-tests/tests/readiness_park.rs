@@ -261,6 +261,7 @@ static VTABLE: NrosRmwVtable = NrosRmwVtable {
     create_client: Some(stub_create_client),
     destroy_client: Some(stub_destroy_client),
     readiness_source: Some(stub_readiness),
+    publish_on_demand: None,
     // No `set_wake_callback`: nothing but the handle can end the park.
     ..EMPTY_VTABLE
 };

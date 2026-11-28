@@ -242,8 +242,10 @@ pub struct rmw_session_options_t {
 pub struct rmw_publisher_options_t {
     #[doc = " Express hint (`TopicInfo::tx_express` across\n  the C ABI): non-zero = this publisher's samples bypass transport\n  tx batching. A transport hint, not a DDS policy — no RxO\n  matching."]
     pub tx_express: u8,
+    #[doc = " On-demand request: non-zero = the runtime publishes this publisher\n  ONLY through `vtable->publish_on_demand`, handing the topic back on\n  every call. A backend may then hold no transport writer for it, only\n  its graph identity (zenoh: a liveliness token, gid and sequence\n  number), and put each sample on a key it builds per call. A backend\n  that does not act on it holds the writer as for any publisher. The\n  runtime sets it only when `publish_on_demand` is non-NULL."]
+    pub on_demand: u8,
     #[doc = "< Reserved; must be zero."]
-    pub _reserved: [u8; 7usize],
+    pub _reserved: [u8; 6usize],
 }
 #[doc = " Subscription creation options — the home for subscription-side\n transport hints (upstream: `rmw_subscription_options_t`). Passed as a\n NULLable trailing param to `create_subscription`; NULL = all defaults."]
 #[repr(C)]
@@ -964,6 +966,17 @@ pub struct nros_rmw_vtable_t {
             session: *const rmw_session_t,
             out_kind: *mut u8,
             out_handle: *mut i32,
+        ) -> rmw_ret_t,
+    >,
+    #[doc = " Publish one sample on a publisher created with\n  `rmw_publisher_options_t::on_demand`.\n\n  Optional, appended. No upstream counterpart: upstream's publisher is\n  always a held writer. The runtime hands the topic back on every call\n  (@p type_support, @p topic_name and @p domain_id are what it passed to\n  `create_publisher`), so a backend that holds no writer for the\n  publisher can build the topic's transport key for this call and put on\n  it. Every string is borrowed for the call only.\n\n  A backend that holds a writer for @p publisher (it ignored\n  `on_demand`, or the profile needs one, such as TRANSIENT_LOCAL)\n  publishes through it, as `publish` does.\n\n  NULL slot: the runtime never sets `on_demand` and publishes through\n  `publish`."]
+    pub publish_on_demand: ::core::option::Option<
+        unsafe extern "C" fn(
+            session: *const rmw_session_t,
+            publisher: *const rmw_publisher_t,
+            type_support: *const rmw_message_type_support_t,
+            topic_name: *const core::ffi::c_char,
+            domain_id: u32,
+            payload: rmw_byte_span_t,
         ) -> rmw_ret_t,
     >,
 }

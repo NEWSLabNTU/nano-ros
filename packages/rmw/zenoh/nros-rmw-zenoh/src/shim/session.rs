@@ -1577,11 +1577,16 @@ impl Session for ZenohSession {
         // its own, exactly as before: sharing is not something a user
         // publisher asked for, and `declare_node_topic_writer` is the explicit
         // way to opt in.
-        let shared = if shares_stock_writer(topic.name) {
-            self.share_data_publisher(topic, &qos)
-        } else {
-            None
-        };
+        // Issue 2956 -- an on-demand publisher shares nothing and declares
+        // nothing: it puts on its own key per call (`publish_on_demand`).
+        let shared =
+            if topic.on_demand && qos.durability != nros_rmw::QoSDurabilityPolicy::TransientLocal {
+                None
+            } else if shares_stock_writer(topic.name) {
+                self.share_data_publisher(topic, &qos)
+            } else {
+                None
+            };
         let mut publisher = ZenohPublisher::new_on(&self.context, topic, None, &qos, shared)?;
         self.note_data_publisher(publisher.zenoh_handle(), topic, &qos);
         // Phase 268 W2 — ensure a per-node NN token for this publisher's node.
@@ -1603,6 +1608,23 @@ impl Session for ZenohSession {
         publisher.set_liveliness(liveliness_token);
         publisher.set_gid(gid);
         Ok(publisher)
+    }
+
+    /// Issue 2956 -- an on-demand publisher holds no zenoh publisher, so its
+    /// sample is a bare `z_put` on the topic's data key, built here on the
+    /// stack from `topic`; nothing of the key is held after the call. A
+    /// publisher that holds one (every other publisher) publishes through it.
+    fn publish_on_demand(
+        &self,
+        publisher: &Self::PublisherHandle,
+        topic: &TopicInfo<'_>,
+        data: &[u8],
+    ) -> Result<(), Self::Error> {
+        if !publisher.is_on_demand() {
+            return nros_rmw::Publisher::publish_raw(publisher, data);
+        }
+        let key = super::publisher::DataKeyexpr::of(topic)?;
+        publisher.put_on(&self.context, &key, data, topic.tx_express)
     }
 
     fn create_subscription(

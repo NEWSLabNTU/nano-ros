@@ -1665,7 +1665,8 @@ mod tests {
         assert!(joined.infra().lifecycle);
 
         // And the derived knobs move with them: the monitor table, the
-        // `/diagnostics` reporter and the lifecycle publisher, and a
+        // `/diagnostics` reporter (the lifecycle publisher is on demand, issue
+        // 2956, so it claims a token and no publisher slot), and a
         // scheduling-context table for every authored sched task.
         let (Derivation::Derived(before), Derivation::Derived(after)) =
             (probed().derive(), joined.derive())
@@ -1674,7 +1675,7 @@ mod tests {
         };
         assert_eq!(before.max_monitors, None);
         assert_eq!(after.max_monitors, Some(1));
-        assert_eq!(after.max_publishers, before.max_publishers + 2, "{after:?}");
+        assert_eq!(after.max_publishers, before.max_publishers + 1, "{after:?}");
         assert_eq!(
             after.max_sc,
             1 + 3,
@@ -1852,10 +1853,11 @@ mod tests {
         assert_eq!(bare.max_publishers, none.max_publishers);
         assert_eq!(bare.max_nodes, none.max_nodes);
         let lc = derive(families(false, true, 1));
-        assert_eq!(
-            lc.max_publishers,
-            bare.max_publishers + 1,
-            "~/transition_event"
+        // Issue 2956 -- `~/transition_event` is on demand: a token, no slot.
+        assert_eq!(lc.max_publishers, bare.max_publishers, "~/transition_event");
+        assert!(
+            lc.max_liveliness > bare.max_liveliness,
+            "~/transition_event's token"
         );
         // RFC-0128 D8 -- the machine lives on the component's node.
         assert_eq!(lc.max_nodes, bare.max_nodes, "no node slot of its own");

@@ -1608,6 +1608,28 @@ typedef struct nros_rmw_vtable_t {
     rmw_ret_t (*readiness_source)(const rmw_session_t *session,
         uint8_t *out_kind, int32_t *out_handle);
 
+    /** Publish one sample on a publisher created with
+     *  `rmw_publisher_options_t::on_demand`.
+     *
+     *  Optional, appended. No upstream counterpart: upstream's publisher is
+     *  always a held writer. The runtime hands the topic back on every call
+     *  (@p type_support, @p topic_name and @p domain_id are what it passed to
+     *  `create_publisher`), so a backend that holds no writer for the
+     *  publisher can build the topic's transport key for this call and put on
+     *  it. Every string is borrowed for the call only.
+     *
+     *  A backend that holds a writer for @p publisher (it ignored
+     *  `on_demand`, or the profile needs one, such as TRANSIENT_LOCAL)
+     *  publishes through it, as `publish` does.
+     *
+     *  NULL slot: the runtime never sets `on_demand` and publishes through
+     *  `publish`. */
+    rmw_ret_t (*publish_on_demand)(const rmw_session_t *session,
+        const rmw_publisher_t *publisher,
+        const rmw_message_type_support_t *type_support,
+        const char *topic_name, uint32_t domain_id,
+        rmw_byte_span_t payload);
+
 } nros_rmw_vtable_t;
 
 /** Values of `readiness_source`'s `*out_kind`. */

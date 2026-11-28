@@ -46,6 +46,14 @@ pub struct TopicInfo<'a> {
     /// the next flush). For control-tier / latency-sensitive topics. Ignored by
     /// subscriptions and by backends without a batching concept.
     pub tx_express: bool,
+    /// Publisher-side "on demand" request: the caller publishes this
+    /// publisher only through [`Session::publish_on_demand`], handing the
+    /// topic back on every call. A backend that can put on a key it builds
+    /// per call (zenoh) may then hold no transport writer for it, only its
+    /// graph identity; any other backend ignores the request and holds the
+    /// writer as usual, which `publish_on_demand`'s default body publishes
+    /// through. Ignored by subscriptions.
+    pub on_demand: bool,
 }
 
 impl<'a> TopicInfo<'a> {
@@ -61,6 +69,7 @@ impl<'a> TopicInfo<'a> {
             rx_buffer_hint: 0,
             arrival_rate_mhz: 0,
             tx_express: false,
+            on_demand: false,
         }
     }
 
@@ -90,6 +99,12 @@ impl<'a> TopicInfo<'a> {
     /// on). For control-tier / latency-sensitive topics.
     pub const fn with_tx_express(mut self, express: bool) -> Self {
         self.tx_express = express;
+        self
+    }
+
+    /// Ask for an on-demand publisher: see [`Self::on_demand`].
+    pub const fn with_on_demand(mut self, on_demand: bool) -> Self {
+        self.on_demand = on_demand;
         self
     }
 
@@ -2059,6 +2074,35 @@ pub trait Session {
         service: &ServiceInfo,
         qos: QoSProfile,
     ) -> Result<Self::ClientHandle, Self::Error>;
+
+    /// Publish `data` on `publisher`, which was created from `topic`.
+    ///
+    /// The partner of [`TopicInfo::on_demand`]. The caller hands the topic
+    /// back on every call, so a backend that holds no writer for an
+    /// on-demand publisher can still build the topic's transport key, on the
+    /// stack, and put on it. The publisher keeps its graph identity (zenoh:
+    /// its liveliness token, gid and sequence number), so a peer sees the
+    /// same publisher it would see for a held one.
+    ///
+    /// `topic` must describe the topic `publisher` was created on; a backend
+    /// is not obliged to check, and a different topic publishes there.
+    ///
+    /// The default publishes through the held writer, which is what every
+    /// backend that ignores `on_demand` has. `&self`: a put changes nothing
+    /// session-side, and the caller may hold a borrow of the publisher's
+    /// owner beside it.
+    fn publish_on_demand(
+        &self,
+        publisher: &Self::PublisherHandle,
+        topic: &TopicInfo<'_>,
+        data: &[u8],
+    ) -> Result<(), Self::Error>
+    where
+        Self::PublisherHandle: Publisher<Error = Self::Error>,
+    {
+        let _ = topic;
+        publisher.publish_raw(data)
+    }
 
     /// Close the session, releasing transport resources. All entity
     /// handles created from this session must already be dropped.

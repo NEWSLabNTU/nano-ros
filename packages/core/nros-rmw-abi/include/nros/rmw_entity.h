@@ -812,7 +812,15 @@ typedef struct rmw_publisher_options_t {
      *  tx batching. A transport hint, not a DDS policy — no RxO
      *  matching. */
     uint8_t tx_express;
-    uint8_t _reserved[7];     /**< Reserved; must be zero. */
+    /** On-demand request: non-zero = the runtime publishes this publisher
+     *  ONLY through `vtable->publish_on_demand`, handing the topic back on
+     *  every call. A backend may then hold no transport writer for it, only
+     *  its graph identity (zenoh: a liveliness token, gid and sequence
+     *  number), and put each sample on a key it builds per call. A backend
+     *  that does not act on it holds the writer as for any publisher. The
+     *  runtime sets it only when `publish_on_demand` is non-NULL. */
+    uint8_t on_demand;
+    uint8_t _reserved[6];     /**< Reserved; must be zero. */
 } rmw_publisher_options_t;
 
 /**

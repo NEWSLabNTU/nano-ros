@@ -47,12 +47,13 @@ use zpico_sys::{
     zpico_declare_subscriber, zpico_declare_subscriber_direct_write, zpico_declare_subscriber_ring,
     zpico_declare_subscriber_with_attachment, zpico_get_zid, zpico_init, zpico_init_with_config,
     zpico_is_open, zpico_open, zpico_publish, zpico_publish_with_attachment,
-    zpico_publish_with_attachment_aliased, zpico_query_reply, zpico_queryable_request_attachment,
-    zpico_queryable_take_reply_seq, zpico_queryables_declared, zpico_reply_slot_declines,
-    zpico_reply_slot_refusals_total, zpico_reply_slot_stats, zpico_reply_slot_take_announcement,
-    zpico_session_acquire, zpico_session_release, zpico_session_t, zpico_set_connect_timeout,
-    zpico_spin_once, zpico_undeclare_liveliness, zpico_undeclare_publisher,
-    zpico_undeclare_queryable, zpico_undeclare_subscriber, zpico_uses_polling,
+    zpico_publish_with_attachment_aliased, zpico_put, zpico_query_reply,
+    zpico_queryable_request_attachment, zpico_queryable_take_reply_seq, zpico_queryables_declared,
+    zpico_reply_slot_declines, zpico_reply_slot_refusals_total, zpico_reply_slot_stats,
+    zpico_reply_slot_take_announcement, zpico_session_acquire, zpico_session_release,
+    zpico_session_t, zpico_set_connect_timeout, zpico_spin_once, zpico_undeclare_liveliness,
+    zpico_undeclare_publisher, zpico_undeclare_queryable, zpico_undeclare_subscriber,
+    zpico_uses_polling,
 };
 
 // ============================================================================
@@ -593,6 +594,51 @@ impl Context {
     /// process network data and dispatch callbacks.
     pub fn uses_polling(&self) -> bool {
         ffi_guard(|| unsafe { zpico_uses_polling() })
+    }
+
+    // Issue 2956.
+    /// Put `data` on `keyexpr` with no declared publisher.
+    ///
+    /// `keyexpr` is NUL-terminated, as for [`Self::declare_publisher`], and
+    /// borrowed for the call only: nothing of the key outlives it. `reliable`
+    /// and `tx_express` mean what they mean at `declare_publisher`, applied
+    /// to this one put.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the session is not open, the key expression is
+    /// invalid, or the put fails.
+    pub fn put(
+        &self,
+        keyexpr: &[u8],
+        data: &[u8],
+        attachment: Option<&[u8]>,
+        tx_express: bool,
+        reliable: bool,
+    ) -> Result<()> {
+        if keyexpr.last() != Some(&0) {
+            return Err(ZpicoError::KeyExpr);
+        }
+        let (att_ptr, att_len) = match attachment {
+            Some(a) => (a.as_ptr(), a.len()),
+            None => (core::ptr::null(), 0),
+        };
+        let ret = ffi_guard(|| unsafe {
+            zpico_put(
+                self.handle,
+                keyexpr.as_ptr().cast(),
+                data.as_ptr(),
+                data.len(),
+                att_ptr,
+                att_len,
+                tx_express as i32,
+                reliable as i32,
+            )
+        });
+        if ret < 0 {
+            return Err(ZpicoError::from_code(ret));
+        }
+        Ok(())
     }
 
     /// Declare a publisher for the given key expression

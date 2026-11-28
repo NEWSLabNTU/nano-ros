@@ -254,3 +254,89 @@ fn only_the_stock_writers_share_a_zenoh_publisher() {
     drop((alpha, beta, first, second));
     session.close().expect("close the session");
 }
+
+// ============================================================================
+// issue 2956 -- an on-demand publisher holds no zenoh publisher
+// ============================================================================
+
+/// Issue 2956 -- a publisher created with `TopicInfo::with_on_demand` is a
+/// publisher in the graph (its liveliness token is declared) that holds no
+/// zenoh publisher, refuses a direct `publish_raw`, and delivers through
+/// `Session::publish_on_demand` as a bare put on the key built for the call,
+/// with the rmw_zenoh attachment.
+#[test]
+fn an_on_demand_publisher_holds_no_zenoh_publisher_and_still_delivers() {
+    use nros_rmw::{Publisher as _, Session as _, Subscription as _, TopicInfo};
+    let router = router();
+    let locator = router.locator();
+    let config = TransportConfig {
+        locator: Some(locator.as_str()),
+        mode: SessionMode::Client,
+        properties: &[("multicast_scouting", "false")],
+        node_name: "on_demand_writer",
+        namespace: "",
+        domain_id: 0,
+    };
+    let _turn = support::session_turn();
+    let mut session = ZenohTransport::open(&config).expect("open zenoh session");
+    const TOPIC: &str = "/on_demand_writer/transition_event";
+    let topic = TopicInfo::new(
+        TOPIC,
+        "lifecycle_msgs::msg::dds_::TransitionEvent_",
+        "TypeHashNotSupported",
+    )
+    .with_node_name("on_demand_writer");
+    let qos = QoSProfile::default();
+
+    let mut subscriber = session
+        .create_subscription(&topic, qos)
+        .expect("the watching subscription");
+    let writer = session
+        .create_publisher(&topic.clone().with_on_demand(true), qos)
+        .expect("the on-demand writer");
+    assert!(
+        writer.is_on_demand(),
+        "no zenoh publisher was declared for it"
+    );
+    assert_eq!(writer.zenoh_handle(), -1);
+    assert!(
+        matches!(
+            writer.publish_raw(&[0, 1, 0, 0]),
+            Err(nros_rmw::TransportError::Backend(_))
+        ),
+        "a direct publish names the on-demand path instead of reaching a handle"
+    );
+    assert!(
+        wait_until(5, || matches!(session.count_publishers(TOPIC), Ok(1))),
+        "the graph still lists the writer as a publisher: {:?}",
+        session.count_publishers(TOPIC)
+    );
+
+    let payload = [0u8, 1, 0, 0, 7, 0, 0, 0];
+    let mut buf = [0u8; 64];
+    let delivered = wait_until(5, || {
+        session
+            .publish_on_demand(&writer, &topic, &payload)
+            .expect("the put");
+        let _ = session.drive_io(50);
+        matches!(subscriber.take_serialized(&mut buf), Ok(Some(n)) if buf[..n] == payload)
+    });
+    assert!(
+        delivered,
+        "a put on the rebuilt key reached the topic's subscriber"
+    );
+
+    // A held publisher answers `publish_on_demand` through its own handle.
+    let held = session
+        .create_publisher(&topic.clone().with_node_name("held_writer"), qos)
+        .expect("an ordinary publisher");
+    assert!(!held.is_on_demand());
+    session
+        .publish_on_demand(&held, &topic, &payload)
+        .expect("a held publisher publishes through its handle");
+
+    drop(held);
+    drop(writer);
+    drop(subscriber);
+    session.close().expect("close the session");
+}

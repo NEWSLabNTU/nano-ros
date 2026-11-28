@@ -194,6 +194,7 @@ unsafe extern "C" fn notify_readiness(
 static VTABLE: NrosRmwVtable = NrosRmwVtable {
     create_session: Some(open),
     readiness_source: Some(notify_readiness),
+    publish_on_demand: None,
     destroy_session: Some(close),
     drive_io: Some(drive_io),
     create_publisher: Some(create_publisher),

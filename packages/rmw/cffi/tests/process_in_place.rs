@@ -230,6 +230,7 @@ fn base_vtable() -> NrosRmwVtable {
     NrosRmwVtable {
         create_session: Some(stub_open),
         readiness_source: Some(notify_readiness),
+        publish_on_demand: None,
         destroy_session: Some(stub_close),
         drive_io: Some(stub_drive_io),
         create_publisher: Some(stub_create_publisher),

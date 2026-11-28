@@ -1114,10 +1114,18 @@ impl LifecycleRuntimeState {
     /// # Safety
     /// Same contract as [`LifecycleServiceServers::process`] — `change_state`
     /// dispatches a user-supplied C callback through a raw function pointer.
-    pub(crate) unsafe fn process(&mut self) -> Result<usize, NodeError> {
+    ///
+    /// `session` and `domain_id` are what `~/transition_event` was created on
+    /// (the executor's primary session, `register_lifecycle_services`); the
+    /// announcement is published on demand through them (issue 2956).
+    pub(crate) unsafe fn process(
+        &mut self,
+        session: &crate::session::ConcreteSession,
+        domain_id: u32,
+    ) -> Result<usize, NodeError> {
         // SAFETY: forwarded via this function's own unsafe contract.
         let handled = unsafe { self.services.process_services(&mut self.state_machine) };
-        self.announce_transitions();
+        self.announce_transitions(session, domain_id);
         handled
     }
 
@@ -1127,9 +1135,7 @@ impl LifecycleRuntimeState {
     /// node's STATE is already what the services report, and refusing to spin
     /// because an announcement did not reach the wire would turn a missed
     /// notification into a stopped node.
-    fn announce_transitions(&mut self) {
-        use nros_rmw::Publisher as _;
-
+    fn announce_transitions(&mut self, session: &crate::session::ConcreteSession, domain_id: u32) {
         while let Some(ev) = self.state_machine.take_announcement() {
             let mut buf = [0u8; TRANSITION_EVENT_TX_BUF];
             let Ok(mut w) = crate::tx_writer(&mut buf) else {
@@ -1147,7 +1153,14 @@ impl LifecycleRuntimeState {
                 continue;
             }
             let len = w.position();
-            let _ = self.transition_event.publish_raw(&buf[..len]);
+            // Issue 2956 -- on-demand: on zenoh a bare put on the data key,
+            // with no zenoh publisher held for it.
+            let _ = crate::session::publish_on_demand::<nros_lifecycle_msgs::msg::TransitionEvent>(
+                session,
+                &self.transition_event,
+                domain_id,
+                &buf[..len],
+            );
         }
 
         // A bounded queue that discards without counting is the defect

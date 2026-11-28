@@ -326,6 +326,26 @@ ADDED = {
             "block in, which is exactly the shape RFC-0113 retires"
         ),
     ),
+    "publish_on_demand": Added(
+        ret="rmw_ret_t",
+        args=(
+            "const rmw_session_t *",
+            "const rmw_publisher_t *",
+            "const rmw_message_type_support_t *",
+            "const char *",
+            "uint32_t",
+            "rmw_byte_span_t",
+        ),
+        why=(
+            "issue 2956: the runtime's always-held writers (`~/transition_event`, "
+            "`/rosout`, `/parameter_events`) publish with the topic handed back on "
+            "every call, so a backend that can put on a key it builds per call holds "
+            "no transport writer for them. On zenoh-pico a declared publisher keeps "
+            "about 1.4-1.8 KB of heap for its life and a put on a view key keeps "
+            "none. Upstream's `rmw_publish` takes only the publisher, because "
+            "upstream's publisher is always a held writer"
+        ),
+    ),
     "ping_session": Added(
         ret="rmw_ret_t",
         args=("rmw_session_t *", "int32_t"),

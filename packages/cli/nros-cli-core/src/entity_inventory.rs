@@ -2101,6 +2101,11 @@ impl InfraServices {
     /// phase-556 W13 -- plus [`ROSOUT_PUBLISHERS`] per node
     /// ([`Self::rosout_nodes`]) when the effective features carry `rosout`:
     /// the executor creates each node's `/rosout` writer.
+    ///
+    /// Issue 2956 -- every one of these is an ON-DEMAND writer: a ROS
+    /// publisher in the graph (a liveliness token each, counted in the
+    /// liveliness pool) that holds no zenoh publisher. So this count is
+    /// TOKENS, and it is not part of `MAX_PUBLISHERS`.
     pub fn publishers(self, components: usize) -> usize {
         // Issue 2553 -- one `transition_event` per state machine.
         let lifecycle = LIFECYCLE_SERVICE_PUBLISHERS * self.lifecycle_machines();
@@ -5438,6 +5443,13 @@ impl EntityInventory {
         // `~/transition_event`, and `register_lifecycle_services` creates it.
         // VOLATILE (measured against upstream), so it lands here and in the
         // liveliness pool below, and NOT in `tl_queryables`.
+        //
+        // Issue 2956 -- all three runtime writers (`~/transition_event`,
+        // `/parameter_events`, `/rosout`) are created ON DEMAND and publish
+        // through `Session::publish_on_demand`. On zenoh, the one backend
+        // whose publisher table this knob sizes, such a writer holds no
+        // zenoh publisher, so it claims NO publisher slot -- only its
+        // liveliness token, which stays in the liveliness pool below.
         let infra_publishers = self.infra.publishers(components);
         // Issue 1676 -- and a CONTRACTED image's `/diagnostics` reporter: one
         // publisher per executor that installs a non-empty monitor table
@@ -5450,7 +5462,6 @@ impl EntityInventory {
         let contract_reporters = self.contract_reporters();
         let max_publishers = n(EntityKind::Publisher.tag())
             + n(EntityKind::ActionServer.tag()) * ACTION_SERVER_PUBLISHERS
-            + infra_publishers
             + contract_reporters;
         let param_service_nodes = self.infra.param_nodes(components);
         let lifecycle_machines = self.infra.lifecycle_machines();
@@ -5522,6 +5533,7 @@ impl EntityInventory {
         // field), so they are taken back out of the queryable term here.
         let max_liveliness = node_tokens
             + max_publishers
+            + infra_publishers
             + max_subscribers
             + (max_queryables - tl_queryables)
             + attached_servers
@@ -5540,7 +5552,7 @@ impl EntityInventory {
         // servers and publisher. Spelled as that difference's terms, not as a
         // subtraction, so a term added to one side cannot silently land in
         // the other.
-        let entity_liveliness_tokens = (max_publishers - infra_publishers)
+        let entity_liveliness_tokens = max_publishers
             + (max_subscribers - infra_subscribers)
             + local_query_servers
             + local_query_clients;
@@ -5578,7 +5590,6 @@ impl EntityInventory {
                         "action-server publishers",
                         n(EntityKind::ActionServer.tag()) * ACTION_SERVER_PUBLISHERS,
                     ),
-                    ("runtime publishers", infra_publishers),
                     ("contract reporters", contract_reporters),
                 ],
             },
@@ -5599,6 +5610,7 @@ impl EntityInventory {
                 terms: vec![
                     ("node tokens", node_tokens),
                     ("publishers", max_publishers),
+                    ("runtime on-demand publishers", infra_publishers),
                     ("subscribers", max_subscribers),
                     ("queryables", max_queryables - tl_queryables),
                     ("lifecycle servers sharing a queryable", attached_servers),
@@ -9307,10 +9319,11 @@ contracts:
             params.param_service_nodes > 1,
             "precondition: several nodes carry the family"
         );
+        // Issue 2956 -- both writers are on demand: a token each (below),
+        // and no zenoh publisher slot.
         assert_eq!(
-            params.max_publishers - none.max_publishers,
-            PARAM_EVENT_PUBLISHERS * params.param_service_nodes + 2 * ROSOUT_PUBLISHERS,
-            "one `/parameter_events` writer per node, one `/rosout` per node"
+            params.max_publishers, none.max_publishers,
+            "the `/parameter_events` and `/rosout` writers claim no publisher slot"
         );
         assert_eq!(
             params.max_queryables - none.max_queryables,
@@ -9356,10 +9369,15 @@ contracts:
         let none = knobs("");
         let lifecycle = knobs("lifecycle");
 
+        // Issue 2956 -- the announcement writer is on demand: its token is
+        // paid, and no zenoh publisher slot.
         assert_eq!(
-            lifecycle.max_publishers - none.max_publishers,
-            LIFECYCLE_SERVICE_PUBLISHERS,
-            "declaring `lifecycle` buys the `~/transition_event` publisher a slot"
+            lifecycle.max_publishers, none.max_publishers,
+            "`~/transition_event` claims no publisher slot"
+        );
+        assert!(
+            lifecycle.max_liveliness - none.max_liveliness >= LIFECYCLE_SERVICE_PUBLISHERS,
+            "but its liveliness token is paid"
         );
         assert_eq!(
             lifecycle.max_queryables - none.max_queryables,
@@ -9425,10 +9443,15 @@ structure:
             2 * nros_sizing_descriptor::infra::ZENOH_LIFECYCLE_QUERYABLES,
             "two managed nodes: two machines, not one per image"
         );
+        // Issue 2956 -- each `transition_event` is on demand: no publisher
+        // slot, one liveliness token per machine.
         assert_eq!(
-            two.max_publishers - none.max_publishers,
-            2 * LIFECYCLE_SERVICE_PUBLISHERS,
-            "one `transition_event` per machine"
+            two.max_publishers, none.max_publishers,
+            "`transition_event` claims no publisher slot"
+        );
+        assert!(
+            two.max_liveliness - one.max_liveliness >= LIFECYCLE_SERVICE_PUBLISHERS,
+            "the second machine's `transition_event` still pays its token"
         );
     }
 
@@ -9453,10 +9476,8 @@ structure:
         let stock = knobs(&infra_model("rosout"));
         // The fixture model has two nodes, so two writers of each (issue
         // 2493: `/parameter_events` too is one writer per node).
-        assert_eq!(
-            stock.max_publishers - none.max_publishers,
-            2 * PARAM_EVENT_PUBLISHERS + 2 * ROSOUT_PUBLISHERS
-        );
+        // Issue 2956 -- on demand: no slot, a token each.
+        assert_eq!(stock.max_publishers, none.max_publishers);
         assert_eq!(
             stock.max_queryables - none.max_queryables,
             PARAM_SERVICE_QUERYABLES * stock.param_service_nodes,
@@ -10064,9 +10085,12 @@ execution:
             assert_eq!(k.max_queryables, feature.max_queryables, "{autostart:?}");
             assert_eq!(k.max_publishers, feature.max_publishers, "{autostart:?}");
             assert_eq!(
-                k.max_publishers,
-                none.max_publishers + LIFECYCLE_SERVICE_PUBLISHERS,
-                "{autostart:?}: the block must pay for `transition_event`"
+                k.max_liveliness, feature.max_liveliness,
+                "{autostart:?}: the block must pay for `transition_event`'s token"
+            );
+            assert!(
+                k.max_liveliness > none.max_liveliness,
+                "{autostart:?}: the block must pay for `transition_event`'s token"
             );
         }
 

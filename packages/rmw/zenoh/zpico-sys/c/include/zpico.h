@@ -298,6 +298,10 @@ typedef void (*ZpicoQueryCallback)(const char *keyexpr,
  * Caller guarantees `data` outlives the call.
  */
 /**
+ * A one-shot put on `keyexpr` (NUL-terminated, borrowed
+ * for the call) with no declared publisher.
+ */
+/**
  * Claim the head slot for reading; -1 when empty.
  */
 /**
@@ -941,6 +945,36 @@ int32_t zpico_publish_with_attachment(struct zpico_session_t *_session,
                                       size_t _len,
                                       const uint8_t *_attachment,
                                       size_t _attachment_len);
+
+/**
+ * Put data on a key expression with no declared publisher.
+ *
+ * A one-shot `z_put` on a view of `keyexpr`: no publisher slot, no
+ * declared key resource and no write-filter interest are held after the
+ * call returns.
+ *
+ * # Parameters
+ * * `keyexpr` - Key expression string, null-terminated. Borrowed for the
+ *   call.
+ * * `data` - Pointer to data buffer
+ * * `len` - Length of data in bytes
+ * * `attachment` - Pointer to attachment buffer (may be NULL)
+ * * `attachment_len` - Length of attachment in bytes
+ * * `is_express` - Non-zero to bypass transmit batching
+ * * `is_reliable` - Non-zero to wait for the transmit lock (BLOCK)
+ *   rather than drop
+ *
+ * # Returns
+ * 0 on success, negative error code on failure.
+ */
+int32_t zpico_put(struct zpico_session_t *_session,
+                  const char *_keyexpr,
+                  const uint8_t *_data,
+                  size_t _len,
+                  const uint8_t *_attachment,
+                  size_t _attachment_len,
+                  int32_t _is_express,
+                  int32_t _is_reliable);
 
 /**
  * Declare a queryable for receiving service requests.

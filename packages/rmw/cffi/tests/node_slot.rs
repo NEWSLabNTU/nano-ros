@@ -236,6 +236,7 @@ fn topic_on<'a>(node: &'a str, name: &'a str) -> TopicInfo<'a> {
         rx_buffer_hint: 0,
         arrival_rate_mhz: 0,
         tx_express: false,
+        on_demand: false,
     }
 }
 
