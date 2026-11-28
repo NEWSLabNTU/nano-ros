@@ -274,11 +274,11 @@ nano-ros builds `third-party/threadx/kernel` from the fork [NEWSLabNTU/threadx](
 | | |
 | --- | --- |
 | Upstream base | `v6.4.5.202504_rel` (merge base [4b6e8100d932](https://github.com/eclipse-threadx/threadx/commit/4b6e8100d932a3a67b34c6eb17f84f3bffb9e2ae)) |
-| Commits on top | 4 |
+| Commits on top | 5 |
 | Upstream commits the pin lacks | 0 |
-| Files changed | 2, +107/−8 |
+| Files changed | 3, +162/−36 |
 
-**Pinned commit:** `ee703dae8045e682d36f8cbf7a0099901d32ffec`
+**Pinned commit:** `36ce16ff1c3a558ac19b6eaaa66c3126d820bddd`
 
 ### Commits on top of upstream
 
@@ -288,12 +288,13 @@ nano-ros builds `third-party/threadx/kernel` from the fork [NEWSLabNTU/threadx](
 | [9a29f1bd3f](https://github.com/NEWSLabNTU/threadx/commit/9a29f1bd3f07bd19d085b9e90f8fa7a77479dfa7) | fix: key the LP64 thread-timeout compensation on the data model, not __x86_64__ |
 | [9fdb09bea8](https://github.com/NEWSLabNTU/threadx/commit/9fdb09bea84bb773371d407d90682bb5cebe0f8d) | fix(linux port): run each thread on its own ThreadX stack |
 | [ee703dae80](https://github.com/NEWSLabNTU/threadx/commit/ee703dae8045e682d36f8cbf7a0099901d32ffec) | fix(linux port): raise a below-floor thread stack, never hang on it |
+| [36ce16ff1c](https://github.com/NEWSLabNTU/threadx/commit/36ce16ff1c3a558ac19b6eaaa66c3126d820bddd) | fix(linux port): count the tick from CLOCK_MONOTONIC and deliver every owed tick |
 
 Reproduce:
 
 ```bash
 base=v6.4.5.202504_rel
-head=NEWSLabNTU:threadx:ee703dae8045e682d36f8cbf7a0099901d32ffec
+head=NEWSLabNTU:threadx:36ce16ff1c3a558ac19b6eaaa66c3126d820bddd
 gh api "repos/eclipse-threadx/threadx/compare/$base...$head" --jq '.ahead_by'
 ```
 
