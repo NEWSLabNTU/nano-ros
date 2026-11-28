@@ -47,10 +47,22 @@ is the drift check's sight. Each build still checks its own stack against
 its own walk, so a real image is not under-checked. The lane that watches
 the walk over time is the one that stops seeing.
 
+## Ruling (2026-11-29)
+
+The user ruled, asked directly in the manager session: **options 1 then 3,
+not 2.**
+- Re-baseline the stale rows after the nros12 release.
+- From then on, the lane reports a fall beyond a band in the job summary as
+  work to do, without failing.
+- No two-sided band.
+
+The fix lands with or after issue 3027's change, once the stack-floor hold
+for the release lifts.
+
 ## Fix
 
 The check should not be able to hold a row to a number its own walk no
-longer reaches. Options, one for a ruling:
+longer reaches. The options as they were put for the ruling:
 
 1. **Re-baseline.** Re-walk the three rows and record what main walks, with
    the date and host in `method`, as every earlier re-walk did. This is
@@ -68,7 +80,8 @@ and moves none of these three by more than 644 B on the same build.
 
 ## Acceptance
 
-- No row's recorded `static` is more than the chosen fall band above what
-  main walks.
-- A future fall beyond that band is reported by the lane in a form that
-  cannot be missed (a failure, or a job-summary row), per the ruling.
+- After nros12, no row's recorded `static` is more than the fall band above
+  what main walks (re-baselined, with date and host in `method`).
+- A later fall beyond that band appears as a row in the drift lane's job
+  summary, naming the row and the re-measure commands. It does not fail the
+  lane.
