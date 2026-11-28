@@ -657,9 +657,7 @@ impl Context {
     /// returned executor borrows the backing for `'b` rather than living
     /// forever. rclrs has no counterpart — it allocates.
     ///
-    /// `backing` must hold at least `ExecutorSizing::DEFAULT.u64_len()` words;
-    /// `ExecutorSizing::DEFAULT.owning().u64_len()` also carves the slot that
-    /// lets a sched task share this executor's session.
+    /// `backing` must hold at least `ExecutorSizing::DEFAULT.u64_len()` words.
     /// A shorter slice is [`InitError::BackingTooSmall`] naming both numbers,
     /// never undefined behaviour: this is the safe wrapper around the `unsafe`
     /// `Executor::open_in`, and the length check is what makes it safe. Size
@@ -678,16 +676,7 @@ impl Context {
         &self,
         backing: &'b mut [MaybeUninit<u64>],
     ) -> Result<Executor<'b>, InitError> {
-        // Issue 2845 -- a backing with room for the owned-session slot
-        // (`ExecutorSizing::DEFAULT.owning().u64_len()` words) carves it, so a
-        // sched task may share this executor's session; a backing sized as
-        // before still opens, with the session inline and never shared.
-        let owning = ExecutorSizing::DEFAULT.owning();
-        let sizing = if backing.len() >= owning.u64_len() {
-            owning
-        } else {
-            ExecutorSizing::DEFAULT
-        };
+        let sizing = ExecutorSizing::DEFAULT;
         let needed = sizing.u64_len();
         let given = backing.len();
         if given < needed {

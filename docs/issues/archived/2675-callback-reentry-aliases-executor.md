@@ -125,4 +125,4 @@ Acceptance, item by item:
 
 One residue is tracked separately. Without `alloc`, an owned session is still
 shared from inside its owner
-([issue 2845](2845-owned-session-from-executor-backing.md), phase-573 W6).
+([issue 2845](../2845-owned-session-from-executor-backing.md), phase-573 W6).

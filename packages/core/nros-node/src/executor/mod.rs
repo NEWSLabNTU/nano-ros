@@ -243,9 +243,9 @@ pub use spin::{
 };
 #[cfg(any(has_rmw, test))]
 pub use storage::{
-    ExecutorInlineStorage, ExecutorSizing, INLINE_BACKING_U64S, INLINE_SIZING, OwnedSessionSlot,
-    RegionUnit, RegionUnits, executor_storage_layout, executor_storage_layout_with,
-    executor_storage_u64_len, levels_backing_bytes, levels_executor_sizing,
-    sched_task_backing_bytes, sched_task_executor_sizing, sched_task_sizing,
+    ExecutorInlineStorage, ExecutorSizing, INLINE_BACKING_U64S, INLINE_SIZING, RegionUnit,
+    RegionUnits, executor_storage_layout, executor_storage_layout_with, executor_storage_u64_len,
+    levels_backing_bytes, levels_executor_sizing, sched_task_backing_bytes,
+    sched_task_executor_sizing, sched_task_sizing,
 };
 pub use types::*;

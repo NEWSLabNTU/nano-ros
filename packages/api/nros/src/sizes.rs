@@ -163,9 +163,6 @@ mod rmw_sizes {
     // image that fits, so the two numbers stay separate rather than one being
     // reused for both jobs.
     export_size!(pub EXECUTOR_VALUE_SIZE = nros_node::Executor<'static>);
-    // Issue 2845 -- the C++ context's owned-session slot, which sits beside the
-    // embedded C executor rather than in its `_opaque`.
-    export_size!(pub OWNED_SESSION_SLOT_SIZE = nros_node::OwnedSessionSlot);
     export_size!(pub GUARD_CONDITION_SIZE = nros_node::GuardCondition);
     export_size!(pub LIFECYCLE_CTX_SIZE  = nros_node::lifecycle::LifecyclePollingNodeCtx);
     // Phase 91.C: nros-c's `ActionServerInternal` embeds this nros-node

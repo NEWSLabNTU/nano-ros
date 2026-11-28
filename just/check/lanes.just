@@ -4672,21 +4672,6 @@ miri-executor-reentry:
             echo "miri-executor-reentry: the filter matched no test -- renamed, or its cfg is off." >&2
             exit 1 ;;
     esac
-    # Phase-573 W6 (issue 2845) -- an owned session carved outside its owner,
-    # WITHOUT `alloc`: in the backing, and in a slot beside it reached by raw
-    # field projection under a whole-context reborrow (the C++ `CtxRef` shape).
-    rc=0
-    out3="$(MIRIFLAGS="-Zmiri-tree-borrows -Zmiri-ignore-leaks" \
-        cargo +{{NIGHTLY}} miri test -p nros-node --lib \
-        --features log,sim-time \
-        w6_owned_session_tests 2>&1)" || rc=$?
-    printf '%s\n' "$out3"
-    [ "$rc" -eq 0 ] || exit "$rc"
-    case "$out3" in
-        *"test result: ok. 0 passed;"*|*"running 0 tests"*)
-            echo "miri-executor-reentry: the W6 filter matched no test." >&2
-            exit 1 ;;
-    esac
 
 # phase-573 W5e (issue 2728) -- a use-after-free that only AddressSanitizer
 # sees. A read of freed memory with no assertion on the result passes every
