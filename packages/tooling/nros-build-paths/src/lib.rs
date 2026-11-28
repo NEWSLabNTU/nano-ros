@@ -1588,6 +1588,85 @@ pub mod locate {
         std::fs::read_dir(p).is_ok_and(|mut d| d.next().is_some())
     }
 
+    /// The files whose change can move [`resolve`]'s answer for `row`, for a
+    /// build system that resolved once and must know when to resolve again.
+    ///
+    /// Every path returned exists, so a build system can depend on it
+    /// without re-running forever over a missing one. What a file cannot
+    /// state is not here: the row's environment variable, and a checkout's
+    /// UNCOMMITTED edits (which flip [`checkout_edit`] without moving any
+    /// file git owns). A caller that must see those re-asks the ladder and
+    /// compares the answer, as `nros build` does.
+    ///
+    /// - `project_dir`'s `system.toml` (the `[sources]` rung);
+    /// - the store row directory `<store>/sources/<name>`, or its nearest
+    ///   existing ancestor under the store, whose entries change when a store
+    ///   copy is provisioned or removed;
+    /// - for a submodule row, the checkout `dest` directory (initialised or
+    ///   not) and git's own `HEAD` for it, plus the ref `HEAD` names and
+    ///   `packed-refs`, so a commit on a checked-out branch counts too. Those
+    ///   paths come from `git rev-parse --git-path`, never from a model of
+    ///   git's layout.
+    #[must_use]
+    pub fn watch_inputs(row: &Row, ctx: &Ctx, project_dir: Option<&Path>) -> Vec<PathBuf> {
+        // Issue 3019: a cmake configure registered only the index, so a store
+        // copy appearing or a submodule moving off its pin changed the answer
+        // and the build kept compiling the tree it located first.
+        let mut out = Vec::new();
+        let mut push = |p: PathBuf| {
+            if p.exists() && !out.contains(&p) {
+                out.push(p);
+            }
+        };
+        if let Some(d) = project_dir {
+            push(d.join("system.toml"));
+        }
+        if row.in_store {
+            let mut p = ctx.store.join("sources").join(&row.name);
+            while !p.exists() {
+                match p.parent() {
+                    Some(parent) if parent.starts_with(&ctx.store) => p = parent.to_path_buf(),
+                    _ => break,
+                }
+            }
+            push(p);
+        }
+        if let (true, Some(d), Some(c)) =
+            (row.submodule, row.dest.as_deref(), ctx.checkout.as_ref())
+        {
+            let dir = c.join(d);
+            // A tree whose own build writes into it would move its own
+            // directory's entries on every build.
+            if !row.builds_in_place {
+                push(dir.clone());
+            }
+            if present(&dir) && dir.join(".git").exists() {
+                let git = |args: &[&str]| {
+                    crate::git_env::nros_git_command("git")
+                        .arg("-C")
+                        .arg(&dir)
+                        .args(args)
+                        .output()
+                        .ok()
+                        .filter(|o| o.status.success())
+                        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+                        .filter(|s| !s.is_empty())
+                };
+                let mut names = vec!["HEAD".to_string(), "packed-refs".to_string()];
+                if let Some(r) = git(&["symbolic-ref", "-q", "HEAD"]) {
+                    names.push(r);
+                }
+                for n in &names {
+                    if let Some(p) = git(&["rev-parse", "--path-format=absolute", "--git-path", n])
+                    {
+                        push(PathBuf::from(p));
+                    }
+                }
+            }
+        }
+        out
+    }
+
     /// Walk the ladder.
     pub fn resolve(row: &Row, ctx: &Ctx) -> Result<Answer, Refusal> {
         let mut trace = Vec::new();
@@ -2004,6 +2083,72 @@ ref = \"0123456789abcdef0123456789abcdef01234567\"
                 store_key(&row_from_index(INDEX, "rosidl").unwrap()),
                 "humble-5621b26"
             );
+        }
+
+        #[test]
+        fn watch_inputs_name_what_can_move_the_answer() {
+            // Issue 3019.
+            let t = tmp("watch");
+            let checkout = t.join("co");
+            let d = checkout.join("third-party/zp");
+            fill(&d);
+            let git = |args: &[&str]| {
+                let ok = crate::git_env::nros_git_command("git")
+                    .arg("-C")
+                    .arg(&d)
+                    .args(args)
+                    .output()
+                    .unwrap()
+                    .status
+                    .success();
+                assert!(ok, "git {args:?}");
+            };
+            git(&["init", "-q", "-b", "nano-ros"]);
+            git(&["-c", "user.name=t", "-c", "user.email=t@t", "add", "x"]);
+            git(&[
+                "-c",
+                "user.name=t",
+                "-c",
+                "user.email=t@t",
+                "commit",
+                "-q",
+                "-m",
+                "x",
+            ]);
+            let project = t.join("proj");
+            std::fs::create_dir_all(&project).unwrap();
+            std::fs::write(project.join("system.toml"), "").unwrap();
+            let row = row_from_index(SUB, "zp").unwrap();
+            let ctx = Ctx {
+                checkout: Some(checkout),
+                store: t.join("s"),
+                ..Ctx::default()
+            };
+            std::fs::create_dir_all(&ctx.store).unwrap();
+
+            let w = watch_inputs(&row, &ctx, Some(&project));
+            assert!(w.contains(&project.join("system.toml")), "{w:?}");
+            // No `sources/zp` yet: the nearest existing ancestor under the
+            // store, whose entries change when the row's directory appears.
+            assert!(w.contains(&ctx.store), "{w:?}");
+            assert!(w.contains(&d), "{w:?}");
+            let gd = d.join(".git");
+            assert!(w.contains(&gd.join("HEAD")), "{w:?}");
+            assert!(w.contains(&gd.join("refs/heads/nano-ros")), "{w:?}");
+            assert!(w.iter().all(|p| p.exists()), "{w:?}");
+
+            let row_dir = ctx.store.join("sources/zp");
+            std::fs::create_dir_all(&row_dir).unwrap();
+            let w = watch_inputs(&row, &ctx, None);
+            assert!(w.contains(&row_dir) && !w.contains(&ctx.store), "{w:?}");
+
+            // A tree whose build writes into it is not watched as a directory.
+            let inplace = Row {
+                builds_in_place: true,
+                ..row.clone()
+            };
+            assert!(!watch_inputs(&inplace, &ctx, None).contains(&d));
+            let _ = std::fs::remove_dir_all(&t);
         }
 
         #[test]

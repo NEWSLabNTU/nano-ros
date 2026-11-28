@@ -87,6 +87,14 @@ gate-visibility:
 cpp-lane-compiler:
     @python3 scripts/check-cpp-lane-compiler.py
 
+# Issue 3019 -- a configured build re-configures when what the locate ladder
+# read moves: no cmake file asks the source ladder outside NanoRosLocate.cmake,
+# and its one helper registers the CLI's stated inputs (self-test: a real cmake
+# + ninja configure, moving each kind of input).
+[private]
+locate-configure-inputs:
+    @python3 scripts/check/check-locate-configure-inputs.py
+
 # Forbid `find` scans for git-tracked files (7m36s -> 0.8s, measured).
 # Ratchet: no NEW `grep -q` conditional that reads a tool error as a
 # non-match (issue 0726). Existing sites are baselined per file.

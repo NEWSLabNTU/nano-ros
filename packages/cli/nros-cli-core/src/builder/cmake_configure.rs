@@ -83,6 +83,9 @@ const ENV_NOISE: &[&str] = &["CARGO_MAKEFLAGS", "CARGO_PKG_VERSION"];
 pub struct ConfigureStamp {
     build_dir: PathBuf,
     body: String,
+    /// The handoff's own environment, which the configure ran with and a
+    /// re-ask of the locate ladder must run with too.
+    handoff_env: Vec<(OsString, OsString)>,
 }
 
 impl ConfigureStamp {
@@ -150,7 +153,11 @@ impl ConfigureStamp {
         for (k, v) in vars {
             body.push_str(&format!("env {k}={v}\n"));
         }
-        Some(Self { build_dir, body })
+        Some(Self {
+            build_dir,
+            body,
+            handoff_env: cfg.env.clone(),
+        })
     }
 
     /// The build dir this stamp belongs to.
@@ -165,13 +172,15 @@ impl ConfigureStamp {
 
     /// True when the configure may be skipped: the dir holds a generated build
     /// system AND the last configure `nros build` ran there had this stamp.
-    /// Everything else (a file the configure reads) is `cmake --build`'s check.
+    /// Everything else (a file the configure reads) is `cmake --build`'s check,
+    /// except the located source trees: see [`locate_answers_current`].
     #[must_use]
     pub fn is_current(&self) -> bool {
         let d = &self.build_dir;
         d.join("CMakeCache.txt").is_file()
             && (d.join("build.ninja").is_file() || d.join("Makefile").is_file())
             && std::fs::read_to_string(self.path()).is_ok_and(|s| s == self.body)
+            && locate_answers_current(d, &self.handoff_env)
     }
 
     /// Record that a configure with this stamp just succeeded.
@@ -190,6 +199,79 @@ impl ConfigureStamp {
     pub fn invalidate(&self) {
         let _ = std::fs::remove_file(self.path());
     }
+}
+
+/// The stamp `NanoRosLocate.cmake` writes beside the cache: the `nros` it
+/// asked, the index and project it asked about, then the answers verbatim.
+pub const LOCATE_STAMP_NAME: &str = "nros-locate.stamp";
+
+/// Do the source trees this build dir's configure located still locate there?
+///
+/// The configure registers every input FILE the ladder read, so `cmake
+/// --build` re-configures when one moves. Two inputs have no file: a row's
+/// environment variable and a checkout's uncommitted edits (which move a
+/// submodule row from the store rung to the local-edit rung). So this
+/// re-asks the same ladder, with the same index, project and handoff
+/// environment, and compares the answers. A dir whose configure asked no
+/// ladder (no stamp) is current; a re-ask that cannot run is not, so the
+/// error is toward a configure, never toward a stale tree.
+#[must_use]
+pub fn locate_answers_current(build_dir: &Path, handoff_env: &[(OsString, OsString)]) -> bool {
+    // Issue 3019 -- the configure was skipped over a moved answer, and the
+    // image was built from the tree located first.
+    let Ok(stamp) = std::fs::read_to_string(build_dir.join(LOCATE_STAMP_NAME)) else {
+        return true;
+    };
+    let Some((head, recorded)) = stamp.split_once("\n---\n") else {
+        return false;
+    };
+    let field = |k: &str| {
+        head.lines()
+            .find_map(|l| l.strip_prefix(k)?.strip_prefix('='))
+            .map(str::to_string)
+    };
+    let (Some(nros), Some(index), Some(project)) =
+        (field("nros"), field("index"), field("project"))
+    else {
+        return false;
+    };
+    let nros = if Path::new(&nros).is_file() {
+        PathBuf::from(nros)
+    } else {
+        match std::env::current_exe() {
+            Ok(p) => p,
+            Err(_) => return false,
+        }
+    };
+    let mut cmd = std::process::Command::new(&nros);
+    cmd.args(["locate", "--all", "--format", "cmake", "--index", &index]);
+    if project.is_empty() {
+        // The configure found no project; a re-ask must not find one either
+        // from a working directory or a variable the configure did not see.
+        cmd.current_dir("/").env_remove("NROS_WORKSPACE_ROOT");
+    } else {
+        cmd.args(["--project", &project]);
+    }
+    for (k, v) in handoff_env {
+        cmd.env(k, v);
+    }
+    let Ok(out) = cmd.stderr(std::process::Stdio::null()).output() else {
+        return false;
+    };
+    out.status.success() && answers(&String::from_utf8_lossy(&out.stdout)) == answers(recorded)
+}
+
+/// The located paths in a `nros locate --all --format cmake` output, without
+/// the watch list and the project line (they say what was READ, not what was
+/// located; a store directory appearing changes the first without moving
+/// any answer).
+fn answers(out: &str) -> Vec<&str> {
+    out.lines()
+        .filter(|l| l.starts_with("set(NROS_LOCATE_"))
+        .filter(|l| {
+            !l.starts_with("set(NROS_LOCATE_INPUTS ") && !l.starts_with("set(NROS_LOCATE_PROJECT ")
+        })
+        .collect()
 }
 
 fn abs(p: &Path) -> PathBuf {
@@ -318,5 +400,51 @@ mod tests {
         assert!(ConfigureStamp::of(&build).is_none());
         let cargo = Handoff::new("cargo", ["generate-lockfile"]);
         assert!(ConfigureStamp::of(&cargo).is_none());
+    }
+
+    /// Issue 3019 -- a configure that located a source tree is current only
+    /// while the ladder still answers the same. A stand-in `nros` prints the
+    /// answer a file holds, so the test moves the answer without a real tree.
+    #[cfg(unix)]
+    #[test]
+    fn a_moved_locate_answer_makes_the_configure_stale() {
+        let t = tempfile::tempdir().unwrap();
+        let answer = t.path().join("answer");
+        let fake = t.path().join("nros");
+        crate::test_support::write_executable_stub(
+            &fake,
+            &format!(
+                "#!/bin/sh\ncat {}\necho 'set(NROS_LOCATE_INPUTS \"/x\")'\n\
+                 echo 'set(NROS_LOCATE_PROJECT \"\")'\n",
+                answer.display()
+            ),
+        );
+        let bdir = t.path().join("b");
+        std::fs::create_dir_all(&bdir).unwrap();
+        let a = "set(NROS_LOCATE_FREERTOS_KERNEL \"/store/k\")\n";
+        std::fs::write(&answer, a).unwrap();
+        // What the configure recorded: same answer, a DIFFERENT watch list (a
+        // store dir appearing moves that line, never an answer).
+        std::fs::write(
+            bdir.join(LOCATE_STAMP_NAME),
+            format!(
+                "nros={}\nindex=/i\nproject=\n---\n{a}set(NROS_LOCATE_INPUTS \"/y\")\n",
+                fake.display()
+            ),
+        )
+        .unwrap();
+        assert!(
+            locate_answers_current(&bdir, &[]),
+            "same answer, other inputs"
+        );
+
+        std::fs::write(&answer, "set(NROS_LOCATE_FREERTOS_KERNEL \"/co/k\")\n").unwrap();
+        assert!(!locate_answers_current(&bdir, &[]), "moved answer");
+
+        // No stamp: the configure asked no ladder, so there is nothing to move.
+        assert!(locate_answers_current(&t.path().join("none"), &[]));
+        // A stamp that cannot be re-asked is stale, never current.
+        std::fs::write(bdir.join(LOCATE_STAMP_NAME), "garbage").unwrap();
+        assert!(!locate_answers_current(&bdir, &[]));
     }
 }
