@@ -1,0 +1,45 @@
+# GENERATED from matrix::module_consumers (consumer_of over matrix::CELLS) -- do not edit.
+# Regenerate: NROS_WRITE_MODULE_CONSUMERS=1 cargo test -p nros-tests --lib module_consumers_file_is_current
+# Read by scripts/test/module-consumers.sh for each `just <module> test` (issue 2997).
+freertos bridge_network_e2e
+freertos entry_e2e
+freertos freertos_posix
+freertos freertos_qemu
+freertos lending_freertos_e2e
+freertos logging_smoke
+freertos port_templates_e2e
+freertos realtime_sched_tasks_e2e
+freertos rtos_e2e
+nuttx c_riscv_nuttx_e2e
+nuttx entry_e2e
+nuttx logging_smoke
+nuttx param_store_carve
+nuttx realtime_sched_tasks_e2e
+nuttx rtos_e2e
+nuttx typed_carrier_e2e
+qemu baremetal_run_plan_runtime
+qemu emulator
+qemu logging_smoke
+threadx_linux entry_e2e
+threadx_linux linux_api
+threadx_linux logging_smoke
+threadx_linux realtime_sched_tasks_e2e
+threadx_linux rtos_e2e
+threadx_riscv64 entry_e2e
+threadx_riscv64 logging_smoke
+threadx_riscv64 param_store_carve
+threadx_riscv64 rtos_e2e
+threadx_riscv64 threadx_riscv64_qemu
+threadx_riscv64 typed_carrier_e2e
+zephyr entry_e2e
+zephyr logging_smoke
+zephyr multihost_e2e
+zephyr port_templates_e2e
+zephyr realtime_sched_tasks_e2e
+zephyr violation_channel_e2e
+zephyr zephyr
+zephyr zephyr_clock_resolve
+zephyr zephyr_connect_budget
+zephyr zephyr_cortex_m_qemu
+zephyr zephyr_ctf_markers
+zephyr zephyr_renode_twin

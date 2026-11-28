@@ -510,7 +510,13 @@ test verbose="": build-fixtures
     # cells the issue's acceptance names. One invocation for both targets (issue
     # 1658: one junit, one skip budget, one verdict), the FreeRTOS lane's shape.
     # Gate: `check platform-lane-cells`.
-    just _nextest-platform 'threadx_riscv64_qemu rtos_e2e' '{{verbose}}' '' 'binary(=threadx_riscv64_qemu) | test(ThreadxRiscv64)'
+    # Issue 2997 -- the module's targets are DERIVED: every consumer of a
+    # Runtime cell of its platforms (`matrix::consumer_of`), never a hand
+    # list, which ran a subset of the cells. No name filter: the run is scoped
+    # to this board's coordinates, so a sibling platform's cell in a shared
+    # target lane-skips by coordinate. Gate: `check platform-lane-cells`.
+    if ! bins="$(bash scripts/test/module-consumers.sh threadx_riscv64)"; then exit 1; fi
+    just _nextest-platform "$bins" '{{verbose}}' '' ''
 
 # Run all ThreadX RISC-V tests including networked E2E
 [group("full-matrix")]
