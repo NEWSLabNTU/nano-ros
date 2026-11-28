@@ -236,8 +236,11 @@ pub struct BoardSetupArgs {
 
     /// The downstream consumer's Zephyr workspace dir (the tree containing
     /// `zephyr/` + `modules/lang/rust/`). The patch set is applied here.
+    /// Default: the workspace `$ZEPHYR_BASE` is in, else
+    /// `$NROS_ZEPHYR_WORKSPACE`, else the west workspace the current
+    /// directory is in (as `nros build` finds it).
     #[arg(long)]
-    pub zephyr_workspace: PathBuf,
+    pub zephyr_workspace: Option<PathBuf>,
 
     /// nano-ros SDK root (where the board crate, `scripts/zephyr/`, and
     /// `nros-sdk-index.toml` live). Default: `$NROS_WORKSPACE_ROOT`, a
@@ -1286,6 +1289,68 @@ fn emit_board_cmake_preset(board: &str, workspace: &Path, bin_dirs: &[PathBuf]) 
 /// different line drifts silently into deep compile errors (issue 0054). A
 /// missing/unparseable VERSION is a warning, not a hard stop (don't block an
 /// unusual-but-valid layout).
+const ZEPHYR_WS_FLAG: &str = "--zephyr-workspace";
+
+/// The Zephyr workspace `nros setup board` patches, and what named it.
+///
+/// Issue 3005 -- `nros build` finds the project's workspace on its own, and
+/// this verb, the one a user runs first, required the flag. It now asks
+/// `nros build`'s own ladder (`build::zephyr_base_rung_with`, ONE resolver,
+/// so the two cannot drift): `--zephyr-workspace`, `$ZEPHYR_BASE`,
+/// `$NROS_ZEPHYR_WORKSPACE`, then the west workspace `cwd` is in. The
+/// ladder's last rung, `Fallback` (the store's workspace, or a tree beside
+/// the nano-ros checkout), is refused here: this verb writes the patch set
+/// into what it resolves, and those trees are not the user's to patch. With
+/// no rung the user's own, it refuses, naming the flag.
+fn board_setup_zephyr_workspace(
+    flag: Option<&Path>,
+    zephyr_base: Option<std::ffi::OsString>,
+    nros_workspace: Option<std::ffi::OsString>,
+    cwd: &Path,
+) -> Result<(PathBuf, &'static str)> {
+    use crate::cmd::build::ZephyrRung;
+    let base_named = zephyr_base
+        .as_deref()
+        .is_some_and(|b| !b.is_empty() && Path::new(b).is_dir());
+    // No store workspace is passed, and `Fallback` is refused below, so the
+    // line only steers rungs this verb never takes.
+    let found = crate::cmd::build::zephyr_base_rung_with(
+        flag,
+        zephyr_base,
+        nros_workspace,
+        None,
+        "3.7",
+        cwd,
+    );
+    let (zephyr, label) = match found {
+        Some((z, ZephyrRung::Named)) => (
+            z,
+            if flag.is_some() {
+                ZEPHYR_WS_FLAG
+            } else if base_named {
+                "$ZEPHYR_BASE"
+            } else {
+                "$NROS_ZEPHYR_WORKSPACE"
+            },
+        ),
+        Some((z, ZephyrRung::Project { .. })) => (z, "the west workspace this directory is in"),
+        Some((_, ZephyrRung::Fallback)) | None => {
+            // A flag or `$NROS_ZEPHYR_WORKSPACE` naming a tree with no
+            // `zephyr/` yet resolves to nothing; say so on the value given.
+            if let Some(f) = flag {
+                return Ok((f.to_path_buf(), ZEPHYR_WS_FLAG));
+            }
+            bail!(
+                "nros setup board: no Zephyr workspace to patch. Pass --zephyr-workspace <dir> \
+                 (the west topdir holding `zephyr/` and `modules/`), set \
+                 $NROS_ZEPHYR_WORKSPACE, or run this from inside that west workspace."
+            )
+        }
+    };
+    let ws = zephyr.parent().map(Path::to_path_buf).unwrap_or(zephyr);
+    Ok((ws, label))
+}
+
 fn verify_zephyr_line(zephyr_ws: &Path, zephyr_line: &str) -> Result<()> {
     let version_file = zephyr_ws.join("zephyr").join("VERSION");
     let text = match std::fs::read_to_string(&version_file) {
@@ -1351,12 +1416,26 @@ fn run_board(args: BoardSetupArgs) -> Result<()> {
     //    fail as "doesn't look like a Zephyr workspace" over a workspace that
     //    was fine. The scripts resolve their argument too; this side makes the
     //    path every later step prints and passes the one the user meant.
-    let zephyr_ws = &std::path::absolute(&args.zephyr_workspace).wrap_err_with(|| {
+    let cwd =
+        std::env::current_dir().wrap_err("nros setup board: resolve the current directory")?;
+    let (named, rung) = board_setup_zephyr_workspace(
+        args.zephyr_workspace.as_deref(),
+        std::env::var_os("ZEPHYR_BASE"),
+        std::env::var_os("NROS_ZEPHYR_WORKSPACE"),
+        &cwd,
+    )?;
+    let zephyr_ws = &std::path::absolute(&named).wrap_err_with(|| {
         format!(
-            "nros setup board: resolve --zephyr-workspace `{}`",
-            args.zephyr_workspace.display()
+            "nros setup board: resolve the Zephyr workspace `{}`",
+            named.display()
         )
     })?;
+    if rung != ZEPHYR_WS_FLAG {
+        eprintln!(
+            "nros setup board: Zephyr workspace {} (from {rung})",
+            zephyr_ws.display()
+        );
+    }
     if !zephyr_ws.join("zephyr").is_dir() {
         bail!(
             "nros setup board: --zephyr-workspace `{}` does not look like a Zephyr \
@@ -4726,6 +4805,88 @@ fn compose_packages(
 
 #[cfg(test)]
 mod tests {
+    /// Issue 3005 -- `setup board` resolves through `nros build`'s ladder: in
+    /// every environment below it lands on the tree `nros build` takes, by the
+    /// same rung, and where `nros build` would fall back to the store it
+    /// refuses, naming the flag.
+    #[test]
+    fn setup_board_takes_the_rung_nros_build_takes() {
+        use crate::cmd::build::{ZephyrRung, zephyr_base_rung_with};
+        let tmp = tempfile::tempdir().unwrap();
+        let west = |dir: &Path| {
+            std::fs::create_dir_all(dir.join(".west")).unwrap();
+            std::fs::create_dir_all(dir.join("zephyr")).unwrap();
+            std::fs::write(dir.join("zephyr/Kconfig.zephyr"), "").unwrap();
+            std::fs::write(dir.join(".west/config"), "[manifest]\npath = zephyr\n").unwrap();
+            std::fs::canonicalize(dir).unwrap()
+        };
+        let project = west(&tmp.path().join("project"));
+        let named = west(&tmp.path().join("named"));
+        let env_ws = west(&tmp.path().join("env"));
+        let store = west(&tmp.path().join("store"));
+        let app = project.join("app");
+        std::fs::create_dir_all(&app).unwrap();
+        let elsewhere = tmp.path().join("elsewhere");
+        std::fs::create_dir_all(&elsewhere).unwrap();
+
+        type Case<'a> = (
+            &'a str,
+            Option<&'a Path>,
+            Option<PathBuf>,
+            Option<PathBuf>,
+            &'a Path,
+        );
+        let cases: [Case; 5] = [
+            (
+                "flag",
+                Some(&named),
+                Some(env_ws.join("zephyr")),
+                None,
+                &app,
+            ),
+            (
+                "$ZEPHYR_BASE",
+                None,
+                Some(named.join("zephyr")),
+                Some(env_ws.clone()),
+                &app,
+            ),
+            (
+                "$NROS_ZEPHYR_WORKSPACE",
+                None,
+                None,
+                Some(env_ws.clone()),
+                &app,
+            ),
+            ("project", None, None, None, &app),
+            ("store only", None, None, None, &elsewhere),
+        ];
+        for (what, flag, base, ws, cwd) in cases {
+            let build = zephyr_base_rung_with(
+                flag,
+                base.clone().map(Into::into),
+                ws.clone().map(Into::into),
+                Some(store.clone()),
+                "3.7",
+                cwd,
+            );
+            let setup =
+                board_setup_zephyr_workspace(flag, base.map(Into::into), ws.map(Into::into), cwd);
+            match build {
+                Some((_, ZephyrRung::Fallback)) => {
+                    let err = setup.unwrap_err().to_string();
+                    assert!(err.contains("--zephyr-workspace"), "{what}: {err}");
+                }
+                Some((zephyr, _)) => assert_eq!(
+                    setup.unwrap().0,
+                    zephyr.parent().unwrap(),
+                    "{what}: setup board and nros build disagree"
+                ),
+                None => panic!("{what}: nros build resolved nothing"),
+            }
+        }
+    }
+
     use super::*;
 
     #[test]

@@ -430,7 +430,7 @@ Provision a downstream Zephyr consumer's tree for a nano-ros board.
 
 Fetches the board's RMW source, applies the zephyr-line patch set, adds the rust targets, and checks the `zephyr-lang-rust` pin — driven by the board's provisioning contract (`board.cmake` / `[package.metadata.nros.board]`).
 
-Usage: nros setup board [OPTIONS] --zephyr-workspace <ZEPHYR_WORKSPACE> <NAME>
+Usage: nros setup board [OPTIONS] <NAME>
 
 Arguments:
   <NAME>
@@ -438,7 +438,7 @@ Arguments:
 
 Options:
       --zephyr-workspace <ZEPHYR_WORKSPACE>
-          The downstream consumer's Zephyr workspace dir (the tree containing `zephyr/` + `modules/lang/rust/`). The patch set is applied here
+          The downstream consumer's Zephyr workspace dir (the tree containing `zephyr/` + `modules/lang/rust/`). The patch set is applied here. Default: the workspace `$ZEPHYR_BASE` is in, else `$NROS_ZEPHYR_WORKSPACE`, else the west workspace the current directory is in (as `nros build` finds it)
 
       --workspace <WORKSPACE>
           nano-ros SDK root (where the board crate, `scripts/zephyr/`, and `nros-sdk-index.toml` live). Default: `$NROS_WORKSPACE_ROOT`, a checkout enclosing cwd, then this `nros` binary's own SDK root
