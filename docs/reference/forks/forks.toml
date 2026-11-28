@@ -24,6 +24,10 @@
 # index page so a reviewer reading a `.gitmodules` URL on a personal account
 # learns whose it is without asking.
 maintainer_account = "jerry73204"
+# User decision 2026-11-28, newer than the ruling above: a fork lives on the
+# maintainer's account OR under the NEWSLabNTU organisation. FreeRTOS-Kernel
+# is under NEWSLabNTU by that choice.
+organisation_account = "NEWSLabNTU"
 
 [[fork]]
 name = "zenoh-pico"
@@ -44,6 +48,12 @@ name = "lwip"
 path = "third-party/freertos/lwip"
 upstream = "lwip-tcpip/lwip"
 base = "STABLE-2_2_1_RELEASE"
+
+[[fork]]
+name = "freertos-kernel"
+path = "third-party/freertos/kernel"
+upstream = "FreeRTOS/FreeRTOS-Kernel"
+base = "V11.2.0"
 
 [[fork]]
 name = "threadx"

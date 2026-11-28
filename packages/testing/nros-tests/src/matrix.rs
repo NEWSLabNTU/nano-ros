@@ -1341,6 +1341,10 @@ pub const NON_CELL_TESTS: &[(&str, NonCell)] = &[
         NonCell::Probe("the FreeRTOS libc clock shims answer from the clock symbols"),
     ),
     (
+        "freertos_posix_tick",
+        NonCell::Probe("the FreeRTOS POSIX port's tick keeps host time while the tick is masked"),
+    ),
+    (
         "freertos_run_plan_runtime",
         NonCell::Secondary(
             "FreertosMps2/Rust/Zenoh/Pubsub/Example (same talker image) — answered by rtos_e2e",

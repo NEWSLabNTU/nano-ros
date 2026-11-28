@@ -15,7 +15,7 @@ image's `system.toml`: its platform (the board's), its RMW, and its locator.
 | Mbed TLS | a zenoh image built with TLS (the `link-tls` feature) | Apache-2.0 OR GPL-2.0-or-later | [Mbed-TLS/mbedtls](https://github.com/Mbed-TLS/mbedtls) | none |
 | Micro XRCE-DDS Client, Micro-CDR | every image with `rmw = "xrce"` | Apache-2.0 | [eProsima](https://github.com/eProsima/Micro-XRCE-DDS-Client) | none |
 | Eclipse Cyclone DDS | every image with `rmw = "cyclonedds"` | EPL-2.0 OR EDL-1.0 (BSD-3-Clause) | [eclipse-cyclonedds/cyclonedds](https://github.com/eclipse-cyclonedds/cyclonedds) | [fork delta](forks.md#cyclonedds) |
-| FreeRTOS kernel | FreeRTOS boards | MIT | [FreeRTOS/FreeRTOS-Kernel](https://github.com/FreeRTOS/FreeRTOS-Kernel) | none |
+| FreeRTOS kernel | FreeRTOS boards | MIT | [FreeRTOS/FreeRTOS-Kernel](https://github.com/FreeRTOS/FreeRTOS-Kernel) | [fork delta](forks.md#freertos-kernel) |
 | lwIP | FreeRTOS boards with a network | BSD-3-Clause | [lwip-tcpip/lwip](https://github.com/lwip-tcpip/lwip) | [fork delta](forks.md#lwip) |
 | Eclipse ThreadX | ThreadX boards | MIT | [eclipse-threadx/threadx](https://github.com/eclipse-threadx/threadx) | [fork delta](forks.md#threadx) |
 | NetX Duo | ThreadX boards with a network | MIT | [eclipse-threadx/netxduo](https://github.com/eclipse-threadx/netxduo) | [fork delta](forks.md#netxduo) |

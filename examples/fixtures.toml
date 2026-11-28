@@ -6018,6 +6018,18 @@ dir = "packages/testing/nros-tests/fixtures/threadx-linux-tick-drift"
 platform = "threadx-linux"
 output = "tick-drift"
 
+# issue 3010 -- the FreeRTOS POSIX port's tick-drift probe, run by
+# `tests/freertos_posix_tick.rs`. A bare kernel process (no nano-ros runtime)
+# that masks its own tick for 30 ms ten times a second and reports how far the
+# tick fell behind host time; `<dir>/build.sh` builds it with the board's
+# kernel configuration.
+[[compile_check_fixture]]
+id = "freertos_posix_tick_drift"
+builder = "fixture-script"
+dir = "packages/testing/nros-tests/fixtures/freertos-posix-tick-drift"
+platform = "freertos-posix"
+output = "tick-drift"
+
 # --- cargo-build: the binary is the point; tests run it.
 [[compile_check_fixture]]
 id = "orch_sched_tasks_multi"

@@ -1096,12 +1096,12 @@ reason = "the ESP32-C3 board retired (phase-521 W6)"
 
 [source.freertos-kernel]
 env = "FREERTOS_DIR"
-version = "10.6.2"
+version = "11.2.0"
 location = "store"
 dest = "third-party/freertos/kernel"
 submodule = "third-party/freertos/kernel"
-git = "https://github.com/FreeRTOS/FreeRTOS-Kernel.git"
-ref = "0adc196d4bd52a2d91102b525b0aafc1e14a2386"
+git = "https://github.com/NEWSLabNTU/FreeRTOS-Kernel.git"
+ref = "c365701264ea125a1a79662cfbab5349a93742ec"
 
 [source.lwip]
 env = "LWIP_DIR"

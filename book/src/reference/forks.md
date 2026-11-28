@@ -9,6 +9,7 @@ Every submodule that tracks a patch branch, and what it adds to a pinned upstrea
 | [zenoh-pico](#zenoh-pico) | `eclipse-zenoh/zenoh-pico` | `1.10.1` |
 | [cyclonedds](#cyclonedds) | `eclipse-cyclonedds/cyclonedds` | `0.10.5` |
 | [lwip](#lwip) | `lwip-tcpip/lwip` | `STABLE-2_2_1_RELEASE` |
+| [freertos-kernel](#freertos-kernel) | `FreeRTOS/FreeRTOS-Kernel` | `V11.2.0` |
 | [threadx](#threadx) | `eclipse-threadx/threadx` | `v6.4.5.202504_rel` |
 | [netxduo](#netxduo) | `eclipse-threadx/netxduo` | `v6.4.5.202504_rel` |
 | [nuttx](#nuttx) | `apache/nuttx` | `nuttx-12.13.0` |
@@ -16,6 +17,8 @@ Every submodule that tracks a patch branch, and what it adds to a pinned upstrea
 | [ros2-rust-examples](#ros2-rust-examples) | `ros2-rust/examples` | `main` |
 
 The forks whose URL names `jerry73204` are on the nano-ros maintainer's own GitHub account. Each one's shipped line is the branch its section names, and every patch on it is listed there against the pinned upstream ref.
+
+The forks whose URL names `NEWSLabNTU` are under the `NEWSLabNTU` GitHub organisation, by the maintainer's choice, and are kept the same way.
 
 Authored by nano-ros (no section): `third-party/px4/px4-rs`, `packages/cli/third-party/play_launch`.
 
@@ -262,6 +265,41 @@ gh api "repos/lwip-tcpip/lwip/compare/$base...$head" --jq '.ahead_by'
 [Back to the list of forks](#forks-nano-ros-carries)
 
 <!-- /fork: lwip -->
+
+<!-- fork: freertos-kernel -->
+
+<a id="freertos-kernel"></a>
+
+## The freertos-kernel fork
+
+nano-ros builds `third-party/freertos/kernel` from the fork [NEWSLabNTU/FreeRTOS-Kernel](https://github.com/NEWSLabNTU/FreeRTOS-Kernel), branch `nano-ros`, not from upstream [FreeRTOS/FreeRTOS-Kernel](https://github.com/FreeRTOS/FreeRTOS-Kernel).
+
+| | |
+| --- | --- |
+| Upstream base | `V11.2.0` (merge base [0adc196d4bd5](https://github.com/FreeRTOS/FreeRTOS-Kernel/commit/0adc196d4bd52a2d91102b525b0aafc1e14a2386)) |
+| Commits on top | 1 |
+| Upstream commits the pin lacks | 0 |
+| Files changed | 1, +48/−4 |
+
+**Pinned commit:** `c365701264ea125a1a79662cfbab5349a93742ec`
+
+### Commits on top of upstream
+
+| commit | subject <!-- no-just-ok: quoted commit subjects --> |
+| --- | --- |
+| [c365701264](https://github.com/NEWSLabNTU/FreeRTOS-Kernel/commit/c365701264ea125a1a79662cfbab5349a93742ec) | Posix port: the tick catches up with CLOCK_MONOTONIC |
+
+Reproduce:
+
+```bash
+base=V11.2.0
+head=NEWSLabNTU:FreeRTOS-Kernel:c365701264ea125a1a79662cfbab5349a93742ec
+gh api "repos/FreeRTOS/FreeRTOS-Kernel/compare/$base...$head" --jq '.ahead_by'
+```
+
+[Back to the list of forks](#forks-nano-ros-carries)
+
+<!-- /fork: freertos-kernel -->
 
 <!-- fork: threadx -->
 

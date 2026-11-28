@@ -84,7 +84,10 @@ same question. If it has the same defect, file it.
 
 - A test loads the host deliberately and measures FreeRTOS tick time
   against host `CLOCK_MONOTONIC`. Drift stays under 0.1 % over a minute.
-  The unloaded case is the control.
+  The unloaded case is the control. (Amended 2026-11-28, manager-approved:
+  the committed test injects its own load instead, so it is deterministic
+  and reaches no other process — see "The fix" below. The minute-long
+  host-load measurement is the table under "Measured".)
 - The ASI control loop on `freertos-posix` holds 33.33 Hz under host load.
 
 ## Measured, with the ruled fix applied locally (2026-11-28)
@@ -111,3 +114,43 @@ bound. The control-rate half of the acceptance (ASI holding 33.33 Hz) and a
 committed regression test are still to do.
 
 The other host-simulated port has the same defect: issue 3017.
+
+## The fix (2026-11-28)
+
+The fork exists: `NEWSLabNTU/FreeRTOS-Kernel`, branch `nano-ros`, cut at
+the old pin (upstream tag `V11.2.0`). It carries one commit, "Posix port:
+the tick catches up with CLOCK_MONOTONIC", which the user approved pushing
+on 2026-11-28; the book's Forks page names its hash. `.gitmodules` points
+`third-party/freertos/kernel` at the fork with `branch = nano-ros`, the SDK
+index's `[source.freertos-kernel]` names the same repository and commit,
+and the fork's delta is listed in the book's Forks page.
+
+The port change, in `portable/ThirdParty/GCC/Posix/port.c`:
+
+- the timer thread computes the ticks due since the scheduler started,
+  from `CLOCK_MONOTONIC`, publishes that count, signals, and sleeps to the
+  next absolute tick boundary (`clock_nanosleep(TIMER_ABSTIME)`), so its
+  own wakeup latency no longer accumulates;
+- the tick handler delivers every tick between the count it has delivered
+  and the count due, so signals that coalesced (two fell due while the
+  tick was masked) lose nothing;
+- the start time and both counters are set before the timer thread starts.
+
+Regression test: `tests/freertos_posix_tick.rs`, over the
+`freertos_posix_tick_drift` build-stage fixture. The probe is a bare
+kernel process built with the board's kernel configuration. Ten times a
+second it masks the tick for 30 ms of host time, then sleeps 70 ms, and
+after 5 s it reports tick time against host time. The test asserts
+|drift| < 0.5 % in both directions.
+
+| probe built against | drift over 5 s |
+|---|---|
+| the old pin (upstream port), standalone | 36.2 %, 36.9 %, 41.7 %, 32.7 % slow |
+| the old pin, swapped into the row and run through the test | 33.4 %, 33.0 % slow — the test fails |
+| the fork's `nano-ros`, solo | −0.013 %, +0.0024 % |
+| the fork's `nano-ros`, 5 runs beside a looping all-core unit-test run (load ~10–13) | all 5 pass; −0.0015 % to −0.0088 % in the round before the probe looped by host time |
+
+Acceptance: the ASI control loop at 33.33 Hz under host load, re-run on
+`freertos-posix` at this pin on 2026-11-28, meets its rate. The issue
+stays open until the fix lands on `main`.
+

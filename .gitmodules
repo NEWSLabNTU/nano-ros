@@ -13,7 +13,8 @@
 	url = https://github.com/Mbed-TLS/mbedtls.git
 [submodule "third-party/freertos/kernel"]
 	path = third-party/freertos/kernel
-	url = https://github.com/FreeRTOS/FreeRTOS-Kernel.git
+	url = https://github.com/NEWSLabNTU/FreeRTOS-Kernel.git
+	branch = nano-ros
 [submodule "third-party/freertos/lwip"]
 	path = third-party/freertos/lwip
 	url = https://github.com/jerry73204/lwip.git

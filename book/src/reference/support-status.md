@@ -69,7 +69,7 @@ procurement view, including parts with no board package, is
 
 | Component | Pinned version | Used by |
 |---|---|---|
-| FreeRTOS kernel | `10.6.2` | FreeRTOS boards (QEMU MPS2-AN385, overlays) |
+| FreeRTOS kernel | `11.2.0` | FreeRTOS boards (QEMU MPS2-AN385, overlays) |
 | lwIP | `2.2.0` | FreeRTOS networking |
 | ThreadX | `6.4.1` | ThreadX (Linux sim + QEMU RISC-V64) |
 | NetX Duo | `6.4.x` | ThreadX networking |
