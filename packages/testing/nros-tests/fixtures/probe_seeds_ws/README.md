@@ -11,12 +11,6 @@ declares 40 more parameters, more than a default parameter store holds (32):
   is positive.
 
 The host metadata probe seeds each node with the values the image is baked
-with, so each sidecar records the timer and all 41 parameters. The C
-component's sidecar carries a `probe.seeds` object.
-
-The C++ component is launched twice (issue 2901), as `seeds_cpp` and
-`seeds_cpp_b`: the two agree on `ctrl_period_ms` and differ on `gain_03`,
-which has a declaration default. The probe seeds the period and leaves
-`gain_03` on its default, so its sidecar still records the timer, and its
-`probe.partial_seeds` object names `gain_03` as defaulted. `tests/probe_seeds_workspace.rs` reads them; the
+with, so each sidecar records the timer, all 41 parameters and a
+`probe.seeds` object. `tests/probe_seeds_workspace.rs` reads them; the
 `workspace-probe-seeds` row in `examples/fixtures.toml` builds them.
