@@ -359,6 +359,23 @@ fn plan_measured(p: &ResolvedBuild, nros_root: Option<&Path>) -> Option<StackFlo
     })))
 }
 
+/// A posix board that names a target triple is a cross Linux board
+/// (`linux-aarch64-musl`): its board build states the main thread's stack,
+/// which the app runs on, and its deepest paths run through a C library the
+/// walk has no frame sizes for (zig's static musl). So it is held to its
+/// measured peak, as [`HOST_MEASURED_PLATFORMS`] are. The host board names
+/// no triple and stays unchecked: its stack is the host's.
+fn is_cross_posix(p: &ResolvedBuild) -> bool {
+    p.platform == "posix"
+        && matches!(
+            &p.output,
+            Some(BuildOutput::Cargo {
+                triple: Some(_),
+                ..
+            })
+        )
+}
+
 fn plan_one(
     p: &mut ResolvedBuild,
     nros_root: Option<&Path>,
@@ -368,7 +385,7 @@ fn plan_one(
     if p.driver != Driver::Cargo {
         return None;
     }
-    if HOST_MEASURED_PLATFORMS.contains(&p.platform.as_str()) {
+    if HOST_MEASURED_PLATFORMS.contains(&p.platform.as_str()) || is_cross_posix(p) {
         return plan_measured(p, nros_root);
     }
     let output = p.output.clone();
@@ -910,12 +927,29 @@ mod tests {
             profile_dir: "release".into(),
             bin: Some("e".into()),
         });
+        // A cross Linux board names a triple; the host board does not.
+        let mut cross_posix = image("posix");
+        cross_posix.output = Some(BuildOutput::Cargo {
+            target_dir: "/t".into(),
+            triple: Some("aarch64-unknown-linux-musl".into()),
+            profile_dir: "debug".into(),
+            bin: Some("e".into()),
+        });
+        let mut host_posix = image("posix");
+        host_posix.output = Some(BuildOutput::Cargo {
+            target_dir: "/t".into(),
+            triple: None,
+            profile_dir: "debug".into(),
+            bin: Some("e".into()),
+        });
         let mut v = vec![
             image("bare-metal"),
             image("threadx"),
             image("nuttx"),
             image("threadx-riscv64"),
             host,
+            cross_posix,
+            host_posix,
         ];
         arm(&mut v, Some(&root), None, &|_| None);
         let _ = std::fs::remove_dir_all(&root);
@@ -955,6 +989,17 @@ mod tests {
         let a = measured_args(m, Path::new("/m.json"));
         assert!(a.iter().any(|x| x == "--measured-only"), "{a:?}");
         assert!(!a.iter().any(|x| x == "--link-map"), "{a:?}");
+        // The musl cross board: held to its measured peak, keyed by its own
+        // triple; the host board's image is not checked at all.
+        let Some(StackFloorStep::Measured(m)) = &v[5].stack_floor else {
+            panic!("{:?}", v[5].stack_floor);
+        };
+        assert_eq!(m.triple, "aarch64-unknown-linux-musl");
+        assert_eq!(
+            m.exe,
+            PathBuf::from("/t/aarch64-unknown-linux-musl/debug/e")
+        );
+        assert!(v[6].stack_floor.is_none(), "{:?}", v[6].stack_floor);
     }
 
     /// Phase-557 W5b -- NuttX links through a gcc driver, which rejects a

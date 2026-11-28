@@ -3517,10 +3517,44 @@ def template_key_problems(where: str, image: str, root: Path) -> list[str]:
     if m["template"] not in template_names(root):
         problems.append(f"{where}: template `{m['template']}` is not a `nros new --template` "
                         f"value any more ({NODE_ROLE_RS}); rename the row with the template")
-    if not (root / "packages" / "boards" / f"nros-board-{m['board']}" / "nros-board.toml").is_file():
-        problems.append(f"{where}: board `{m['board']}` has no packages/boards/"
-                        f"nros-board-{m['board']}/nros-board.toml any more")
+    if m["board"] not in board_names(root):
+        problems.append(f"{where}: board `{m['board']}` is named by no packages/boards/"
+                        f"**/nros-board.toml any more (nros-board-{m['board']}/ or a "
+                        "descriptor whose `names` lists it)")
     return problems
+
+
+def board_descriptors(root: Path) -> list[Path]:
+    """The tracked `packages/boards/**/nros-board.toml` files, from the index.
+    A root that is no git checkout (the self-test's) is read from its files."""
+    try:
+        listed = subprocess.run(
+            ["git", "-C", str(root), "ls-files", "-z", "--", "packages/boards/**nros-board.toml"],
+            capture_output=True, text=True, check=True).stdout
+    except (OSError, subprocess.CalledProcessError):
+        boards = root / "packages" / "boards"
+        return sorted(boards.glob("**/nros-board.toml"))  # walk-ok: a self-test root has no index
+    return [root / p for p in listed.split("\0") if p]
+
+
+def board_names(root: Path) -> set[str]:
+    """Every board a descriptor under `packages/boards` names: the crate
+    directory's own `nros-board-<name>`, plus each `[[board]] names` entry,
+    since a board that reuses another's runtime (`linux-aarch64-musl` on
+    `nros-board-linux`) has a descriptor directory of its own name."""
+    out = set()
+    for desc in board_descriptors(root):
+        if desc.parent.name.startswith("nros-board-"):
+            out.add(desc.parent.name[len("nros-board-"):])
+        try:
+            doc = load_toml(desc)
+        except (OSError, ValueError):  # a TOML decode error is a ValueError
+            continue
+        entries = doc.get("board", [])
+        for entry in entries if isinstance(entries, list) else [entries]:
+            if isinstance(entry, dict):
+                out.update(n for n in entry.get("names") or [] if isinstance(n, str))
+    return out
 
 
 def floor_formula(static_bytes: int, allowance: int, margin_pct: int) -> int:
@@ -6218,6 +6252,11 @@ def self_test() -> int:
               any("board `b2`" in p for p in template_key_problems("w", "talker/c/zenoh@b2", r)))
         check("template key: a bringup key is not a template key",
               template_key_problems("w", "nt_node_bringup@b2", r) == [])
+        (r / "packages/boards/b3-cross").mkdir(parents=True)
+        (r / "packages/boards/b3-cross/nros-board.toml").write_text(
+            '[[board]]\nnames = ["b3-cross"]\n')
+        check("template key: a board named by a descriptor's `names` passes",
+              template_key_problems("w", "talker/rust/zenoh@b3-cross", r) == [])
     check("allowance lookup is by (image, target, role)",
           find_allowance(good, "img", "t", "OPEN") is not None
           and find_allowance(good, "img", "t", "SPIN") is None

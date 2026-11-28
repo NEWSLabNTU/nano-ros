@@ -183,6 +183,24 @@
       },
       "target": "x86_64-unknown-linux-gnu",
       "unwalked": "a host image's app thread runs through the host libc, whose frames the walk does not size"
+    },
+    {
+      "image": "talker/rust/zenoh@linux-aarch64-musl",
+      "issue": "2852",
+      "method": "2026-11-29, QEMU 11.0 user mode (qemu-aarch64) on an x86_64 host: `nros new --board linux-aarch64-musl --lang rust` then `nros build`, run by `nros run` for 30 s publishing to a router; the guest main thread's high-water read from /proc/<qemu>/mem as the lowest non-zero byte of its fresh, zero-filled stack mapping (QEMU_STACK_SIZE=12 MiB to tell it apart), so argv, environment and auxv at the top are counted too. dev profile 106,616 B (the template's default profile, so the row); release 47,584 B, 3 runs of 3 identical. The zenoh-pico executor thread, on musl's 128 KiB default thread stack, peaked at 3,568 B (dev) and 2,432 B (release). Same binary and C library as on the device, so the depth does not depend on the kernel; signal frames do, and the margin covers them. Shape: nodes, publishers, subscribers and callbacks from the image's sizing descriptor; queryables as the threadx-linux talker row, the same template",
+      "peak": 106616,
+      "rmw": "zenoh",
+      "role": "OPEN",
+      "shape": {
+        "NROS_ENTITY_MAX_PUBLISHERS": 3,
+        "NROS_ENTITY_MAX_QUERYABLES": 7,
+        "NROS_ENTITY_MAX_SUBSCRIBERS": 1,
+        "NROS_EXECUTOR_ACTION_CLIENTS": 0,
+        "NROS_EXECUTOR_MAX_CBS": 2,
+        "NROS_EXECUTOR_MAX_NODES": 1
+      },
+      "target": "aarch64-unknown-linux-musl",
+      "unwalked": "the app's deepest paths run through the statically linked musl C library, whose frames the walk does not size"
     }
   ],
   "policy": [
