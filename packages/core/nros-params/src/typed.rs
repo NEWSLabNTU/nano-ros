@@ -754,6 +754,53 @@ mod tests {
         assert_eq!(plain.err(), Some(DeclarationError::AlreadyDeclared));
     }
 
+    // Issue 3020.
+    /// A launch seed is in the store but is not a DECLARATION until the code
+    /// declares the name: `is_declared` (what rclcpp's `has_parameter`
+    /// answers) is false for it, so Autoware's
+    /// `has_parameter(p) ? get_parameter(p) : declare_parameter(p)` still
+    /// declares, and the declaration adopts the seed with the code's type. A
+    /// seed whose text reads as another type than the declaration is refused,
+    /// as rclcpp refuses an integer override for a double parameter, and it
+    /// stays undeclared.
+    #[test]
+    fn a_launch_seed_is_not_declared_until_the_code_declares_it() {
+        let mut storage: ParameterStorage = ParameterStorage::new();
+        let mut server = ParameterServer::new_in(storage.as_table());
+
+        assert_eq!(server.seed_launch_text(NODE, "ego_dist", "3.0"), Ok(true));
+        assert!(
+            !server.is_declared(NODE, "ego_dist"),
+            "a seed is not a declaration"
+        );
+        assert!(
+            matches!(server.get(NODE, "ego_dist"), Some(crate::ParameterValue::Double(v)) if *v == 3.0),
+            "the seed's value is in the store"
+        );
+        let dist = ParameterBuilder::<f64>::new(&mut server, NODE, "ego_dist")
+            .default(0.0)
+            .mandatory()
+            .expect("the declaration adopts the seed");
+        assert_eq!(dist.get(), 3.0, "the launch value wins over the default");
+        assert!(
+            server.is_declared(NODE, "ego_dist"),
+            "declared once the code declares it"
+        );
+
+        // Integer text, double declaration: refused (rclcpp's
+        // InvalidParameterTypeException), and still not a declaration.
+        assert_eq!(server.seed_launch_text(NODE, "ego_yaw", "1"), Ok(true));
+        assert!(!server.is_declared(NODE, "ego_yaw"));
+        let yaw = ParameterBuilder::<f64>::new(&mut server, NODE, "ego_yaw").optional();
+        assert_eq!(yaw.err(), Some(DeclarationError::LaunchValueTypeMismatch));
+        assert!(!server.is_declared(NODE, "ego_yaw"));
+
+        // A name the code declares with no seed is declared; an absent one is not.
+        assert!(server.declare_ref(NODE, "plain", &crate::ParameterValue::Integer(1)));
+        assert!(server.is_declared(NODE, "plain"));
+        assert!(!server.is_declared(NODE, "absent"));
+    }
+
     // Issue 2992.
     /// A launch seed parsed straight into its slot is the seed the
     /// value-then-mark path made: adopted by the first typed declaration. A

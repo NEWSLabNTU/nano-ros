@@ -1665,6 +1665,20 @@ impl<'s> ParameterServer<'s> {
         Ok(())
     }
 
+    // Issue 3020.
+    /// Whether the code on `node` DECLARED `name`. A launch seed no
+    /// declaration has adopted yet is not one: rclcpp's `has_parameter`
+    /// answers false for a launch override nobody declared, and the idiom
+    /// `has_parameter(p) ? get_parameter(p) : declare_parameter(p)` relies on
+    /// it, so the declaration (and its type) still happens when the launch
+    /// file sets the name. [`get`](Self::get) still reads a seed: the value is
+    /// in the store either way.
+    pub(crate) fn is_declared(&self, node: NodeKey, name: &str) -> bool {
+        self.find_index(node, name)
+            .and_then(|idx| self.table.entries[idx].as_ref())
+            .is_some_and(|entry| !entry.launch_seed)
+    }
+
     /// Get a parameter value by name
     pub(crate) fn get(&self, node: NodeKey, name: &str) -> Option<&ParameterValue> {
         self.find_index(node, name)

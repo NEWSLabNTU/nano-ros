@@ -239,6 +239,9 @@ pub trait ParameterServerOps<'s>: sealed::Sealed + Sized {
         fill: impl FnMut(usize, &mut ParameterValue) -> Option<&'x str>,
     ) -> Result<(), ParameterError>;
 
+    /// See `ParameterServer::is_declared` in `server.rs` (issue 3020).
+    fn is_declared(&self, node: NodeKey, name: &str) -> bool;
+
     /// See `ParameterServer::get` in `server.rs`.
     fn get(&self, node: NodeKey, name: &str) -> Option<&ParameterValue>;
 
@@ -642,6 +645,11 @@ impl<'s> ParameterServerOps<'s> for ParameterServer<'s> {
         fill: impl FnMut(usize, &mut ParameterValue) -> Option<&'x str>,
     ) -> Result<(), ParameterError> {
         ParameterServer::apply_atomically_with(self, node, count, fill)
+    }
+
+    #[inline]
+    fn is_declared(&self, node: NodeKey, name: &str) -> bool {
+        ParameterServer::is_declared(self, node, name)
     }
 
     #[inline]
