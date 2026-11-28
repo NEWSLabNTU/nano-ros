@@ -37,6 +37,7 @@ user metadata
 user model-path
 user monitor
 user new
+user package
 user pin
 user plan
 user planning-stamp

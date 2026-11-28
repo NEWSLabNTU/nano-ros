@@ -53,8 +53,10 @@ fn a_scaffolded_platform_explains_from_its_workspace() {
         "config explain must find the workspace's platform: {}",
         String::from_utf8_lossy(&out.stderr)
     );
+    // `config explain --platform` is `knob list --platform` (RFC-0133 D3):
+    // the platform resolved, so its knob table printed.
     let stdout = String::from_utf8_lossy(&out.stdout);
-    assert!(stdout.contains("platform: acmeos"), "{stdout}");
+    assert!(stdout.starts_with("KNOB"), "{stdout}");
 }
 
 /// `--workspace` names the workspace from anywhere else.

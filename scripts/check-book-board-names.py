@@ -275,7 +275,7 @@ def selftest(verbose: bool = False) -> int:
         ("page-local names pass", "```toml\nnames = [\"acme-x\"]\n```\n```toml\nboard = \"acme-x\"\n```\n", False),
         ("zephyr entry --board is not a nano-ros board",
          "```sh\nnros new entry e --board native_sim/native/64\n```\n", False),
-        ("posix as a platform passes", "`nros config explain --platform posix`\n", False),
+        ("posix as a platform passes", "`nros knob list --platform posix`\n", False),
         ("stale generated list fails",
          "<!-- board-names:begin -->\n`linux`.\n<!-- board-names:end -->\n", True),
         ("fresh generated list passes",

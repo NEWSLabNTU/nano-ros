@@ -1,0 +1,1 @@
+The Find what nano-ros offers page covers the new help group, `nros profile list`, and the older spellings that keep working, and the tune-throughput page shows what `nros knob list --platform` prints.

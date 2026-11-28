@@ -115,7 +115,7 @@ source /opt/ros/humble/setup.bash
 nros build --all
 ```
 
-Other selections: `nros setup --list` lists every package in the index,
+Other selections: `nros toolchain list --available` lists every package in the index,
 `--tool <name>` and `--source <name>` fetch one package, `--licenses` lists
 the license-gated ones, and `nros setup --system` prints the OS packages a
 board needs for your package manager.

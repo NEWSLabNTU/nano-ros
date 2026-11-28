@@ -229,7 +229,7 @@ def refuser_problems() -> list[str] | None:
     spec.loader.exec_module(mod)
     want = ("error[NROS-0004]: image `demo` names no board\n"
             "  help: add `board = \"<board>\"` to the `[image.<id>]` table in system.toml\n"
-            "  explain: nros explain NROS-0004")
+            "  explain: nros code show NROS-0004")
     if mod.refuse("ImageNoBoard", "image `demo` names no board") != want:
         problems.append(f"colcon refuse(): got {mod.refuse('ImageNoBoard', 'image `demo` names no board')!r}")
     try:

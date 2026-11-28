@@ -65,6 +65,10 @@ The `nros-*` profiles and the CMake build types they come from:
 | `Release` | `release` | opt-level 3, fat LTO; fastest code |
 | (unset) | `nros-relwithdebinfo` | a CMake project you configure yourself |
 
+`nros profile list` prints these with the three that only cargo images take
+(`nros-iterate`, `nros-inspect` and `nros-probe`), and
+`nros profile show <name>` prints the cargo settings one defines.
+
 ### When an image states no profile
 
 An image with no `profile` builds `release` on a board, whichever language
