@@ -22,19 +22,82 @@
 #![cfg(feature = "xrce-wake-test")]
 
 use std::{
-    sync::atomic::{AtomicBool, Ordering},
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
     time::{Duration, Instant},
 };
 
 use nros_node::executor::*;
 use nros_tests::fixtures::{XrceAgent, require_xrce_agent};
 
-/// The OS wake latency plus scheduler slack — under the ~5 ms the retired
-/// 10 ms guard slice gave a trigger 25 ms into the spin.
-const DISPATCH_BOUND: Duration = Duration::from_millis(3);
-/// Far beyond the bound, so a trigger that waits the spin out is unmistakable.
+// Issue 3026 -- the claim, and how it is measured so host load cannot fake it.
+//
+// The claim: the executor parks on the session's socket plus its own wake
+// object, so a trigger ends the park at once. The two waits that claim rules
+// out both put the trigger behind a RECEIVE timeout rather than behind the
+// OS's wake path:
+//
+// * a whole receive-blocking wait dispatches at the end of the spin's budget,
+//   ~975 ms after a trigger 25 ms into a 1000 ms spin;
+// * the retired 10 ms guard slice dispatches at the next slice boundary,
+//   uniform over 0..10 ms, ~5 ms at the median.
+//
+// The bound used to be an absolute 3 ms on one sample, and a loaded runner
+// put a correct executor at 4.5 ms (issue 3026), because the OS's own wake
+// latency is what load inflates. So each trial is paired with a CONTROL: a
+// thread parked on a futex, woken by a thread that slept the same delay --
+// the same OS wake path the correct executor takes, measured under the same
+// load at the same moment. Then:
+//
+// * the whole-recv wait is ruled out by a SEPARATION, every trial: a quarter
+//   of the budget is two orders past any wake and two orders short of it;
+// * the slice is ruled out by a RATIO of medians: the executor's wake may
+//   cost a few control wakes plus a fixed allowance for its own dispatch,
+//   which under no load is ~1 ms against the slice's ~5 ms, and under load
+//   grows WITH the control rather than failing a correct executor.
+
+/// Far beyond any wake, so a trigger that waits the spin out is unmistakable.
 const SPIN_BUDGET: Duration = Duration::from_millis(1000);
 const TRIGGER_DELAY: Duration = Duration::from_millis(25);
+/// Odd, so the median is a sample. Each trial costs ~2 x `TRIGGER_DELAY`.
+const TRIALS: usize = 9;
+/// A trigger dispatched later than this waited inside a receive, not on a
+/// wake: ~975 ms for the whole-recv wait, against microseconds for a wake.
+const RECV_SEPARATION: Duration = Duration::from_millis(250);
+/// The executor's median wake may cost this many control wakes ...
+const CONTROL_RATIO: u32 = 4;
+/// ... plus this, for the dispatch a futex wake does not do (ready-set scan,
+/// guard callback). Measured ~90 us on an idle host, where the retired slice
+/// gave ~5 ms.
+const DISPATCH_ALLOWANCE: Duration = Duration::from_millis(1);
+
+fn median(mut v: Vec<Duration>) -> Duration {
+    v.sort();
+    v[v.len() / 2]
+}
+
+/// The control: this thread parks, another sleeps `TRIGGER_DELAY` and wakes
+/// it. Returns wake-to-running latency, the OS's own cost under current load.
+fn control_wake() -> Duration {
+    let woken = Arc::new(AtomicBool::new(false));
+    let me = std::thread::current();
+    let flag = woken.clone();
+    let waker = std::thread::spawn(move || {
+        std::thread::sleep(TRIGGER_DELAY);
+        let at = Instant::now();
+        flag.store(true, Ordering::SeqCst);
+        me.unpark();
+        at
+    });
+    while !woken.load(Ordering::SeqCst) {
+        std::thread::park_timeout(SPIN_BUDGET);
+    }
+    let done = Instant::now();
+    let at = waker.join().expect("control waker");
+    done.saturating_duration_since(at)
+}
 
 #[test]
 fn guard_trigger_wakes_an_xrce_executor_parked_on_its_socket() {
@@ -49,45 +112,69 @@ fn guard_trigger_wakes_an_xrce_executor_parked_on_its_socket() {
     let mut executor = Executor::open(&config).expect("Executor::open over XRCE");
 
     static FIRED: AtomicBool = AtomicBool::new(false);
-    FIRED.store(false, Ordering::SeqCst);
     let (_id, guard) = executor
         .register_guard_condition(|| FIRED.store(true, Ordering::SeqCst))
         .expect("register_guard_condition");
+    let guard = Arc::new(guard);
 
-    // Let the session settle so the measured spin is not its first.
+    // Let the session settle so the measured spins are not its first.
     for _ in 0..5 {
         executor.spin_once(Duration::from_millis(10));
     }
 
-    let trigger = std::thread::spawn(move || {
-        std::thread::sleep(TRIGGER_DELAY);
-        let at = Instant::now();
-        guard.trigger();
-        at
-    });
+    let mut wakes = Vec::with_capacity(TRIALS);
+    let mut controls = Vec::with_capacity(TRIALS);
+    for trial in 0..TRIALS {
+        // Interleaved, so the control sees the load the trial saw.
+        controls.push(control_wake());
 
-    let start = Instant::now();
-    executor.spin_once(SPIN_BUDGET);
-    let done = Instant::now();
-    let triggered_at = trigger.join().expect("trigger thread");
+        FIRED.store(false, Ordering::SeqCst);
+        let g = guard.clone();
+        let trigger = std::thread::spawn(move || {
+            std::thread::sleep(TRIGGER_DELAY);
+            let at = Instant::now();
+            g.trigger();
+            at
+        });
+        let start = Instant::now();
+        executor.spin_once(SPIN_BUDGET);
+        let done = Instant::now();
+        let triggered_at = trigger.join().expect("trigger thread");
 
-    assert!(
-        FIRED.load(Ordering::SeqCst),
-        "the guard callback did not run in the spin it was triggered in"
+        assert!(
+            FIRED.load(Ordering::SeqCst),
+            "trial {trial}: the guard callback did not run in the spin it was triggered in"
+        );
+        // Lower bound: the spin really waited for the trigger rather than
+        // returning at once, which would pass every upper bound vacuously.
+        assert!(
+            done - start >= TRIGGER_DELAY,
+            "trial {trial}: spin_once returned after {:?}, before the trigger at \
+             {TRIGGER_DELAY:?}",
+            done - start
+        );
+        let latency = done.saturating_duration_since(triggered_at);
+        assert!(
+            latency < RECV_SEPARATION,
+            "trial {trial}: trigger to dispatch took {latency:?} -- the executor waited \
+             inside the backend's recv until its {SPIN_BUDGET:?} budget, instead of \
+             parking on the session's socket"
+        );
+        wakes.push(latency);
+    }
+
+    let wake = median(wakes.clone());
+    let control = median(controls.clone());
+    let allowed = control * CONTROL_RATIO + DISPATCH_ALLOWANCE;
+    println!(
+        "guard on XRCE: median wake {wake:?} against a median control wake {control:?} \
+         (allowed {allowed:?}); trials {wakes:?}, controls {controls:?}"
     );
-    // Lower bound: the spin really waited for the trigger rather than
-    // returning at once, which would pass the upper bound vacuously.
     assert!(
-        done - start >= TRIGGER_DELAY,
-        "spin_once returned after {:?}, before the trigger at {TRIGGER_DELAY:?}",
-        done - start
+        wake <= allowed,
+        "the median trigger-to-dispatch was {wake:?}, against a median OS wake of {control:?} \
+         measured beside it (allowed {CONTROL_RATIO} x that + {DISPATCH_ALLOWANCE:?} = \
+         {allowed:?}) -- the trigger waited for a receive slice to end instead of ending \
+         the park. Trials: {wakes:?}; controls: {controls:?}"
     );
-    let latency = done.saturating_duration_since(triggered_at);
-    assert!(
-        latency <= DISPATCH_BOUND,
-        "trigger to dispatch took {latency:?} (bound {DISPATCH_BOUND:?}) — the \
-         executor waited inside the backend's recv (sliced or whole) instead of \
-         parking on the session's socket"
-    );
-    println!("guard on XRCE dispatched {latency:?} after the trigger");
 }
