@@ -337,11 +337,7 @@ fn run_from_config_source(
         let spec = SessionSpec::new(n.rmw.as_str(), n.locator.as_str())
             .domain_id(n.domain_id)
             .node_name(n.name.as_str())
-            .namespace(if n.namespace.is_empty() {
-                "/"
-            } else {
-                n.namespace.as_str()
-            })
+            .namespace(nros_rmw::canonical_namespace(n.namespace.as_str()))
             .properties(props);
         specs.push(spec);
     }

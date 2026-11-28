@@ -152,7 +152,7 @@ pub(crate) fn launch_rules_for<'r>(
     node_name: &'r str,
     namespace: &'r str,
 ) -> impl Iterator<Item = (&'r str, &'r str)> + 'r {
-    let ns = if namespace.is_empty() { "/" } else { namespace };
+    let ns = nros_rmw::canonical_namespace(namespace);
     table.iter().filter_map(move |r| {
         let (n, rns, from, to) = r.strs()?;
         (n == node_name && rns == ns).then_some((from, to))

@@ -266,6 +266,8 @@ pub use nros_core::{
 // Re-export safety types when feature is enabled
 #[cfg(feature = "safety-e2e")]
 pub use nros_rmw::{IntegrityStatus, SafetyValidator};
+// Issue 2947: the root namespace has one spelling, `/`.
+pub use nros_rmw::{ROOT_NAMESPACE, canonical_namespace, same_namespace};
 
 // Re-export publisher/subscriber options (topic + QoS; backend-agnostic).
 pub use node::{PublisherOptions, SubscriptionOptions};

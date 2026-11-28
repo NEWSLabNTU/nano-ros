@@ -159,7 +159,7 @@ pub unsafe extern "C" fn rclc_init_multi(
             SessionSpec::new(r_ref, l_ref)
                 .domain_id(spec.domain_id)
                 .node_name(n_ref)
-                .namespace(if ns_ref.is_empty() { "/" } else { ns_ref })
+                .namespace(nros_node::canonical_namespace(ns_ref))
                 .properties(spec_props),
         );
     }

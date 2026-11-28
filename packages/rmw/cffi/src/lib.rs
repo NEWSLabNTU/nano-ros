@@ -1917,6 +1917,21 @@ fn find_node_slot(key: usize, name: &str, namespace: &str) -> Option<&'static No
     })
 }
 
+/// Issue 2947 -- say which node did not fit and which knob sizes the table.
+/// Cold: it formats, on a path that has already failed.
+#[cold]
+#[inline(never)]
+fn report_node_table_full(name: &str, namespace: &str) {
+    nros_log::log_error!(
+        nros_log::get_logger("nros_rmw_cffi"),
+        "node table full ({} slot(s)): node '{}' in namespace '{}' does not fit; \
+         raise NROS_RMW_MAX_NODES",
+        MAX_NODES,
+        name,
+        namespace
+    );
+}
+
 fn claim_node_slot(key: usize, name: &str, namespace: &str) -> Option<&'static NodeSlot> {
     for slot in NODE_TABLE.iter() {
         if slot
@@ -2410,6 +2425,15 @@ impl CffiSession {
             }
         };
 
+        // Issue 2947 -- the ROOT namespace has one spelling here, `/`. Entities
+        // reach this seam with `""` (no namespace stated: the session's own
+        // open-time identity, a direct-RMW entity) and with `/` (a node the
+        // executor announces), and they are the same node. Kept apart, they
+        // were two triples: a one-node image's table (NROS_RMW_MAX_NODES = 1,
+        // derived) refused the second, so the node's `/rosout` writer was never
+        // created, and a larger table would have declared the node twice.
+        let namespace = nros_rmw::canonical_namespace(namespace);
+
         // Truncating would MERGE two distinct nodes into one record and then
         // declare the wrong identity on the graph, so it is refused. The
         // executor bounds both at 64, so a name that arrived through it fits.
@@ -2421,7 +2445,14 @@ impl CffiSession {
             return Ok(node_view_of(slot, session_view));
         }
 
-        let slot = claim_node_slot(key, name, namespace).ok_or(TransportError::ConnectionFailed)?;
+        // A full table is a COMPILE-TIME capacity, so it is a configuration
+        // fact (issue 0465's rule for zpico's pools), never a connection
+        // failure: it said `ConnectionFailed` until issue 2947, which is how a
+        // refused `/rosout` writer read as a network fault.
+        let Some(slot) = claim_node_slot(key, name, namespace) else {
+            report_node_table_full(name, namespace);
+            return Err(TransportError::InvalidConfig);
+        };
 
         // A backend with no `create_node` keeps working: the node is then a
         // pure identity carrier with a NULL `backend_data`, which is what every
@@ -7244,6 +7275,47 @@ mod tests {
         use nros_rmw::Publisher as _;
         publisher.publish_raw(&[1u8, 2, 3]).expect("publish");
         assert!(unsafe { STUB_PUBLISH_CALLED });
+    }
+
+    /// Issue 2947 -- an entity that states no namespace (`""`, the session's
+    /// own identity) and one the executor announces in `/` are the same node,
+    /// so they share ONE node-table slot. Kept apart, a one-node image
+    /// (`NROS_RMW_MAX_NODES = 1`) refused the second entity, which is how the
+    /// threadx-linux C talker lost its `/rosout` writer.
+    #[test]
+    fn root_namespace_has_one_spelling_in_the_node_table() {
+        const NODE: &str = "root_ns_issue_2947";
+        let ret = unsafe { nros_rmw_cffi_register_named(c"default".as_ptr(), &STUB_VTABLE) };
+        assert_eq!(ret, NROS_RMW_RET_OK);
+        let cfg = RmwConfig {
+            mode: SessionMode::Client,
+            locator: "tcp/127.0.0.1:7447",
+            domain_id: 0,
+            node_name: NODE,
+            namespace: "",
+            properties: &[],
+        };
+        let mut session = Rmw::open(CffiRmw, &cfg).expect("session open");
+        let qos = nros_rmw::QoSProfile::default();
+
+        let mut unstated = TopicInfo::new("/chatter", "std_msgs/msg/Int32", "RIHS01_abc");
+        unstated.namespace = "";
+        let _a = session
+            .create_publisher(&unstated, qos)
+            .expect("publisher with no stated namespace");
+        let mut announced = TopicInfo::new("/chatter", "std_msgs/msg/Int32", "RIHS01_abc");
+        announced.node_name = Some(NODE);
+        announced.namespace = "/";
+        let _b = session
+            .create_publisher(&announced, qos)
+            .expect("publisher in `/` for the same node");
+
+        let slots: usize = NODE_TABLE
+            .iter()
+            .filter(|s| s.session_key.load(Ordering::Acquire) != 0 && slot_str(&s.name) == NODE)
+            .inspect(|s| assert_eq!(slot_str(&s.namespace_), "/"))
+            .count();
+        assert_eq!(slots, 1, "`\"\"` and `/` claimed separate node slots");
     }
 
     // Issue 0332 — an incomplete vtable must be rejected at registration, not

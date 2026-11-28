@@ -987,9 +987,14 @@ fn create_param_event_pub(
     let supported = Session::supported_qos_policies(session);
     let qos = super::node::fit_runtime_qos(qos, supported, "publisher", TOPIC);
     super::node::validate_qos_or_report(&qos, supported, "publisher", TOPIC)?;
-    session
-        .create_publisher(&topic, qos)
-        .map_err(|_| NodeError::Transport(TransportError::PublisherCreationFailed))
+    session.create_publisher(&topic, qos).map_err(|e| {
+        super::node::creation_refused(
+            "publisher",
+            topic.name,
+            e,
+            TransportError::PublisherCreationFailed,
+        )
+    })
 }
 
 /// phase-556 W13 -- create `node`'s `/rosout` writer:
@@ -1970,7 +1975,7 @@ pub(crate) fn tier_rules<'r>(
     node_name: &'r str,
     namespace: &'r str,
 ) -> impl Iterator<Item = (&'r str, &'r str)> + 'r {
-    let ns = if namespace.is_empty() { "/" } else { namespace };
+    let ns = nros_rmw::canonical_namespace(namespace);
     table
         .iter()
         .flatten()
@@ -3678,7 +3683,7 @@ impl<'s> Executor<'s> {
         };
         let too_long = |_| RemapRefused::TooLong;
         rule.node_name.push_str(node_name).map_err(too_long)?;
-        let ns = if namespace.is_empty() { "/" } else { namespace };
+        let ns = nros_rmw::canonical_namespace(namespace);
         rule.namespace.push_str(ns).map_err(too_long)?;
         rule.from.push_str(from).map_err(too_long)?;
         rule.to.push_str(to).map_err(too_long)?;
@@ -3713,7 +3718,7 @@ impl<'s> Executor<'s> {
         namespace: &str,
         source: &str,
     ) -> Result<crate::names::ResolvedName, ()> {
-        let ns = if namespace.is_empty() { "/" } else { namespace };
+        let ns = nros_rmw::canonical_namespace(namespace);
         self.remap_view().resolve(source, node_name, ns)
     }
 
@@ -3781,7 +3786,7 @@ impl<'s> Executor<'s> {
         namespace: &str,
         sc: super::sched_context::SchedContextId,
     ) -> Result<(), super::types::BindError> {
-        let norm_ns = if namespace.is_empty() { "/" } else { namespace };
+        let norm_ns = nros_rmw::canonical_namespace(namespace);
         // Overwrite if there is already an entry for this (name, ns) pair.
         for entry in self.node_sched_table.iter_mut() {
             if entry.0.as_str() == name && entry.1.as_str() == norm_ns {
@@ -3808,7 +3813,7 @@ impl<'s> Executor<'s> {
         namespace: &str,
         rank: u8,
     ) -> Result<(), super::types::BindError> {
-        let norm_ns = if namespace.is_empty() { "/" } else { namespace };
+        let norm_ns = nros_rmw::canonical_namespace(namespace);
         for entry in self.node_sched_table.iter_mut() {
             if entry.0.as_str() == name && entry.1.as_str() == norm_ns {
                 entry.3 = rank;
@@ -3823,7 +3828,7 @@ impl<'s> Executor<'s> {
     pub(super) fn lookup_node_rank(&self, name: &str, namespace: &str) -> u8 {
         self.node_sched_table
             .iter()
-            .find(|e| e.0.as_str() == name && e.1.as_str() == namespace)
+            .find(|e| e.0.as_str() == name && nros_rmw::same_namespace(e.1.as_str(), namespace))
             .map_or(0, |e| e.3)
     }
 
@@ -3861,7 +3866,7 @@ impl<'s> Executor<'s> {
         namespace: &str,
     ) -> Option<super::sched_context::SchedContextId> {
         for entry in self.node_sched_table.iter() {
-            if entry.0.as_str() == name && entry.1.as_str() == namespace {
+            if entry.0.as_str() == name && nros_rmw::same_namespace(entry.1.as_str(), namespace) {
                 return Some(entry.2);
             }
         }
@@ -3888,7 +3893,7 @@ impl<'s> Executor<'s> {
         group: &str,
         sc: super::sched_context::SchedContextId,
     ) -> Result<(), super::types::BindError> {
-        let norm_ns = if namespace.is_empty() { "/" } else { namespace };
+        let norm_ns = nros_rmw::canonical_namespace(namespace);
         // Overwrite if there is already an entry for this (name, ns, group).
         for entry in self.group_sched_table.iter_mut() {
             if entry.0.as_str() == name && entry.1.as_str() == norm_ns && entry.2.as_str() == group
@@ -3925,7 +3930,7 @@ impl<'s> Executor<'s> {
     ) -> Option<super::sched_context::SchedContextId> {
         for entry in self.group_sched_table.iter() {
             if entry.0.as_str() == name
-                && entry.1.as_str() == namespace
+                && nros_rmw::same_namespace(entry.1.as_str(), namespace)
                 && entry.2.as_str() == group
             {
                 return Some(entry.3);
@@ -6524,9 +6529,14 @@ impl<'s> Executor<'s> {
             "publisher",
             topic_name,
         )?;
-        session
-            .create_publisher(&topic, qos)
-            .map_err(|_| NodeError::Transport(TransportError::PublisherCreationFailed))
+        session.create_publisher(&topic, qos).map_err(|e| {
+            super::node::creation_refused(
+                "publisher",
+                topic.name,
+                e,
+                TransportError::PublisherCreationFailed,
+            )
+        })
     }
 
     /// Phase 124.B.1 — install the executor's wake callback onto the
@@ -7030,7 +7040,10 @@ impl<'s> Executor<'s> {
         self.nodes
             .iter()
             .enumerate()
-            .find(|(_, node)| node.name.as_str() == name && node.namespace.as_str() == namespace)
+            .find(|(_, node)| {
+                node.name.as_str() == name
+                    && nros_rmw::same_namespace(node.namespace.as_str(), namespace)
+            })
             .map(|(index, _)| super::node_record::NodeId::from_raw(index as u8))
     }
 
@@ -11833,9 +11846,14 @@ impl<'s> Executor<'s> {
                 "client",
                 service_name,
             )?;
-            session
-                .create_client(&info, qos)
-                .map_err(|_| NodeError::Transport(TransportError::ServiceClientCreationFailed))?
+            session.create_client(&info, qos).map_err(|e| {
+                super::node::creation_refused(
+                    "service client",
+                    info.name,
+                    e,
+                    TransportError::ServiceClientCreationFailed,
+                )
+            })?
         };
 
         // phase-515 C3 — a capture rides at the end of the entry's own region,
@@ -11930,9 +11948,14 @@ impl<'s> Executor<'s> {
                 "client",
                 service_name,
             )?;
-            session
-                .create_client(&info, qos)
-                .map_err(|_| NodeError::Transport(TransportError::ServiceClientCreationFailed))?
+            session.create_client(&info, qos).map_err(|e| {
+                super::node::creation_refused(
+                    "service client",
+                    info.name,
+                    e,
+                    TransportError::ServiceClientCreationFailed,
+                )
+            })?
         };
 
         let offset = self.arena_alloc::<ServiceClientCallbackEntry<Svc, F, REPLY_BUF>>()?;
@@ -15460,7 +15483,7 @@ impl<'s> Executor<'s> {
         // Build the node FQN from namespace + node_name (same convention as
         // register_parameter_services).
         let mut node_fqn = heapless::String::<256>::new();
-        if ns.is_empty() || ns == "/" {
+        if nros_rmw::canonical_namespace(ns) == nros_rmw::ROOT_NAMESPACE {
             node_fqn.push_str("/").map_err(|_| NodeError::NameTooLong)?;
             node_fqn.push_str(nn).map_err(|_| NodeError::NameTooLong)?;
         } else {
