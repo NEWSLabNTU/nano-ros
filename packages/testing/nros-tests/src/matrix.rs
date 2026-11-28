@@ -1592,6 +1592,11 @@ pub const NON_CELL_TESTS: &[(&str, NonCell)] = &[
     ("system_toml_sched_tasks_parse", NonCell::Static),
     ("sched_task_filter", NonCell::FeatureLane),
     ("sched_task_wake_fanout", NonCell::FeatureLane),
+    // Issue 3017 -- a bare ThreadX kernel probe, no nano-ros runtime.
+    (
+        "threadx_linux_tick",
+        NonCell::Probe("the threadx-linux port's tick keeps host time"),
+    ),
     ("time_to_ros_msg", NonCell::Static),
     (
         "trigger_conditions",
