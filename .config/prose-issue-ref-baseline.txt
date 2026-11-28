@@ -59,6 +59,12 @@
 #         none). Issue 2377 cites it so the two cannot drift. REMOVE THIS ROW
 #         when the PR carrying `docs/issues/2376-*.md` merges.
 #
+#   3027  IN FLIGHT — filed (and resolved) on PR #5077 (the stack walk counts
+#         image pointers only where a relocation wrote them). Issue 3028
+#         cites it as the change that re-baselines no row. REMOVE THIS ROW
+#         when #5077 merges.
+#
+docs/issues/3028-stack-floor-rows-stale-high-unnoticed.md:3027
 docs/roadmap/archived/phase-431-ship-the-nros-binary.md:1110
 just/check/docs.just:1110
 scripts/build/rustdoc-set.sh:1110
