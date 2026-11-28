@@ -232,6 +232,30 @@ NROS_ENTITY_MAX_QUERYABLES = 7
 NROS_EXECUTOR_MAX_CBS = 2
 NROS_EXECUTOR_ACTION_CLIENTS = 0
 
+# Issue 2846 -- the same role on a 64-bit Arm image (qemu_cortex_a53 SMP, C
+# image: Zephyr 3.7 builds no Rust for this board). The re-sync thread is the
+# shim's C either way. Its walk, like the 32-bit one, reaches a socket edge
+# bound by C type that this thread never takes.
+[[observed]]
+image = "smp_sntp_bringup@zephyr_smp_sntp_resync"
+rmw = "zenoh"
+target = "aarch64-unknown-none"
+role = "SNTP_RESYNC"
+peak = 2272
+static = 122304
+upper_bound = "cbprintf_package_convert -> socket_service_thread (c_type)"
+twin_peers = ["sntp=12399", "dns=15353"]
+issue = "2846"
+method = "QEMU qemu_cortex_a53 SMP (2 cpus) on Zephyr's own run line with the e1000 on QEMU's user network (the board's CONFIG_NET_QEMU_USER, issue 3014) and NO icount: an SMP twin runs without it (issue 3015), because no fixed `-icount shift` gave runs that agree or a session that holds. Thread analyzer peak of the `nros_sntp_resync_tid` thread, taken by the twin lane, `python3 scripts/stack-floor-twin.py --only smp_sntp_bringup@zephyr_smp_sntp_resync --seconds 120`, which builds the image with the twin fragment (analyzer, INIT_STACKS, a 4 KiB analyzer thread stack) and starts the router and the row's `twin_peers`: an SNTP responder on udp 12399 and a DNS responder on udp 15353 answering 10.0.2.2, so the hostname server `ntp.nros.test` goes through Zephyr's resolver. Three runs on 2026-11-28: peaks 2,256, 2,256 and 2,272 B (228-229 SNTP and 456-458 DNS answers each); the row keeps the highest. First taken on the descriptor's QEMU line under `-icount shift=auto`: 2,192 and 2,112 B."
+
+[observed.shape]
+NROS_EXECUTOR_MAX_NODES = 2
+NROS_MAX_PUBLISHERS = 6
+NROS_MAX_SUBSCRIBERS = 1
+NROS_MAX_QUERYABLES = 14
+NROS_EXECUTOR_MAX_CBS = 3
+NROS_EXECUTOR_ACTION_CLIENTS = 0
+
 [[observed]]
 image = "talker/c/zenoh@nucleo-f767zi-zephyr"
 rmw = "zenoh"

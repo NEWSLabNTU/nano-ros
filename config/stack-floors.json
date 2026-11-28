@@ -148,6 +148,29 @@
       "upper_bound": "z_impl_zsock_sendto -> _zp_unicast_lease_task_fn (c_type)"
     },
     {
+      "image": "smp_sntp_bringup@zephyr_smp_sntp_resync",
+      "issue": "2846",
+      "method": "QEMU qemu_cortex_a53 SMP (2 cpus) on Zephyr's own run line with the e1000 on QEMU's user network (the board's CONFIG_NET_QEMU_USER, issue 3014) and NO icount: an SMP twin runs without it (issue 3015), because no fixed `-icount shift` gave runs that agree or a session that holds. Thread analyzer peak of the `nros_sntp_resync_tid` thread, taken by the twin lane, `python3 scripts/stack-floor-twin.py --only smp_sntp_bringup@zephyr_smp_sntp_resync --seconds 120`, which builds the image with the twin fragment (analyzer, INIT_STACKS, a 4 KiB analyzer thread stack) and starts the router and the row's `twin_peers`: an SNTP responder on udp 12399 and a DNS responder on udp 15353 answering 10.0.2.2, so the hostname server `ntp.nros.test` goes through Zephyr's resolver. Three runs on 2026-11-28: peaks 2,256, 2,256 and 2,272 B (228-229 SNTP and 456-458 DNS answers each); the row keeps the highest. First taken on the descriptor's QEMU line under `-icount shift=auto`: 2,192 and 2,112 B.",
+      "peak": 2272,
+      "rmw": "zenoh",
+      "role": "SNTP_RESYNC",
+      "shape": {
+        "NROS_EXECUTOR_ACTION_CLIENTS": 0,
+        "NROS_EXECUTOR_MAX_CBS": 3,
+        "NROS_EXECUTOR_MAX_NODES": 2,
+        "NROS_MAX_PUBLISHERS": 6,
+        "NROS_MAX_QUERYABLES": 14,
+        "NROS_MAX_SUBSCRIBERS": 1
+      },
+      "static": 122304,
+      "target": "aarch64-unknown-none",
+      "twin_peers": [
+        "sntp=12399",
+        "dns=15353"
+      ],
+      "upper_bound": "cbprintf_package_convert -> socket_service_thread (c_type)"
+    },
+    {
       "image": "talker/c/zenoh@nucleo-f767zi-zephyr",
       "issue": "2402",
       "method": "Renode nucleo-f767zi twin, thread analyzer main-thread peak over 14 rounds, nros-relwithdebinfo (no LTO); static from main; static re-walked 2026-11-15 by the drift check, callee order masking the project name (phase-557 W8); static re-walked 2026-11-15 with the walk's callee order read from inlined v0 back-references, which no longer move with the checkout path (phase-557 W8 follow-up); static re-walked 2026-11-16 by the drift check after issue 2623's anchors stopped keeping the whole C API in the image: the link keeps fewer functions and the walk cuts its cycles elsewhere (+8,188 B, a different over-approximated chain through bound indirect calls, not a deeper runtime call); static re-walked 2026-11-20 by the drift check after the guard condition began owning its wake state: one new indirect edge from GuardCondition::trigger, bound by type, joins a longer over-approximated chain through entity drops that no thread runs (106,776 to 112,200 B; peak unchanged), not a deeper runtime call; this is the bound-indirect over-approximation class of issue 2658, whose thread-entry narrowing should drop this path, so re-walk and lower the row when it lands); static re-walked 2026-11-23 after the walk stopped counting an address taken only by code the link discarded, or by a global the image does not hold (issue 2658: the force-link anchors' tables of every C/C++ export made the whole API reachable through every C function pointer): the walk fell (112,200 to 72,000 B); the peak, and the stack it sizes, are unchanged",

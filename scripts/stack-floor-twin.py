@@ -216,6 +216,10 @@ def twin_conf(stack: int = TWIN_STACK, qemu: bool = False) -> str:
         "CONFIG_THREAD_ANALYZER_USE_PRINTK=y",
         "CONFIG_THREAD_ANALYZER_AUTO=y",
         "CONFIG_THREAD_ANALYZER_AUTO_INTERVAL=5",
+        "# The analyzer's own thread. Zephyr's 1024 B default overflowed on",
+        "# qemu_cortex_a53 at its second round (a Data Abort that halted the",
+        "# image, issue 2846), so it never reached the rounds the lane counts.",
+        "CONFIG_THREAD_ANALYZER_AUTO_STACK_SIZE=4096",
         f"CONFIG_MAIN_STACK_SIZE={stack}",
         *icount,
         "",
@@ -253,6 +257,27 @@ def twin_emulator(board: str) -> tuple[str, str] | None:
     if not f.is_file():
         return None
     return emulator_of(f.read_text())
+
+
+def twin_qemu_cpus(board: str) -> int:
+    """How many CPUs the board's QEMU line runs (`[board.run.qemu] smp =
+    "cpus=N"`), 1 when the descriptor states none."""
+    f = ROOT / "packages" / "boards" / f"nros-board-{board}" / "nros-board.toml"
+    return qemu_cpus_of(f.read_text()) if f.is_file() else 1
+
+
+def qemu_cpus_of(descriptor: str) -> int:
+    """`twin_qemu_cpus` over a descriptor's text."""
+    section = ""
+    for line in descriptor.splitlines():
+        s = line.split("#", 1)[0].strip()
+        if s.startswith("["):
+            section = s
+        elif section == "[board.run.qemu]":
+            m = re.fullmatch(r'smp\s*=\s*"cpus=(\d+)[^"]*"', s)
+            if m:
+                return int(m.group(1))
+    return 1
 
 
 def emulator_of(descriptor: str) -> tuple[str, str] | None:
@@ -492,8 +517,15 @@ def run_row(nros: str, row: dict, out: Path, seconds: int, rounds: int, w,
             return Verdict(False, [f"{row['image']}: FAIL: {sysf} is not keyed to this row"])
         stack = twin_stack(stamped_stack(sysf.parent / "stack.conf"), board_stack(board))
         emu = twin_emulator(board)
-        (sysf.parent / TWIN_CONF).write_text(
-            twin_conf(stack, qemu=bool(emu and emu[0] == "qemu")))
+        # Issue 3015 -- icount only on a single-CPU QEMU twin. With two
+        # vCPUs and QEMU's user network, no fixed `-icount shift` gave
+        # qemu_cortex_a53 runs that agree, or even a session that holds:
+        # shift=4 (Zephyr's) lost the session over slirp, and shift=0 and 1
+        # each gave one run with SNTP answers and one without (measured on
+        # host 139, 2026-11-28). An SMP twin runs without icount, as Zephyr
+        # itself does under NETWORKING, and its row keeps the highest peak.
+        icount = bool(emu and emu[0] == "qemu") and twin_qemu_cpus(board) == 1
+        (sysf.parent / TWIN_CONF).write_text(twin_conf(stack, qemu=icount))
         sysf.write_text(with_twin_conf(text))
         tgt = [target] if target else []
 
@@ -601,6 +633,10 @@ def self_test() -> int:
     check("an FVP board has no twin (its real descriptor)",
           fvp.is_file() and emulator_of(fvp.read_text()) is None
           and emulator_of('[board.run]\nemulator = "qemu:x"\n') == ("qemu", "x"))
+    check("an SMP QEMU board runs its twin without icount (qemu-cortex-a53: 2 CPUs)",
+          twin_qemu_cpus("qemu-cortex-a53") == 2 and twin_qemu_cpus("mps2-an385-zephyr") == 1
+          and qemu_cpus_of('[board.run.qemu]\nsmp = "cpus=4"\n') == 4
+          and qemu_cpus_of('[board.run]\nsmp = "cpus=4"\n') == 1)
     check("a QEMU twin's conf turns icount on, a Renode twin's does not",
           "CONFIG_QEMU_ICOUNT=y" in twin_conf(qemu=True)
           and "QEMU_ICOUNT" not in twin_conf())

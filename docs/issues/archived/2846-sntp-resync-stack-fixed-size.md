@@ -1,12 +1,14 @@
 ---
 id: 2846
 title: "Zephyr's SNTP re-sync thread had a fixed 2 KiB stack, below a measured 7 KiB peak"
-status: open
+status: resolved
 type: bug
 severity: medium
 area: [zephyr, clock]
 related: [rfc-0141, phase-582, phase-557, issue-0758, issue-2400, issue-2897, issue-2963]
 found: 2026-11-23
+resolved: 2026-11-28
+resolved_in: "zephyr-net-batch"
 ---
 
 ## What
@@ -107,7 +109,7 @@ Items 1–3 are done for the 32-bit board:
   what the 64-bit figure needs, and 64-bit is not measured in-tree yet.
 
 The row was first taken by hand. The twin lane now re-measures it
-([issue 2963](archived/2963-stack-floor-twin-measures-only-main-thread.md)):
+([issue 2963](2963-stack-floor-twin-measures-only-main-thread.md)):
 `just zephyr stack-floor-twin --only
 pubsub_bringup@zephyr_cortex_m_talker_clock_sntp_resync` starts the router
 and the SNTP and DNS stand-ins itself, and read 1,160 B in two runs.
@@ -122,7 +124,7 @@ has no row in `config/stack-builtins.toml` (the `__aarch64_*` atomics), and
 the arm64 assembly entry points (`__start`, `arch_cpu_idle`,
 `arm_smccc_hvc`, `arm_smccc_smc`, `z_arm64_context_switch`,
 `z_arm64_exit_exc`, `z_arm64_fpu_save`) have no frames.
-[Issue 2897](archived/2897-a53-stack-walk-refuses-aarch64-builtins.md) owns that
+[Issue 2897](2897-a53-stack-walk-refuses-aarch64-builtins.md) owns that
 groundwork, in three steps: (1) the aarch64 libgcc row for the atomics (draft
 #4760); (2) frames for the arm64 assembly entry points above; (3) the
 observed `SNTP_RESYNC` row on `qemu-cortex-a53`, from a boot's stack-peak
@@ -147,3 +149,40 @@ That floor is an UPPER BOUND through a machine-bound edge
 64-bit stack from it. Still open here: the 64-bit `[[observed]]` row (a
 thread-analyzer peak under QEMU, as the 32-bit row was taken), and the
 looseness, issue 2998 (aarch64 C untyped) then RFC-0143.
+
+## 64-bit measured, resolved (2026-11-28, host 139)
+
+The last item, the 64-bit `[[observed]]` row, is recorded
+(`config/stack-floors.toml`, `smp_sntp_bringup@zephyr_smp_sntp_resync`,
+target `aarch64-unknown-none`):
+- **Image.** The realtime-c `smp_sntp_bringup` image now names its server by
+  hostname (`ntp.nros.test:12399`), has DNS on (`10.0.2.2:15353`) and
+  re-syncs every 500 ms, so its run covers a real answer through Zephyr's
+  resolver, as the 32-bit row's does. It used to dial TEST-NET-1, which only
+  ever reached the timeout path.
+- **Peak.** 2,192 B of 8,192 in the thread analyzer, taken by the twin lane
+  (`python3 scripts/stack-floor-twin.py --only
+  smp_sntp_bringup@zephyr_smp_sntp_resync --seconds 120`). That run had 230
+  SNTP and 460 DNS answers and 24 analyzer rounds. A second run peaked at
+  2,112 B; the row keeps the higher.
+- **Walk.** 122,304 B, an upper bound through a socket edge bound by C type
+  (`cbprintf_package_convert -> socket_service_thread`). The twin confirms
+  the walk matches the row and covers the run, with a floor of 2,416 B. The
+  walk's looseness is issue 2998's.
+- **Default.** It stays 8,192 B. The in-tree 64-bit peak is 2,192 B, but a
+  consumer's own re-sync thread around the same `sntp_simple()` measured
+  7,024 B on 64-bit Arm, and the default holds for all three. The knob's
+  help states each figure.
+
+Two things the run needed:
+- **TAP.** `nros run` on qemu-cortex-a53 boots Zephyr's TAP line, which an
+  unprivileged host cannot open. The image states `[run] method = "qemu"`
+  (the descriptor's user-network line), and issue 3014 holds the class.
+- **Analyzer stack.** The thread analyzer's own thread overflowed on aarch64
+  at Zephyr's 1,024 B default: a Data Abort at its second round, which halted
+  the image. The twin fragment now states a 4,096 B analyzer stack.
+
+**Re-measured (2026-11-28, issue 3015).** Taken again on Zephyr's own run
+line with no icount (an SMP twin no longer uses it): 2,256, 2,256 and 2,272 B
+over three runs. The row now keeps 2,272 B, and the knob help says so.
+
