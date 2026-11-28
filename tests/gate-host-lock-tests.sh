@@ -213,10 +213,21 @@ cmd_gate() { # <xdg> <tag> <command> [extra env...]
     echo $(( $(date +%s) - t0 )) >"$tmp/$tag.secs"
 }
 
+# Issue 3018 -- the cases that must OUTLIVE the hang limit (a live gate is
+# not killed) run on these, never on the 2 s limit the kill cases use. The
+# detector counts a tick as idle when it saw no new output and no CPU growth,
+# so a live gate's stand-in must show progress within every window of
+# alive_hang_s; under a loaded `ci gate` a 0.5 s tick against a 2 s limit was
+# descheduled past it and read as hung. alive_run_s keeps the run at three
+# times the limit, so the control still spans several windows and passing it
+# is not vacuous. The kill cases keep 2 s: load only delays a kill.
+alive_hang_s=5
+alive_run_s=$((alive_hang_s * 3))
+
 # 7. The hang detector spares a gate that is silent but burning CPU.
 #    Negative control (case 8): the same silence with no CPU is killed.
 x="$tmp/x7"; run_dir "$x"
-cmd_gate "$x" a7 'end=$((SECONDS + 5)); while [ $SECONDS -lt $end ]; do :; done' _NROS_GATE_LOCK_TEST_HANG_S=2
+cmd_gate "$x" a7 "end=\$((SECONDS + $alive_run_s)); while [ \$SECONDS -lt \$end ]; do :; done" _NROS_GATE_LOCK_TEST_HANG_S=$alive_hang_s
 [ "$(cat "$tmp/a7.rc")" = 0 ] && ! nros_grep_q "gate hung" "$tmp/a7.out" \
     && ok "a silent gate that burns CPU outlives the hang limit" \
     || bad "a silent gate that burns CPU outlives the hang limit"
@@ -234,7 +245,7 @@ gate "$x" b8 0.1 _NROS_GATE_LOCK_TEST_WAIT_S=60
 [ "$(cat "$tmp/b8.rc")" = 0 ] && ok "a hung gate's kill frees the lock" || bad "a hung gate's kill frees the lock"
 pgrep -f "nros-gate-lock-test-$$" >/dev/null \
     && bad "the hung gate's process tree is gone" || ok "the hung gate's process tree is gone"
-cmd_gate "$x" c8 'for i in 1 2 3 4 5 6 7 8 9 10; do echo tick; sleep 0.5; done' _NROS_GATE_LOCK_TEST_HANG_S=2
+cmd_gate "$x" c8 "end=\$((SECONDS + $alive_run_s)); while [ \$SECONDS -lt \$end ]; do echo tick; sleep 0.5; done" _NROS_GATE_LOCK_TEST_HANG_S=$alive_hang_s
 [ "$(cat "$tmp/c8.rc")" = 0 ] && ok "negative control: a gate that prints while idle is alive" \
     || bad "negative control: a gate that prints while idle is alive"
 
