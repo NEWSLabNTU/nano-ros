@@ -15,10 +15,9 @@
 //!   one projection: a seed and a baked value cannot disagree.
 //! - **D2, which instance.** No instance: no seeds, the probe runs as before.
 //!   One instance, or several resolving to EQUAL values: those values. Several
-//!   that differ on some keys (absent in one counts): every key they AGREE on
-//!   is seeded, and only the disagreeing keys run on their declaration
-//!   defaults (issue 2901). The probe's outcome then decides -- kept with a
-//!   note, or refused naming only the disagreeing keys.
+//!   that differ on any key (absent in one counts): the probe runs on the
+//!   declaration defaults, and its outcome decides -- kept with a note, or
+//!   refused naming the disagreement.
 //! - **D4, freshness.** The seed set's `sha256` digest is a field of the
 //!   component's probe key, so editing a parameter file re-probes, and a reader
 //!   that recomputes the key (the sizing join) skips a sidecar probed under
@@ -86,16 +85,12 @@ pub enum Seeding {
         sources: Vec<SeedSource>,
         digest: String,
     },
-    /// The instances resolve to different values on some keys.
+    /// The instances resolve to different values.
     Disagree {
         /// `(fqn, model path, values)` per instance.
         instances: Vec<DisagreeingInstance>,
-        /// The keys on which they differ: these run on their declaration
-        /// defaults.
+        /// The keys on which they differ.
         keys: Vec<String>,
-        /// Issue 2901 -- every key all instances set to the same value, sorted
-        /// by name: these are seeded.
-        agreed: Vec<(String, String)>,
         sources: Vec<SeedSource>,
         digest: String,
     },
@@ -115,16 +110,6 @@ pub enum ProbeSeedRecord {
         reason: String,
         instances: Vec<String>,
         keys: Vec<String>,
-        sources: Vec<SeedSource>,
-        digest: String,
-    },
-    /// Issue 2901 -- the instances disagree on `defaulted`, which ran on their
-    /// declaration defaults; every other key, `seeded`, took the value they
-    /// share.
-    PartialSeeds {
-        instances: Vec<String>,
-        seeded: Vec<String>,
-        defaulted: Vec<String>,
         sources: Vec<SeedSource>,
         digest: String,
     },
@@ -290,15 +275,6 @@ impl SeedModels {
             .collect();
         keys.sort();
         keys.dedup();
-        // Issue 2901 -- what every instance sets to the same value. A key one
-        // instance omits is not agreed: there it takes its declaration
-        // default, a value too, and that is already counted in `keys`.
-        let agreed: Vec<(String, String)> = mine[0]
-            .params
-            .iter()
-            .filter(|(k, _)| keys.binary_search(k).is_err())
-            .cloned()
-            .collect();
         let mut rows: Vec<DisagreeingInstance> = mine
             .iter()
             .map(|i| {
@@ -313,7 +289,6 @@ impl SeedModels {
         Seeding::Disagree {
             instances: rows,
             keys,
-            agreed,
             sources,
             digest,
         }
@@ -331,13 +306,12 @@ impl Seeding {
         }
     }
 
-    /// The values the probe seeds the node with: every instance's values when
-    /// they all agree, else the keys they agree on (issue 2901).
+    /// The values the probe seeds the node with: empty unless every instance
+    /// agrees.
     pub fn params(&self) -> &[(String, String)] {
         match self {
             Seeding::Seeded { params, .. } => params,
-            Seeding::Disagree { agreed, .. } => agreed,
-            Seeding::None => &[],
+            _ => &[],
         }
     }
 
@@ -358,22 +332,8 @@ impl Seeding {
             Seeding::Disagree {
                 instances,
                 keys,
-                agreed,
                 sources,
                 digest,
-            } if !agreed.is_empty() => Some(ProbeSeedRecord::PartialSeeds {
-                instances: instances.iter().map(|(f, _, _)| f.clone()).collect(),
-                seeded: agreed.iter().map(|(k, _)| k.clone()).collect(),
-                defaulted: keys.clone(),
-                sources: sources.clone(),
-                digest: digest.clone(),
-            }),
-            Seeding::Disagree {
-                instances,
-                keys,
-                sources,
-                digest,
-                ..
             } => Some(ProbeSeedRecord::Unseeded {
                 reason: "instances disagree".into(),
                 instances: instances.iter().map(|(f, _, _)| f.clone()).collect(),
@@ -417,20 +377,9 @@ impl Seeding {
     pub fn unseeded_note(&self, node: &str) -> Option<String> {
         let rows = self.disagreement()?;
         Some(format!(
-            "metadata probe for {node} ran {}on its declaration defaults for the keys its launch \
-             instances disagree on ({rows})",
-            self.seeded_clause()
+            "metadata probe for {node} ran on its declaration defaults: its launch instances \
+             disagree ({rows}), so no one set of values constructs it"
         ))
-    }
-
-    /// "with the N values its launch instances agree on, and " when some were
-    /// seeded, else nothing.
-    fn seeded_clause(&self) -> String {
-        match self.params().len() {
-            0 => String::new(),
-            1 => "with the 1 value its launch instances agree on, and ".into(),
-            n => format!("with the {n} values its launch instances agree on, and "),
-        }
     }
 
     /// The refusal for a component whose instances disagree and whose unseeded
@@ -438,10 +387,10 @@ impl Seeding {
     pub fn refusal(&self, node: &str, error: &str) -> Option<String> {
         let rows = self.disagreement()?;
         Some(format!(
-            "metadata probe for {node}: the node cannot be constructed {}on its declaration \
-             defaults for the keys its launch instances disagree on ({error}): {rows}. Give \
-             each of those keys a declaration default, or make the instances agree on it.",
-            self.seeded_clause()
+            "metadata probe for {node}: the node cannot be constructed on its declaration \
+             defaults ({error}), and its launch instances disagree on parameters, so there is \
+             no one set of values to construct it with: {rows}. Probe one instance per bringup \
+             (not supported yet), or make the values agree."
         ))
     }
 }
@@ -523,73 +472,34 @@ mod tests {
         assert!(s.digest().unwrap().starts_with("sha256:"));
     }
 
-    // Issue 2901.
-    /// Instances that differ on some keys seed every key they agree on; only
-    /// the disagreeing keys (one absent in an instance counts) are left on
-    /// their declaration defaults, and only those are named.
     #[test]
-    fn disagreeing_instances_seed_what_they_agree_on() {
+    fn disagreeing_instances_name_the_keys_and_seed_nothing() {
         let m = models(vec![
             inst(
                 "/control/controller",
                 "controller",
-                &[
-                    ("ctrl_period", "0.03"),
-                    ("gain", "1"),
-                    ("wheel_base", "2.74"),
-                ],
+                &[("ctrl_period", "0.03"), ("gain", "1")],
                 0,
             ),
             inst(
                 "/carla/controller",
                 "controller",
-                &[("ctrl_period", "0.03"), ("wheel_base", "3.005")],
+                &[("ctrl_period", "0.05")],
                 1,
             ),
         ]);
         let s = m.seeding("ctrl_pkg", "controller", None);
-        assert_eq!(s.params(), &[("ctrl_period".into(), "0.03".into())]);
+        assert!(s.params().is_empty());
         let Seeding::Disagree { keys, .. } = &s else {
             panic!("{s:?}")
         };
         // `gain` is absent in one instance: its default there, a difference.
-        assert_eq!(keys, &["gain", "wheel_base"]);
+        assert_eq!(keys, &["ctrl_period", "gain"]);
         let msg = s.refusal("ctrl_pkg::controller", "boom").unwrap();
         assert!(
-            msg.contains("/carla/controller (build/nros/models/b/system_model.yaml) has gain = its default, wheel_base = 3.005"),
+            msg.contains("/carla/controller (build/nros/models/b/system_model.yaml) has ctrl_period = 0.05, gain = its default"),
             "{msg}"
         );
-        assert!(
-            !msg.contains("ctrl_period"),
-            "an agreed key is not named: {msg}"
-        );
-        assert!(
-            msg.contains("with the 1 value its launch instances agree on"),
-            "{msg}"
-        );
-        let note = s.unseeded_note("ctrl_pkg::controller").unwrap();
-        assert!(note.contains("with the 1 value"), "{note}");
-        let Some(ProbeSeedRecord::PartialSeeds {
-            seeded, defaulted, ..
-        }) = s.record()
-        else {
-            panic!("{:?}", s.record())
-        };
-        assert_eq!(seeded, ["ctrl_period"]);
-        assert_eq!(defaulted, ["gain", "wheel_base"]);
-    }
-
-    /// Instances that agree on nothing seed nothing, and say so as before.
-    #[test]
-    fn instances_that_agree_on_no_key_seed_nothing() {
-        let m = models(vec![
-            inst("/a/controller", "controller", &[("ctrl_period", "0.03")], 0),
-            inst("/b/controller", "controller", &[("ctrl_period", "0.05")], 1),
-        ]);
-        let s = m.seeding("ctrl_pkg", "controller", None);
-        assert!(s.params().is_empty());
-        let msg = s.refusal("ctrl_pkg::controller", "boom").unwrap();
-        assert!(!msg.contains("agree on, and"), "{msg}");
         assert!(matches!(s.record(), Some(ProbeSeedRecord::Unseeded { .. })));
     }
 

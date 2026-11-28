@@ -816,7 +816,7 @@ AN536) stay green.
 | owned entry that never starts nano-ros on the host gets a census (`can_output_test_bringup` `[census] on_missing = "warn"`) | fixed, PR #4671; the island states `runs_nano_ros = false` on `nano-ros-next` `56b9971` | 2871 (archived), I45 (done) |
 | owned entry census adds the entry's workspace `<depend>`s (FreeRTOS `asi_unit_test` / `asi_dds_loopback_test` `add_subdirectory(asi_common)` fallback) | fixed 2026-11-25: the census adds the probe's closure; island fallback removal pending (T4) | issue 2899, I50 |
 | owned census goes stale when the entry's CMakeLists changes (a stale census masked issue 2899 locally) | fixed 2026-11-25 | issue 2900, I51 |
-| the probe seeds the parameters instances agree on when they disagree on others (controller's 148 `declare_parameter` defaults, P3) | fixed (nano-ros side; the island drops its defaults next) | issue 2901, I52 |
+| the probe seeds the parameters instances agree on when they disagree on others (controller's 148 `declare_parameter` defaults, P3) | open | issue 2901, I52 |
 | `nros run` `--forbid`, `--settle`, `--zephyr-workspace` | fixed; used on `nano-ros-next` | issue 2863 |
 | the Zephyr workspace ladder skips the project's west workspace (`run-zephyr-fvp-ci.sh:202-213`, `--zephyr-workspace` on every call) | done: fixed in nano-ros (2877 resolved); the island dropped its flag | issue 2877, I37 |
 | the island's last Zephyr patch, an out-of-tree tracing backend (`patches/zephyr/0003-*`, `scripts/apply-zephyr-patches.sh`) | done: ruled in 2878 (resolved); the island dropped its patch | issue 2878, I38 |
@@ -1024,13 +1024,10 @@ AN536) stay green.
 
 ### I52 -- probe seeds per parameter when instances disagree
 
-- **Issue:** [2901](../issues/archived/2901-probe-seeds-all-or-nothing-on-disagreement.md).
+- **Issue:** [2901](../issues/2901-probe-seeds-all-or-nothing-on-disagreement.md).
 - **What:** a ruling between (a) seed the agreed keys and leave only the
   disagreeing ones on declaration defaults, and (b) one probe per model;
   then the build.
-- **Status:** nano-ros side fixed 2026-11-28 with option (a). The probe
-  seeds the agreed keys, and only the disagreeing ones run on their
-  defaults. The island's step below is open.
 - **Acceptance:** 2901's; the island's controller drops its declaration
   defaults except where the ruling still needs them (today the
   `wheel_base`, `max_pitch_rad`, `min_pitch_rad` split between
@@ -1325,7 +1322,7 @@ unowned.
 - [issue 2871](../issues/archived/2871-census-for-entry-without-nano-ros.md): an owned entry that never starts nano-ros gets no census (I45; resolved by PR #4671).
 - [issue 2899](../issues/archived/2899-owned-census-omits-entry-workspace-depends.md): an owned entry's census builds its package without the workspace packages it `<depend>`s on (I50).
 - [issue 2900](../issues/archived/2900-owned-census-freshness-ignores-entry-cmakelists.md): an owned census reads fresh after the entry's CMakeLists changes (I51).
-- [issue 2901](../issues/archived/2901-probe-seeds-all-or-nothing-on-disagreement.md): the probe drops every launch seed when instances disagree on one key (I52).
+- [issue 2901](../issues/2901-probe-seeds-all-or-nothing-on-disagreement.md): the probe drops every launch seed when instances disagree on one key (I52).
 - [issue 2632](../issues/2632-s32z270-freertos-rtd-variant.md): the s32z270-freertos RTD variant's NETC netif, port patch and full link (I46; phase-524 W3 stays its descriptor home).
 - [issue 2633](../issues/2633-board-owned-can-frame-driver.md): the S32Z2 CAN frame driver's vendor backend and the `board`-stack hand-off (I47; phase-560 W9 stays its design home).
 - [issue 2769](../issues/2769-zenoh-can-link-over-frame-driver.md): the zenoh-pico CAN link over the frame driver (I48).
