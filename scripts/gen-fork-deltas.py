@@ -176,6 +176,10 @@ def render_index(table: dict) -> str:
                   "own GitHub account. Each one's shipped line is the branch its section "
                   "names, and every patch on it is listed there against the pinned "
                   "upstream ref."]
+    org = table.get("organisation_account")
+    if org:
+        lines += ["", f"The forks whose URL names `{org}` are under the `{org}` GitHub "
+                  "organisation, by the maintainer's choice, and are kept the same way."]
     lines += ["", "Authored by nano-ros (no section): "
               + ", ".join(f"`{r['path']}`" for r in table.get("ours", [])) + ".", ""]
     return "\n".join(lines)
