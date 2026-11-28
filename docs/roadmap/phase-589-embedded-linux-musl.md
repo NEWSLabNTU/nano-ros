@@ -136,7 +136,10 @@ Each piece of hand wiring is a work item below.
 
 ### W8 — C and C++ nodes linking a vendor SDK
 
-- **Status:** OPEN (proposed; no issue yet).
+- **Owner:** nros 175.
+- **Status:** OPEN (designed, awaiting the user's ruling:
+  [RFC-0144](../design/0144-cross-linux-vendor-shared-libraries.md) Q1-Q4;
+  nothing built).
 - **What:** the user's next step is C/C++ nodes that link the SoC vendor's
   media SDK and NPU runtime. Those ship as shared libraries, so the image links
   musl dynamically, and each image needs its own link libraries, search paths
