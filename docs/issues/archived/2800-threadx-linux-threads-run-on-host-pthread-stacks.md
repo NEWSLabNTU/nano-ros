@@ -90,7 +90,7 @@ Open:
   the cells print no peak lines; these were run by hand.
 - `nros build`'s stack-floor walk does not reach a host image, and
   threadx-linux stays off `STATING_PLATFORMS`:
-  [issue 2834](../2834-host-image-stack-floor-walk.md).
+  [issue 2834](2834-host-image-stack-floor-walk.md).
 - Issue 2732's pool question stands, now with stacks that are used.
 
 

@@ -346,7 +346,7 @@ variants of each unit. So the walk's flags do not thrash a shared dir.
   ([issue 2800](../issues/archived/2800-threadx-linux-threads-run-on-host-pthread-stacks.md)),
   but a host image's paths run through the host libc, whose frames the walk
   does not size
-  ([issue 2834](../issues/2834-host-image-stack-floor-walk.md)).
+  ([issue 2834](../issues/archived/2834-host-image-stack-floor-walk.md)).
 
 On the cargo road, ThreadX, NuttX and bare metal stated no stack, so W5
 reports their images as not checked. Each joins when its board build script
@@ -1596,7 +1596,7 @@ Rehomed from [phase-548](archived/phase-548-three-languages-every-board.md) when
 | [#2550](../issues/2550-stack-walk-order-dependent-under-cycles.md) | The walk's depth depends on callee order under the large SCC. W9c measures the band and W9d gates on its top. |
 | [#2688](../issues/archived/2688-stack-floor-drift-host-repro.md) | One tree walks differently in CI and on a host. W9c records the environment with each row. |
 | [#2693](../issues/2693-stack-floor-check-off-on-tiarmclang.md) | The check is OFF for TI Arm Clang images. W9e; its home stays phase-575 W3. |
-| [#2834](../issues/2834-host-image-stack-floor-walk.md) | The walk never reaches a host image, and would not size the host libc's frames if it did, so threadx-linux states a stack nothing checks. |
+| [#2834](../issues/archived/2834-host-image-stack-floor-walk.md) | WONTFIX 2026-11-28: a host image is checked against its measured peak, never walked. The host libc cannot be walked soundly: NSS modules (`getaddrinfo`) are unboundable, and stdio's jump tables, `printf`'s alloca and the port's signal frames are outside a static bound. |
 | [#2836](../issues/archived/2836-link-overflow-unexplained.md) | A link that overflows a region fails with the linker's bare line: `nros build` hands the terminal to the tool, so it cannot say what the image reserves (the main stack and its floor row, the heap) or which knob to move. Capture once on every road, then explain from the log. |
 | [#2837](../issues/2837-stock-templates-unbuilt-on-merge.md) | No check builds `nros new` for each stock template and board this phase's floor table names: the merge queue scaffolds only the talker on two boards, and the nightly Zephyr part drops scaffolds, so a stock Rust action-server on nucleo-f767zi-zephyr that fails to link went unseen. |
 | [#2968](../issues/2968-nros-frames-over-max-frame-cap.md) | nano-ros frames over the 4 KiB cap that `check-max-frame` holds in its baseline (release blocker B34): the lifecycle registration's on-stack state machine, `install_in_with_launch_params`, the raw action client, NuttX `Executor::pass`, and the board entries that inline the user's closure beside their own boot code. |
