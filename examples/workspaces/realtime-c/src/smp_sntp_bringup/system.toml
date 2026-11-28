@@ -126,21 +126,35 @@ rmw = "zenoh"
 # SNTP_RESYNC) must each get a floor, not a refusal for a frameless function.
 # `workspace-zephyr-c-realtime-smp-sntp-resync` builds it;
 # `tests/zephyr_stack_floor_aarch64.rs` reads its `report.json`. Its own bringup
-# so `smp_bringup` stays a single-image project (example-coverage floor). Build-only:
-# the server never answers (TEST-NET-1), which the walk does not care about.
+# so `smp_bringup` stays a single-image project (example-coverage floor). Its
+# fixture is build-only; the stack-floor twin (issue 2846) runs it with an SNTP
+# and a DNS stand-in on the host, so the re-sync thread's peak covers a real
+# answer through Zephyr's resolver, as the 32-bit row's does.
 [image.zephyr_smp_sntp_resync]
 board = "qemu-cortex-a53"
+# The stack-floor key the drift check finds this image by (bringup@image).
+stack_floor_image = "smp_sntp_bringup@zephyr_smp_sntp_resync"
 os_config = ["prj-zenoh.conf"]
 panic = "platform"
+
+# Run on the descriptor's QEMU line, not Zephyr's own (`west build -t run`).
+# The stack-floor twin turns CONFIG_QEMU_ICOUNT on for repeatable runs, and
+# Zephyr's line then fixes `-icount shift=4`: on this 2-CPU guest, guest time
+# runs ahead of the host's, so a networked run over slirp loses its session
+# (the connect's 1 s bound, then a 5 s write timeout) and never reaches the
+# SNTP and DNS stand-ins (measured on host 139, 2026-11-28). The
+# descriptor's line uses `-icount shift=auto`, which connected and re-synced.
+[image.zephyr_smp_sntp_resync.run]
+method = "qemu"
 
 [image.zephyr_smp_sntp_resync.knobs.zenoh]
 socket_timeout_ms = 5
 
 [image.zephyr_smp_sntp_resync.knobs.clock]
 source = "sntp,platform"
-sntp_attempts = 1
-sntp_resync_interval_ms = 60000
+sntp_attempts = 3
+sntp_resync_interval_ms = 500
 
 [image.zephyr_smp_sntp_resync.knobs.sntp]
-server = "192.0.2.1"
+server = "ntp.nros.test:12399"
 timeout_ms = 400
