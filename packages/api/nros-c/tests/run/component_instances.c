@@ -39,9 +39,14 @@ rclc_logger_t rclc_log_get_logger(const char* name) {
     return (rclc_logger_t)1;
 }
 
-void rclc_log_emit_fmt(rclc_logger_t logger, rcl_log_severity_t severity, const char* fmt, ...) {
+/* The refusal is a preprocessor-built literal (no formatting on the boot
+ * stack), so it must still name the package, the cap and the define. */
+void rclc_log_emit(rclc_logger_t logger, rcl_log_severity_t severity, const char* message,
+                   size_t message_len) {
     (void)logger;
-    if (severity == RCLC_LOG_SEVERITY_ERROR && strstr(fmt, "RCLC_C_COMPONENT_MAX_INSTANCES")) {
+    if (severity == RCLC_LOG_SEVERITY_ERROR && message_len == strlen(message) &&
+        strstr(message, "`probe_pkg`") && strstr(message, "at most 2 nodes") &&
+        strstr(message, "RCLC_C_COMPONENT_MAX_INSTANCES")) {
         g_errors++;
     }
 }

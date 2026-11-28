@@ -54,7 +54,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include "rclc/log.h"   /* rclc_log_emit_fmt, for the full-table refusal */
+#include "rclc/log.h"   /* rclc_log_emit, for the full-table refusal */
 #include "rclc/types.h" /* rcl_ret_t, rcl_node_t, rclc_executor_t */
 /* `NROS_ASSERT_DECLARED_DEPTH`, for a C component that states a
  * QoS depth at a call site. The header is self-guarding and C-only, so a C++ TU
@@ -118,6 +118,13 @@ int32_t nros_cpp_node_bind_c(const nros_cpp_node_t* node, void* node_out, void**
  * host spins. `create` hands out the next free slot, and NULL once the table is
  * full; `configure` binds the node into the slot `self` belongs to.
  */
+/* What a full instance table says, built by the preprocessor so the refusal
+ * path formats nothing on the stack. */
+#define RCLC_C_FULL_MESSAGE(pkg)                                                                   \
+    "C component `" RCLC_C_STR(pkg) "` has no free instance: one image runs at most " RCLC_C_STR(  \
+        RCLC_C_COMPONENT_MAX_INSTANCES) " nodes of it. Define RCLC_C_COMPONENT_MAX_INSTANCES "     \
+                                        "higher on the package's compile."
+
 #define RCLC_C_COMPONENT(StructT, configure_fn)                                                    \
     static StructT RCLC_C_PASTE(__nros_c_insts_, NROS_PKG_NAME)[RCLC_C_COMPONENT_MAX_INSTANCES];   \
     static rcl_node_t RCLC_C_PASTE(__nros_c_nodes_,                                                \
@@ -125,11 +132,13 @@ int32_t nros_cpp_node_bind_c(const nros_cpp_node_t* node, void* node_out, void**
     static unsigned RCLC_C_PASTE(__nros_c_used_, NROS_PKG_NAME);                                   \
     void* RCLC_C_PASTE(RCLC_C_PASTE(__nros_c_component_, NROS_PKG_NAME), _create)(void) {          \
         if (RCLC_C_PASTE(__nros_c_used_, NROS_PKG_NAME) >= RCLC_C_COMPONENT_MAX_INSTANCES) {       \
-            rclc_log_emit_fmt(rclc_log_get_logger("nros"), RCLC_LOG_SEVERITY_ERROR,                \
-                              "C component `%s` has no free instance: one image runs at most %d "  \
-                              "nodes of it. Define RCLC_C_COMPONENT_MAX_INSTANCES higher on the "  \
-                              "package's compile.",                                                \
-                              RCLC_C_STR(NROS_PKG_NAME), (int)RCLC_C_COMPONENT_MAX_INSTANCES);     \
+            /* A literal the preprocessor builds, so this path formats nothing: no                 \
+             * stack buffer, no vsnprintf on the boot task's worst stack path. */                  \
+            static const char RCLC_C_PASTE(__nros_c_full_, NROS_PKG_NAME)[] =                      \
+                RCLC_C_FULL_MESSAGE(NROS_PKG_NAME);                                                \
+            rclc_log_emit(rclc_log_get_logger("nros"), RCLC_LOG_SEVERITY_ERROR,                    \
+                          RCLC_C_PASTE(__nros_c_full_, NROS_PKG_NAME),                             \
+                          sizeof(RCLC_C_PASTE(__nros_c_full_, NROS_PKG_NAME)) - 1);                \
             return NULL;                                                                           \
         }                                                                                          \
         return &RCLC_C_PASTE(__nros_c_insts_,                                                      \
