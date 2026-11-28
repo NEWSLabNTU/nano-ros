@@ -138,6 +138,11 @@ pub enum Cmd {
     /// List the workspace's packages: kind, name and directory per row.
     List(ws::ListArgs),
 
+    /// List the workspace's packages under their noun: `nros package list`,
+    /// the same listing as `nros list`.
+    #[command(subcommand)]
+    Package(PackageArgs),
+
     /// Print the workspace's packages in dependency order, each with the
     /// workspace packages it depends on.
     Graph(graph::Args),
@@ -354,14 +359,13 @@ pub enum Cmd {
     // phase-485 W7 (RFC-0104 D7).
     Update(update::Args),
 
-    /// Print the cargo build-profile table.
-    ///
-    /// The table holds the CMAKE_BUILD_TYPE mapping, flags, artifact dir and
-    /// env-injected definitions. The bridge cmake/bash use so the derivations
-    /// are not re-spelled per language.
-    // phase-336.
-    #[command(subcommand_negates_reqs = true, hide = true)]
-    Profile(profile::Args),
+    /// List the build profiles an image can name, or show one: the CMake build
+    /// type it maps to and its cargo settings
+    // phase-336 put the cargo build-profile table here as plumbing; that now
+    // lives at `nros dev profile`, and its verbs stay here hidden as the old
+    // spellings (RFC-0133 D3, phase-569 W6).
+    #[command(subcommand)]
+    Profile(profile::UserVerb),
 
     /// Collect component source metadata for orchestration planning
     #[command(hide = true)]
@@ -489,7 +493,13 @@ pub fn lower(cmd: Cmd) -> Cmd {
 /// its own.
 pub fn aliases_json() -> String {
     let rows: Vec<_> = all_aliases()
-        .map(|(old, new, tier)| serde_json::json!({ "old": old, "new": new, "tier": tier }))
+        .map(|(old, new, tier)| {
+            let mut row = serde_json::json!({ "old": old, "new": new, "tier": tier });
+            if let Some((_, flags)) = user::ARG_ALIAS_UNLESS.iter().find(|(o, _)| *o == old) {
+                row["unless"] = serde_json::json!(flags);
+            }
+            row
+        })
         .collect();
     serde_json::to_string_pretty(&rows).expect("a list of string objects serialises")
 }
@@ -500,4 +510,14 @@ pub fn all_aliases() -> impl Iterator<Item = (&'static str, &'static str, &'stat
         .iter()
         .map(|(o, n)| (*o, *n, "dev"))
         .chain(user::ALIASES.iter().map(|(o, n)| (*o, *n, "user")))
+        .chain(user::ARG_ALIASES.iter().map(|(o, n)| (*o, *n, "user")))
+}
+
+/// `nros package`'s subcommands (RFC-0133 D3: `package list` is a second,
+/// equal spelling of `nros list`, which stays the short one).
+#[derive(Debug, clap::Subcommand)]
+pub enum PackageArgs {
+    /// List the workspace's packages: kind, name and directory per row
+    /// (also `nros list`).
+    List(ws::ListArgs),
 }

@@ -125,11 +125,41 @@ def argv_words(words: str) -> str:
     return r"""["']\s*,\s*["']""".join(re.escape(w) for w in words.split())
 
 
+# RFC-0133 D3 -- a row that moves an ARGUMENT is written with `<code>` for
+# the diagnostic code it takes (`explain <code>` -> `code show <code>`). Here
+# that stands for a real code, its placeholder in prose, or a variable a
+# diagnostic emitter fills one from (`${_code}` in cmake, `{code}` in Python).
+PLACEHOLDER = "<code>"
+CODE_ARG = (r"(?P<arg>NROS-(?:\d{4}|NNNN)|<code>|\$\{[A-Za-z_]\w*\}"
+            r"|\{(?:[A-Za-z_]\w*)?\})")
+
+
+def dev_rows(rows: list[dict]) -> list[str]:
+    """Rows whose OLD spelling is a `nros dev` command. There must be none:
+    a `dev` command is build plumbing whose output cmake, colcon and the
+    release workflow parse, so `--fix` rewriting its callers to a user verb
+    would break them (RFC-0133 D3, ruled 2026-11-27)."""
+    return [r["old"] for r in rows if r["old"].split()[0] == "dev"]
+
+
 def compile_rows(rows: list[dict]) -> list[tuple[dict, re.Pattern, re.Pattern]]:
     out = []
     for r in rows:
-        old, new = re.escape(r["old"]), re.escape(r["new"])
         end = r"(?![\w-])"
+        if PLACEHOLDER in r["old"]:
+            head = re.escape(r["old"].split(PLACEHOLDER)[0].strip())
+            new_head = re.escape(r["new"].split(PLACEHOLDER)[0].strip())
+            use = re.compile(rf"(?<!cargo )\bnros {head}\s+{CODE_ARG}{end}")
+            beside = re.compile(rf"\bnros {new_head}{end}")
+            out.append((r, use, beside))
+            continue
+        old, new = re.escape(r["old"]), re.escape(r["new"])
+        # A row's `unless` flags keep the old command on its own handler
+        # (`config explain --platform P --get K`): a line naming one after the
+        # old spelling is no use of it.
+        if r.get("unless"):
+            end += (r"(?![^\n]*\s(?:" + "|".join(map(re.escape, r["unless"]))
+                    + r")(?![\w-]))")
         # `(?<!cargo )`: `cargo nros <x>` is cargo-nano-ros's own subcommand
         # namespace (`cargo nros metadata` in a fixture's `generated_by`), not
         # the nros CLI, whose aliases this table lists (issue 2347's sweep).
@@ -147,7 +177,8 @@ def compile_rows(rows: list[dict]) -> list[tuple[dict, re.Pattern, re.Pattern]]:
 
 def counts(r: dict, m: re.Match) -> bool:
     """Whether a match of `r`'s old spelling is a use of the nros CLI."""
-    var, fn, py = m.group("var"), m.group("fn"), m.group("py")
+    gd = m.groupdict()
+    var, fn, py = gd.get("var"), gd.get("fn"), gd.get("py")
     if var is not None and r["old"] in AMBIGUOUS:
         return bool(TOOL_NAME.search(var)) and not NOT_TOOL.search(var)
     name = fn or py
@@ -178,7 +209,9 @@ def rewrite(line: str, compiled) -> str:
         def sub(m: re.Match) -> str:
             if not counts(r, m):
                 return m.group(0)
-            if m.group("py") is not None:
+            if m.groupdict().get("arg") is not None:
+                return "nros " + r["new"].replace(PLACEHOLDER, m.group("arg"))
+            if m.groupdict().get("py") is not None:
                 q = m.group("q")
                 head = m.group(0)[: m.start("q") - m.start(0)]
                 return head + q + f"{q}, {q}".join(r["new"].split()) + q
@@ -333,6 +366,30 @@ def self_test() -> None:
         'nros::init().expect("nros::init failed")': [],
         '"nros metadata-mode: recorder rejected node"': [],
     }
+    # RFC-0133 D3: a row that moves an argument, and the refusal of a `dev`
+    # old spelling.
+    ac = compile_rows([{"old": "explain <code>", "new": "code show <code>", "tier": "user"}])
+    for line, want in {
+        "run `nros explain NROS-0042` for the fix": ["explain <code>"],
+        "explain: nros explain NROS-NNNN": ["explain <code>"],
+        '  explain: nros explain ${_code}")': ["explain <code>"],
+        'f"  explain: nros explain {code}"': ["explain <code>"],
+        'write!(f, "\\n  explain: nros explain {}", e.code)': ["explain <code>"],
+        "`nros explain <code>` says why": ["explain <code>"],
+        "nros explain build/nros/nros-plan.json": [],
+        "nros explain": [],
+        "`nros explain NROS-0042` is now `nros code show NROS-0042`": [],
+    }.items():
+        assert uses(line, ac) == want, f"self-test: {line!r}: {uses(line, ac)}"
+    assert rewrite('  explain: nros explain ${_code}")', ac) == '  explain: nros code show ${_code}")'
+    assert rewrite("see `nros explain NROS-0042`.", ac) == "see `nros code show NROS-0042`."
+    uc = compile_rows([{"old": "config explain --platform", "new": "knob list --platform",
+                        "tier": "user", "unless": ["--get", "--platforms-dir"]}])
+    assert uses("nros config explain --platform posix", uc) == ["config explain --platform"]
+    assert uses("nros config explain --platform posix --get log.max_level", uc) == []
+    assert uses('"${_nros}" config explain --platform "$p" --platforms-dir d', uc) == []
+    assert dev_rows([{"old": "dev rmw dispatch --known"}, {"old": "ws providers"}]) == \
+        ["dev rmw dispatch --known"]
     assert rewrite('"$(nros_cli_bin)" ws board-facts "$d"', c) == \
         '"$(nros_cli_bin)" dev image board-facts "$d"'
     assert rewrite('subprocess.run([cli, "ws", "board-facts"], cwd=d)', c) == \
@@ -422,6 +479,12 @@ def main() -> int:
         rows = load_rows(cli)
     except (subprocess.CalledProcessError, ValueError, OSError) as e:
         print(f"check-cli-old-spellings: cannot read the alias table: {e}")
+        return 1
+    if dev := dev_rows(rows):
+        print("check-cli-old-spellings: FAIL -- the alias table names a `nros dev` command "
+              f"as an old spelling: {', '.join(dev)}. A `dev` command is build plumbing whose "
+              "output the build parses; it keeps its spelling and gets no alias row "
+              "(RFC-0133 D3), so `--fix` never rewrites its callers.")
         return 1
     compiled = compile_rows(rows)
     if "--fix" in sys.argv:

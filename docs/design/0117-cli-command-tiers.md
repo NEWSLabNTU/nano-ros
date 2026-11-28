@@ -87,7 +87,8 @@ its output format, because cmake, west and `just` parse that output.
 > table records the tree `nros --help` ships, measured from a build of `main`.
 > Two verbs left their groups after this table was written. `explain` is a
 > top-level Inspect verb; [RFC-0129](0129-diagnostic-codes.md) D5 extends it to
-> `nros explain NROS-NNNN`, which a `plan` subcommand could not carry. And
+> `nros explain NROS-NNNN` (now also `nros code show NROS-NNNN`, RFC-0133 D3),
+> which a `plan` subcommand could not carry. And
 > `update` is a top-level Toolchain verb (RFC-0104 D7). `nros plan <bringup>` takes no `resolve|check|explain`
 > subcommands, `check` is top-level (amendment 2026-11-07), `pin` takes an
 > optional `[VERSION]`, and `board` gained `show` (a board's support

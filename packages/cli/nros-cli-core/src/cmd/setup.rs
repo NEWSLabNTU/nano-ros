@@ -3193,7 +3193,7 @@ fn disposition(index: &SdkIndex, name: &str, host: &str) -> String {
 // Listings go to STDOUT (pipeable: `nros setup --list | grep …`);
 // progress/diagnostics elsewhere in this file stay on stderr.
 fn print_list(index: &SdkIndex) {
-    println!("nros setup --list:");
+    println!("nros toolchain list --available:");
     for (name, t) in &index.tool {
         println!("  [tool]   {name:<22} {}", t.version);
     }
@@ -4263,7 +4263,7 @@ impl SmokeFailures {
 /// diagnosis for "but I ran the installer".
 fn run_check_tool(index: &SdkIndex, name: &str) -> Result<()> {
     let Some(tool) = index.tool.get(name) else {
-        bail!("nros setup: no [tool.{name}] in the index (see `nros setup --list`)");
+        bail!("nros setup: no [tool.{name}] in the index (see `nros toolchain list --available`)");
     };
     let (present, held) = tool_pin_status(index, name, tool);
     if present {

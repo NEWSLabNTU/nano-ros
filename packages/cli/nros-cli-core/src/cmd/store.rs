@@ -48,6 +48,12 @@ pub struct ListArgs {
     // Never an absolute literal (RFC-0095 D2).
     #[arg(long)]
     pub root: Option<PathBuf>,
+
+    /// List what can be installed instead: every board, toolchain and SDK
+    /// package the index names.
+    // RFC-0133 D3 -- lowered to `setup --list` (`user::lower`).
+    #[arg(long, conflicts_with = "root")]
+    pub available: bool,
 }
 
 #[derive(Debug, ClapArgs)]

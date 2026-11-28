@@ -319,9 +319,9 @@ descriptor with a new section is printed by `board show`.
 
 ### W6 — `platform`, `template`, `code`, `runner` lists
 
-- **Status:** OPEN. W6a and W6b merged in #4529 (e1d26b3c2f, 2026-11-21);
-  what is left is `nros profile list`/`show`, which waits on W8 (audited
-  2026-11-26).
+- **Status:** OPEN until W8's branch merges. W6a and W6b merged in #4529
+  (e1d26b3c2f, 2026-11-21); `nros profile list`/`show` is on branch
+  `phase-569-w8-user-tier` with W8.
 - **W6a, `nros code` and `nros template`:**
   - `nros code list [--all] [--json]` / `show <code> [--json]` read the
     compiled-in code table (`nros.code.list.v1`, `nros.code.show.v1`).
@@ -358,9 +358,23 @@ descriptor with a new section is printed by `board show`.
     sees its item listed.
   - `PlatformsTree::declared_names` is new: the aliases a descriptor
     declares.
-- `nros profile list` / `show` is with W8: the top-level `nros profile` is
-  the hidden plumbing cmake and bash call (`args`, `dir`, `env`), and W8
-  moves it to `nros dev profile` first.
+- **W6c, `nros profile`:**
+  - `nros profile list` / `show <profile> [--json]` read
+    `nros_cargo_profile::BUILTIN`, a new table in the profile crate. It gives
+    cargo's `dev` and `release` and every nano-ros preset a line saying what
+    it is for, and a test holds it to `PRESETS` and `BUILD_TYPE_MAP`. Each
+    row shows the CMake build type it maps to (`cmake_build_type`), or
+    "cargo images only" for a preset a CMake image refuses. `show` also
+    prints the preset's cargo settings, takes either vocabulary
+    (`MinSizeRel` finds `nros-minsizerel`), and links the build-profiles
+    chapter (`nros.profile.list.v1`, `nros.profile.show.v1`).
+  - Top-level `nros profile` was the hidden old spelling of `nros dev
+    profile`. It is now the user noun. Its plumbing verbs (`resolve`,
+    `args`, `dir`, `carve-out`, `env`) stay on it, hidden, with one alias
+    row each in place of the one `profile` row; both spellings share one
+    argument struct per verb.
+  - `nros build --profile=` keeps completing only the four profiles every
+    road accepts; `profile show` completes all of them.
 
 - `nros platform list` / `show` read `PlatformsTree`, with its boards and
   RMWs; `nros new --platform` reads the same list.
@@ -482,7 +496,26 @@ a user verb on the image noun that runs the allocation check
 
 ### W8 — migration out of `nros dev`
 
-- **Status:** OPEN
+- **Status:** OPEN until W8 merges (branch `phase-569-w8-user-tier`).
+- **User ruling, 2026-11-27 (RFC-0133 D3 amended):** the four `nros dev`
+  rows are build plumbing, not old spellings. CMake, colcon and the release
+  workflow parse their output, so they keep their spelling with no alias row,
+  and each `--help` names the user verb. `check-cli-old-spellings` refuses a
+  row whose old spelling is a `dev` command.
+- **Done on the branch:**
+  - `user::ARG_ALIASES`, the moves that change an argument:
+    `setup --list` → `toolchain list --available`, `explain <code>` →
+    `code show <code>`, `config explain --platform` → `knob list --platform`.
+    The last carries `--get` / `--platforms-dir` as flags that keep the old
+    handler (`ARG_ALIAS_UNLESS`, published in `help --aliases --json`). A
+    test lowers each row's two spellings to one command.
+  - `nros package list`, an equal spelling of `nros list`.
+  - `nros --help` gains "Find what nano-ros offers": board, platform, rmw,
+    runner, knob, interface, template and code.
+  - `check-cli-old-spellings` reads `<code>` rows and `unless` flags.
+    `--fix` moved the tree, including every diagnostic emitter's `explain:`
+    line, to the new spellings.
+- **With W6c:** the `profile` row (`profile list` / `show`, below).
 
 Apply RFC-0133 D3's table. Each moved spelling stays as a hidden alias and
 gets a row in the old-spellings table. `nros --help` gains the

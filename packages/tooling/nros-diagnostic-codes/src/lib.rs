@@ -342,7 +342,7 @@ impl fmt::Display for Refusal<'_> {
         {
             write!(f, "\n  note: {n}")?;
         }
-        write!(f, "\n  explain: nros explain {}", e.code)
+        write!(f, "\n  explain: nros code show {}", e.code)
     }
 }
 
