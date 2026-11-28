@@ -1,8 +1,7 @@
 # Phase 582 — Wall-clock source
 
 **Status (2026-11-26). OPEN: W2, W3 and W4 are done; W1 is open (see its
-Status line). Open issues: 2839 (fix on main, its Zephyr cells running), 2884
-(ruled; server-clock pacing implemented, the FVP measurement pending), 2897
+Status line). Open issues: 2839 (fix on main, its Zephyr cells running), 2897
 (the 64-bit Arm stack walk, in progress), 2846, 2866. Owner: nros 139.** Implements [RFC-0141](../design/0141-wall-clock-source.md): one selected
 wall-clock source per image, behind the one wall-clock symbol. A board can
 supply its clock, every source that can fail falls under one stated policy,
@@ -376,11 +375,12 @@ SNTP never re-acquires. A consumer's board hook papers over that with
   unreachable on a port with no wall clock. RFC-0141 D1's 2026-11-22
   amendment (issue 2839) made `platform` stop answering there, so `halt`
   halts, and the ClockHalt cell checks it. Found by the island (phase-478 I43).
-- [Issue 2884](../issues/2884-sntp-resync-paced-on-guest-time.md): the SNTP
+- [Issue 2884](../issues/archived/2884-sntp-resync-paced-on-guest-time.md): the SNTP
   re-sync interval ran on guest time, so on an FVP racing an idle guest a
   10 s interval re-queried several times a real second. Ruled 2026-11-24: it
-  is paced on the server's clock (D5). Implemented; the FVP measurement is
-  pending (phase-478 I44).
+  is paced on the server's clock (D5). Resolved 2026-11-28 on the island's
+  FVP lane: the interval holds from the third answer on, apart from a server
+  step (the acceptance as amended by the user; phase-478 I44).
 - [Issue 2897](../issues/archived/2897-a53-stack-walk-refuses-aarch64-builtins.md):
   the stack-floor walk refuses every root on a 64-bit Arm Zephyr image (no
   aarch64 libgcc builtins row, no arm64 arch-entry frames), so W3's SNTP
