@@ -19,6 +19,14 @@ Examples use `ExecutorConfig::from_env()` for configuration:
 | `ROS_DOMAIN_ID`                        | ROS 2 domain ID                                                 | `0`                  |
 | `NROS_LOCATOR`                         | RMW locator (`tcp/…`, `udp/…`, `serial/…`, or `tls/…`)          | `tcp/127.0.0.1:7447` |
 | `NROS_SESSION_MODE`                    | Session mode: `client` or `peer`                                | `client`             |
+| `NROS_NODE_NAMESPACE`                  | Replaces the namespace of every node the process creates; warns once when a node stated another | the node's own       |
+| `NROS_NODE_NAME`                       | Renames the node of an image that states exactly one node (`[image] node_count`); otherwise ignored with a notice | the node's own       |
+
+`NROS_NODE_NAME` can't rename an image with two or more nodes, or one whose
+node count is unstated, such as one built without `nros build`. Name those
+nodes in `system.toml`, or with a launch remap. See
+[Linux host](../guide/platforms/linux-host.md) for the warnings each case
+prints.
 
 > **Retired legacy names**: `ZENOH_LOCATOR` and `ZENOH_MODE`
 > are no longer read. Setting either is a startup ERROR naming its

@@ -51,16 +51,37 @@ choices on this board are `cyclonedds`, `zenoh` and `xrce`:
 switch, and [Configure an image](../build/configure-an-image.md) lists every
 key an image takes.
 
-A host image reads two settings from the environment when it starts, so the
-same binary can join another domain or another router without a rebuild:
+A host image reads four settings from the environment when it starts, so the
+same binary can join another domain or another router, or run under another
+name, without a rebuild:
 
 ```txt
 ROS_DOMAIN_ID=0
 NROS_LOCATOR=tcp/127.0.0.1:7447
+NROS_NODE_NAME=my_talker
+NROS_NODE_NAMESPACE=/robot1
 ```
 
-An embedded image has no environment. The same two facts are compiled in
-from its image's `domain_id` and `locator` keys.
+The first two replace the image's `domain_id` and `locator`. The other two
+apply to the image's nodes, including nodes named in code or by a launch
+file:
+
+- `NROS_NODE_NAMESPACE` replaces the namespace of every node. A node that
+  stated a different namespace gets one warning at start.
+- `NROS_NODE_NAME` renames the node only when the image states that it
+  creates exactly one. `nros build` states the count, as `[image] node_count`
+  in the files it generates. The rename prints one warning that names the
+  old and the new name.
+- With two or more nodes, `NROS_NODE_NAME` is ignored, since one name can't
+  name them all, and a notice says so. An image whose count is unstated,
+  such as one built without `nros build`, ignores it with a notice too.
+  Name each node in `system.toml`, or with a launch remap, instead.
+
+A launch file's remaps keep applying to a renamed node.
+
+An embedded image has no environment. Its domain and locator are compiled in
+from its image's `domain_id` and `locator` keys, and its nodes keep the names
+the image gives them.
 
 ## Board notes
 
