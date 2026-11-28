@@ -233,11 +233,6 @@
       "seen_in": "qemu_rtic_main_e2e_bringup@mps2-an385-baremetal (packages/testing/nros-tests/bins/rtic-run-plan-e2e/target/nros-stack-floor)"
     },
     {
-      "function": "_RNvC22isr_wake_freertos_mps213open_executor",
-      "bytes": 5512,
-      "seen_in": "isr_wake_freertos_mps2_bringup@freertos (packages/testing/nros-tests/bins/isr-wake-freertos-mps2/target/nros-stack-floor)"
-    },
-    {
       "function": "_RNvMNtNtC14nros_rmw_zenoh4shim7sessionNtB_12ZenohSession24names_and_types_filtered",
       "bytes": 4288,
       "seen_in": "action_bringup@mps2-an385-freertos (examples/workspaces/c/build/freertos-zenoh-mps2-an385-freertos-action_bringup/cmake/nros/stack-floor)"

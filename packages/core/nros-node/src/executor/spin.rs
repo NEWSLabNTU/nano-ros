@@ -225,28 +225,96 @@ fn default_backing(sizing: super::storage::ExecutorSizing) -> &'static mut [Mayb
 /// Issue 2576 — on success the executor takes the backing into its
 /// `owned_backing`, so dropping it gives the backing back the same way, and a
 /// board that re-opens after a lost session reuses it.
+///
+/// Issue 3008 -- `open` receives the backing's raw pointer too, and an executor
+/// it opens takes the backing as its `owned_backing` itself. This function
+/// then only forwards the result, so it holds no executor of its own: it used
+/// to patch the field into a local `Result` it returned, which put an
+/// executor-sized copy in every frame that inlined it.
 #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
 fn with_default_backing(
     sizing: super::storage::ExecutorSizing,
-    open: impl FnOnce(&'static mut [MaybeUninit<u64>]) -> Result<Executor<'static>, NodeError>,
+    open: impl FnOnce(
+        &'static mut [MaybeUninit<u64>],
+        *mut [MaybeUninit<u64>],
+    ) -> Result<Executor<'static>, NodeError>,
 ) -> Result<Executor<'static>, NodeError> {
     let backing: *mut [MaybeUninit<u64>] = default_backing(sizing);
     // SAFETY: `backing` came from `default_backing` as a unique `&'static mut`;
     // this is that same borrow, passed on. It is not touched again unless the
     // open fails (below).
-    let mut result = open(unsafe { &mut *backing });
-    if let Ok(exec) = result.as_mut() {
-        // Issue 2576 — the executor owns it now, and hands it back on drop.
-        // SAFETY: `backing` came from `default_backing`, and `exec` is the
-        // executor opened over it.
-        exec.owned_backing = unsafe { super::backing::OwnedBacking::owned(backing) };
-    }
+    let result = open(unsafe { &mut *backing }, backing);
     if result.is_err() {
         // SAFETY: the open failed, so (see above) no reference into `backing`
         // survives it, and it is the block `default_backing` handed out.
         unsafe { super::backing::release_default_backing(backing) }
     }
     result
+}
+
+/// Issue 3008 -- what [`Executor::open_owning`] does with a default backing
+/// block: nothing, for a caller's own backing ([`NoHandoff`]); for a block
+/// `default_backing` handed out ([`DefaultHandoff`]), give it back on a failed
+/// open and make the executor own it on success.
+///
+/// A TYPE parameter, not an `Option` argument, so an `open_in`-only image
+/// instantiates the no-op and never names `release_default_backing` (or the
+/// default backing static behind it): `check-template-copy-out` refuses an
+/// image that opens over its own storage and still links the default backing.
+#[cfg(feature = "rmw-cffi")]
+trait OpenHandoff: Copy {
+    /// # Safety
+    /// The open failed, so nothing has been built over the backing.
+    unsafe fn give_back_on_failure(self);
+    /// # Safety
+    /// `exec` is the executor just opened over this handoff's backing.
+    unsafe fn take(self, exec: &mut Executor<'_>);
+}
+
+/// A caller's own backing: nothing to give back or take.
+#[cfg(feature = "rmw-cffi")]
+#[derive(Clone, Copy)]
+struct NoHandoff;
+
+#[cfg(feature = "rmw-cffi")]
+impl OpenHandoff for NoHandoff {
+    unsafe fn give_back_on_failure(self) {}
+    unsafe fn take(self, _exec: &mut Executor<'_>) {}
+}
+
+/// A block `default_backing` handed out.
+#[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
+#[derive(Clone, Copy)]
+struct DefaultHandoff(*mut [MaybeUninit<u64>]);
+
+#[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
+impl OpenHandoff for DefaultHandoff {
+    // Out of line, both: inlined, the release and the hand-off grew
+    // `open_owning`'s frame by ~0.4 KB on thumbv7m (issue 3008).
+    #[cold]
+    #[inline(never)]
+    unsafe fn give_back_on_failure(self) {
+        // SAFETY: the trait's contract -- the block came from
+        // `default_backing` and no reference into it survives.
+        unsafe { super::backing::release_default_backing(self.0) }
+    }
+    #[inline(never)]
+    unsafe fn take(self, exec: &mut Executor<'_>) {
+        // SAFETY: the trait's contract.
+        unsafe { take_default_backing(exec, self.0) }
+    }
+}
+
+/// Issue 2576 — the executor opened over a `default_backing` block owns it
+/// now, and hands it back on drop.
+///
+/// # Safety
+/// `backing` came from `default_backing`, and `exec` is the executor opened
+/// over it.
+#[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
+unsafe fn take_default_backing(exec: &mut Executor<'_>, backing: *mut [MaybeUninit<u64>]) {
+    // SAFETY: forwarded from this fn's contract.
+    exec.owned_backing = unsafe { super::backing::OwnedBacking::owned(backing) };
 }
 
 #[cfg(feature = "rmw-cffi")]
@@ -293,6 +361,35 @@ impl<'s> Executor<'s> {
         sizing: super::storage::ExecutorSizing,
         session_slot: Option<core::ptr::NonNull<MaybeUninit<session::ConcreteSession>>>,
     ) -> Result<Self, NodeError> {
+        // SAFETY: forwarded from this fn's contract; the backing is the caller's.
+        unsafe { Self::open_owning(config, backing, sizing, session_slot, NoHandoff) }
+    }
+
+    /// The body of [`open_in_with_session_slot`](Self::open_in_with_session_slot)
+    /// and of the `alloc` [`open`](Self::open): opens the session and builds the
+    /// executor. When `default_backing` is `Some`, `backing` is that block
+    /// (from `default_backing`) and the executor takes it as its
+    /// `owned_backing`.
+    ///
+    /// Out of line on purpose (issue 3008). Inlined, its session, its table
+    /// layout, its log buffers and the executor copies landed in whatever frame
+    /// opened an executor (about 5.9 KB on thumbv7m, in a task's run closure).
+    /// Here they live in one bounded frame the max-frame gate sees, and the
+    /// executor is returned straight into the caller's result.
+    ///
+    /// # Safety
+    /// As [`open_in_with_session_slot`](Self::open_in_with_session_slot), and
+    /// `handoff` as [`OpenHandoff`] requires: a [`DefaultHandoff`]'s block is
+    /// the one `backing` borrows. A failed open gives that block back, as
+    /// [`with_default_backing`] does for the other default-backed opens.
+    #[inline(never)]
+    unsafe fn open_owning<H: OpenHandoff>(
+        config: &ExecutorConfig<'_>,
+        backing: &'s mut [MaybeUninit<u64>],
+        sizing: super::storage::ExecutorSizing,
+        session_slot: Option<core::ptr::NonNull<MaybeUninit<session::ConcreteSession>>>,
+        handoff: H,
+    ) -> Result<Self, NodeError> {
         use nros_rmw::Rmw;
 
         // Phase 128.A.3 / 249 P4b.1 — manifest-driven backend selection.
@@ -325,27 +422,9 @@ impl<'s> Executor<'s> {
             // seams), but `InvalidConfig` at least says "your configuration is
             // unresolvable", and the std-gated line below names WHICH outcome.
             other => {
-                {
-                    let why: &str = match other {
-                        nros_rmw_cffi::BackendResolution::NoBackend => {
-                            "no RMW backend is registered"
-                        }
-                        nros_rmw_cffi::BackendResolution::Ambiguous => {
-                            "more than one RMW backend is registered and no \
-                             $NROS_RMW selector was set — name one (e.g. \
-                             NROS_RMW=uorb), or open per-backend sessions"
-                        }
-                        nros_rmw_cffi::BackendResolution::Unknown => {
-                            "$NROS_RMW names a backend that is not registered"
-                        }
-                        nros_rmw_cffi::BackendResolution::Single(_) => unreachable!(),
-                    };
-                    nros_log::log_error!(
-                        nros_log::get_logger("nros"),
-                        "cannot select an RMW backend — {why}"
-                    );
-                }
-                let _ = other;
+                log_backend_unresolved(other);
+                // SAFETY: nothing has been built over the backing yet.
+                unsafe { handoff.give_back_on_failure() };
                 return Err(NodeError::Transport(TransportError::InvalidConfig));
             }
         }
@@ -376,10 +455,10 @@ impl<'s> Executor<'s> {
             // exhausted session pool (`InvalidConfig`) and a router that is not
             // there produced the same sentence. Same lesson as the selection
             // arm above: say which failure happened.
-            nros_log::log_error!(
-                nros_log::get_logger("nros"),
-                "RMW session open failed — {e:?}"
-            );
+            log_session_open_failed(&e);
+            // SAFETY: the session did not open, so nothing has been built over
+            // the backing yet.
+            unsafe { handoff.give_back_on_failure() };
             NodeError::Transport(e)
         })?;
         // SAFETY: forwarded from this fn's contract — `backing`/`sizing` sized
@@ -430,15 +509,57 @@ impl<'s> Executor<'s> {
         // STABILITY CONTRACT: the leading `"nros: session open"` text is
         // load-bearing — test harnesses grep for it verbatim. Keep it
         // stable even if the trailing `(rmw=...)` detail changes.
+        // SAFETY: this fn's contract.
+        unsafe { handoff.take(&mut executor) };
         #[cfg(feature = "log")]
-        {
-            if let Some(name) = selector {
-                log::info!("nros: session open (rmw={name})");
-            } else {
-                log::info!("nros: session open");
-            }
-        }
+        log_session_open(selector);
         Ok(executor)
+    }
+}
+
+// Issue 3008 -- the open's log lines, out of line: each formats into a
+// stack buffer, and inlined they put those buffers in the open's frame on the
+// path that does not log.
+
+#[cfg(feature = "rmw-cffi")]
+#[cold]
+#[inline(never)]
+fn log_backend_unresolved(other: nros_rmw_cffi::BackendResolution) {
+    let why: &str = match other {
+        nros_rmw_cffi::BackendResolution::NoBackend => "no RMW backend is registered",
+        nros_rmw_cffi::BackendResolution::Ambiguous => {
+            "more than one RMW backend is registered and no \
+             $NROS_RMW selector was set — name one (e.g. \
+             NROS_RMW=uorb), or open per-backend sessions"
+        }
+        nros_rmw_cffi::BackendResolution::Unknown => {
+            "$NROS_RMW names a backend that is not registered"
+        }
+        nros_rmw_cffi::BackendResolution::Single(_) => unreachable!(),
+    };
+    nros_log::log_error!(
+        nros_log::get_logger("nros"),
+        "cannot select an RMW backend — {why}"
+    );
+}
+
+#[cfg(feature = "rmw-cffi")]
+#[cold]
+#[inline(never)]
+fn log_session_open_failed(e: &TransportError) {
+    nros_log::log_error!(
+        nros_log::get_logger("nros"),
+        "RMW session open failed — {e:?}"
+    );
+}
+
+#[cfg(all(feature = "rmw-cffi", feature = "log"))]
+#[inline(never)]
+fn log_session_open(selector: Option<&str>) {
+    if let Some(name) = selector {
+        log::info!("nros: session open (rmw={name})");
+    } else {
+        log::info!("nros: session open");
     }
 }
 
@@ -466,6 +587,9 @@ impl Executor<'static> {
     /// to size a fat entry (>default `MAX_CBS` callbacks) without a
     /// workspace-global `NROS_EXECUTOR_MAX_CBS`. Leaks a `sizing`-sized backing
     /// (executor-lifetime); no-alloc entries use `open_in` with their own static.
+    // Issue 3008 -- out of line, so the frame that opens an executor holds only
+    // the result it receives, not this function's copy of it as well.
+    #[inline(never)]
     pub fn open_sized(
         config: &ExecutorConfig<'_>,
         sizing: super::storage::ExecutorSizing,
@@ -473,11 +597,12 @@ impl Executor<'static> {
         // Issue 2845 -- this opens its own session, so the backing it allocates
         // carves the owned-session slot whatever `sizing` said.
         let sizing = sizing.owning();
+        let raw: *mut [MaybeUninit<u64>] = default_backing(sizing);
         // SAFETY: the backing is exactly `sizing.u64_len()` words, `'static`,
-        // uniquely owned by the returned executor; a failed open gives it back.
-        with_default_backing(sizing, |backing| unsafe {
-            Self::open_in(config, backing, sizing)
-        })
+        // uniquely owned by the returned executor, and `open_owning` gives it
+        // back on a failed open. A tail call, not `with_default_backing`: that
+        // inspects the result before returning it, which kept a copy of it here.
+        unsafe { Self::open_owning(config, &mut *raw, sizing, None, DefaultHandoff(raw)) }
     }
 
     /// Explicit per-backend session declaration for
@@ -501,8 +626,14 @@ impl Executor<'static> {
         let sizing = super::storage::ExecutorSizing::DEFAULT.owning();
         // SAFETY: the backing is exactly `sizing.u64_len()` words, `'static`;
         // a failed open gives it back.
-        with_default_backing(sizing, |backing| unsafe {
-            Self::open_multi_in(specs, backing, sizing)
+        with_default_backing(sizing, |backing, raw| {
+            let mut result = unsafe { Self::open_multi_in(specs, backing, sizing) };
+            if let Ok(exec) = result.as_mut() {
+                // SAFETY: `raw` is the block `backing` borrows, from
+                // `default_backing`, and `exec` was opened over it.
+                unsafe { take_default_backing(exec, raw) };
+            }
+            result
         })
     }
 
@@ -527,8 +658,14 @@ impl Executor<'static> {
         let sizing = super::storage::ExecutorSizing::DEFAULT.owning();
         // SAFETY: the backing is exactly `sizing.u64_len()` words, `'static`;
         // a failed open gives it back.
-        with_default_backing(sizing, |backing| unsafe {
-            Self::open_with_rmw_in(rmw_name, config, backing, sizing)
+        with_default_backing(sizing, |backing, raw| {
+            let mut result = unsafe { Self::open_with_rmw_in(rmw_name, config, backing, sizing) };
+            if let Ok(exec) = result.as_mut() {
+                // SAFETY: `raw` is the block `backing` borrows, from
+                // `default_backing`, and `exec` was opened over it.
+                unsafe { take_default_backing(exec, raw) };
+            }
+            result
         })
     }
 }
