@@ -308,18 +308,6 @@ nros_wall_clock_state_t nros_platform_wall_clock_state(void) {
  * bytes; we trust the caller-supplied buffer.
  */
 
-typedef struct {
-    void *(*entry)(void *);
-    void *arg;
-} nros_posix_task_arg_t;
-
-static void *nros_posix_task_trampoline(void *raw) {
-    /* The Rust trait signature uses `Option<unsafe extern "C" fn(*mut c_void) -> *mut c_void>`
-     * which lowers to the same shape as a pthread start_routine, so
-     * we can forward directly. */
-    return raw;
-}
-
 #if defined(__GLIBC__) && (__GLIBC__ > 2 || (__GLIBC__ == 2 && __GLIBC_MINOR__ >= 12))
 #if !defined(__USE_GNU)
 extern int pthread_setname_np(pthread_t thread, const char *name);
@@ -377,6 +365,140 @@ static int nros_posix_native_priority(int32_t priority) {
         return lo + (int) (((int64_t) band * (hi - lo)) / NROS_PLATFORM_PRIORITY_MAX);
     }
     return -1;
+}
+
+/* Issue 3024 -- applied by the TASK to itself, at the top of its start
+ * routine, never by the creator to a thread id it does not own. The creator
+ * used to call this on `*t` after `pthread_create` returned; a detached task
+ * that had already finished was an exited thread by then, Linux answered
+ * ESRCH (and the call is undefined on such an id), and the once-per-process
+ * report was spent on "refused (rc=3)" instead of the EPERM that names the
+ * remedy. The posix-task-priority gate failed that way inside a loaded
+ * `check fast`. The history of the block follows. */
+/* phase-364 W5 — priority.
+ *
+ * POSIX runs the same direction as the band (higher = more urgent) but only
+ * under a real-time policy: under the default SCHED_OTHER the value is
+ * ignored, and setting SCHED_FIFO needs privilege the process may not have.
+ * So this is applied AFTER create, best-effort, and a refusal is not a
+ * spawn failure — the task runs at the inherited priority, which is what it
+ * did before this field existed.
+ *
+ * NuttX runs this port, and phase-296/issue 0263 already established that a
+ * sched task self-applies its priority at entry through
+ * `nros_nuttx_apply_current_priority`; this covers the create-time case the
+ * ABI can express portably. */
+static void nros_posix_apply_priority_self(int native, const char *name) {
+    /* Belt and braces: the attribute above is what makes the task BORN
+     * with this priority (issue 0636). This repeats it on the running
+     * thread for the case the attribute did not take — a kernel that
+     * declines `PTHREAD_EXPLICIT_SCHED`, or a host without the
+     * privilege to select SCHED_FIFO. Still best-effort: a refusal is
+     * not a spawn failure, because the task runs at the inherited
+     * priority, which is what it did before this field existed. */
+    struct sched_param sp;
+    memset(&sp, 0, sizeof(sp));
+    sp.sched_priority = native;
+    int prio_rc = pthread_setschedparam(pthread_self(), SCHED_FIFO, &sp);
+    /* issue 0803 — report what the task GOT, not what it asked for.
+     *
+     * Everything above reports the request. That is how the transport
+     * band could announce "SCHED_FIFO 90" at boot while the kernel ran
+     * those threads at 1 for four weeks: the attribute was read back
+     * through the same lens that wrote it, so every check agreed with
+     * itself and none of them asked the kernel. A mismatch here is
+     * exactly the shape that hid — policy applied, value wrong — so it
+     * is read back from the thread and reported when it differs. */
+    if (prio_rc == 0) {
+        int got_policy = -1;
+        struct sched_param got;
+        memset(&got, 0, sizeof(got));
+        if (pthread_getschedparam(pthread_self(), &got_policy, &got) == 0
+            && (got_policy != SCHED_FIFO || got.sched_priority != native)) {
+            // issue 0803
+            fprintf(stderr,
+                    "[warn] nros: task `%s` asked for SCHED_FIFO %d and the kernel "
+                    "gave it policy=%d priority=%d. A transport or sched task that lands "
+                    "BELOW what it declared inverts the ordering it exists to "
+                    "state.\n",
+                    (name != NULL && name[0] != '\0') ? name : "?", native, got_policy,
+                    got.sched_priority);
+        }
+    }
+    /* RFC-0079 / issue 0765 — a REFUSAL is reported, once.
+     *
+     * This used to be `(void) pthread_setschedparam(...)`. On a Linux
+     * host without `CAP_SYS_NICE` (or an `RLIMIT_RTPRIO` allowance)
+     * every one of those calls returns EPERM, so a sched task that declared
+     * `priority = 80` ran at the default policy and NOTHING said so —
+     * eleven such pins exist in the tree. Silently honouring a
+     * scheduling declaration that was not applied is the same
+     * silent-drop shape RFC-0052 makes fail-loud everywhere else.
+     *
+     * Once per process, not per task: an image with six sched tasks would
+     * otherwise print six identical lines saying one thing about the
+     * process. `pthread_setschedparam` is called under the spawn path,
+     * which is already serialised by the caller, so a plain static is
+     * enough here and avoids dragging <stdatomic.h> into a file that
+     * compiles for several hosted targets.
+     *
+     * Not a spawn failure: the task runs at the inherited priority, and
+     * turning a missing capability into a boot failure would make
+     * every unprivileged `just ci` run stop dead. The point is that the
+     * operator learns the declaration did not take. */
+    if (prio_rc != 0) {
+        static atomic_int reported;
+        if (atomic_exchange(&reported, 1) == 0) {
+            if (prio_rc == EPERM) {
+                fprintf(stderr,
+                        "[warn] nros: SCHED_FIFO priority %d was REFUSED (EPERM) — this "
+                        "process may not request real-time scheduling, so every sched task's "
+                        "declared priority is INERT and the kernel runs them all at the "
+                        "default policy.\n"
+                        "       Grant the capability to the binary that runs the sched tasks:\n"
+                        "           sudo setcap cap_sys_nice+ep <the executable>\n"
+                        "       (re-run it after EVERY rebuild — a file capability is "
+                        "bound to the file's CONTENTS and cannot survive a replaced "
+                        "binary), or raise RLIMIT_RTPRIO for the user.\n",
+                        native);
+            } else {
+                fprintf(stderr,
+                        "[warn] nros: SCHED_FIFO priority %d was refused (rc=%d) — the "
+                        "sched task runs at its inherited priority.\n",
+                        native, prio_rc);
+            }
+        }
+    }
+    /* issue 0636 — a read-back diagnostic stood here and was REMOVED as
+     * unverified. It reported `high` at prio=1 policy=1 on a run where
+     * that task demonstrably ran at 110 (it self-applied, printed its
+     * marker and set its sporadic budget), so either
+     * `pthread_getschedparam` does not reflect the attribute on this
+     * NuttX config or SCHED_FIFO's numeric value there is not what the
+     * comparison assumed. A diagnostic that cries wolf costs more than
+     * the silence it replaces; the evidence that mattered came from the
+     * cell's own assertion naming which sched task lost its marker. */
+}
+
+/* What a task needs to start itself (issue 3024). Heap-allocated by
+ * `nros_platform_task_init` and freed by the task before its entry runs; the
+ * name is COPIED because the caller's attribute need not outlive
+ * `pthread_create`. `native < 0` means "no priority asked for". */
+typedef struct {
+    void *(*entry)(void *);
+    void *arg;
+    int native;
+    char name[16];
+} nros_posix_task_start_t;
+
+static void *nros_posix_task_trampoline(void *raw) {
+    nros_posix_task_start_t start = *(nros_posix_task_start_t *) raw;
+    free(raw);
+    nros_posix_name_thread(pthread_self(), start.name);
+    if (start.native >= 0) {
+        nros_posix_apply_priority_self(start.native, start.name);
+    }
+    return start.entry(start.arg);
 }
 
 int8_t nros_platform_task_init(void *task, void *attr,
@@ -462,25 +584,48 @@ int8_t nros_platform_task_init(void *task, void *attr,
         }
     }
 
+    /* The task starts itself through `nros_posix_task_trampoline`, which names
+     * it and applies its priority from inside (issue 3024). */
+    nros_posix_task_start_t *start = (nros_posix_task_start_t *) malloc(sizeof(*start));
+    if (start == NULL) {
+        if (pattr_p != NULL) {
+            (void) pthread_attr_destroy(pattr_p);
+        }
+        return NROS_PLATFORM_RET_NOMEM;
+    }
+    start->entry = entry;
+    start->arg = arg;
+    start->native = (a != NULL) ? nros_posix_native_priority(a->priority) : -1;
+    start->name[0] = '\0';
+    if (a != NULL && a->name != NULL) {
+        size_t n = strlen(a->name);
+        if (n > sizeof(start->name) - 1) {
+            n = sizeof(start->name) - 1;
+        }
+        memcpy(start->name, a->name, n);
+        start->name[n] = '\0';
+    }
+
     pthread_t *t = (pthread_t *) task;
-    int rc = pthread_create(t, pattr_p, entry, arg);
+    int rc = pthread_create(t, pattr_p, nros_posix_task_trampoline, start);
     if (rc == EPERM && explicit_sched) {
         /* issue 2934 — an unprivileged host refuses an EXPLICIT SCHED_FIFO at
          * CREATE time (no CAP_SYS_NICE, no RLIMIT_RTPRIO), so the attribute path
          * issue 0636 added turned "this process may not request real-time
          * scheduling" into "this task never starts". That is the opposite of the
-         * rule the post-create arm below states: a refused priority is
-         * reported and the task runs at the inherited one. So retry with the
-         * creator's scheduling (stack size and detach state kept) and let that
-         * arm, which asks for SCHED_FIFO again on the running thread, report the
-         * refusal once. */
+         * rule the task's own start-up states: a refused priority is reported
+         * and the task runs at the inherited one. So retry with the creator's
+         * scheduling (stack size and detach state kept) and let the trampoline,
+         * which asks for SCHED_FIFO again from inside the running thread, report
+         * the refusal once. */
         (void) pthread_attr_setinheritsched(&pattr, PTHREAD_INHERIT_SCHED);
-        rc = pthread_create(t, pattr_p, entry, arg);
+        rc = pthread_create(t, pattr_p, nros_posix_task_trampoline, start);
     }
     if (pattr_p != NULL) {
         (void) pthread_attr_destroy(pattr_p);
     }
     if (rc != 0) {
+        free(start); /* no thread was created, so nothing else will */
         /* phase-364 W1 — NOMEM, not ERROR. `pthread_create` fails with EAGAIN
          * when the system is out of thread resources, and issue 0246 is exactly
          * that: a TRANSIENT failure on NuttX under load, which the sched task spawn
@@ -489,116 +634,10 @@ int8_t nros_platform_task_init(void *task, void *attr,
         return NROS_PLATFORM_RET_NOMEM;
     }
 
-    /* phase-364 W5 — priority.
+    /* Priority, name and the rest of the start-up happen inside the task, in
+     * `nros_posix_task_trampoline` (issue 3024). The naming note:
      *
-     * POSIX runs the same direction as the band (higher = more urgent) but only
-     * under a real-time policy: under the default SCHED_OTHER the value is
-     * ignored, and setting SCHED_FIFO needs privilege the process may not have.
-     * So this is applied AFTER create, best-effort, and a refusal is not a
-     * spawn failure — the task runs at the inherited priority, which is what it
-     * did before this field existed.
-     *
-     * NuttX runs this port, and phase-296/issue 0263 already established that a
-     * sched task self-applies its priority at entry through
-     * `nros_nuttx_apply_current_priority`; this covers the create-time case the
-     * ABI can express portably. */
-    if (a != NULL) {
-        int native = nros_posix_native_priority(a->priority);
-        if (native >= 0) {
-            /* Belt and braces: the attribute above is what makes the task BORN
-             * with this priority (issue 0636). This repeats it on the running
-             * thread for the case the attribute did not take — a kernel that
-             * declines `PTHREAD_EXPLICIT_SCHED`, or a host without the
-             * privilege to select SCHED_FIFO. Still best-effort: a refusal is
-             * not a spawn failure, because the task runs at the inherited
-             * priority, which is what it did before this field existed. */
-            struct sched_param sp;
-            memset(&sp, 0, sizeof(sp));
-            sp.sched_priority = native;
-            int prio_rc = pthread_setschedparam(*t, SCHED_FIFO, &sp);
-            /* issue 0803 — report what the task GOT, not what it asked for.
-             *
-             * Everything above reports the request. That is how the transport
-             * band could announce "SCHED_FIFO 90" at boot while the kernel ran
-             * those threads at 1 for four weeks: the attribute was read back
-             * through the same lens that wrote it, so every check agreed with
-             * itself and none of them asked the kernel. A mismatch here is
-             * exactly the shape that hid — policy applied, value wrong — so it
-             * is read back from the thread and reported when it differs. */
-            if (prio_rc == 0) {
-                int got_policy = -1;
-                struct sched_param got;
-                memset(&got, 0, sizeof(got));
-                if (pthread_getschedparam(*t, &got_policy, &got) == 0
-                    && (got_policy != SCHED_FIFO || got.sched_priority != native)) {
-                    // issue 0803
-                    fprintf(stderr,
-                            "[warn] nros: task `%s` asked for SCHED_FIFO %d and the kernel "
-                            "gave it policy=%d priority=%d. A transport or sched task that lands "
-                            "BELOW what it declared inverts the ordering it exists to "
-                            "state.\n",
-                            (a->name != NULL) ? a->name : "?", native, got_policy,
-                            got.sched_priority);
-                }
-            }
-            /* RFC-0079 / issue 0765 — a REFUSAL is reported, once.
-             *
-             * This used to be `(void) pthread_setschedparam(...)`. On a Linux
-             * host without `CAP_SYS_NICE` (or an `RLIMIT_RTPRIO` allowance)
-             * every one of those calls returns EPERM, so a sched task that declared
-             * `priority = 80` ran at the default policy and NOTHING said so —
-             * eleven such pins exist in the tree. Silently honouring a
-             * scheduling declaration that was not applied is the same
-             * silent-drop shape RFC-0052 makes fail-loud everywhere else.
-             *
-             * Once per process, not per task: an image with six sched tasks would
-             * otherwise print six identical lines saying one thing about the
-             * process. `pthread_setschedparam` is called under the spawn path,
-             * which is already serialised by the caller, so a plain static is
-             * enough here and avoids dragging <stdatomic.h> into a file that
-             * compiles for several hosted targets.
-             *
-             * Not a spawn failure: the task runs at the inherited priority, and
-             * turning a missing capability into a boot failure would make
-             * every unprivileged `just ci` run stop dead. The point is that the
-             * operator learns the declaration did not take. */
-            if (prio_rc != 0) {
-                static int reported;
-                if (!reported) {
-                    reported = 1;
-                    if (prio_rc == EPERM) {
-                        fprintf(stderr,
-                                "[warn] nros: SCHED_FIFO priority %d was REFUSED (EPERM) — this "
-                                "process may not request real-time scheduling, so every sched task's "
-                                "declared priority is INERT and the kernel runs them all at the "
-                                "default policy.\n"
-                                "       Grant the capability to the binary that runs the sched tasks:\n"
-                                "           sudo setcap cap_sys_nice+ep <the executable>\n"
-                                "       (re-run it after EVERY rebuild — a file capability is "
-                                "bound to the file's CONTENTS and cannot survive a replaced "
-                                "binary), or raise RLIMIT_RTPRIO for the user.\n",
-                                native);
-                    } else {
-                        fprintf(stderr,
-                                "[warn] nros: SCHED_FIFO priority %d was refused (rc=%d) — the "
-                                "sched task runs at its inherited priority.\n",
-                                native, prio_rc);
-                    }
-                }
-            }
-            /* issue 0636 — a read-back diagnostic stood here and was REMOVED as
-             * unverified. It reported `high` at prio=1 policy=1 on a run where
-             * that task demonstrably ran at 110 (it self-applied, printed its
-             * marker and set its sporadic budget), so either
-             * `pthread_getschedparam` does not reflect the attribute on this
-             * NuttX config or SCHED_FIFO's numeric value there is not what the
-             * comparison assumed. A diagnostic that cries wolf costs more than
-             * the silence it replaces; the evidence that mattered came from the
-             * cell's own assertion naming which sched task lost its marker. */
-        }
-    }
-
-    /* Naming is best-effort: it reaches crash dumps, `ps -L`, `top -H`, gdb's
+     * Naming is best-effort: it reaches crash dumps, `ps -L`, `top -H`, gdb's
      * `info threads` and the boot thread census, and a kernel that declines
      * must not fail the spawn.
      *
@@ -612,14 +651,8 @@ int8_t nros_platform_task_init(void *task, void *attr,
      *
      * The kernel keeps 15 bytes of name plus the NUL (`TASK_COMM_LEN`), and
      * glibc REFUSES a longer one with ERANGE rather than cutting it, so a long
-     * name would leave the thread unnamed. It is cut here instead: callers
-     * should put what tells two threads apart first. */
-    nros_posix_name_thread(*t, a != NULL ? a->name : NULL);
-
-    /* Reference the trampoline so the compiler doesn't strip it; a
-     * future signature change (e.g. argument repacking) will route
-     * through it. */
-    (void) nros_posix_task_trampoline;
+     * name would leave the thread unnamed. It is cut when the start record
+     * copies it: callers should put what tells two threads apart first. */
     return NROS_PLATFORM_RET_OK;
 }
 
