@@ -278,9 +278,9 @@ Acceptance:
 
 ### W5 — the shared frame, and existing verbs adopt it
 
-- **Status:** OPEN. W5a merged in #4443 (c0a964c08e) and W5b in #4527
-  (c80f3de04d), both 2026-11-21; W5c is open: `interface`, `toolchain list`
-  and `nros list` have no `--json` schema on main (audited 2026-11-26).
+- **Status:** DONE (2026-11-28). W5a merged in #4443 (c0a964c08e) and
+  W5b in #4527 (c80f3de04d), both 2026-11-21; W5c lands with the remaining
+  verbs below.
 - **W5a, the frame:** `cmd::frame` renders a `list` table, a `show`'s
   fields and Book line, the `--json` document, and the unknown-name refusal
   with the nearest names. The Book URL is the CLI workspace's
@@ -298,8 +298,25 @@ Acceptance:
   contributors and not readable at run time. `board show` prints the keys as
   the file writes them, the user spelling. Labels wait on a user-facing
   descriptor schema, which needs its own item.
-- **W5c, open:** `interface`, `toolchain list` and `nros list` adopt the
-  frame and gain `--json`; a contract test per schema.
+- **W5c, the remaining verbs:**
+  - `interface list --json` (`nros.interface.list.v1`): one item per type,
+    `name` / `package` / `kind`, in the table's order and honouring
+    `--only-*`.
+  - `interface show --json` (`nros.interface.show.v1`): the type, the file
+    the search path resolved it to, its `definition` as written, and the
+    `expanded` text `show` prints.
+  - `toolchain list --json` (`nros.toolchain.list.v1`): one item per store
+    entry (`entry`, `category`, `name`, `version`, `path`, `state`), with
+    the store `root` and where it came from (`root_from`). `--usage` adds
+    the three measured keys, `size_bytes`, `last_used` in Unix seconds and
+    `evidence`, as it adds the table's columns; without it nothing reads an
+    entry's files (issue 2999). `nros store list` is the same function.
+  - `nros list --json` (`nros.list.v1`): the packages `nros build` would
+    discover and select, each with `name`, `path` and `build_type` (the
+    `colcon list` view; the selection flags apply). It refuses `-n` / `-p`.
+  - A test per schema pins its keys. `check-user-surface-ids` renders
+    `interface list` and `toolchain list`, both forms; `toolchain list` there
+    reads an empty store, since a host's real one can take minutes to size.
 
 One helper renders `list` (table or `--json`), `show` (fields, then the Book
 line) and the unknown-name refusal with the nearest names. `board`,

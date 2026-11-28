@@ -148,7 +148,9 @@ Subjects, all checked on every run:
   every RMW the JSON list names (phase-569 W1: each discovery verb's output
   is user surface, RFC-0133 D5);
 * the output of `nros knob list`, both forms, and `nros knob show <knob>` for
-  every knob the JSON list names (phase-569 W2).
+  every knob the JSON list names (phase-569 W2);
+* the output of `nros interface list` and `nros toolchain list`, both forms
+  (phase-569 W5c).
 
 The rendered subjects need the in-tree CLI; with none built they are reported
 NOT VERIFIED through the skip ledger (issue 1043's middle outcome), never a
@@ -2415,6 +2417,22 @@ def rendered_hits(cli: str) -> list[str]:
     for k in knobs:
         check(f"nros knob show {k}", run(cli, ["knob", "show", k]))
 
+    # phase-569 W5c: the verbs that gained `--json`. Their items are the
+    # user's own (interface types, store entries), so what is checked is the
+    # frame around them, both forms.
+    # `toolchain list` is pointed at an empty store: the host's real one can
+    # hold hundreds of GB, which it sizes, and its entries are not ours.
+    empty_store = tempfile.mkdtemp(prefix="nros-store-")
+    for verb in (["interface", "list"], ["toolchain", "list", "--root", empty_store]):
+        label = "nros " + " ".join(verb[:2])
+        check(label, run(cli, verb))
+        doc = run(cli, [*verb, "--json"])
+        check(label + " --json", doc)
+        try:
+            json.loads(doc)["items"]
+        except (ValueError, KeyError, TypeError):
+            bad.append(f"`{label} --json` is not the list schema: {doc[:90]!r}")
+
     # `doctor --report` prints a row per image, so it is asked about a bringup
     # with one image per board the tracked examples deploy to — derived from
     # the tree, so a new board is covered the day an example names it.
@@ -3090,7 +3108,7 @@ def main() -> int:
         from source_locate import nros_cli_bin
 
         cli = nros_cli_bin(checkout_only=True)
-    rendered = "rendered help, board list/show, rmw list/show, knob list/show and doctor --report"
+    rendered = "rendered help, board list/show, rmw list/show, knob list/show, interface and toolchain list, and doctor --report"
     if cli:
         bad += rendered_hits(cli)
     if bad:

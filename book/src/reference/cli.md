@@ -1081,6 +1081,9 @@ Options:
   -p, --paths-only
           Print only each package's path, as `colcon list -p`
 
+      --json
+          Print one JSON object: each package `nros build` would discover and select, with its path and build type (the `colcon list` view)
+
       --packages-select <PKG>...
           Only these packages — no dependencies, no dependents.
           
@@ -1317,6 +1320,7 @@ Options:
   -s, --only-srvs              Print only services
   -a, --only-actions           Print only actions
       --workspace <WORKSPACE>  Workspace whose `src/` is searched first. Defaults to the current directory
+      --json                   Print one JSON object instead of the list
   -h, --help                   Print help
   -V, --version                Print version
 ```
@@ -1333,6 +1337,7 @@ Arguments:
 
 Options:
       --workspace <WORKSPACE>  Workspace whose `src/` is searched first. Defaults to the current directory
+      --json                   Print one JSON object instead of the definition
   -h, --help                   Print help
   -V, --version                Print version
 ```
@@ -1960,6 +1965,8 @@ Usage: nros toolchain list [OPTIONS]
 
 Options:
       --root <ROOT>  Store root. Defaults to `$NROS_HOME`, else `~/.nros`
+      --usage        Also measure each entry: its size and when it was last used. This reads every file in the store, which takes minutes on a large one
+      --json         Print one JSON object instead of a table
   -h, --help         Print help
   -V, --version      Print version
 ```
