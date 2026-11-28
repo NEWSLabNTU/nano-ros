@@ -1939,12 +1939,14 @@ config NROS_MEMORY_HEAP_BYTES
       node's six parameter services owns a 2 x PARAM_SERVICE_BUFFER_SIZE
       buffer pair. So an image serving them on several nodes does not fit
       112 KiB: the four-node derived-sched-tasks image ran it dry at boot.
-      The same holds for the 192 KiB lifecycle arm: a lifecycle state
-      machine owns five such pairs. So on Zephyr the param_services and
+      The same holds for the 192 KiB lifecycle arm, which was measured when
+      a lifecycle state machine owned five such pairs; its servers' buffers
+      are now sized for the lifecycle messages, 1,744 B per machine. So on
+      Zephyr the param_services and
       lifecycle arms are the -1 derive sentinel. The configure starts from
       the arm the image had (112 KiB for param_services, 192 KiB for
       lifecycle) and adds (nodes - 1) x (12 x PARAM_SERVICE_BUFFER_SIZE) and
-      (machines - 1) x (10 x PARAM_SERVICE_BUFFER_SIZE), each plus a measured
+      (machines - 1) x 1,744 B of lifecycle buffers, each plus a measured
       remainder, from the counts in the image's entity inventory
       (zephyr/cmake/nros_heap_floor.cmake). One node and one machine derive
       exactly the arm; with no inventory to count from, the image keeps the

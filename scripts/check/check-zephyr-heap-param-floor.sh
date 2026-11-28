@@ -82,7 +82,7 @@ selftest() {
             *) bad "$name: expected floor [$want], got: $out" ;;
         esac
     }
-    local p=$((12 * 4096)) l=$((10 * 4096))
+    local p=$((12 * 4096)) l=1744  # l: nros-node LIFECYCLE_MACHINE_BUFFER_BYTES (issue 2919)
     #     name                                   lc rust params nodes mach buf  want
     case_ "C: no inventory count"                "" "" y - - "" ""
     case_ "C: zero parameter-serving nodes"      "" "" y 0 0 "" ""

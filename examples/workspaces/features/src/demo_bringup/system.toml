@@ -407,7 +407,8 @@ max_queryables = 16
 # Issue 2780's lifecycle term -- TWO managed C nodes on XRCE on
 # an emulated Cortex-M, the (ZephyrQemuCortexM, C, Xrce, Lifecycle, Workspace)
 # cell. Every managed node owns a REP-2002 machine whose five servers are one
-# 44,200-byte heap allocation, and on XRCE each of them also takes a
+# heap allocation (44,200 B when this cell was added; about 4.9 KiB on XRCE
+# since issue 2919 sized their buffers), and on XRCE each of them also takes a
 # service-server slot in `xrce_session_state_t`. Kconfig's flat 192 KiB
 # lifecycle arm priced one machine: the second one's allocation failed at boot
 # (`HEAP EXHAUSTED`, `LifecycleServiceServers::try_new_boxed`). The heap is

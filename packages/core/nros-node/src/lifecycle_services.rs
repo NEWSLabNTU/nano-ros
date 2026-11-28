@@ -619,10 +619,45 @@ pub(crate) fn handle_get_transition_graph(
 
 use crate::executor::{EmbeddedServiceServer, NodeError};
 
-// LIFECYCLE_SERVICE_BUFFER_SIZE sits alongside PARAM_SERVICE_BUFFER_SIZE; the
-// lifecycle payloads are far smaller, but reusing the same tuning knob keeps
-// the build surface simple.
-pub use crate::config::PARAM_SERVICE_BUFFER_SIZE as LIFECYCLE_SERVICE_BUFFER_SIZE;
+// Each lifecycle server's buffers, sized for its own messages (issue 2919,
+// RFC-0128 D7). They used to be `PARAM_SERVICE_BUFFER_SIZE` each way, the
+// image's generic service size (4,096 B by default), which made every managed
+// node box 5 x (2 x 4,096) bytes of buffers for replies that measure under
+// 512. The replies are built from const tables, so their worst case is fixed:
+// `lifecycle_buffers_hold_every_reply` streams each one in every state and
+// holds it under its size. The requests come from a client:
+//
+// * `change_state` carries a transition label, which any client may send at
+//   any length. A request too big for its buffer is refused by the backend
+//   (`BUFFER_TOO_SMALL`), so this one is generous: a 490-character label.
+// * The other four requests are empty messages (one placeholder byte).
+
+/// `~/change_state` request: a transition id and label.
+pub const LIFECYCLE_CHANGE_STATE_REQUEST_BYTES: usize = 512;
+/// The four empty `get_*` requests.
+pub const LIFECYCLE_EMPTY_REQUEST_BYTES: usize = 64;
+/// `~/change_state` reply: one bool.
+pub const LIFECYCLE_CHANGE_STATE_REPLY_BYTES: usize = 16;
+/// `~/get_state` reply: one state (measured 28 B).
+pub const LIFECYCLE_GET_STATE_REPLY_BYTES: usize = 64;
+/// `~/get_available_states` reply: every state (measured 96 B).
+pub const LIFECYCLE_GET_AVAILABLE_STATES_REPLY_BYTES: usize = 128;
+/// `~/get_available_transitions` reply: the transitions from one state
+/// (measured 157 B at most).
+pub const LIFECYCLE_GET_AVAILABLE_TRANSITIONS_REPLY_BYTES: usize = 256;
+/// `~/get_transition_graph` reply: the whole table (measured 429 B).
+pub const LIFECYCLE_GET_TRANSITION_GRAPH_REPLY_BYTES: usize = 512;
+
+/// The buffer bytes ONE lifecycle state machine's five servers own: the ten
+/// sizes above. What a further managed node costs on the heap beyond its
+/// backend handles, for whoever sizes a heap from the machine count.
+pub const LIFECYCLE_MACHINE_BUFFER_BYTES: usize = LIFECYCLE_CHANGE_STATE_REQUEST_BYTES
+    + 4 * LIFECYCLE_EMPTY_REQUEST_BYTES
+    + LIFECYCLE_CHANGE_STATE_REPLY_BYTES
+    + LIFECYCLE_GET_STATE_REPLY_BYTES
+    + LIFECYCLE_GET_AVAILABLE_STATES_REPLY_BYTES
+    + LIFECYCLE_GET_AVAILABLE_TRANSITIONS_REPLY_BYTES
+    + LIFECYCLE_GET_TRANSITION_GRAPH_REPLY_BYTES;
 
 /// How many zenoh queryables the REP-2002 lifecycle services claim on a node.
 ///
@@ -739,8 +774,7 @@ pub static LIFECYCLE_INBOX: [nros_rmw::CallerInboxStorage<
     LIFECYCLE_INBOX_DEPTH,
 >; LIFECYCLE_INBOX_COUNT] = [const { nros_rmw::CallerInboxStorage::new() }; LIFECYCLE_INBOX_COUNT];
 
-type LcSrv<Svc> =
-    EmbeddedServiceServer<Svc, LIFECYCLE_SERVICE_BUFFER_SIZE, LIFECYCLE_SERVICE_BUFFER_SIZE>;
+type LcSrv<Svc, const REQ: usize, const REPLY: usize> = EmbeddedServiceServer<Svc, REQ, REPLY>;
 
 /// Holds the five REP-2002 lifecycle service servers for a node.
 ///
@@ -749,11 +783,27 @@ type LcSrv<Svc> =
 /// 1270 moved its buffers into one pair per executor; these five still own
 /// theirs -- one set per executor, not per node.)
 pub struct LifecycleServiceServers {
-    change_state: LcSrv<ChangeState>,
-    get_state: LcSrv<GetState>,
-    get_available_states: LcSrv<GetAvailableStates>,
-    get_available_transitions: LcSrv<GetAvailableTransitions>,
-    get_transition_graph: LcSrv<GetAvailableTransitions>,
+    change_state: LcSrv<
+        ChangeState,
+        LIFECYCLE_CHANGE_STATE_REQUEST_BYTES,
+        LIFECYCLE_CHANGE_STATE_REPLY_BYTES,
+    >,
+    get_state: LcSrv<GetState, LIFECYCLE_EMPTY_REQUEST_BYTES, LIFECYCLE_GET_STATE_REPLY_BYTES>,
+    get_available_states: LcSrv<
+        GetAvailableStates,
+        LIFECYCLE_EMPTY_REQUEST_BYTES,
+        LIFECYCLE_GET_AVAILABLE_STATES_REPLY_BYTES,
+    >,
+    get_available_transitions: LcSrv<
+        GetAvailableTransitions,
+        LIFECYCLE_EMPTY_REQUEST_BYTES,
+        LIFECYCLE_GET_AVAILABLE_TRANSITIONS_REPLY_BYTES,
+    >,
+    get_transition_graph: LcSrv<
+        GetAvailableTransitions,
+        LIFECYCLE_EMPTY_REQUEST_BYTES,
+        LIFECYCLE_GET_TRANSITION_GRAPH_REPLY_BYTES,
+    >,
 }
 
 impl LifecycleServiceServers {
@@ -881,8 +931,8 @@ impl LifecycleServiceServersBuilder {
     ) {
         /// Safety: `p` is valid for writes and every field of `*p` is written
         /// exactly once here.
-        unsafe fn init<Svc: nros_core::RosService>(
-            p: *mut LcSrv<Svc>,
+        unsafe fn init<Svc: nros_core::RosService, const REQ: usize, const REPLY: usize>(
+            p: *mut LcSrv<Svc, REQ, REPLY>,
             handle: crate::session::RmwServiceServer,
         ) {
             unsafe {
@@ -1872,6 +1922,82 @@ mod tests {
             "no state produced an empty transition list — the zero-length \
              sequence encoding went untested"
         );
+    }
+
+    /// Issue 2919 -- every lifecycle reply, in every state, fits the buffer
+    /// its server owns. The replies come from const tables, so this is their
+    /// worst case; a new state, transition or longer label that outgrows a
+    /// size fails here rather than on a target.
+    #[test]
+    fn lifecycle_buffers_hold_every_reply() {
+        fn streamed(
+            f: impl FnOnce(&mut CdrReader<'_>, &mut CdrWriter<'_>) -> Result<(), TransportError>,
+        ) -> usize {
+            let mut req_buf = [0u8; WIRE_BUF];
+            let mut reply_buf = [0u8; WIRE_BUF];
+            let mut rw = crate::tx_writer(&mut req_buf).expect("request writer");
+            GetAvailableTransitionsRequest::default()
+                .serialize(&mut rw)
+                .expect("serialize request");
+            let n = rw.position();
+            let mut r = CdrReader::new_with_header(&req_buf[..n]).expect("request reader");
+            let mut w = crate::tx_writer(&mut reply_buf).expect("reply writer");
+            f(&mut r, &mut w).expect("streaming handler");
+            w.position()
+        }
+        let empty_request = {
+            let mut buf = [0u8; WIRE_BUF];
+            let mut w = crate::tx_writer(&mut buf).expect("writer");
+            GetAvailableTransitionsRequest::default()
+                .serialize(&mut w)
+                .expect("serialize");
+            w.position()
+        };
+        assert!(
+            empty_request <= LIFECYCLE_EMPTY_REQUEST_BYTES,
+            "{empty_request}"
+        );
+        for state in ALL_STATES {
+            let sm = sm_at(state);
+            let sizes = [
+                (
+                    "get_state",
+                    streamed(|r, w| stream_get_state(&sm, r, w)),
+                    LIFECYCLE_GET_STATE_REPLY_BYTES,
+                ),
+                (
+                    "get_available_states",
+                    streamed(|r, w| stream_get_available_states(&sm, r, w)),
+                    LIFECYCLE_GET_AVAILABLE_STATES_REPLY_BYTES,
+                ),
+                (
+                    "get_available_transitions",
+                    streamed(|r, w| stream_get_available_transitions(&sm, r, w)),
+                    LIFECYCLE_GET_AVAILABLE_TRANSITIONS_REPLY_BYTES,
+                ),
+                (
+                    "get_transition_graph",
+                    streamed(|r, w| stream_get_transition_graph(&sm, r, w)),
+                    LIFECYCLE_GET_TRANSITION_GRAPH_REPLY_BYTES,
+                ),
+            ];
+            for (name, got, cap) in sizes {
+                assert!(
+                    got <= cap,
+                    "{name} in {state:?}: {got} B > its {cap} B buffer"
+                );
+            }
+        }
+        // change_state's reply is one bool after the 4-byte header.
+        const _: () = assert!(LIFECYCLE_CHANGE_STATE_REPLY_BYTES > 4);
+        // ...and its request holds the longest label this machine knows, with
+        // room to spare for a client's own.
+        let longest = ALL_TRANSITIONS
+            .iter()
+            .map(|&t| transition_wire(t).1.len())
+            .max()
+            .unwrap_or(0);
+        assert!(4 + 4 + 4 + longest + 1 < LIFECYCLE_CHANGE_STATE_REQUEST_BYTES / 4);
     }
 
     #[test]

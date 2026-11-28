@@ -7,12 +7,14 @@
 #   - every node carrying the PARAMETER services runs six servers;
 #   - every LIFECYCLE state machine runs five.
 #
-# Each server owns a request/reply pair of PARAM_SERVICE_BUFFER_SIZE bytes
-# (nros-node's `LIFECYCLE_SERVICE_BUFFER_SIZE` is the same constant). A port's
-# heap default prices ONE node and ONE machine; this is the rest:
+# A parameter server owns a request/reply pair of PARAM_SERVICE_BUFFER_SIZE
+# bytes. A lifecycle machine's five servers own buffers sized for the
+# lifecycle messages, NROS_LIFECYCLE_MACHINE_BUFFER_BYTES in all, which the
+# service size does not scale (issue 2919). A port's heap default prices ONE
+# node and ONE machine; this is the rest:
 #
 #     extra = (param_nodes - 1) x (6 x 2 x buffer + param_remainder)
-#           + (machines - 1)    x (5 x 2 x buffer + lifecycle_remainder)
+#           + (machines - 1)    x (lifecycle_buffers + lifecycle_remainder)
 #
 # One node and one machine add nothing. The remainders are what one more node
 # (machine) costs beyond its buffer pairs, MEASURED per port, so they are the
@@ -35,6 +37,10 @@ set(NROS_LIFECYCLE_SERVICES_PER_MACHINE 5 CACHE INTERNAL
 # nros-node's PARAM_SERVICE_BUFFER_SIZE when no rung states one.
 set(NROS_PARAM_SERVICE_DEFAULT_BUFFER 4096 CACHE INTERNAL
     "nros-node PARAM_SERVICE_BUFFER_SIZE when no rung states one (issue 2780)")
+# nros-node's LIFECYCLE_MACHINE_BUFFER_BYTES (lifecycle_services.rs), held to it
+# by nros-sizing-descriptor's service_heap tests.
+set(NROS_LIFECYCLE_MACHINE_BUFFER_BYTES 1744 CACHE INTERNAL
+    "one lifecycle machine's five servers' buffers, nros-node (issue 2919)")
 
 # _nros_service_heap_count(<var> <out>) -- an inventory count, or 0.
 function(_nros_service_heap_count var out)
@@ -71,11 +77,11 @@ function(_nros_service_heap_extra n m buffer rem_p rem_l out_extra out_comp)
             " x 2 x ${_buf} + ${rem_p})")
     endif()
     if(m GREATER 1)
-        math(EXPR _per "${NROS_LIFECYCLE_SERVICES_PER_MACHINE} * 2 * ${_buf} + ${rem_l}")
+        math(EXPR _per "${NROS_LIFECYCLE_MACHINE_BUFFER_BYTES} + ${rem_l}")
         math(EXPR _extra "${_extra} + (${m} - 1) * ${_per}")
         string(APPEND _comp
-            " + ${m}-1 lifecycle machines x ${_per} (${NROS_LIFECYCLE_SERVICES_PER_MACHINE} servers"
-            " x 2 x ${_buf} + ${rem_l})")
+            " + ${m}-1 lifecycle machines x ${_per} (${NROS_LIFECYCLE_SERVICES_PER_MACHINE} servers'"
+            " ${NROS_LIFECYCLE_MACHINE_BUFFER_BYTES} buffer bytes + ${rem_l})")
     endif()
     string(APPEND _comp "; buffer ${_buf_from}")
     set(${out_extra} "${_extra}" PARENT_SCOPE)
