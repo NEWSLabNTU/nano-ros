@@ -945,11 +945,13 @@ AN536) stay green.
 
 ### I44 -- SNTP re-sync usable on a simulator
 
-- **Issue:** [2884](../issues/2884-sntp-resync-paced-on-guest-time.md); needs
+- **Issue:** [2884](../issues/archived/2884-sntp-resync-paced-on-guest-time.md); needs
   PR #4632 (the SNTP re-sync stack as a knob, with its issue file) first.
 - **Tracked by:** [phase-582](phase-582-wall-clock-source.md), which took
   the issue (2026-11-23). The island's part stays in T4: a non-zero
   `sntp_resync_interval_ms` on its FVP images once 582 rules.
+- **Resolved (2026-11-28):** the island's FVP images run a non-zero interval
+  and its FVP lane is green (run 46018854324); the issue is archived.
 
 ### I45 -- a census for an owned entry that never starts nano-ros
 
@@ -1321,7 +1323,7 @@ unowned.
 - [issue 2881](../issues/archived/2881-rclcpp-log-min-severity-missing.md): no compile-time log floor, `RCLCPP_LOG_MIN_SEVERITY` (I41).
 - [issue 2882](../issues/2882-nros12-release-for-consumers.md): no release past nros11 (I42; planned by phase-590).
 - [issue 2883](../issues/archived/2883-zephyr-clock-halt-unreachable-after-platform.md): `halt` after `platform` on a "none" port was unreachable and accepted (I43; homed in phase-582; resolved, superseded by RFC-0141 D1's amendment).
-- [issue 2884](../issues/2884-sntp-resync-paced-on-guest-time.md): the SNTP re-sync interval runs on guest time (I44; homed in phase-582).
+- [issue 2884](../issues/archived/2884-sntp-resync-paced-on-guest-time.md): the SNTP re-sync interval runs on guest time (I44; homed in phase-582).
 - [issue 2871](../issues/archived/2871-census-for-entry-without-nano-ros.md): an owned entry that never starts nano-ros gets no census (I45; resolved by PR #4671).
 - [issue 2899](../issues/archived/2899-owned-census-omits-entry-workspace-depends.md): an owned entry's census builds its package without the workspace packages it `<depend>`s on (I50).
 - [issue 2900](../issues/archived/2900-owned-census-freshness-ignores-entry-cmakelists.md): an owned census reads fresh after the entry's CMakeLists changes (I51).
