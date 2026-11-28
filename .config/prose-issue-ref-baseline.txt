@@ -61,13 +61,4 @@
 #
 docs/roadmap/archived/phase-431-ship-the-nros-binary.md:1110
 just/check/docs.just:1110
-just/freertos.just:2997
-just/nuttx.just:2997
-just/qemu-baremetal.just:2997
-just/threadx-linux.just:2997
-just/threadx-riscv64.just:2997
-just/zephyr-dev.just:2997
-packages/testing/nros-tests/src/matrix.rs:2997
 scripts/build/rustdoc-set.sh:1110
-scripts/check-platform-lane-cells.py:2997
-scripts/test/module-consumers.sh:2997

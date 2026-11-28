@@ -959,8 +959,17 @@ fn every_test_binary_is_a_consumer_an_interop_test_or_classified() {
 // ============================================================================
 
 /// The test targets a recipe body hands `_nextest-platform` (its first
-/// argument, a space-separated list, quoted or bare).
-fn nextest_platform_targets(body: &str) -> Vec<String> {
+/// argument, a space-separated list, single-quoted, double-quoted or bare).
+///
+/// Issue 2997: a recipe takes its targets from
+/// `scripts/test/module-consumers.sh <module>` into `$bins`, so a `$bins`
+/// word expands to [`nros_tests::matrix::module_consumers`] for `module`, the
+/// derivation that helper's committed file is held to. It expands only when
+/// the body calls the helper for its OWN module; any other `$` word stays
+/// as written, names no test file, and so fails the rule below.
+fn nextest_platform_targets(body: &str, module: &str) -> Vec<String> {
+    let reads_own = body.contains(&format!("scripts/test/module-consumers.sh {module})"));
+    let derived = nros_tests::matrix::module_consumers();
     let mut out = Vec::new();
     for line in body.lines() {
         let line = line.split('#').next().unwrap_or("");
@@ -970,10 +979,24 @@ fn nextest_platform_targets(body: &str) -> Vec<String> {
         let rest = rest.trim_start();
         let arg = if let Some(q) = rest.strip_prefix('\'') {
             q.split('\'').next().unwrap_or("")
+        } else if let Some(q) = rest.strip_prefix('"') {
+            q.split('"').next().unwrap_or("")
         } else {
             rest.split_whitespace().next().unwrap_or("")
         };
-        out.extend(arg.split_whitespace().map(str::to_string));
+        for word in arg.split_whitespace() {
+            if reads_own && (word == "$bins" || word == "${bins}") {
+                out.extend(
+                    derived
+                        .get(module)
+                        .into_iter()
+                        .flatten()
+                        .map(|b| (*b).to_string()),
+                );
+            } else {
+                out.push(word.to_string());
+            }
+        }
     }
     out
 }
@@ -984,7 +1007,11 @@ fn every_board_job_selects_a_test_of_its_board() {
     let mut problems = Vec::new();
     let mut checked = 0;
     for &p in PlatformId::ALL {
-        if !nros_tests::matrix::platform_is_built(p) {
+        // A board whose cells are all built-only or gated (`Fvp`: its cells
+        // run in their own gated lane) has no Runtime cell, so no nightly
+        // board job selects tests for it, and `matrix::module_consumers`
+        // derives none: the rule has nothing to ask of it.
+        if !nros_tests::matrix::runtime_cells().any(|c| c.platform == p) {
             continue;
         }
         let m = p.just_module();
@@ -996,7 +1023,7 @@ fn every_board_job_selects_a_test_of_its_board() {
         let Some((_, body)) = recipes.get("test") else {
             continue;
         };
-        let targets = nextest_platform_targets(body);
+        let targets = nextest_platform_targets(body, m);
         if targets.is_empty() {
             // A module whose `test` verb reaches its cells another way (the
             // `linux` lane's `test-all`, Zephyr's west lane) is not this rule's.

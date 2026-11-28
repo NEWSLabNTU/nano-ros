@@ -3,6 +3,7 @@
 # Read by scripts/test/module-consumers.sh for each `just <module> test` (issue 2997).
 freertos bridge_network_e2e
 freertos entry_e2e
+freertos freertos_lifecycle_e2e
 freertos freertos_posix
 freertos freertos_qemu
 freertos lending_freertos_e2e
