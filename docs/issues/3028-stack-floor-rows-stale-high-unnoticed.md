@@ -5,7 +5,7 @@ status: open
 type: bug
 severity: medium
 area: [memory, tooling]
-related: [issue-2400, issue-2402, issue-2550, issue-2783, issue-3027, phase-557]
+related: [issue-2400, issue-2402, issue-2550, issue-2783, issue-3027]
 found: 2026-11-29
 ---
 
