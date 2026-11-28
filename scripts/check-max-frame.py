@@ -22,14 +22,27 @@ three things the walk does not:
 * **Allowed.** A `[[frame_allow]]` row of `config/stack-floors.toml`, matched
   as a substring of the symbol, with its reason.
 * **Already known.** `config/max-frame-baseline.json`, which is shrink-only: one
-  row per function with the largest size any build has. Keyed by FUNCTION, not
-  by build, so a build the baseline never saw (a new fixture, a gate's own
-  image) passes while it adds no frame and grows none; a new one, or one that
-  grew past every build's size, fails. A row may be deleted or lowered by hand,
-  which only tightens the gate. Adding or raising one goes through
-  `--write-baseline`, which writes it from the reports; `--merge` keeps the rows
-  this tree did not see and the larger size of those it did, so the baseline
-  can be built one platform family at a time.
+  row per (function, image), schema 3 (issue 3007). A generic function's frame
+  is its INSTANTIATION's, and two images instantiate it differently: B48 read
+  `install_in_with_launch_params<Talker>` at 8,048 B in the Zephyr sntp talker
+  against a row of 7,960 B measured in a FreeRTOS image, as "growth", when the
+  code had not moved. Both images are thumbv7m, so keying by target cannot
+  tell them apart; the image can. So:
+  - a (function, image) the baseline has fails only when that image's frame
+    GREW: a real growth on the same image is still a regression;
+  - a known function in an image the baseline has no row for is bounded by
+    what is already accepted: at or under the function's largest row on ANY
+    image it is a NOTE (not yet measured there); over it, it FAILS until
+    `--write-baseline --merge` records it, so a new image can never silently
+    exceed a size nobody accepted. B48's own case (+88 B over the largest
+    row) is such a failure, recorded on purpose;
+  - a function no row names is new and fails, whichever image has it.
+  A row may be deleted or lowered by hand, which only tightens the gate. Adding
+  or raising one goes through `--write-baseline`, which writes it from the
+  reports; `--merge` keeps the rows this tree did not see and the larger size
+  of those it did, so the baseline can be built one platform family at a time.
+  A schema-2 row (one per function, `seen_in` naming one image) reads as that
+  image's row.
 
 Only 32-bit ARM fixture images are read (thumbv*, armv7*, armv8r*); RISC-V
 waits for the walk to read its frames. A report without `big_frames` predates
@@ -273,11 +286,11 @@ def scope(reports: list[dict], coords: set | None, roots, in_coords
 
 
 def offenders(reports: list[dict], crates: set[str], allow: list[dict]
-              ) -> tuple[dict[str, tuple[int, str]], list[str]]:
+              ) -> tuple[dict[tuple[str, str], int], list[str]]:
     """(the nros-owned frames over the cap that no allow row accepts, keyed by
-    the function's stable name: (the largest size any build has, one build that
-    has it); problems with the reports)."""
-    seen: dict[str, tuple[int, str]] = {}
+    (the function's stable name, the image): its size there; problems with the
+    reports)."""
+    seen: dict[tuple[str, str], int] = {}
     problems = []
     for r in reports:
         image = image_key(r)
@@ -296,8 +309,8 @@ def offenders(reports: list[dict], crates: set[str], allow: list[dict]
                 continue
             key = stable_name(fn)
             names.setdefault(key, set()).add(_LLVM_SUFFIX.sub("", fn))
-            if int(n) > seen.get(key, (0, ""))[0]:
-                seen[key] = (int(n), image)
+            if int(n) > seen.get((key, image), 0):
+                seen[(key, image)] = int(n)
         for key, raw in sorted(names.items()):
             if len(raw) > 1:
                 problems.append(f"{image}: {len(raw)} different functions share the baseline "
@@ -306,17 +319,33 @@ def offenders(reports: list[dict], crates: set[str], allow: list[dict]
     return seen, problems
 
 
-def compare(seen: dict[str, tuple[int, str]], baseline: dict[str, int],
-            cap: int) -> list[str]:
-    fails = []
-    for fn, (n, image) in sorted(seen.items()):
-        was = baseline.get(fn)
-        if was is None:
+def compare(seen: dict[tuple[str, str], int], baseline: dict[tuple[str, str], int],
+            cap: int) -> tuple[list[str], list[str]]:
+    """(failures, notes). Issue 3007: a frame is judged against ITS image's row.
+    A known function in an image with no row is a note (not yet measured there),
+    never a failure; a function no row names fails."""
+    known = {fn for fn, _ in baseline}
+    fails, notes = [], []
+    for (fn, image), n in sorted(seen.items()):
+        was = baseline.get((fn, image))
+        if was is not None:
+            if n > was:
+                fails.append(f"{image}: {fn}: a {n} B frame, grown from {was} B on this "
+                             f"image (over the {cap} B cap)")
+        elif fn in known:
+            other = max(b for (f, _), b in baseline.items() if f == fn)
+            if n > other:
+                fails.append(f"{image}: {fn}: a {n} B frame on an image with no row, over "
+                             f"the {other} B this function is accepted at on any image "
+                             f"(over the {cap} B cap). If the instantiation is what this "
+                             "image needs, record it: --write-baseline --merge")
+            else:
+                notes.append(f"{image}: {fn}: {n} B, not yet measured on this image "
+                             f"(at or under its largest row, {other} B); record it with "
+                             "--write-baseline --merge")
+        else:
             fails.append(f"{image}: {fn}: a {n} B frame, over the {cap} B cap (new)")
-        elif n > was:
-            fails.append(f"{image}: {fn}: a {n} B frame, grown from {was} B (over the "
-                         f"{cap} B cap)")
-    return fails
+    return fails, notes
 
 
 def report_where(p: Path, zroot: Path | None) -> str:
@@ -342,41 +371,48 @@ def load_reports(paths: list[Path], zroot: Path | None = None) -> list[dict]:
     return out
 
 
-def read_baseline() -> dict[str, int]:
-    if not BASELINE.is_file():
-        return {}
-    doc = json.loads(BASELINE.read_text())
-    out: dict[str, int] = {}
+def baseline_rows(doc: dict) -> dict[tuple[str, str], int]:
+    """{(stable function, image): bytes}. Schema 3 rows name their `image`; a
+    schema-2 row (one per function) reads as the row of the image its
+    `seen_in` names, which is where its size was measured."""
+    out: dict[tuple[str, str], int] = {}
     for r in doc.get("frames", []):
         # Rows written under an older key keep counting (stable_name is
         # idempotent); two that now share a key keep the larger size.
-        k = stable_name(r["function"])
+        k = (stable_name(r["function"]), r.get("image") or r.get("seen_in", ""))
         out[k] = max(out.get(k, 0), int(r["bytes"]))
     return out
 
 
-def write_baseline(seen: dict[str, tuple[int, str]], merge: bool = False) -> None:
+def read_baseline() -> dict[tuple[str, str], int]:
+    if not BASELINE.is_file():
+        return {}
+    return baseline_rows(json.loads(BASELINE.read_text()))
+
+
+def baseline_doc(rows: dict[tuple[str, str], int]) -> dict:
+    return {"schema": 3,
+            "about": "issue 2815: the nros-owned stack frames over `max_frame` that exist "
+                     "today, one row per (function, image) with that image's size (issue "
+                     "3007: a generic function's frame is its instantiation's, so each "
+                     "image is judged against its own row), shrink-only. A row may be "
+                     "DELETED or LOWERED by hand when its frame shrinks (that only "
+                     "tightens the gate); a row is added or raised only by "
+                     "`scripts/check-max-frame.py --write-baseline`.",
+            "frames": [{"function": f, "image": i, "bytes": n}
+                       for (f, i), n in sorted(rows.items())]}
+
+
+def write_baseline(seen: dict[tuple[str, str], int], merge: bool = False) -> None:
     """Write the baseline from `seen`. With `merge`, rows this tree did not see
     are kept and a row it did see keeps the larger of the two sizes, so a
     baseline can be built one platform family at a time without one family
     lowering a size another needs."""
     rows = dict(seen)
     if merge:
-        old = json.loads(BASELINE.read_text()).get("frames", []) if BASELINE.is_file() else []
-        for r in old:
-            fn, n = stable_name(r["function"]), int(r["bytes"])
-            if n >= rows.get(fn, (0, ""))[0]:
-                rows[fn] = (n, r.get("seen_in", ""))
-    doc = {"schema": 2,
-           "about": "issue 2815: the nros-owned stack frames over `max_frame` that exist "
-                    "today, one row per function with the largest size any 32-bit ARM "
-                    "fixture build has (`seen_in` names one such build), shrink-only. A "
-                    "row may be DELETED or LOWERED by hand when its frame shrinks (that "
-                    "only tightens the gate); a row is added or raised only by "
-                    "`scripts/check-max-frame.py --write-baseline`.",
-           "frames": [{"function": f, "bytes": n, "seen_in": w}
-                      for f, (n, w) in sorted(rows.items())]}
-    BASELINE.write_text(json.dumps(doc, indent=2) + "\n")
+        for k, n in read_baseline().items():
+            rows[k] = max(rows.get(k, 0), n)
+    BASELINE.write_text(json.dumps(baseline_doc(rows), indent=2) + "\n")
 
 
 def self_test(quiet: bool = False) -> int:
@@ -402,16 +438,38 @@ def self_test(quiet: bool = False) -> int:
     allow = [{"match": "bind_subscription", "reason": "user M"}]
     seen, probs = offenders(reports, crates, allow)
     k = "nros_big"
-    if {f: n for f, (n, _) in seen.items()} != {k: 9000} or probs:
+    img = image_key(reports[0])
+    if seen != {(k, img): 9000} or probs:
         fails.append("offenders: ours, not third-party, not allowed")
-    if not compare(seen, {}, 4096):
+    if not compare(seen, {}, 4096)[0]:
         fails.append("a new frame over the cap fails")
-    if compare(seen, {k: 9000}, 4096):
+    if compare(seen, {(k, img): 9000}, 4096)[0]:
         fails.append("a frame at its baseline passes")
-    if compare(seen, {k: 9500}, 4096):
+    if compare(seen, {(k, img): 9500}, 4096)[0]:
         fails.append("a frame that shrank passes")
-    if not compare(seen, {k: 8000}, 4096):
+    if not compare(seen, {(k, img): 8000}, 4096)[0]:
         fails.append("a frame that grew fails")
+    # Issue 3007 (B48): a NEW image's bigger instantiation of a known function
+    # is not a regression; a growth on the image the row measured still is.
+    other = "freertos-talker@mps2 (examples/x/target-freertos/nros-stack-floor)"
+    f3, n3 = compare(seen, {(k, other): 9500}, 4096)
+    if f3 or not any("not yet measured on this image" in n for n in n3):
+        fails.append("a known function on an unmeasured image, at or under its largest "
+                     "row, is a note, not a failure")
+    f4, _ = compare(seen, {(k, other): 8000}, 4096)
+    if not any("no row, over" in f for f in f4):
+        fails.append("a known function on an unmeasured image OVER its largest row "
+                     "fails until recorded (B48's +88 B shape)")
+    if not compare({(k, other): 8100}, {(k, other): 8000}, 4096)[0]:
+        fails.append("a growth on the image the row measured still fails")
+    if compare({(k, other): 8000, (k, img): 9000},
+               {(k, other): 8000, (k, img): 9000}, 4096)[0]:
+        fails.append("each image at its own row passes, whatever the other image's size")
+    # A schema-2 row reads as its `seen_in` image's row.
+    if baseline_rows({"frames": [{"function": k, "bytes": 7, "seen_in": img}]}) != {(k, img): 7}:
+        fails.append("a schema-2 row is its seen_in image's row")
+    if baseline_rows(baseline_doc({(k, img): 7})) != {(k, img): 7}:
+        fails.append("a written schema-3 baseline reads back as written")
     a = "_RNvMsh_NtNtCsjR1TXmGj4Tx_9nros_node8executor4spinNtB5_8Executor4pass"
     b = "_RNvMsh_NtNtCs4xKnRAC4kOP_9nros_node8executor4spinNtB5_8Executor4pass.llvm.123"
     if stable_name(a) != stable_name(b):
@@ -428,7 +486,7 @@ def self_test(quiet: bool = False) -> int:
     # functions of one image.
     fresh = "_RNvMs3_NtNtC9nros_node8executor4spinNtB5_8Executor20brand_new_big_function"
     s_new, _ = offenders([{"image": "n@b", "big_frames": [[fresh, 6000]]}], crates, allow)
-    if not compare(s_new, {stable_name(a): 9000}, 4096):
+    if not compare(s_new, {(stable_name(a), "n@b (.)"): 9000}, 4096)[0]:
         fails.append("a NEW frame under a fresh name still fails after normalising")
     clash = [{"image": "c@b", "big_frames": [
         ["_RNvMs1_NtC9nros_node4spinNtB2_4Exec3run", 5000],
@@ -456,7 +514,7 @@ def self_test(quiet: bool = False) -> int:
     keep, skip = scope([stale_out, old_in, unknown, shared], lane, roots, fm.row_in_coords)
     if stale_out not in skip:
         fails.append("a report of an out-of-lane row is residue, skipped")
-    if old_in not in keep or not compare(offenders([old_in], crates, allow)[0], {}, 4096):
+    if old_in not in keep or not compare(offenders([old_in], crates, allow)[0], {}, 4096)[0]:
         fails.append("an in-lane report is checked whatever its age, and fails over the cap")
     if unknown not in keep:
         fails.append("an unattributable report is checked (fail closed)")
@@ -477,15 +535,15 @@ def self_test(quiet: bool = False) -> int:
            for p, n in (("examples/workspaces/c/build/nros/stack-floor/x/report.json", 9000),
                         ("examples/workspaces/cpp/build/nros/stack-floor/x/report.json", 9200))]
     got = offenders(two, crates, allow)[0]
-    if got.get("nros_big", (0, ""))[0] != 9200 or "cpp" not in got["nros_big"][1]:
-        fails.append("one row per function, at the largest size any build has")
+    if sorted(got.values()) != [9000, 9200] or len({i for _, i in got}) != 2:
+        fails.append("one row per (function, image): the c and cpp builds keep their own")
     _, probs = offenders([{"image": "old@b"}], crates, allow)
     if not probs:
         fails.append("a report without big_frames is a problem, never clean")
     for f in fails:
         print(f"check-max-frame self-test FAIL: {f}", file=sys.stderr)
     if not quiet or fails:
-        print(f"check-max-frame self-test: {len(cases) + 20} checks, {len(fails)} failed")
+        print(f"check-max-frame self-test: {len(cases) + 26} checks, {len(fails)} failed")
     return 1 if fails else 0
 
 
@@ -523,10 +581,13 @@ def main(argv: list[str]) -> int:
                   file=sys.stderr)
             return 1
         write_baseline(seen, merge="--merge" in argv)
-        print(f"check-max-frame: wrote {BASELINE.relative_to(ROOT)}: {len(seen)} frame(s) "
+        print(f"check-max-frame: wrote {BASELINE.relative_to(ROOT)}: {len(seen)} (function, image) row(s) "
               f"over {cap} B from {len(reports)} image report(s)")
         return 0
-    fails = problems + compare(seen, read_baseline(), cap)
+    grew, notes = compare(seen, read_baseline(), cap)
+    fails = problems + grew
+    for n in notes:
+        print(f"check-max-frame: NOTE {n}")
     if fails:
         print(f"check-max-frame: FAIL -- {len(fails)} frame(s) in nano-ros's own code over "
               f"the {cap} B cap (config/stack-floors.toml `max_frame`):\n  "
@@ -536,7 +597,8 @@ def main(argv: list[str]) -> int:
               "shrank needs no change here.", file=sys.stderr)
         return 1
     print(f"check-max-frame: OK -- {len(reports)} 32-bit ARM image report(s), every "
-          f"nros-owned frame over {cap} B is in the shrink-only baseline")
+          f"nros-owned frame over {cap} B is at or under its image's baseline row; "
+          f"{len(notes)} not yet measured on their image")
     return 0
 
 
