@@ -41,13 +41,12 @@ Quick start:
   nros check           check a package, a plan or a workspace
   nros doctor          check SDK paths / toolchains / env
 
-Run `nros setup --list` to see available packages, and `nros help --all` for the build-system tier as well.
+Run `nros toolchain list --available` to see available packages, and `nros help --all` for the build-system tier as well.
 
 Usage: nros [OPTIONS] [COMMAND]
 
 Start:
   new          Scaffold a new nano-ros package (`--template`: talker, listener, server, client, action-server, action-client), workspace, image or component
-  template     List the node roles `nros new --template` scaffolds, or show one
   setup        Resolve + fetch a board's toolchain/SDK packages
 
 Build:
@@ -66,20 +65,24 @@ Run on a target:
 
 Workspace:
   list         List the workspace's packages: kind, name and directory per row
+  package      List the workspace's packages under their noun: `nros package list`, the same listing as `nros list`
   image        List the workspace's images, or show one: what it declares and what the build resolves for it
   graph        Print the workspace's packages in dependency order, each with the workspace packages it depends on
 
-Interfaces:
-  interface    Generate message bindings, list the interfaces the workspace can reach, or show one interface's definition
-
-Inspect:
-  doctor       Health-check the workspace (SDK paths, toolchains, env)
+Find what nano-ros offers:
+  search       Find a word in every board, RMW, platform, knob, profile, template, runner, interface, package, diagnostic code and image, with the command that shows each
   board        Inspect supported boards
   platform     List the platforms boards build on, or show one: its boards and capabilities
   rmw          List the RMW backends, or show one: its host side and its boards
   runner       List the runners and extension commands this workspace reaches, or show one
   knob         List the knobs a project can state, or show one: where to state it, the values it takes and its default
+  profile      List the build profiles an image can name, or show one: the CMake build type it maps to and its cargo settings
+  interface    Generate message bindings, list the interfaces the workspace can reach, or show one interface's definition
+  template     List the node roles `nros new --template` scaffolds, or show one
   code         List the diagnostic codes a refusal prints, or show one: what it reports and how to fix it
+
+Inspect:
+  doctor       Health-check the workspace (SDK paths, toolchains, env)
   config       Inspect or validate the current project's resolved configuration
   plan         Resolve launch files, manifests, and metadata into nros-plan.json
   check        Check a runner, command or board package, a plan, a system.toml or a workspace
@@ -271,52 +274,6 @@ Options:
 
   -V, --version
           Print version
-```
-
-### `nros template`
-
-```text
-List the node roles `nros new --template` scaffolds, or show one
-
-Usage: nros template <COMMAND>
-
-Commands:
-  list  List the node roles `nros new --template` scaffolds
-  show  Show one role: what it does, its interface and its languages
-  help  Print this message or the help of the given subcommand(s)
-
-Options:
-  -h, --help     Print help
-  -V, --version  Print version
-```
-
-#### `nros template list`
-
-```text
-List the node roles `nros new --template` scaffolds
-
-Usage: nros template list [OPTIONS]
-
-Options:
-      --json     Print one JSON object instead of text
-  -h, --help     Print help
-  -V, --version  Print version
-```
-
-#### `nros template show`
-
-```text
-Show one role: what it does, its interface and its languages
-
-Usage: nros template show [OPTIONS] <ROLE>
-
-Arguments:
-  <ROLE>  The role, as `nros new --template` takes it (`talker`)
-
-Options:
-      --json     Print one JSON object instead of text
-  -h, --help     Print help
-  -V, --version  Print version
 ```
 
 ### `nros setup`
@@ -1111,6 +1068,75 @@ Options:
           Print version
 ```
 
+### `nros package`
+
+```text
+List the workspace's packages under their noun: `nros package list`, the same listing as `nros list`
+
+Usage: nros package <COMMAND>
+
+Commands:
+  list  List the workspace's packages: kind, name and directory per row (also `nros list`)
+  help  Print this message or the help of the given subcommand(s)
+
+Options:
+  -h, --help     Print help
+  -V, --version  Print version
+```
+
+#### `nros package list`
+
+```text
+List the workspace's packages: kind, name and directory per row (also `nros list`)
+
+Usage: nros package list [OPTIONS] [WORKSPACE]
+
+Arguments:
+  [WORKSPACE]
+          Workspace root (cwd or first ancestor containing `src/`). Defaults to cwd
+
+Options:
+  -t, --topological-order
+          List in build order, as `colcon list -t`. Default: sorted.
+          
+          This and every flag below switch the listing to `colcon list`'s: one `name<TAB>path<TAB>(type)` line per package, found the way `nros build` finds them.
+
+  -n, --names-only
+          Print only each package's name, as `colcon list -n`
+
+  -p, --paths-only
+          Print only each package's path, as `colcon list -p`
+
+      --packages-select <PKG>...
+          Only these packages — no dependencies, no dependents.
+          
+          colcon's flag, with two differences: a name matching no package is an error, not a warning, and a selection that leaves out a package a selected one depends on is refused, since there is no install prefix for it to come from. That holds for every selection flag.
+
+      --packages-up-to <PKG>...
+          These packages and everything they depend on, transitively.
+          
+          The selection flags compose as an INTERSECTION, which is colcon's composition too: each deselects independently, so adding one can only ever narrow the set.
+
+      --packages-above <PKG>...
+          These packages and everything that depends on them, transitively.
+          
+          A package here that depends on a workspace package left out is refused, as for every selection flag; add `--packages-up-to` for its dependencies. A cargo member with no `package.xml` is refused here: its dependents name it only in their `Cargo.toml`, which the selection does not read.
+
+      --packages-skip <PKG>...
+          Leave these packages out
+
+      --base-paths <PATH>...
+          The workspace's source roots, relative to the workspace (default: `.`, plus `nros.toml` `package_paths`).
+          
+          They replace the workspace and its `package_paths`, and nothing else: the nano-ros packages and `NROS_PACKAGE_PATH` stay on the search path. As in colcon, the roots are peers searched recursively, their order does not matter, a path repeated or inside another counts once, and a package name found in two of them is an error. A path that does not exist is an error; one that holds no package is a warning.
+
+  -h, --help
+          Print help (see a summary with '-h')
+
+  -V, --version
+          Print version
+```
+
 ### `nros image`
 
 ```text
@@ -1222,155 +1248,23 @@ Options:
   -V, --version                Print version
 ```
 
-## Interfaces
+## Find what nano-ros offers
 
-### `nros interface`
-
-```text
-Generate message bindings, list the interfaces the workspace can reach, or show one interface's definition
-
-Usage: nros interface <COMMAND>
-
-Commands:
-  generate  Generate Rust / C / C++ message bindings from `package.xml`
-  list      List the interface types the search path reaches
-  show      Show an interface type's definition, nested types expanded
-  help      Print this message or the help of the given subcommand(s)
-
-Options:
-  -h, --help     Print help
-  -V, --version  Print version
-```
-
-#### `nros interface generate`
+### `nros search`
 
 ```text
-Generate Rust / C / C++ message bindings from `package.xml`
+Find a word in every board, RMW, platform, knob, profile, template, runner, interface, package, diagnostic code and image, with the command that shows each
 
-Usage: nros interface generate [OPTIONS] <LANG>
+Usage: nros search [OPTIONS] <WORD>
 
 Arguments:
-  <LANG>
-          Target language
-
-          Possible values:
-          - rust
-          - c
-          - cpp
-          - all:  Generate Rust + C + C++ in one shot
+  <WORD>  The word to look for, in names, other names and descriptions
 
 Options:
-      --manifest <MANIFEST>
-          Path to `package.xml`
-          
-          [default: package.xml]
-
-  -o, --output <OUTPUT>
-          Output directory for generated bindings
-          
-          [default: generated]
-
-      --ros-edition <ROS_EDITION>
-          ROS 2 edition (`humble` | `iron` | `jazzy`)
-          
-          [default: humble]
-
-      --codegen-config <CODEGEN_CONFIG>
-          Explicit per-field capacity config (`nros-codegen.toml`).
-          
-          Wins over any file discovered by walking up from the manifest dir.
-
-      --force
-          Overwrite existing bindings
-
-  -v, --verbose
-          Verbose output
-
-      --generate-config
-          Generate `.cargo/config.toml` with `[patch.crates-io]` entries (Rust only)
-
-      --nano-ros-path <NANO_ROS_PATH>
-          Path to nros crates directory for generated Cargo config patches (Rust only)
-
-      --nano-ros-git
-          Use nros git repository for generated Cargo config patches (Rust only)
-
-      --rename <RENAME>
-          Rename a generated package: --rename old_pkg=new_crate_name (Rust only)
-
-  -h, --help
-          Print help (see a summary with '-h')
-
-  -V, --version
-          Print version
-```
-
-#### `nros interface list`
-
-```text
-List the interface types the search path reaches
-
-Usage: nros interface list [OPTIONS]
-
-Options:
-  -m, --only-msgs              Print only messages
-  -s, --only-srvs              Print only services
-  -a, --only-actions           Print only actions
-      --workspace <WORKSPACE>  Workspace whose `src/` is searched first. Defaults to the current directory
+      --json                   Print one JSON object instead of a table
+      --workspace <WORKSPACE>  Workspace root. Defaults to the one the current directory is in
   -h, --help                   Print help
   -V, --version                Print version
-```
-
-#### `nros interface show`
-
-```text
-Show an interface type's definition, nested types expanded
-
-Usage: nros interface show [OPTIONS] <TYPE>
-
-Arguments:
-  <TYPE>  The type, as `<package>/<msg|srv|action>/<Name>`
-
-Options:
-      --workspace <WORKSPACE>  Workspace whose `src/` is searched first. Defaults to the current directory
-  -h, --help                   Print help
-  -V, --version                Print version
-```
-
-## Inspect
-
-### `nros doctor`
-
-```text
-Health-check the workspace (SDK paths, toolchains, env)
-
-Usage: nros doctor [OPTIONS]
-
-Options:
-      --platform <PLATFORM>
-          Restrict the check to one module (e.g. `nuttx`, `zephyr`, `freertos`). Forwarded as `just <platform> doctor`
-
-      --board <BOARD>
-          Restrict the license-gate check to one board's package set.
-          
-          When set, only `[gated.*]` entries listed in `[board.<name>].packages` are checked — keeps unrelated gated SDKs out of the report for board-scoped runs. The board's `board.cmake` `NROS_BOARD_GATED_PKGS` is the SSoT; `nros-sdk-index.toml` `[board.<name>].packages` mirrors it.
-
-      --workspace <WORKSPACE>
-          Path to the nano-ros workspace root (auto-detected if omitted)
-
-      --config <CONFIG>
-          Bringup `system.toml` (or a directory containing one) whose `[image.<id>]` and `[host.<name>]` blocks to health-check (a retired table is reported as a problem). When omitted, the cwd's `system.toml` is used if present
-
-      --report
-          Print the support status of every board the bringup's images name, and stop.
-          
-          Reads the board support registry: a read-only report an adopter can file. Uses `--config`, else the cwd's `system.toml`.
-
-  -h, --help
-          Print help (see a summary with '-h')
-
-  -V, --version
-          Print version
 ```
 
 ### `nros board`
@@ -1634,7 +1528,7 @@ Usage: nros knob list [OPTIONS]
 
 Options:
       --json                 Print one JSON object instead of a table
-      --platform <PLATFORM>  Resolve each knob's value for this platform, and say which rung of the platform/board ladder set it (`builtin`, `platform`, `board`, `env`)
+      --platform <PLATFORM>  Resolve each knob's value for this platform, and say which rung of the platform/board ladder set it (`builtin`, `platform`, `board`, `env`). A knob that ladder does not resolve shows its default, set by `-`
       --board-toml <FILE>    With `--platform`: the board's `nros-board.toml`, for its rung
       --workspace <DIR>      The workspace whose packages are searched for their knobs (and, with `--platform`, its platform packages). Default: the current directory
   -h, --help                 Print help
@@ -1671,6 +1565,211 @@ Options:
       --out <FILE>         Write here instead of stdout
   -h, --help               Print help
   -V, --version            Print version
+```
+
+### `nros profile`
+
+```text
+List the build profiles an image can name, or show one: the CMake build type it maps to and its cargo settings
+
+Usage: nros profile <COMMAND>
+
+Commands:
+  list  List the build profiles an image can name, each with the CMake build type it maps to
+  show  Show one build profile: the CMake build type it maps to and the cargo settings nano-ros defines for it
+  help  Print this message or the help of the given subcommand(s)
+
+Options:
+  -h, --help     Print help
+  -V, --version  Print version
+```
+
+#### `nros profile list`
+
+```text
+List the build profiles an image can name, each with the CMake build type it maps to
+
+Usage: nros profile list [OPTIONS]
+
+Options:
+      --json     Print one JSON object instead of text
+  -h, --help     Print help
+  -V, --version  Print version
+```
+
+#### `nros profile show`
+
+```text
+Show one build profile: the CMake build type it maps to and the cargo settings nano-ros defines for it
+
+Usage: nros profile show [OPTIONS] <PROFILE>
+
+Arguments:
+  <PROFILE>  The profile, as an image names it (`nros-minsizerel`), or the CMake build type it maps from (`MinSizeRel`)
+
+Options:
+      --json     Print one JSON object instead of text
+  -h, --help     Print help
+  -V, --version  Print version
+```
+
+### `nros interface`
+
+```text
+Generate message bindings, list the interfaces the workspace can reach, or show one interface's definition
+
+Usage: nros interface <COMMAND>
+
+Commands:
+  generate  Generate Rust / C / C++ message bindings from `package.xml`
+  list      List the interface types the search path reaches
+  show      Show an interface type's definition, nested types expanded
+  help      Print this message or the help of the given subcommand(s)
+
+Options:
+  -h, --help     Print help
+  -V, --version  Print version
+```
+
+#### `nros interface generate`
+
+```text
+Generate Rust / C / C++ message bindings from `package.xml`
+
+Usage: nros interface generate [OPTIONS] <LANG>
+
+Arguments:
+  <LANG>
+          Target language
+
+          Possible values:
+          - rust
+          - c
+          - cpp
+          - all:  Generate Rust + C + C++ in one shot
+
+Options:
+      --manifest <MANIFEST>
+          Path to `package.xml`
+          
+          [default: package.xml]
+
+  -o, --output <OUTPUT>
+          Output directory for generated bindings
+          
+          [default: generated]
+
+      --ros-edition <ROS_EDITION>
+          ROS 2 edition (`humble` | `iron` | `jazzy`)
+          
+          [default: humble]
+
+      --codegen-config <CODEGEN_CONFIG>
+          Explicit per-field capacity config (`nros-codegen.toml`).
+          
+          Wins over any file discovered by walking up from the manifest dir.
+
+      --force
+          Overwrite existing bindings
+
+  -v, --verbose
+          Verbose output
+
+      --generate-config
+          Generate `.cargo/config.toml` with `[patch.crates-io]` entries (Rust only)
+
+      --nano-ros-path <NANO_ROS_PATH>
+          Path to nros crates directory for generated Cargo config patches (Rust only)
+
+      --nano-ros-git
+          Use nros git repository for generated Cargo config patches (Rust only)
+
+      --rename <RENAME>
+          Rename a generated package: --rename old_pkg=new_crate_name (Rust only)
+
+  -h, --help
+          Print help (see a summary with '-h')
+
+  -V, --version
+          Print version
+```
+
+#### `nros interface list`
+
+```text
+List the interface types the search path reaches
+
+Usage: nros interface list [OPTIONS]
+
+Options:
+  -m, --only-msgs              Print only messages
+  -s, --only-srvs              Print only services
+  -a, --only-actions           Print only actions
+      --workspace <WORKSPACE>  Workspace whose `src/` is searched first. Defaults to the current directory
+  -h, --help                   Print help
+  -V, --version                Print version
+```
+
+#### `nros interface show`
+
+```text
+Show an interface type's definition, nested types expanded
+
+Usage: nros interface show [OPTIONS] <TYPE>
+
+Arguments:
+  <TYPE>  The type, as `<package>/<msg|srv|action>/<Name>`
+
+Options:
+      --workspace <WORKSPACE>  Workspace whose `src/` is searched first. Defaults to the current directory
+  -h, --help                   Print help
+  -V, --version                Print version
+```
+
+### `nros template`
+
+```text
+List the node roles `nros new --template` scaffolds, or show one
+
+Usage: nros template <COMMAND>
+
+Commands:
+  list  List the node roles `nros new --template` scaffolds
+  show  Show one role: what it does, its interface and its languages
+  help  Print this message or the help of the given subcommand(s)
+
+Options:
+  -h, --help     Print help
+  -V, --version  Print version
+```
+
+#### `nros template list`
+
+```text
+List the node roles `nros new --template` scaffolds
+
+Usage: nros template list [OPTIONS]
+
+Options:
+      --json     Print one JSON object instead of text
+  -h, --help     Print help
+  -V, --version  Print version
+```
+
+#### `nros template show`
+
+```text
+Show one role: what it does, its interface and its languages
+
+Usage: nros template show [OPTIONS] <ROLE>
+
+Arguments:
+  <ROLE>  The role, as `nros new --template` takes it (`talker`)
+
+Options:
+      --json     Print one JSON object instead of text
+  -h, --help     Print help
+  -V, --version  Print version
 ```
 
 ### `nros code`
@@ -1718,6 +1817,42 @@ Options:
       --json     Print one JSON object instead of text
   -h, --help     Print help
   -V, --version  Print version
+```
+
+## Inspect
+
+### `nros doctor`
+
+```text
+Health-check the workspace (SDK paths, toolchains, env)
+
+Usage: nros doctor [OPTIONS]
+
+Options:
+      --platform <PLATFORM>
+          Restrict the check to one module (e.g. `nuttx`, `zephyr`, `freertos`). Forwarded as `just <platform> doctor`
+
+      --board <BOARD>
+          Restrict the license-gate check to one board's package set.
+          
+          When set, only `[gated.*]` entries listed in `[board.<name>].packages` are checked — keeps unrelated gated SDKs out of the report for board-scoped runs. The board's `board.cmake` `NROS_BOARD_GATED_PKGS` is the SSoT; `nros-sdk-index.toml` `[board.<name>].packages` mirrors it.
+
+      --workspace <WORKSPACE>
+          Path to the nano-ros workspace root (auto-detected if omitted)
+
+      --config <CONFIG>
+          Bringup `system.toml` (or a directory containing one) whose `[image.<id>]` and `[host.<name>]` blocks to health-check (a retired table is reported as a problem). When omitted, the cwd's `system.toml` is used if present
+
+      --report
+          Print the support status of every board the bringup's images name, and stop.
+          
+          Reads the board support registry: a read-only report an adopter can file. Uses `--config`, else the cwd's `system.toml`.
+
+  -h, --help
+          Print help (see a summary with '-h')
+
+  -V, --version
+          Print version
 ```
 
 ### `nros config`
@@ -1960,6 +2095,7 @@ Usage: nros toolchain list [OPTIONS]
 
 Options:
       --root <ROOT>  Store root. Defaults to `$NROS_HOME`, else `~/.nros`
+      --available    List what can be installed instead: every board, toolchain and SDK package the index names
   -h, --help         Print help
   -V, --version      Print version
 ```

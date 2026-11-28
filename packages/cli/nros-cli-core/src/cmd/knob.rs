@@ -76,7 +76,9 @@ pub struct ListArgs {
     #[arg(long)]
     pub json: bool,
     /// Resolve each knob's value for this platform, and say which rung of the
-    /// platform/board ladder set it (`builtin`, `platform`, `board`, `env`)
+    /// platform/board ladder set it (`builtin`, `platform`, `board`, `env`).
+    /// A knob that ladder does not resolve shows its default, set by `-`
+
     #[arg(long, value_name = "PLATFORM")]
     pub platform: Option<String>,
     /// With `--platform`: the board's `nros-board.toml`, for its rung
@@ -322,6 +324,19 @@ fn render(args: RenderArgs) -> Result<()> {
     Ok(())
 }
 
+/// Every knob `nros knob list` reports: the registry's public knobs, then the
+/// ones the workspace's packages declare, sorted by name.
+pub(crate) fn collect(
+    ladder: Option<&Ladder>,
+    workspace: Option<&std::path::Path>,
+) -> Result<Vec<KnobItem>> {
+    let mut items = public_items(ladder);
+    let cat = workspace_catalog(workspace)?;
+    items.extend(package_items(&cat));
+    items.sort_by(|a, b| a.name.cmp(&b.name));
+    Ok(items)
+}
+
 fn list(args: ListArgs) -> Result<()> {
     let ladder = match &args.platform {
         Some(p) => Some(resolve_ladder(&ExplainArgs {
@@ -333,10 +348,7 @@ fn list(args: ListArgs) -> Result<()> {
         })?),
         None => None,
     };
-    let mut items = public_items(ladder.as_ref());
-    let cat = workspace_catalog(args.workspace.as_deref())?;
-    items.extend(package_items(&cat));
-    items.sort_by(|a, b| a.name.cmp(&b.name));
+    let items = collect(ladder.as_ref(), args.workspace.as_deref())?;
     if args.json {
         return frame::print_json(
             LIST_SCHEMA,

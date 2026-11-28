@@ -60,7 +60,7 @@ because the router is the one ROS ships:
 ```bash
 grep 'define ZENOH_C ' \
     /opt/ros/$ROS_DISTRO/opt/zenoh_cpp_vendor/include/zenoh_configure.h
-nros setup --list | grep zenoh-pico
+nros toolchain list --available | grep zenoh-pico
 ```
 
 Read the header, not `dpkg -l`: the package version is a wrapper version.

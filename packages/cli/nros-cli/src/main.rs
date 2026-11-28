@@ -21,7 +21,7 @@ use std::io;
                   nros plan            resolve a launch topology\n  \
                   nros check           check a package, a plan or a workspace\n  \
                   nros doctor          check SDK paths / toolchains / env\n\n\
-                  Run `nros setup --list` to see available packages, and \
+                  Run `nros toolchain list --available` to see available packages, and \
                   `nros help --all` for the build-system tier as well.",
     version,
     propagate_version = true,

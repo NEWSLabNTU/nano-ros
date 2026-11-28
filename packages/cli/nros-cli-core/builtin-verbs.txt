@@ -37,6 +37,7 @@ user metadata
 user model-path
 user monitor
 user new
+user package
 user pin
 user plan
 user planning-stamp
@@ -48,6 +49,7 @@ user runner
 user sdk-front
 user sdk-path
 user sdk-root
+user search
 user setup
 user source-stamp
 user store

@@ -346,9 +346,11 @@ pub fn run(cmd: cmd::Cmd) -> Result<()> {
         cmd::Cmd::New(args) => cmd::new::run(*args),
         cmd::Cmd::Generate(args) => cmd::generate::run(args),
         cmd::Cmd::Interface(args) => cmd::interface::run(args),
-        cmd::Cmd::List(args) => cmd::ws::run(cmd::ws::Args {
-            command: cmd::ws::Sub::List(args),
-        }),
+        cmd::Cmd::List(args) | cmd::Cmd::Package(cmd::PackageArgs::List(args)) => {
+            cmd::ws::run(cmd::ws::Args {
+                command: cmd::ws::Sub::List(args),
+            })
+        }
         cmd::Cmd::Clean(args) => cmd::ws::run(cmd::ws::Args {
             command: cmd::ws::Sub::Clean(args),
         }),
@@ -408,7 +410,7 @@ pub fn run(cmd: cmd::Cmd) -> Result<()> {
         cmd::Cmd::Toolchain(args) => cmd::toolchain::run(args),
         cmd::Cmd::Pin(args) => cmd::pin::run(args),
         cmd::Cmd::Update(args) => cmd::update::run(args),
-        cmd::Cmd::Profile(args) => cmd::profile::run(args),
+        cmd::Cmd::Profile(verb) => cmd::profile::run_user(verb),
         cmd::Cmd::Metadata(args) => cmd::metadata::run(args),
         cmd::Cmd::Plan(args) => cmd::plan::run(args),
         cmd::Cmd::Check(args) => cmd::check::run(args),
@@ -425,6 +427,7 @@ pub fn run(cmd: cmd::Cmd) -> Result<()> {
         cmd::Cmd::Platform(args) => cmd::platform_verb::run(args),
         cmd::Cmd::Runner(args) => cmd::runner_verb::run(args),
         cmd::Cmd::Template(args) => cmd::template_verb::run(args),
+        cmd::Cmd::Search(args) => cmd::search::run(args),
         cmd::Cmd::Image(args) => cmd::image_verb::run(args),
         cmd::Cmd::Ws(args) => cmd::ws::run(args),
         cmd::Cmd::Dev(a) => cmd::dev::run_unlowered(a),

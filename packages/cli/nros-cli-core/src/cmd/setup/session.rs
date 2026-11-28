@@ -503,7 +503,9 @@ impl<'i> SessionPlan<'i> {
                     blocked_on: Vec::new(),
                 }
             } else if inputs.mode == Mode::Tools {
-                bail!("nros setup --tool: no [tool.{name}] in the index (see `nros setup --list`)");
+                bail!(
+                    "nros setup --tool: no [tool.{name}] in the index (see `nros toolchain list --available`)"
+                );
             } else if let Some(src) = index.source.get(name) {
                 StepKind::Source(src)
             } else {

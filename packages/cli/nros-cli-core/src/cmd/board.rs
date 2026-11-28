@@ -272,8 +272,10 @@ pub fn render_list(items: &[BoardItem]) -> String {
     t.render()
 }
 
-fn list(args: ListArgs) -> Result<()> {
-    let root = catalog_root(args.workspace)?;
+/// Every board key `nros board list` reports for `workspace` (or the
+/// directory the command runs in), with the notes it prints after the table.
+pub(crate) fn collect(workspace: Option<PathBuf>) -> Result<(Vec<BoardItem>, Vec<String>)> {
+    let root = catalog_root(workspace)?;
     // Every root a build resolves a board key against (RFC-0135 D5): the
     // SDK's boards, `$NROS_EXTRA_BOARD_PATH`, and the board packages of the
     // workspace the current directory is in. The same catalog as `nros build`
@@ -285,7 +287,11 @@ fn list(args: ListArgs) -> Result<()> {
     let status = crate::cmd::board_support::Status::load(&root)?;
     let (notes, _other) = crate::cmd::board_support::other_copy(&root, own_sdk_root().as_deref());
     let today = crate::cmd::board_support::today();
-    let items = board_items(&catalog, &root, &status, &today);
+    Ok((board_items(&catalog, &root, &status, &today), notes))
+}
+
+fn list(args: ListArgs) -> Result<()> {
+    let (items, notes) = collect(args.workspace)?;
     if args.json {
         return crate::cmd::frame::print_json(LIST_SCHEMA, "items", &items, &[]);
     }

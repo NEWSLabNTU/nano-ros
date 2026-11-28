@@ -119,7 +119,7 @@ boxes per group; a group missing two or more is not ready.
 **Middleware and interop**
 
 - [ ] The release pinned with `nros pin`, so the backend versions are the
-      tested ones (`nros setup --list` prints them), and a plan to move the
+      tested ones (`nros toolchain list --available` prints them), and a plan to move the
       pin: only the newest release is supported, and fixes are not
       backported ([Release support](../../reference/support-status.md#release-support)).
 - [ ] `nros doctor --report` output filed with the build: the release, each

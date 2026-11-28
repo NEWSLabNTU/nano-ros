@@ -27,10 +27,33 @@ pub const ALIASES: &[(&str, &str)] = &[
     ("sync", "configure"),
 ];
 
+/// Old user spellings that move an ARGUMENT, not only a command path
+/// (RFC-0133 D3), as sample command lines. `<code>` stands for any
+/// diagnostic code. Listed with [`ALIASES`] in `nros help --aliases`, and
+/// noted the same way; the tests hold each to the parser.
+pub const ARG_ALIASES: &[(&str, &str)] = &[
+    ("setup --list", "toolchain list --available"),
+    ("explain <code>", "code show <code>"),
+    ("config explain --platform", "knob list --platform"),
+];
+
+/// Flags that keep an [`ARG_ALIASES`] old spelling on its own handler: with
+/// one of them, the old command is no old spelling (and `nros help --aliases
+/// --json` says so, so `check-cli-old-spellings` never rewrites it).
+pub const ARG_ALIAS_UNLESS: &[(&str, &[&str])] =
+    &[("config explain --platform", &["--get", "--platforms-dir"])];
+
+/// Whether `config explain` was asked only what `knob list --platform`
+/// answers: no `--get` (one value, for a script) and no `--platforms-dir`
+/// (a search path `knob list` does not take).
+fn config_explain_is_knob_list(a: &crate::cmd::config::ExplainArgs) -> bool {
+    a.get.is_none() && a.platforms_dir.is_none()
+}
+
 /// The groups `nros --help` shows, in RFC-0117 D2's order. Every visible
 /// top-level verb is in exactly one group; a test holds that.
 pub const GROUPS: &[(&str, &[&str])] = &[
-    ("Start", &["new", "template", "setup"]),
+    ("Start", &["new", "setup"]),
     (
         "Build",
         &["build", "configure", "fix", "clean", "materialize"],
@@ -39,15 +62,24 @@ pub const GROUPS: &[(&str, &[&str])] = &[
         "Run on a target",
         &["run", "flash", "monitor", "bench", "debug"],
     ),
-    ("Workspace", &["list", "image", "graph"]),
-    ("Interfaces", &["interface"]),
+    ("Workspace", &["list", "package", "image", "graph"]),
+    // RFC-0133 D3: the discovery verbs, one group.
     (
-        "Inspect",
+        "Find what nano-ros offers",
         &[
-            "doctor", "board", "platform", "rmw", "runner", "knob", "code", "config", "plan",
-            "check", "explain",
+            "search",
+            "board",
+            "platform",
+            "rmw",
+            "runner",
+            "knob",
+            "profile",
+            "interface",
+            "template",
+            "code",
         ],
     ),
+    ("Inspect", &["doctor", "config", "plan", "check", "explain"]),
     ("Toolchain", &["toolchain", "pin", "update", "locate"]),
     ("Other", &["version", "completions", "help"]),
 ];
@@ -60,6 +92,27 @@ pub fn lower(cmd: Cmd) -> Cmd {
             command: Some(setup::SetupCommand::Presets(a)),
             ..
         }) => Cmd::Init(a),
+        Cmd::Toolchain(toolchain::Args {
+            command: toolchain::Sub::List(a),
+        })
+        | Cmd::Store(store::Args {
+            command: store::Sub::List(a),
+        }) if a.available => setup_list(),
+        // RFC-0133 D3: the old spelling lowers to the new verb's handler.
+        Cmd::Explain(a) if crate::cmd::explain::diagnostic_code(&a.plan).is_some() => Cmd::Code(
+            crate::cmd::code_verb::Args::Show(crate::cmd::code_verb::ShowArgs {
+                code: a.plan.to_string_lossy().into_owned(),
+                json: false,
+            }),
+        ),
+        Cmd::Config(crate::cmd::config::Args::Explain(a)) if config_explain_is_knob_list(&a) => {
+            Cmd::Knob(crate::cmd::knob::Args::List(crate::cmd::knob::ListArgs {
+                json: false,
+                platform: Some(a.platform),
+                board_toml: a.board_toml,
+                workspace: a.workspace,
+            }))
+        }
         Cmd::Toolchain(toolchain::Args { command }) => match command {
             toolchain::Sub::List(a) => Cmd::Store(store::Args {
                 command: store::Sub::List(a),
@@ -73,7 +126,7 @@ pub fn lower(cmd: Cmd) -> Cmd {
             other => Cmd::Toolchain(toolchain::Args { command: other }),
         },
         Cmd::Interface(crate::cmd::interface::Args::Generate(a)) => Cmd::Generate(a),
-        Cmd::List(a) => Cmd::Ws(ws::Args {
+        Cmd::List(a) | Cmd::Package(crate::cmd::PackageArgs::List(a)) => Cmd::Ws(ws::Args {
             command: ws::Sub::List(a),
         }),
         Cmd::Clean(a) => Cmd::Ws(ws::Args {
@@ -86,9 +139,29 @@ pub fn lower(cmd: Cmd) -> Cmd {
     }
 }
 
-/// The [`ALIASES`] row `cmd` was spelled with, when it is an old user
-/// spelling. Read before [`lower`], which erases the difference.
+/// `nros setup --list`, as the parser builds it, so both spellings reach the
+/// same arguments, defaults included.
+fn setup_list() -> Cmd {
+    use clap::{Args as _, FromArgMatches as _};
+    let m = setup::Args::augment_args(clap::Command::new("setup"))
+        .try_get_matches_from(["setup", "--list"])
+        .expect("`setup --list` parses");
+    Cmd::Setup(setup::Args::from_arg_matches(&m).expect("`setup --list` builds its arguments"))
+}
+
+/// The [`ALIASES`] or [`ARG_ALIASES`] row `cmd` was spelled with, when it is
+/// an old user spelling. Read before [`lower`], which erases the difference.
 pub fn old_spelling(cmd: &Cmd) -> Option<(&'static str, &'static str)> {
+    match cmd {
+        Cmd::Setup(a) if a.list => return Some(ARG_ALIASES[0]),
+        Cmd::Explain(a) if crate::cmd::explain::diagnostic_code(&a.plan).is_some() => {
+            return Some(ARG_ALIASES[1]);
+        }
+        Cmd::Config(crate::cmd::config::Args::Explain(a)) if config_explain_is_knob_list(a) => {
+            return Some(ARG_ALIASES[2]);
+        }
+        _ => {}
+    }
     let i = match cmd {
         Cmd::Init(_) => 0,
         Cmd::Store(store::Args {
@@ -139,6 +212,13 @@ pub fn note_old_spelling(cmd: &Cmd, terminal: bool, out: &mut impl Write) {
     let Some((old, new)) = old_spelling(cmd) else {
         return;
     };
+    // A sample row names the code it was given.
+    let code = match cmd {
+        Cmd::Explain(a) => a.plan.to_string_lossy().into_owned(),
+        _ => String::new(),
+    };
+    let (old, new) = (old.replace("<code>", &code), new.replace("<code>", &code));
+    let (old, new) = (old.as_str(), new.as_str());
     if RETIRING.contains(&old) {
         let _ = writeln!(out, "{}", retiring_note(old, new));
     } else if terminal {
@@ -365,7 +445,7 @@ mod tests {
                 "Build:",
                 "Run on a target:",
                 "Workspace:",
-                "Interfaces:",
+                "Find what nano-ros offers:",
                 "Inspect:",
                 "Toolchain:",
                 "Other:"
@@ -379,7 +459,10 @@ mod tests {
     fn aliases_json_lists_both_tiers() {
         let rows: Vec<serde_json::Value> =
             serde_json::from_str(&crate::cmd::aliases_json()).unwrap();
-        assert_eq!(rows.len(), crate::cmd::dev::ALIASES.len() + ALIASES.len());
+        assert_eq!(
+            rows.len(),
+            crate::cmd::dev::ALIASES.len() + ALIASES.len() + ARG_ALIASES.len()
+        );
         let tagged: Vec<(&str, &str, &str)> = crate::cmd::all_aliases().collect();
         for ((old, new, tier), row) in tagged.iter().zip(&rows) {
             assert_eq!(row["old"], *old);
@@ -391,6 +474,110 @@ mod tests {
         }
         for (old, _) in crate::cmd::dev::ALIASES {
             assert!(rows.iter().any(|r| r["old"] == *old && r["tier"] == "dev"));
+        }
+    }
+
+    /// RFC-0133 D3: each argument-level row, with a real code in place of
+    /// `<code>`, lowers to the same command under both spellings; the old one
+    /// is named as that row and notes on a terminal, the new one never.
+    #[test]
+    fn every_argument_alias_lowers_to_the_same_command() {
+        use clap::Parser;
+        let line = |s: &str| -> Vec<String> {
+            std::iter::once("nros".to_string())
+                .chain(
+                    s.replace("<code>", "NROS-0001")
+                        .split(' ')
+                        .map(str::to_string),
+                )
+                // A flag that takes a value gets one.
+                .chain(s.ends_with("--platform").then(|| "posix".to_string()))
+                .collect()
+        };
+        for (old, new) in ARG_ALIASES {
+            let o = Cli::try_parse_from(line(old)).unwrap().cmd;
+            let n = Cli::try_parse_from(line(new)).unwrap().cmd;
+            assert_eq!(old_spelling(&o), Some((*old, *new)), "`nros {old}`");
+            assert_eq!(old_spelling(&n), None, "`nros {new}` is the new spelling");
+            let mut tty = Vec::new();
+            note_old_spelling(&o, true, &mut tty);
+            assert_eq!(
+                String::from_utf8(tty).unwrap(),
+                format!(
+                    "{}\n",
+                    note(
+                        &old.replace("<code>", "NROS-0001"),
+                        &new.replace("<code>", "NROS-0001")
+                    )
+                )
+            );
+            assert_eq!(
+                format!("{:?}", crate::cmd::lower(o)),
+                format!("{:?}", crate::cmd::lower(n)),
+                "`nros {old}` and `nros {new}` lower to different commands"
+            );
+        }
+        // A plan path is not a code: `nros explain <plan>` is no old spelling.
+        let plan = Cli::try_parse_from(["nros", "explain", "build/nros/nros-plan.json"])
+            .unwrap()
+            .cmd;
+        assert_eq!(old_spelling(&plan), None);
+        assert!(matches!(crate::cmd::lower(plan), Cmd::Explain(_)));
+        // `config explain --get` asks for one value, which `knob list` does
+        // not print: no old spelling, and it keeps its handler.
+        let get = Cli::try_parse_from([
+            "nros",
+            "config",
+            "explain",
+            "--platform",
+            "posix",
+            "--get",
+            "X",
+        ])
+        .unwrap()
+        .cmd;
+        assert_eq!(old_spelling(&get), None);
+        // ... and every flag the table says keeps the old handler does.
+        for (old, flags) in ARG_ALIAS_UNLESS {
+            assert!(
+                ARG_ALIASES.iter().any(|(o, _)| o == old),
+                "`{old}` is no row"
+            );
+            for f in *flags {
+                let mut l = line(old);
+                l.extend([f.to_string(), "x".to_string()]);
+                let c = Cli::try_parse_from(&l).unwrap().cmd;
+                assert_eq!(old_spelling(&c), None, "`{}`", l.join(" "));
+            }
+        }
+        assert!(matches!(
+            crate::cmd::lower(get),
+            Cmd::Config(crate::cmd::config::Args::Explain(_))
+        ));
+    }
+
+    /// `nros package list` is `nros list` under its noun: the same command,
+    /// and no note, because neither spelling is old.
+    #[test]
+    fn package_list_is_list() {
+        use clap::Parser;
+        for args in [&["list"][..], &["list", "-n", "--packages-select", "x"][..]] {
+            let a: Vec<&str> = std::iter::once("nros")
+                .chain(args.iter().copied())
+                .collect();
+            let b: Vec<&str> = ["nros", "package"]
+                .into_iter()
+                .chain(args.iter().copied())
+                .collect();
+            let (a, b) = (
+                Cli::try_parse_from(&a).unwrap().cmd,
+                Cli::try_parse_from(&b).unwrap().cmd,
+            );
+            assert_eq!(old_spelling(&b), None);
+            assert_eq!(
+                format!("{:?}", crate::cmd::lower(a)),
+                format!("{:?}", crate::cmd::lower(b))
+            );
         }
     }
 }

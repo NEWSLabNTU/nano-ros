@@ -227,6 +227,32 @@ old-spellings table so `check-cli-old-spellings` and the book see one name):
 Nothing is removed in this RFC. Removing an alias is a later decision, with
 its own release note.
 
+> **Amended 2026-11-27 (phase-569 W8, user ruling):** the four `nros dev`
+> rows of the table are not aliases. `dev rmw dispatch --known`,
+> `dev ws providers`, `dev image sizing-descriptor` and
+> `dev image entity-inventory` / `entity-census` print CMake, `KEY=VALUE` or
+> TOML, and the CMake modules, the colcon extension and the release workflow
+> parse that output. An alias lowers the old spelling into the new verb's
+> handler, so it would change what those callers read, and
+> `check-cli-old-spellings --fix` would rewrite them to the user verb. So:
+>
+> - Each `dev` command stays unchanged, as build plumbing, with no row in the
+>   old-spellings table. Its `--help` names the user verb a person runs
+>   instead. `check-cli-old-spellings` refuses any row whose old spelling is
+>   a `dev` command, so a later `--fix` cannot break those callers.
+> - Real aliases are only the user-level moves. They move an argument, not
+>   a command path, so they are their own table (`user::ARG_ALIASES`), held
+>   to the parser by their own test: `setup --list` → `toolchain list
+>   --available`, `explain <code>` → `code show <code>` (`<code>` standing
+>   for a diagnostic code; `nros explain <plan>` is unchanged), and
+>   `config explain --platform P` → `knob list --platform P`.
+> - `nros package list` is a second, equal spelling of `nros list`, with no
+>   note: neither is old.
+> - The `profile` row: `nros profile` becomes the user noun (`list` /
+>   `show`). `dev profile resolve|args|dir|carve-out|env` stay plumbing, and
+>   their old top-level spellings stay as hidden verbs of `nros profile`
+>   (phase-569 W6).
+
 ### D4 — Every `show` links its book chapter
 
 A `show` ends with `Book: <url>`. The page comes from the noun's own data,

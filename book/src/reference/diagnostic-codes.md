@@ -9,10 +9,10 @@ Every refusal nano-ros prints carries a code, `NROS-` and four digits:
 ```text
 error[NROS-0004]: src/demo_bringup/system.toml: names no board
   help: add `board = "<board>"` to the `[image.<id>]` table in system.toml
-  explain: nros explain NROS-0004
+  explain: nros code show NROS-0004
 ```
 
-The `explain:` line is a command: `nros explain NROS-0004` prints the
+The `explain:` line is a command: `nros code show NROS-0004` prints the
 code's section below without a network or a checkout. A code never
 changes its meaning, and a retired code names the one that replaced it.
 
@@ -206,8 +206,8 @@ The refusal's `help` line, unless the site gives a more specific one:
 
 ## NROS-0006: no diagnostic has this code
 
-`nros explain` was given a code, spelled `NROS-` and four digits, that no
-diagnostic has.
+`nros code show` (or its older spelling, `nros explain`) was given a code,
+spelled `NROS-` and four digits, that no diagnostic has.
 
 Every code nano-ros prints is compiled into the `nros` binary, so this one was
 mistyped, or comes from a newer release than this binary. The refusal lists
@@ -216,9 +216,9 @@ the three codes nearest the one you gave.
 ### How to fix it
 
 Copy the code from the `explain:` line of the refusal that printed it. If it
-came from a newer nano-ros, run that release's `nros explain`.
+came from a newer nano-ros, run that release's `nros code show`.
 
-A file that happens to be named like a code is reached as a path:
+A plan file that happens to be named like a code is reached as a path:
 `nros explain ./NROS-0412`.
 
 The refusal's `help` line, unless the site gives a more specific one:
@@ -374,7 +374,7 @@ that exists in two places is not confused with the copy you edited.
 ### How to fix it
 
 Work through the listed reasons; each has its own explanation
-(`nros explain <code>`). If most of them say the board lacks something, the
+(`nros code show <code>`). If most of them say the board lacks something, the
 image probably wants a different board: `nros board list` names them all.
 
 The refusal's `help` line, unless the site gives a more specific one:
