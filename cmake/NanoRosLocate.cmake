@@ -66,6 +66,30 @@ function(_nros_locate_load)
             set_property(GLOBAL PROPERTY "${CMAKE_MATCH_1}" "${CMAKE_MATCH_2}")
         endif()
     endforeach()
+    _nros_locate_register_inputs("${_nros}" "${_out}")
+endfunction()
+
+# Issue 3019 -- the answers above hold only while what the ladder read holds.
+# The index is registered above; every other input the CLI states
+# (`NROS_LOCATE_INPUTS`: the project's system.toml, each store row directory,
+# each submodule checkout and its git HEAD) is registered here, once, for every
+# caller of nros_locate_var / nros_locate_source. Without it a store copy
+# appearing or a submodule checkout moving off its pin changed the answer and
+# the build kept compiling the tree it had located first. What no file states
+# (a row's environment variable, a checkout's uncommitted edits) is checked by
+# `nros build`, which re-asks the ladder and compares with the answers stamped
+# here (`nros-locate.stamp`) before it lets a configure be skipped.
+function(_nros_locate_register_inputs _nros _out)
+    get_property(_inputs GLOBAL PROPERTY NROS_LOCATE_INPUTS)
+    foreach(_p IN LISTS _inputs)
+        if(EXISTS "${_p}")
+            set_property(DIRECTORY "${CMAKE_SOURCE_DIR}" APPEND PROPERTY
+                CMAKE_CONFIGURE_DEPENDS "${_p}")
+        endif()
+    endforeach()
+    get_property(_project GLOBAL PROPERTY NROS_LOCATE_PROJECT)
+    file(WRITE "${CMAKE_BINARY_DIR}/nros-locate.stamp"
+        "nros=${_nros}\nindex=${_NROS_LOCATE_INDEX}\nproject=${_project}\n---\n${_out}")
 endfunction()
 
 # nros_locate_source(<out> <name>) — see the header.

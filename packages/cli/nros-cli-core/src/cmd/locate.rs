@@ -252,6 +252,9 @@ pub fn run(args: Args) -> Result<()> {
     let batch = names.len() > 1;
 
     let mut failed = 0usize;
+    // What a build system must watch to know these answers are still the
+    // answers (issue 3019), across every row asked about.
+    let mut inputs: Vec<PathBuf> = Vec::new();
     for name in &names {
         let answer: Result<(PathBuf, Vec<locate::Step>), String> = match name.as_str() {
             "store" => Ok((
@@ -297,6 +300,11 @@ pub fn run(args: Args) -> Result<()> {
                     checkout: checkout.clone(),
                     store: store.clone(),
                 };
+                for p in locate::watch_inputs(&row, &ctx, project.as_deref()) {
+                    if !inputs.contains(&p) {
+                        inputs.push(p);
+                    }
+                }
                 match locate::resolve(&row, &ctx) {
                     Ok(a) => Ok((nros_build_paths::canonical(&a.path), a.trace)),
                     Err(r) => Err(r.to_string()),
@@ -339,6 +347,24 @@ pub fn run(args: Args) -> Result<()> {
                 eprintln!("{e}");
             }
         }
+    }
+    if matches!(args.format, Format::Cmake) {
+        // `NanoRosLocate.cmake` adds these to CMAKE_CONFIGURE_DEPENDS, so a
+        // plain `cmake --build` re-configures when one moves. The index
+        // itself is registered there already. The env value and uncommitted
+        // edits have no file; `nros build` re-asks the ladder for those.
+        let list: Vec<String> = inputs.iter().map(|p| p.display().to_string()).collect();
+        println!("set(NROS_LOCATE_INPUTS \"{}\")", list.join(";"));
+        // The project these answers were asked for, so a re-ask (`nros
+        // build`'s) names it instead of re-deriving it from a working
+        // directory it does not share.
+        println!(
+            "set(NROS_LOCATE_PROJECT \"{}\")",
+            project
+                .as_deref()
+                .map(|p| p.display().to_string())
+                .unwrap_or_default()
+        );
     }
     // A batch reports what it found and names the rest; a single lookup that
     // missed is a failure — the caller was about to use the path.
