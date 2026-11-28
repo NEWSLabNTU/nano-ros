@@ -111,12 +111,6 @@ pub struct Counts {
     /// carves a store, zero otherwise. `nros-node` decides; this crate only
     /// places the region.
     pub param_home: usize,
-    /// The executor's OWN session, carved so a pointer to it is derived from
-    /// the backing rather than from the executor: one when the executor opens
-    /// its session, zero when it borrows one. `nros-node` decides; this crate
-    /// only places the region (a `concrete_session` unit).
-    // Issue 2845 (phase-573 W6).
-    pub owned_session: usize,
 }
 
 /// Byte offset of each region, plus the total size and alignment.
@@ -141,7 +135,6 @@ pub struct Offsets {
     pub slot_tags: usize,
     pub params: usize,
     pub param_home: usize,
-    pub owned_session: usize,
     pub size: usize,
     pub align: usize,
 }
@@ -167,7 +160,6 @@ pub const fn offsets(counts: Counts, units: RegionUnits) -> Offsets {
         alloc,
         params: param_slots,
         param_home: home_slots,
-        owned_session: session_slots,
     } = counts;
 
     let mut off = 0usize;
@@ -232,13 +224,6 @@ pub const fn offsets(counts: Counts, units: RegionUnits) -> Offsets {
     } else {
         off
     };
-    // Issue 2845 -- last, and the same rule: a borrowing executor carves no
-    // session and keeps every offset and the total it had before.
-    let owned_session = if session_slots > 0 {
-        place!(session_slots, units.concrete_session)
-    } else {
-        off
-    };
 
     Offsets {
         arena: arena_off,
@@ -260,7 +245,6 @@ pub const fn offsets(counts: Counts, units: RegionUnits) -> Offsets {
         slot_tags,
         params,
         param_home,
-        owned_session,
         size: align_up(off, max_align),
         align: max_align,
     }

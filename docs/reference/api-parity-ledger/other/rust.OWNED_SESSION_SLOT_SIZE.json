@@ -1,5 +1,0 @@
-{
-  "key": "rust:OWNED_SESSION_SLOT_SIZE",
-  "verdict": "extension",
-  "why": "An `export_size!` probe in `nros::sizes`, not a user-facing API: it publishes `size_of::<OwnedSessionSlot>()` so `nros-build-helpers` (`cpp.rs`, the C++ context overhead) can size the C++ context, which holds its executor's owned session BESIDE the embedded C executor (issue 2845). rclcpp needs no such thing because it heap-allocates its context; here there is no allocator, so the size crosses from Rust to C++ at build time. See `rust:EXECUTOR_VALUE_SIZE`."
-}

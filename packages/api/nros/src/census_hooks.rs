@@ -74,9 +74,6 @@ pub const CENSUS_SIZING: nros_node::ExecutorSizing = {
         params: d.params,
         // Issue 1971 -- the image's runtime remap table, as for `params`.
         remaps: d.remaps,
-        // Issue 2845 -- whether a slot is carved is the opener's fact
-        // (`open_sized` carves it; a C++ owner keeps it in its context).
-        session: d.session,
     }
 };
 
