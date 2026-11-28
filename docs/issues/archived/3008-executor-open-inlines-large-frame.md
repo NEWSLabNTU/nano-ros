@@ -52,9 +52,15 @@ executor straight into the caller's result. Four changes make the frame hold
 less, not only sit elsewhere:
 
 - `open_sized` is out of line and tail-calls the body. The body takes the
-  `default_backing` block itself (`take_default_backing`), and it gives the
-  block back on a failed open (`give_back_on_failure`, the rule
-  `with_default_backing` applies). `with_default_backing` used to patch the
+  `default_backing` block itself, and it gives the block back on a failed
+  open (the rule `with_default_backing` applies). It is generic over that
+  hand-off (`OpenHandoff`): `open_in` instantiates the no-op `NoHandoff`, so
+  an image that opens only over its own storage never names
+  `release_default_backing` or the default backing static. Its first version
+  took the block as an `Option` argument, which linked the static into every
+  `open_in` image, and `check-template-copy-out` refused all four FreeRTOS
+  C++ templates in the merge queue. `DefaultHandoff`'s two methods are out of
+  line: inlined, they put ~0.4 KB back in the FreeRTOS frame. `with_default_backing` used to patch the
   executor into a local `Result` it then returned, which kept an executor-sized
   copy in whatever frame inlined it.
 - The open's three log lines (backend unresolved, session open failed,

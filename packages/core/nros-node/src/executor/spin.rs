@@ -252,24 +252,58 @@ fn with_default_backing(
     result
 }
 
-/// Issue 3008 -- [`with_default_backing`]'s failure half, for an open that is
-/// handed the block itself: a failed open gives it back. `None` (a caller's own
-/// backing) does nothing.
+/// Issue 3008 -- what [`Executor::open_owning`] does with a default backing
+/// block: nothing, for a caller's own backing ([`NoHandoff`]); for a block
+/// `default_backing` handed out ([`DefaultHandoff`]), give it back on a failed
+/// open and make the executor own it on success.
 ///
-/// # Safety
-/// As `release_default_backing`: `backing` came from `default_backing`, and no
-/// reference into it survives.
-#[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
-unsafe fn give_back_on_failure(backing: Option<*mut [MaybeUninit<u64>]>) {
-    if let Some(raw) = backing {
-        // SAFETY: forwarded from this fn's contract.
-        unsafe { super::backing::release_default_backing(raw) }
-    }
+/// A TYPE parameter, not an `Option` argument, so an `open_in`-only image
+/// instantiates the no-op and never names `release_default_backing` (or the
+/// default backing static behind it): `check-template-copy-out` refuses an
+/// image that opens over its own storage and still links the default backing.
+#[cfg(feature = "rmw-cffi")]
+trait OpenHandoff: Copy {
+    /// # Safety
+    /// The open failed, so nothing has been built over the backing.
+    unsafe fn give_back_on_failure(self);
+    /// # Safety
+    /// `exec` is the executor just opened over this handoff's backing.
+    unsafe fn take(self, exec: &mut Executor<'_>);
 }
 
-/// Without `alloc` there is no default backing to give back.
-#[cfg(all(feature = "rmw-cffi", not(feature = "alloc")))]
-unsafe fn give_back_on_failure(_backing: Option<core::convert::Infallible>) {}
+/// A caller's own backing: nothing to give back or take.
+#[cfg(feature = "rmw-cffi")]
+#[derive(Clone, Copy)]
+struct NoHandoff;
+
+#[cfg(feature = "rmw-cffi")]
+impl OpenHandoff for NoHandoff {
+    unsafe fn give_back_on_failure(self) {}
+    unsafe fn take(self, _exec: &mut Executor<'_>) {}
+}
+
+/// A block `default_backing` handed out.
+#[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
+#[derive(Clone, Copy)]
+struct DefaultHandoff(*mut [MaybeUninit<u64>]);
+
+#[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
+impl OpenHandoff for DefaultHandoff {
+    // Out of line, both: inlined, the release and the hand-off grew
+    // `open_owning`'s frame by ~0.4 KB on thumbv7m (issue 3008).
+    #[cold]
+    #[inline(never)]
+    unsafe fn give_back_on_failure(self) {
+        // SAFETY: the trait's contract -- the block came from
+        // `default_backing` and no reference into it survives.
+        unsafe { super::backing::release_default_backing(self.0) }
+    }
+    #[inline(never)]
+    unsafe fn take(self, exec: &mut Executor<'_>) {
+        // SAFETY: the trait's contract.
+        unsafe { take_default_backing(exec, self.0) }
+    }
+}
 
 /// Issue 2576 — the executor opened over a `default_backing` block owns it
 /// now, and hands it back on drop.
@@ -328,7 +362,7 @@ impl<'s> Executor<'s> {
         session_slot: Option<core::ptr::NonNull<MaybeUninit<session::ConcreteSession>>>,
     ) -> Result<Self, NodeError> {
         // SAFETY: forwarded from this fn's contract; the backing is the caller's.
-        unsafe { Self::open_owning(config, backing, sizing, session_slot, None) }
+        unsafe { Self::open_owning(config, backing, sizing, session_slot, NoHandoff) }
     }
 
     /// The body of [`open_in_with_session_slot`](Self::open_in_with_session_slot)
@@ -345,21 +379,16 @@ impl<'s> Executor<'s> {
     ///
     /// # Safety
     /// As [`open_in_with_session_slot`](Self::open_in_with_session_slot), and
-    /// `default_backing` as [`take_default_backing`] requires. A failed open
-    /// gives a `default_backing` back (`release_default_backing`), as
+    /// `handoff` as [`OpenHandoff`] requires: a [`DefaultHandoff`]'s block is
+    /// the one `backing` borrows. A failed open gives that block back, as
     /// [`with_default_backing`] does for the other default-backed opens.
     #[inline(never)]
-    unsafe fn open_owning(
+    unsafe fn open_owning<H: OpenHandoff>(
         config: &ExecutorConfig<'_>,
         backing: &'s mut [MaybeUninit<u64>],
         sizing: super::storage::ExecutorSizing,
         session_slot: Option<core::ptr::NonNull<MaybeUninit<session::ConcreteSession>>>,
-        #[cfg(all(feature = "alloc", feature = "rmw-cffi"))] default_backing: Option<
-            *mut [MaybeUninit<u64>],
-        >,
-        #[cfg(not(all(feature = "alloc", feature = "rmw-cffi")))] default_backing: Option<
-            core::convert::Infallible,
-        >,
+        handoff: H,
     ) -> Result<Self, NodeError> {
         use nros_rmw::Rmw;
 
@@ -395,7 +424,7 @@ impl<'s> Executor<'s> {
             other => {
                 log_backend_unresolved(other);
                 // SAFETY: nothing has been built over the backing yet.
-                unsafe { give_back_on_failure(default_backing) };
+                unsafe { handoff.give_back_on_failure() };
                 return Err(NodeError::Transport(TransportError::InvalidConfig));
             }
         }
@@ -429,7 +458,7 @@ impl<'s> Executor<'s> {
             log_session_open_failed(&e);
             // SAFETY: the session did not open, so nothing has been built over
             // the backing yet.
-            unsafe { give_back_on_failure(default_backing) };
+            unsafe { handoff.give_back_on_failure() };
             NodeError::Transport(e)
         })?;
         // SAFETY: forwarded from this fn's contract — `backing`/`sizing` sized
@@ -480,13 +509,8 @@ impl<'s> Executor<'s> {
         // STABILITY CONTRACT: the leading `"nros: session open"` text is
         // load-bearing — test harnesses grep for it verbatim. Keep it
         // stable even if the trailing `(rmw=...)` detail changes.
-        #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
-        if let Some(raw) = default_backing {
-            // SAFETY: this fn's contract.
-            unsafe { take_default_backing(&mut executor, raw) };
-        }
-        #[cfg(not(all(feature = "alloc", feature = "rmw-cffi")))]
-        let _ = default_backing;
+        // SAFETY: this fn's contract.
+        unsafe { handoff.take(&mut executor) };
         #[cfg(feature = "log")]
         log_session_open(selector);
         Ok(executor)
@@ -578,7 +602,7 @@ impl Executor<'static> {
         // uniquely owned by the returned executor, and `open_owning` gives it
         // back on a failed open. A tail call, not `with_default_backing`: that
         // inspects the result before returning it, which kept a copy of it here.
-        unsafe { Self::open_owning(config, &mut *raw, sizing, None, Some(raw)) }
+        unsafe { Self::open_owning(config, &mut *raw, sizing, None, DefaultHandoff(raw)) }
     }
 
     /// Explicit per-backend session declaration for
