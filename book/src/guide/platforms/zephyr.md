@@ -43,8 +43,9 @@ are the same keys as on every Zephyr board; see
   on the emulated SMSC911x ethernet. `nros run` boots it under the QEMU the
   Zephyr SDK ships, `qemu:mps2-an385`.
 - **The west workspace needs nano-ros's patches for this board.**
-  `nros setup board mps2-an385-zephyr --zephyr-workspace <ws>` applies them
-  and adds the board's Rust target. Without them, zephyr-lang-rust's cargo
+  `nros setup board mps2-an385-zephyr`, run from inside that workspace,
+  applies them and adds the board's Rust target. From elsewhere, name the
+  workspace with `--zephyr-workspace <ws>`, or point `$ZEPHYR_BASE` into it. Without them, zephyr-lang-rust's cargo
   command carries none of nano-ros's settings for the board, among them the
   C cross compiler the zenoh-pico crate builds with, and a Rust image fails
   to build.
@@ -259,7 +260,9 @@ no guard. `CONFIG_NROS_INIT_DELAY_MS` is the module's start-up delay; your
 1. Confirm the router listens on the host's `0.0.0.0` at the image's port.
    A router on `127.0.0.1` is unreachable from the guest.
 2. A Rust image that fails to build naming its C compiler or target: run
-   `nros setup board mps2-an385-zephyr --zephyr-workspace <ws>` again.
+   `nros setup board mps2-an385-zephyr` again from inside the west
+   workspace. Check that the workspace its first line names is the one you
+   build in.
 3. No `Publishing:` line within 30 seconds of boot: check the console for
    the network coming up, then [Troubleshoot](../deploy/troubleshoot.md).
 
