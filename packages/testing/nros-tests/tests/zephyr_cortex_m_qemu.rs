@@ -831,6 +831,24 @@ fn zephyr_cortex_m_two_managed_xrce_nodes_boot_on_the_derived_heap() {
         "the two managed talkers published {published} times, expected at least 4: both nodes \
          should reach Active and publish. Output:\n{output}"
     );
+    // Issue 3021 -- a node that comes up without its services still publishes,
+    // so the count above cannot see a service the image dropped. The Zephyr
+    // west road derived 16 XRCE service-server slots for the 22 servers two
+    // managed parameter nodes register (2 x 5 lifecycle + 2 x 6 parameter), and
+    // `/talker2` ran with no parameter services while this test stayed green.
+    // Every server of both nodes must exist: no refused slot, no refused family.
+    // (That both nodes PUBLISH is not asserted here: both instances of this C
+    // component share one static state today, so one timer runs -- issue 3023.)
+    assert!(
+        !output.contains(nros_tests::output::XRCE_SERVICE_SERVER_SLOT_REFUSED),
+        "a service server found no XRCE slot: the derived NROS_XRCE_MAX_SERVICE_SERVERS \
+         does not count every node's parameter and lifecycle servers (issue 3021). \
+         Output:\n{output}"
+    );
+    assert!(
+        !output.contains(nros_tests::output::PARAM_SERVICES_REFUSED),
+        "a node came up without its parameter services (issue 3021). Output:\n{output}"
+    );
     // The peak, for whoever re-prices the floor (issue 2780: every heap default
     // is sized from these lines).
     if let Some(peak) = output.lines().rfind(|l| l.contains(ZEPHYR_HEAP_PEAK)) {

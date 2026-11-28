@@ -1668,21 +1668,26 @@ function(nros_resolve_knobs)
         _nros_resolve_derivable_knob(NROS_XRCE_MAX_SUBSCRIBERS
             "${CONFIG_NROS_XRCE_MAX_SUBSCRIBERS}" NROS_DERIVED_MAX_SUBSCRIBERS
             "entity inventory" "${CMAKE_BINARY_DIR}/nros/entity_inventory.cmake")
-        # issue 1033 — from NROS_DERIVED_MAX_QUERYABLES, not from the raw
-        # SERVICE_SERVER count. An XRCE service server is the same thing a
-        # zenoh queryable is (a served request endpoint), and that derived
-        # value already carries ACTION_SERVER_QUERYABLES — an action server
-        # needs three of these underneath it, so the raw count would under-size
-        # every action image and fail at registration.
+        # issue 1033 -- the service-server slots count every served request
+        # endpoint: the application's servers, three per action server, and
+        # the runtime's parameter (6 per node) and lifecycle (5 per machine)
+        # servers. Still a DEFAULT and not a ceiling: a stated knob wins.
         #
-        # Issue 1270 -- that value also carries the parameter (6 per node) and
-        # lifecycle (5) service families when the model the inventory was
-        # built from declares them, which is what XRCE needs too: each is a
-        # served endpoint. Still a DEFAULT and not a ceiling -- a stated knob
-        # wins, and an inventory built without a model counts neither.
+        # Issue 3021 -- NOT from NROS_DERIVED_MAX_QUERYABLES any more. That is
+        # zenoh's pool, where a managed node's five lifecycle servers share one
+        # queryable (phase-554 W4) and a transient-local publisher adds a cache
+        # queryable that serves no request; XRCE gives every server a slot of
+        # its own. Two managed parameter nodes derived 16 slots for 22 servers,
+        # and the second node came up with no parameter services. At the
+        # sentinel nothing is forwarded: `nros-rmw-xrce-cffi/build.rs` derives
+        # the count from the sizing descriptor this road names, with the shared
+        # `infra_service_servers_with`, as on the cargo and CMake roads -- one
+        # rule, so the roads cannot price the same servers differently again.
         _nros_resolve_derivable_knob(NROS_XRCE_MAX_SERVICE_SERVERS
-            "${CONFIG_NROS_XRCE_MAX_SERVICE_SERVERS}" NROS_DERIVED_MAX_QUERYABLES
-            "entity inventory" "${CMAKE_BINARY_DIR}/nros/entity_inventory.cmake")
+            "${CONFIG_NROS_XRCE_MAX_SERVICE_SERVERS}"
+            _NROS_XRCE_FAMILY_DERIVED_BY_BUILD_SCRIPT
+            "the sizing descriptor, which only the cargo lane reads"
+            "${CMAKE_BINARY_DIR}/nros/sizing")
         # phase-400 W6 — the client slots derive like the three receive
         # families below: at the sentinel nothing is forwarded and
         # `nros-rmw-xrce-cffi/build.rs` reads them off the sizing descriptor

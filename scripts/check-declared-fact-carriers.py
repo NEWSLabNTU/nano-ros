@@ -336,8 +336,9 @@ FACT_DISPOSITION = {
         "declared": _RETIRED_CELLS,
     },
     "NROS_DERIVED_MAX_QUERYABLES": {
-        "resolver": ("NROS_RESOLVED_NROS_ENTITY_MAX_QUERYABLES",
-                     "NROS_RESOLVED_NROS_XRCE_MAX_SERVICE_SERVERS"),
+        # Issue 3021 -- zenoh's table only: the XRCE service-server pool is
+        # derived by its build script from the descriptor.
+        "resolver": ("NROS_RESOLVED_NROS_ENTITY_MAX_QUERYABLES",),
         "sidecar": NotCarried(
             _LEAF, _QUERYABLES_NOT_DERIVED,
             "the count excludes the param and lifecycle service families a "

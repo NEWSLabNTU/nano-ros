@@ -2977,7 +2977,7 @@ pub const KNOBS: &[KnobRow] = &[
         class: crate::KnobClass::Public,
         carries: None,
         prompt: Some("Maximum concurrent service servers"),
-        help: Some("Maximum number of concurrent XRCE service servers.\nMaps to XRCE_MAX_SERVICE_SERVERS.\n\n-1 means DERIVE: from the image's entity inventory, the same\nNROS_DERIVED_MAX_QUERYABLES the zenoh queryable pool uses (an XRCE\nservice server is a served request endpoint, so action servers and the\nparameter/lifecycle service families count too). Zero is a legitimate\nderived answer here. Stating a number wins over both."),
+        help: Some("Maximum number of concurrent XRCE service servers.\nMaps to XRCE_MAX_SERVICE_SERVERS.\n\n-1 means DERIVE, on every road from the image's sizing descriptor:\nthe application's service servers, three per action server, six per\nnode serving the parameter services and five per managed node, one\nslot each. It is not the zenoh queryable count: zenoh shares one\nqueryable among a managed node's five lifecycle servers, and an XRCE\nserver takes a slot of its own. Zero is a legitimate derived answer\nhere. Stating a number wins."),
         default: crate::KnobDefault::Kconfig(&[
             crate::KconfigDefault { value: "-1", when: None },
         ]),

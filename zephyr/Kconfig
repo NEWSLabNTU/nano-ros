@@ -2377,11 +2377,13 @@ config NROS_XRCE_MAX_SERVICE_SERVERS
       Maximum number of concurrent XRCE service servers.
       Maps to XRCE_MAX_SERVICE_SERVERS.
 
-      -1 means DERIVE: from the image's entity inventory, the same
-      NROS_DERIVED_MAX_QUERYABLES the zenoh queryable pool uses (an XRCE
-      service server is a served request endpoint, so action servers and the
-      parameter/lifecycle service families count too). Zero is a legitimate
-      derived answer here. Stating a number wins over both.
+      -1 means DERIVE, on every road from the image's sizing descriptor:
+      the application's service servers, three per action server, six per
+      node serving the parameter services and five per managed node, one
+      slot each. It is not the zenoh queryable count: zenoh shares one
+      queryable among a managed node's five lifecycle servers, and an XRCE
+      server takes a slot of its own. Zero is a legitimate derived answer
+      here. Stating a number wins.
 
 
 # prompt: Maximum concurrent subscribers

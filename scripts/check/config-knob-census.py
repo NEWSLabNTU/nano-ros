@@ -155,7 +155,7 @@ KNOB_CLASS = {
     # `xrce-config.txt`'s rows (READ_TABLES below): the build reads them by
     # variable, so no read call spelled them and they were never counted.
     "NROS_XRCE_MAX_SUBSCRIBERS": ("derived", "subscriber slot count; NROS_DERIVED_MAX_SUBSCRIBERS from the entity inventory (issue 1033)"),
-    "NROS_XRCE_MAX_SERVICE_SERVERS": ("derived", "service-server slot count; NROS_DERIVED_MAX_QUERYABLES from the entity inventory (issue 1033)"),
+    "NROS_XRCE_MAX_SERVICE_SERVERS": ("derived", "service-server slot count; one per server, derived by the build script from the sizing descriptor on every road (issue 3021)"),
     "NROS_XRCE_MAX_SERVICE_CLIENTS": ("derived", "service-client slot count; the sizing descriptor's declared clients plus three per action client (phase-400 W6)"),
     "NROS_XRCE_SUBSCRIBER_RING_DEPTH": ("sizing", "samples per subscriber slot; a burst policy, not derivable"),
     "NROS_XRCE_BUFFER_BYTES": ("sizing", "the default of the three per-family receive sizes"),
