@@ -273,6 +273,27 @@ NROS_ENTITY_MAX_QUERYABLES = 7
 NROS_EXECUTOR_MAX_CBS = 2
 NROS_EXECUTOR_ACTION_CLIENTS = 0
 
+# A cross Linux board (issue 2852): a static musl image whose app runs on the
+# process main thread. The board states that stack and holds RLIMIT_STACK to it
+# at boot; the walk has no frame sizes for zig's musl, so the row is measured.
+[[observed]]
+image = "talker/rust/zenoh@linux-aarch64-musl"
+rmw = "zenoh"
+target = "aarch64-unknown-linux-musl"
+role = "OPEN"
+peak = 106616
+unwalked = "the app's deepest paths run through the statically linked musl C library, whose frames the walk does not size"
+method = "2026-11-29, QEMU 11.0 user mode (qemu-aarch64) on an x86_64 host: `nros new --board linux-aarch64-musl --lang rust` then `nros build`, run by `nros run` for 30 s publishing to a router; the guest main thread's high-water read from /proc/<qemu>/mem as the lowest non-zero byte of its fresh, zero-filled stack mapping (QEMU_STACK_SIZE=12 MiB to tell it apart), so argv, environment and auxv at the top are counted too. dev profile 106,616 B (the template's default profile, so the row); release 47,584 B, 3 runs of 3 identical. The zenoh-pico executor thread, on musl's 128 KiB default thread stack, peaked at 3,568 B (dev) and 2,432 B (release). Same binary and C library as on the device, so the depth does not depend on the kernel; signal frames do, and the margin covers them. Shape: nodes, publishers, subscribers and callbacks from the image's sizing descriptor; queryables as the threadx-linux talker row, the same template"
+issue = "2852"
+
+[observed.shape]
+NROS_EXECUTOR_MAX_NODES = 1
+NROS_ENTITY_MAX_PUBLISHERS = 3
+NROS_ENTITY_MAX_SUBSCRIBERS = 1
+NROS_ENTITY_MAX_QUERYABLES = 7
+NROS_EXECUTOR_MAX_CBS = 2
+NROS_EXECUTOR_ACTION_CLIENTS = 0
+
 # A walk the drift check holds and NOTHING ELSE reads: no build, no `nros
 # new` stamp, no twin lane. Its image stays UNMEASURED (the build warns, never
 # refuses), and `just zephyr stack-floor-drift` fails when the walk leaves

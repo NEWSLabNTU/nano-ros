@@ -108,10 +108,98 @@ pub struct LinuxBoard;
 impl BoardInit for LinuxBoard {
     /// POSIX needs no hardware init: libstd's runtime already
     /// initialized the heap, stdio, signal handlers and threading
-    /// before `fn main` ran. Kept as a documented no-op so the
-    /// lifecycle in [`BoardEntry::run`] is uniform across families.
+    /// before `fn main` ran. A cross build (a board with a target
+    /// triple) holds the main thread's stack limit to the stack the
+    /// board states, since the app runs on that thread; the host
+    /// board's build does nothing here.
     #[inline]
-    fn init_hardware() {}
+    fn init_hardware() {
+        #[cfg(nros_linux_stated_stack)]
+        ensure_main_stack(
+            env!("NROS_LINUX_APP_STACK_BYTES")
+                .parse()
+                .expect("the build script writes a decimal byte count"),
+        );
+    }
+}
+
+/// What boot does about the main thread's stack limit, given the soft and
+/// hard `RLIMIT_STACK` it finds and the stack the board states.
+#[derive(Debug, PartialEq, Eq)]
+#[cfg_attr(not(nros_linux_stated_stack), allow(dead_code))]
+enum MainStack {
+    /// The soft limit already covers the statement.
+    Enough,
+    /// Raise the soft limit to this many bytes. Linux grows the main
+    /// thread's stack up to the CURRENT soft limit, so this takes effect
+    /// for the rest of the process.
+    Raise(u64),
+    /// The hard limit is below the statement, so no unprivileged process
+    /// can meet it.
+    Refuse,
+}
+
+#[cfg_attr(not(nros_linux_stated_stack), allow(dead_code))]
+fn main_stack_action(soft: u64, hard: u64, need: u64) -> MainStack {
+    // An unlimited limit is all ones, so it compares as enough.
+    if soft >= need {
+        MainStack::Enough
+    } else if hard >= need {
+        MainStack::Raise(need)
+    } else {
+        MainStack::Refuse
+    }
+}
+
+#[cfg(nros_linux_stated_stack)]
+fn ensure_main_stack(need: u64) {
+    let refuse = |why: String| -> ! {
+        eprintln!(
+            "nros: {why}. This image states a {need}-byte main-thread stack \
+             (memory.app_stack_bytes); raise the limit (`ulimit -s`) or lower that knob."
+        );
+        std::process::exit(1);
+    };
+    let mut rl = libc::rlimit {
+        rlim_cur: 0,
+        rlim_max: 0,
+    };
+    // SAFETY: `rl` is a valid, writable `rlimit`.
+    if unsafe { libc::getrlimit(libc::RLIMIT_STACK, &mut rl) } != 0 {
+        refuse(format!(
+            "reading the stack limit failed ({})",
+            std::io::Error::last_os_error()
+        ));
+    }
+    match main_stack_action(rl.rlim_cur as u64, rl.rlim_max as u64, need) {
+        MainStack::Enough => {}
+        MainStack::Raise(bytes) => {
+            let raised = libc::rlimit {
+                rlim_cur: bytes as libc::rlim_t,
+                rlim_max: rl.rlim_max,
+            };
+            // SAFETY: `raised` is a valid `rlimit`; the soft limit stays at
+            // or below the hard one.
+            if unsafe { libc::setrlimit(libc::RLIMIT_STACK, &raised) } != 0 {
+                refuse(format!(
+                    "raising the stack limit from {} bytes failed ({})",
+                    rl.rlim_cur,
+                    std::io::Error::last_os_error()
+                ));
+            }
+            // Before the log sinks exist, so straight to stderr: an operator
+            // sees the process change its own limit.
+            eprintln!(
+                "nros: raised the main thread's stack limit from {} to {bytes} bytes, the stack \
+                 this image states (memory.app_stack_bytes)",
+                rl.rlim_cur
+            );
+        }
+        MainStack::Refuse => refuse(format!(
+            "the stack limit's hard ceiling is {} bytes",
+            rl.rlim_max
+        )),
+    }
 }
 
 impl BoardPrint for LinuxBoard {
@@ -1634,7 +1722,36 @@ mod tests {
         <LinuxBoard as BoardInit>::init_hardware();
     }
 
-    /// Issue 1949: the hosted `log` sink no longer prints every `trace!` in
+    /// A cross build holds the main thread's stack limit to the stated
+    /// stack: enough stays, a low soft limit is raised to exactly the
+    /// statement, and a hard ceiling below it is refused.
+    #[test]
+    fn main_stack_limit_meets_the_stated_stack() {
+        const NEED: u64 = 256 * 1024;
+        assert_eq!(
+            main_stack_action(8 << 20, u64::MAX, NEED),
+            MainStack::Enough
+        );
+        assert_eq!(
+            main_stack_action(u64::MAX, u64::MAX, NEED),
+            MainStack::Enough
+        );
+        assert_eq!(main_stack_action(NEED, NEED, NEED), MainStack::Enough);
+        assert_eq!(
+            main_stack_action(128 << 10, u64::MAX, NEED),
+            MainStack::Raise(NEED)
+        );
+        assert_eq!(
+            main_stack_action(128 << 10, NEED, NEED),
+            MainStack::Raise(NEED)
+        );
+        assert_eq!(
+            main_stack_action(128 << 10, NEED - 1, NEED),
+            MainStack::Refuse
+        );
+    }
+
+    /// Issue 1949:the hosted `log` sink no longer prints every `trace!` in
     /// every crate. The publish path's `log::trace!` is the record that wrote
     /// a flushed stdout line per publish; at the default threshold it is
     /// refused, while `info!` still gets through.

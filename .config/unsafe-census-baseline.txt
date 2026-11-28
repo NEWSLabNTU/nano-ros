@@ -37,7 +37,7 @@ nros-board-cffi                            3   0     0       6      0
 nros-board-fixture-r5f-freertos            1   0     0       1      0
 nros-board-freertos                       70   1     1      21      0
 nros-board-freertos-posix                  5   0     0       2      0
-nros-board-linux                          25   0     0       8      0
+nros-board-linux                          27   0     0       8      0
 nros-board-mps2-an385                     50  11     1      24      0
 nros-board-mps2-an385-freertos             3   0     0       1      0
 nros-board-nuttx                          32   0     0      15      0
