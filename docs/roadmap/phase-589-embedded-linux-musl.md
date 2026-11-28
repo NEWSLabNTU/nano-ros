@@ -137,9 +137,42 @@ Each piece of hand wiring is a work item below.
 ### W8 — C and C++ nodes linking a vendor SDK
 
 - **Owner:** nros 175.
-- **Status:** OPEN (designed, awaiting the user's ruling:
-  [RFC-0144](../design/0144-cross-linux-vendor-shared-libraries.md) Q1-Q4;
-  nothing built).
+- **Status:** OPEN (designed, ruled and reviewed 2026-11-29:
+  [RFC-0144](../design/0144-cross-linux-vendor-shared-libraries.md); in
+  progress).
+- **Work items** (RFC-0144's decisions, in order):
+  - **W8.a — the toolchain (D1).** `cmake/toolchain/aarch64-linux-musl.cmake`:
+    the override prefix, then the provisioned zig through a new zig resolver
+    shape with no PATH rung, which `check-cross-toolchain-provenance` accepts
+    as a third shape. The board names the file in `[board.cmake]
+    toolchain_file`, and its CMake module stops refusing.
+    Done when a static C++ talker builds on the CMake road and runs under
+    qemu-user.
+  - **W8.b — the link mode (D2).** `[image.<id>] link = "static" | "dynamic"`
+    carried to both roads, with `[board.linux] dynamic_loader` as the one
+    loader fact. The linked ELF of a static image may have no `PT_INTERP` or
+    `DT_NEEDED`; one that does is refused, naming `link = "dynamic"`. Measure
+    what std's unwinder needs under `-crt-static`. Done when a dynamic Rust image
+    and a dynamic C++ image both build with `ld-musl-aarch64.so.1` as their
+    interpreter.
+  - **W8.c — the sysroot (D3).** A `[provided.*]` index row kind (arg >
+    env > `[sources]`, no store or checkout rung, a refusal naming those three)
+    and `sysroot-linux-aarch64-musl` on it. It reaches each road's carrier:
+    `-D` on `nros build`'s configure, `nros locate --format cmake` from the
+    toolchain file on a bare `cmake`, and the cargo overlay. A dynamic image
+    with none refuses. Done when `nros locate sysroot-linux-aarch64-musl --why`
+    names the rung.
+  - **W8.d — the on-host run (D4).** The run plan's `args["ld_prefix"]`,
+    with provenance, becomes qemu's `-L <sysroot>`. Done when a dynamic image
+    starts under qemu-user.
+  - **W8.e — the symbol check (D5).** After a dynamic link, `nros build`
+    resolves every non-weak undefined symbol of the image and its needed
+    libraries (to closure, on the device loader's search path under the
+    sysroot). It refuses a missing one, and reports "not verified" when the
+    sysroot has no device libc. Done with a negative control: a symbol only
+    zig's newer musl has is refused against a 1.2.3 sysroot.
+  - **W8.f — the device run.** Device-only: the C++ node linking the vendor's
+    libraries runs on the SoC.
 - **What:** the user's next step is C/C++ nodes that link the SoC vendor's
   media SDK and NPU runtime. Those ship as shared libraries, so the image links
   musl dynamically, and each image needs its own link libraries, search paths
