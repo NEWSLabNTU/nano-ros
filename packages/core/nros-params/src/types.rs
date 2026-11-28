@@ -131,6 +131,67 @@ pub enum ParameterType {
     StringArray = 9,
 }
 
+impl ParameterType {
+    /// The type's name as ROS 2 spells it (`rcl_interfaces/ParameterType`),
+    /// for messages.
+    pub const fn name(self) -> &'static str {
+        match self {
+            ParameterType::NotSet => "not set",
+            ParameterType::Bool => "bool",
+            ParameterType::Integer => "integer",
+            ParameterType::Double => "double",
+            ParameterType::String => "string",
+            ParameterType::ByteArray => "byte array",
+            ParameterType::BoolArray => "bool array",
+            ParameterType::IntegerArray => "integer array",
+            ParameterType::DoubleArray => "double array",
+            ParameterType::StringArray => "string array",
+        }
+    }
+}
+
+// Issue 3020.
+/// The line for a launch value whose type is not the one the code declares
+/// (`DeclarationError::LaunchValueTypeMismatch`): the parameter, both types,
+/// and what to write. An integer for a `double` names the exact fix (`1` ->
+/// `1.0`), the case YAML makes easy to get wrong. The C++ header prints the
+/// same sentence (`report_param_value_type_mismatch`).
+pub struct LaunchTypeMismatch<'a> {
+    /// The parameter's name.
+    pub name: &'a str,
+    /// The type the code declares it with.
+    pub declared: ParameterType,
+    /// The launch value the store holds for it.
+    pub launch: &'a ParameterValue,
+}
+
+impl core::fmt::Display for LaunchTypeMismatch<'_> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        let (name, want) = (self.name, self.declared.name());
+        write!(
+            f,
+            "parameter \"{name}\" is declared {want} but the launch value is "
+        )?;
+        match self.launch {
+            ParameterValue::Integer(i) if self.declared == ParameterType::Double => {
+                write!(f, "the integer {i}; write {i}.0 in the YAML")
+            }
+            ParameterValue::Integer(i) => {
+                write!(f, "the integer {i}; write a {want} value in the YAML")
+            }
+            ParameterValue::Double(d) => {
+                write!(f, "the double {d}; write a {want} value in the YAML")
+            }
+            ParameterValue::Bool(b) => write!(f, "the bool {b}; write a {want} value in the YAML"),
+            other => write!(
+                f,
+                "of type {}; write a {want} value in the YAML",
+                other.param_type().name()
+            ),
+        }
+    }
+}
+
 /// Parameter value container
 ///
 /// Holds a parameter value of any supported type.

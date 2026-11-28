@@ -1,0 +1,5 @@
+{
+  "key": "rust:LaunchTypeMismatch",
+  "verdict": "extension",
+  "why": "Issue 3020. `nros_params::LaunchTypeMismatch`, exported from the `nros` facade: the `Display` line for a launch value whose type is not the one the code declares (`DeclarationError::LaunchValueTypeMismatch`), naming the parameter, both types and what to write (`1` -> `1.0` for a double). The C (rclc) declaration and the `nros::main!` declaration path print it, and the C++ header prints the same sentence (`report_param_value_type_mismatch`), so the refusal reads the same in every language. rclrs has no counterpart: its `DeclarationError::OverrideValueTypeMismatch` carries no message type, and the override's text is not ours to format there. Ours-only by construction."
+}

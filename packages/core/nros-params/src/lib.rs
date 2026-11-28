@@ -102,9 +102,6 @@ pub use typed::{
     MandatoryParameter, OptionalParameter, ParameterBuilder, ParameterError, Parameters,
     RangeConvertible, ReadOnlyParameter,
 };
-/// Deprecated: the store answers `Result<(), ParameterError>`.
-#[allow(deprecated)]
-pub use types::SetParameterResult;
 pub use types::{
     DescriptorText, FloatingPointRange, IMPLIED_STORE_SLOTS, IntegerRange, MAX_ARRAY_LEN,
     MAX_BYTE_ARRAY_LEN, MAX_PARAM_CONSTRAINTS_LEN, MAX_PARAM_DESCRIPTION_LEN, MAX_PARAM_NAME_LEN,
@@ -112,6 +109,9 @@ pub use types::{
     PARAM_EVENTS_DEPTH, Parameter, ParameterDescriptor, ParameterRange, ParameterType,
     ParameterValue, ParameterVariant, STOCK_STORE_SLOTS, fit_description,
 };
+/// Deprecated: the store answers `Result<(), ParameterError>`.
+#[allow(deprecated)]
+pub use types::{LaunchTypeMismatch, SetParameterResult};
 
 /// The knob that sizes the parameter store, in every spelling a user writes.
 ///

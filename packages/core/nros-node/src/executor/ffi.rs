@@ -168,6 +168,11 @@ pub trait ExecutorFfi<'s>: sealed::Sealed + Sized {
     #[cfg(feature = "param-store")]
     fn allow_undeclared_parameters_on(&mut self, node: super::node_record::NodeId, allow: bool);
 
+    /// The FFI entry point; see `Executor::has_declared_parameter_on` in
+    /// `spin.rs` (issue 3020).
+    #[cfg(feature = "param-store")]
+    fn has_declared_parameter_on(&self, node: super::node_record::NodeId, name: &str) -> bool;
+
     /// The FFI entry point; see `Executor::get_parameter_on` in `spin.rs`.
     #[cfg(feature = "param-store")]
     fn get_parameter_on(
@@ -948,6 +953,12 @@ impl<'s> ExecutorFfi<'s> for Executor<'s> {
     #[cfg(feature = "param-store")]
     fn allow_undeclared_parameters_on(&mut self, node: super::node_record::NodeId, allow: bool) {
         Executor::allow_undeclared_parameters_on(self, node, allow)
+    }
+
+    #[inline]
+    #[cfg(feature = "param-store")]
+    fn has_declared_parameter_on(&self, node: super::node_record::NodeId, name: &str) -> bool {
+        Executor::has_declared_parameter_on(self, node, name)
     }
 
     #[inline]

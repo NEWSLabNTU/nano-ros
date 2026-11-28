@@ -2390,6 +2390,21 @@ impl crate::node::FrameSink for ExecutorSink<'_> {
                     // the declared type, refused naming the cause if not.
                     match executor.adopt_launch_seed_on(node, name, value.param_type(), None) {
                         Some(Ok(())) => return Ok(()),
+                        // Issue 3020 -- the parameter, both types and the fix.
+                        Some(Err(nros_params::DeclarationError::LaunchValueTypeMismatch)) => {
+                            if let Some(launch) = executor.get_parameter_on(node, name) {
+                                nros_log::log_error!(
+                                    nros_log::get_logger("nros"),
+                                    "{}",
+                                    nros_params::LaunchTypeMismatch {
+                                        name,
+                                        declared: value.param_type(),
+                                        launch,
+                                    }
+                                );
+                            }
+                            return Err(NodeDeclError::ParameterRejected);
+                        }
                         Some(Err(e)) => {
                             nros_log::log_error!(
                                 nros_log::get_logger("nros"),

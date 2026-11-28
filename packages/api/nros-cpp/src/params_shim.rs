@@ -1131,7 +1131,10 @@ pub unsafe extern "C" fn nros_cpp_node_has_param(
         let Some(name) = (unsafe { cstr_to_str(name) }) else {
             return false;
         };
-        ctx.executor.get_parameter_on(id, name).is_some()
+        // Issue 3020 -- DECLARED, not merely stored: a launch seed the node has
+        // not declared yet answers false, as rclcpp's does for an undeclared
+        // override, so `has_parameter(p) ? get : declare` still declares.
+        ctx.executor.has_declared_parameter_on(id, name)
     }
     #[cfg(not(all(feature = "param-store", feature = "rmw-cffi")))]
     {

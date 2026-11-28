@@ -17442,6 +17442,20 @@ impl<'s> Executor<'s> {
         self.get_parameter_on(super::node_record::NodeId::PRIMARY, name)
     }
 
+    // Issue 3020.
+    /// Whether `node`'s code declared `name`; a launch seed it has not
+    /// declared yet does not count (rclcpp's `has_parameter`). See
+    /// `ParameterServer::is_declared`.
+    pub(crate) fn has_declared_parameter_on(
+        &self,
+        node: super::node_record::NodeId,
+        name: &str,
+    ) -> bool {
+        self.params
+            .as_deref()
+            .is_some_and(|p| p.server.is_declared(node.into(), name))
+    }
+
     /// Get a parameter value by name from a named node.
     pub(crate) fn get_parameter_on(
         &self,
