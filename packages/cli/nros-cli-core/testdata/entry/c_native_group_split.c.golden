@@ -68,6 +68,8 @@ static int32_t __nros_entry_setup(void* executor) {
         nros_cpp_ret_t nrc = nros_cpp_node_create(executor, "ctrl", "/", &__nros_node_0);
         if (nrc != NROS_CPP_RET_OK) return (int32_t)nrc;
         void* self = __nros_c_component_ctrl_pkg_create();
+        /* NULL: every instance of this C component is taken; create said so. */
+        if (self == NULL) return (int32_t)NROS_CPP_RET_FULL;
         int32_t crc = __nros_c_component_ctrl_pkg_configure(&__nros_node_0, executor, self);
         if (crc != 0) return crc;
     }
@@ -75,6 +77,8 @@ static int32_t __nros_entry_setup(void* executor) {
         nros_cpp_ret_t nrc = nros_cpp_node_create(executor, "telem", "/", &__nros_node_1);
         if (nrc != NROS_CPP_RET_OK) return (int32_t)nrc;
         void* self = __nros_c_component_telem_pkg_create();
+        /* NULL: every instance of this C component is taken; create said so. */
+        if (self == NULL) return (int32_t)NROS_CPP_RET_FULL;
         int32_t crc = __nros_c_component_telem_pkg_configure(&__nros_node_1, executor, self);
         if (crc != 0) return crc;
     }

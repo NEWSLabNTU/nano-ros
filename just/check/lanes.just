@@ -132,6 +132,22 @@ c-link-smoke:
         "$nros_c_lib" -lpthread -ldl -lm \
         -o tmp/cdr_borrow_le_slice
     ./tmp/cdr_borrow_le_slice
+    # issue 3023 -- two nodes of one C component get two instances, and a
+    # third past `RCLC_C_COMPONENT_MAX_INSTANCES` is refused, never shared.
+    # The program defines the three runtime calls the macro reaches (the node
+    # bind and the two logging entry points), so the archive is linked only for
+    # what the placed config header anchors.
+    echo "  - RCLC_C_COMPONENT: one instance per node, refusal past the cap (issue 3023)"
+    test -f packages/api/nros-c/tests/run/component_instances.c || { \
+        echo "ERROR: component_instances.c is MISSING -- this check passes on absence." >&2; exit 1; }
+    cc -std=c11 -Wall -Wextra -Werror \
+        -I"$cgen" \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/platform/nros-platform-api/include \
+        packages/api/nros-c/tests/run/component_instances.c \
+        "$nros_c_lib" -lpthread -ldl -lm \
+        -o tmp/component_instances
+    ./tmp/component_instances
 
 # Check C code: formatting + nros-c umbrella header syntax. COMPILES nros-c
 # (→ nros-macros → nros-build → nros-cli-core → the ros-launch-manifest submodule;

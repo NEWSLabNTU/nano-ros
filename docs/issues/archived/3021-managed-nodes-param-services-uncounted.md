@@ -90,5 +90,5 @@ Acceptance, on host 139 (2026-11-28):
   (main: 214,672 with six servers missing).
 
 Found beside it: both talkers of this image share one C component instance,
-so one publishes. That is [issue 3023](../3023-c-component-single-instance-per-package.md),
+so one publishes. That is [issue 3023](3023-c-component-single-instance-per-package.md),
 which owns the per-node publish assertion.

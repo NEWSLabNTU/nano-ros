@@ -148,6 +148,12 @@ fn typed_emit_creates_node_and_configures_component() {
     assert!(
         src.contains("__nros_c_component_talker_pkg_configure(&__nros_node_0, executor, self)")
     );
+    // Issue 3023 -- a full instance table is a refusal, never a shared
+    // instance: the entry stops before configuring a NULL.
+    assert!(
+        src.contains("if (self == NULL) return (int32_t)NROS_CPP_RET_FULL;"),
+        "{src}"
+    );
     // main drives the real-executor lifecycle via the named runner.
     // Issue 1597 — over the entry's own `.bss` executor storage. Issue 2714 —
     // led by the image's stated locator and domain, as every RTOS runner is.

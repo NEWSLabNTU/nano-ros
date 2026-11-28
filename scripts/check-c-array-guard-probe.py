@@ -132,6 +132,17 @@ PROBE_CONTEXT = {
         "why": "nros_cpp_config_generated.h is a per-build artifact, not a checkout",
         "enclosing": "none — the guard sits at file scope",
     },
+    # issue 3023 -- the C component instance table's floor. `rclc/types.h`
+    # pulls in the per-build `nros_config_generated.h`, whose checked-in copy
+    # is a stub that `#error`s.
+    "packages/api/nros-c/include/rclc/component.h": {
+        "mode": "preprocess",
+        "cc": "cc",
+        "std": "c11",
+        "defines": [],
+        "why": "nros_config_generated.h is a per-build artifact, not a checkout",
+        "enclosing": "none -- the guard sits at file scope",
+    },
     # Unlike `component_node.hpp` above, this header pulls in only the
     # COMMITTED `nros_cpp_ffi.h` (cbindgen output, checked in) and
     # `rclcpp/result.hpp` — no per-build generated config — so the real TU

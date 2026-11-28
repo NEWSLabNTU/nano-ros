@@ -31,6 +31,8 @@ static int32_t __nros_entry_setup() {
         ::rclcpp::Result r = ::rclcpp::create_node(__nros_node_0, "listener", "/");
         if (!r.ok()) return static_cast<int32_t>(r.raw());
         void* self = __nros_c_component_listener_pkg_create();
+        /* NULL: every instance of this C component is taken; create said so. */
+        if (self == NULL) return static_cast<int32_t>(NROS_CPP_RET_FULL);
         int32_t crc = __nros_c_component_listener_pkg_configure(__nros_node_0.ffi_handle(), __nros_node_0.executor_handle(), self);
         if (crc != 0) return crc;
     }
