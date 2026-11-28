@@ -1217,11 +1217,14 @@ impl XrceDemand {
     /// the runtime's parameter and lifecycle servers.
     ///
     /// A ROS parameter or lifecycle service is a served endpoint like any
-    /// other and takes an `xrce_service_server_slot`. On the Zephyr road the
-    /// resolver states this knob from `NROS_DERIVED_MAX_QUERYABLES`, which
-    /// already counts both families (issue 1270); on the cargo and CMake roads
-    /// nothing did, so a param + lifecycle image (11 servers) built against
-    /// the header's 4 and died at boot registering the fifth.
+    /// other and takes an `xrce_service_server_slot`. Every road derives it
+    /// here, the Zephyr west road included since issue 3021: that road used to
+    /// state it from `NROS_DERIVED_MAX_QUERYABLES`, zenoh's count, which since
+    /// phase-554 W4 prices a lifecycle machine at ONE shared queryable, so two
+    /// managed parameter nodes got 16 slots for 22 servers. Before issue 1743
+    /// the cargo and CMake roads derived nothing at all, so a param +
+    /// lifecycle image (11 servers) built against the header's 4 and died at
+    /// boot registering the fifth.
     ///
     /// The two halves come from where they are known, and are SUMMED here
     /// rather than by a producer, because no producer sees both:

@@ -1858,6 +1858,17 @@ pub const ROSOUT_PROBE_PUMPED: &str = "ROSOUT_PROBE_PUMPED";
 /// queue.
 pub const ROSOUT_PROBE_DONE: &str = "ROSOUT_PROBE_DONE";
 
+/// The XRCE backend's line when a service server finds every slot taken
+/// (`nros-rmw-xrce`'s `session.c`, `"no free %s slot for '%s'"` with the
+/// service-server kind). A server that hit it does not exist: the image runs
+/// on without it (issue 3021).
+pub const XRCE_SERVICE_SERVER_SLOT_REFUSED: &str = "no free service server slot for";
+
+/// The RUNTIME's line when a node's six parameter services could not all be
+/// created (`nros_node`'s parameter-service registration). The node runs on
+/// without them, which no publish count shows (issue 3021).
+pub const PARAM_SERVICES_REFUSED: &str = "parameter services could not be created for node";
+
 /// The RUNTIME's line when a node's `/rosout` writer could not be created
 /// (`nros_node`'s `report_rosout_refused`). A probe that prints it published
 /// nothing for that node.

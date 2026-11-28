@@ -89,13 +89,10 @@ DERIVED_PAIRS = {
         "NROS_RESOLVED_NROS_XRCE_MAX_SUBSCRIBERS",
     ),
     "NROS_DERIVED_MAX_PUBLISHERS": ("NROS_RESOLVED_NROS_ENTITY_MAX_PUBLISHERS",),
-    "NROS_DERIVED_MAX_QUERYABLES": (
-        "NROS_RESOLVED_NROS_ENTITY_MAX_QUERYABLES",
-        # issue 1033 -- the XRCE service-server pool answers the SAME question
-        # the zenoh queryable table asks, so it takes the same fact rather than
-        # the raw CONFIG_.
-        "NROS_RESOLVED_NROS_XRCE_MAX_SERVICE_SERVERS",
-    ),
+    # Issue 3021 -- the XRCE service-server pool is NOT this fact any more:
+    # zenoh's count shares one queryable per lifecycle machine, an XRCE server
+    # takes a slot each, so the build script derives it from the descriptor.
+    "NROS_DERIVED_MAX_QUERYABLES": ("NROS_RESOLVED_NROS_ENTITY_MAX_QUERYABLES",),
     "NROS_DERIVED_RMW_SUBSCRIBER_SLOTS": ("NROS_RESOLVED_NROS_RMW_SUBSCRIBER_SLOTS",),
     "NROS_DERIVED_EXECUTOR_MAX_CBS": ("NROS_RESOLVED_NROS_EXECUTOR_MAX_CBS",),
     "NROS_DERIVED_EXECUTOR_MAX_NODES": ("NROS_RESOLVED_NROS_EXECUTOR_MAX_NODES",),
