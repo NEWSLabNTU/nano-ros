@@ -6108,22 +6108,37 @@ impl nros_rmw::Rmw for CffiRmw {
 /// session's, the C/C++ support context's), so this is the one place the
 /// rule is asked. [`CffiSession`]'s own constructors stay unchecked: they are
 /// the seam a backend's own tests drive directly.
+///
+/// Issue 3008 -- the check borrows the session and the refusal's log line is
+/// out of line, so the open path that passes it carries neither a second
+/// by-value copy of the session nor the line's format buffer.
+#[inline]
 pub fn refuse_without_readiness(session: CffiSession) -> Result<CffiSession, TransportError> {
-    use nros_rmw::Session as _;
-    if matches!(session.readiness_source(), nros_rmw::ReadinessSource::None) {
-        // RFC-0113 D5
-        nros_log::log_error!(
-            nros_log::get_logger("nros_rmw_cffi"),
-            "the session states no readiness form: its backend neither calls a wake \
-             callback on an arrival nor reports a handle to park on, so an executor \
-             over it could only block inside its receive. Refused. \
-             Give the transport a receive notification (for a custom XRCE transport, \
-             `nros_rmw_xrce_set_custom_transport_rx_notify`)."
-        );
+    if states_no_readiness(&session) {
+        log_refused_without_readiness();
         // Dropping the session closes it.
         return Err(TransportError::Unsupported);
     }
     Ok(session)
+}
+
+/// RFC-0113 D5 -- the session names neither readiness form.
+fn states_no_readiness(session: &CffiSession) -> bool {
+    use nros_rmw::Session as _;
+    matches!(session.readiness_source(), nros_rmw::ReadinessSource::None)
+}
+
+#[cold]
+#[inline(never)]
+fn log_refused_without_readiness() {
+    nros_log::log_error!(
+        nros_log::get_logger("nros_rmw_cffi"),
+        "the session states no readiness form: its backend neither calls a wake \
+         callback on an arrival nor reports a handle to park on, so an executor \
+         over it could only block inside its receive. Refused. \
+         Give the transport a receive notification (for a custom XRCE transport, \
+         `nros_rmw_xrce_set_custom_transport_rx_notify`)."
+    );
 }
 
 impl CffiRmw {

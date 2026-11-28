@@ -134,7 +134,7 @@ extern "C" fn main() -> ! {
         let exec_config = ExecutorConfig::new(config.base.zenoh_locator)
             .domain_id(config.base.domain_id)
             .node_name("isr_wake");
-        let mut executor = open_executor(&exec_config)?;
+        let mut executor = Executor::open(&exec_config)?;
 
         static CALLBACKS: AtomicU32 = AtomicU32::new(0);
         let (_id, guard) = executor.register_guard_condition(|| {
@@ -203,15 +203,6 @@ extern "C" fn main() -> ! {
         Ok::<(), nros::NodeError>(())
     });
     unreachable!()
-}
-
-/// `Executor::open`, out of line: the session it opens and the tables it lays
-/// out are this function's temporaries, not the run closure's, whose frame
-/// holds the executor for the whole run. Inlined, they put the closure's frame
-/// at 10 KB; apart, the two frames together are smaller than that one was.
-#[inline(never)]
-fn open_executor(config: &ExecutorConfig<'_>) -> Result<Executor<'static>, nros::NodeError> {
-    Executor::open(config)
 }
 
 /// Leak the guard handle for the interrupt to reach.
