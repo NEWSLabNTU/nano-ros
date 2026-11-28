@@ -640,9 +640,15 @@ fn write_completion_cache(project: &Path) -> Result<()> {
             (!verb.contains(' ')).then(|| (verb.to_string(), l.summary))
         })
         .collect();
+    // phase-569 W4d: the interface types, for `nros interface show <Tab>`. A
+    // search path that does not load offers none; it never fails a configure.
+    let interfaces = crate::interface_index::load(Some(project))
+        .map(|i| crate::interface_index::type_names(&i))
+        .unwrap_or_default();
     let cache = Cache {
         schema: CACHE_SCHEMA,
         commands,
+        interfaces,
         search_path: search_key(project)?,
         images,
         packages,

@@ -161,10 +161,9 @@ without building.
 
 ### W4 — dynamic completion and its registration
 
-- **Status:** OPEN. W4a merged in #4473 (ae294738f5), W4b in #4510
-  (9b2cece484) and W4c in #4561 (f3377cc188), all 2026-11-20/21; W4d
-  (interface types) is open: no interface completer on main (audited
-  2026-11-26).
+- **Status:** DONE (2026-11-28). W4a merged in #4473 (ae294738f5), W4b
+  in #4510 (9b2cece484) and W4c in #4561 (f3377cc188), all 2026-11-20/21;
+  W4d lands with the interface-type completer below.
 - **W4a, the engine and its registration:** done.
   - `clap_complete` is pinned to `=4.6.3` with `unstable-dynamic`, in
     `nros-cli` and `nros-cli-core`.
@@ -239,9 +238,19 @@ without building.
   - `nros explain` offers every live `NROS-NNNN` code with its title (not
     the retired ones).
   - `nros toolchain uninstall` offers the installed `toolchains/<version>`.
-- **W4d, open:** interface types. They need the interface listing in the
-  cache, and reaching `cmd::interface` (a leaf verb) from configure would put
-  it in the planning set. The listing has to move out of the verb first.
+- **W4d, interface types:**
+  - The listing moved out of the verb into `interface_index` (`load`,
+    `type_names`), which `nros interface` and configure both call, so the
+    planning set does not grow by a leaf verb (`check-cli-planning-set` OK).
+  - `nros configure` writes the types into the completion cache
+    (`interfaces`, `#[serde(default)]`, so a cache written before it reads as
+    none and the schema stays 1). An index that does not load writes none
+    and never fails the configure.
+  - `nros interface show <Tab>` reads them. No cache, no names.
+  - Measured on 139: the index load adds 0.11 s to a configure; a configure
+    of `examples/linux/rust/talker` with ROS sourced cached 886 types, and
+    `nros interface show std_msgs/msg/St<Tab>` offered `std_msgs/msg/String`
+    in under 10 ms.
 
 Enable clap_complete's `unstable-dynamic`, pinned to an exact version.
 `CompleteEnv::with_factory(Cli::command).complete()` goes in `main` after the
