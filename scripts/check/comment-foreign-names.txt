@@ -471,6 +471,7 @@ map_ceil
 modulo_one
 needless_borrow
 panic_impl
+portable_atomic_unsafe_assume_single_core
 proc_macro::tracked_env::var
 proc_macro::tracked_path::path
 result_large_err

@@ -121,19 +121,21 @@ log = { workspace = true, optional = true }
 # Phase 88.16.E — `compare_exchange` on `AtomicBool` / `AtomicPtr`
 # isn't available on `core::sync::atomic` for RISC-V `imc` and
 # similar CAS-less targets. `portable-atomic` provides the atomics;
-# which backend it uses there is the image's choice (note below).
+# target-specific dependency entries below select the fallback only
+# where the target needs it.
 portable-atomic = { version = "1", default-features = false }
 
-# Issue 2962 -- this crate does NOT choose portable-atomic's backend on a
-# CAS-less target (thumbv6m, riscv32imc). portable-atomic refuses
-# `unsafe-assume-single-core` together with `critical-section`, and the
-# backend is a fact about the SYSTEM, which a library cannot know: a Zephyr
-# Rust image gets `critical-section` from upstream's `zephyr` crate, a C/C++
-# image from `nros-c`'s `critical-section` capability, and a bare-metal board
-# names its own in its board crate. Choosing it here (the old
-# `cfg(all(target_os = "none", not(target_has_atomic = "ptr")))` row) failed
-# every Rust image on rpi-pico-w-zephyr, where both halves met. Gate:
-# check-portable-atomic-backend.
+# phase-337 W2.b — one spelling of "this target needs the interrupt-disable
+# polyfill", shared with nros-smoltcp and nros-board-esp32-qemu. A target
+# triple (the old gate here) and an arch list (the old gate in nros-smoltcp)
+# were two different approximations of the same question; the arch list was
+# wrong on thumbv7m, which HAS native CAS and where the feature hard-conflicts
+# with the `critical-section` the `zephyr` crate enables. Ask directly instead:
+# no CAS => needs the polyfill, and bare-metal only, because the polyfill
+# disables interrupts. Still scoped, so host and SMP-capable targets do not
+# inherit the single-core assumption through feature unification.
+[target.'cfg(all(target_os = "none", not(target_has_atomic = "ptr")))'.dependencies]
+portable-atomic = { version = "1", default-features = false, features = ["unsafe-assume-single-core"] }
 
 # Integration tests pull the POSIX C impl of `nros_platform_log_*`
 # in via `nros-platform-cffi[posix-c-port]` so `PlatformSink ->
