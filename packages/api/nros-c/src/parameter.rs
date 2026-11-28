@@ -294,6 +294,21 @@ mod imp {
         // the cause otherwise. The mark clears, so the next is a duplicate.
         match exec.adopt_launch_seed_on(id, n, value.param_type(), None) {
             Some(Ok(())) => return RCL_RET_OK,
+            // Issue 3020 -- the parameter, both types and the fix.
+            Some(Err(nros::DeclarationError::LaunchValueTypeMismatch)) => {
+                if let Some(launch) = exec.get_parameter_on(id, n) {
+                    nros_log::log_error!(
+                        nros_log::get_logger("nros-c"),
+                        "{}; the declaration is refused",
+                        nros::LaunchTypeMismatch {
+                            name: n,
+                            declared: value.param_type(),
+                            launch,
+                        }
+                    );
+                }
+                return RCL_RET_ERROR;
+            }
             Some(Err(e)) => {
                 nros_log::log_error!(
                     nros_log::get_logger("nros-c"),

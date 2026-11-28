@@ -1585,9 +1585,6 @@ pub use nros_bridge::run_from_config;
 // list stopped at ten names, so a user of the facade could build a range
 // through the builder's scalar arguments and never NAME the type it produced.
 // An unexported type is a capability a user cannot write down.
-/// Deprecated: the store answers `Result<(), ParameterError>`.
-#[allow(deprecated)]
-pub use nros_params::SetParameterResult;
 #[allow(deprecated)]
 pub use nros_params::UndeclaredParameters;
 pub use nros_params::{
@@ -1597,6 +1594,9 @@ pub use nros_params::{
     ParameterStorage, ParameterTable, ParameterType, ParameterValue, ParameterVariant, Parameters,
     ReadOnlyParameter,
 };
+/// Deprecated: the store answers `Result<(), ParameterError>`.
+#[allow(deprecated)]
+pub use nros_params::{LaunchTypeMismatch, SetParameterResult};
 // Issue 2768 -- the two lines every full-store report ends with, so a refusal
 // raised outside the executor (the C server's `max_params` check) names the
 // knob in the same words as `Executor::report_parameter_refused`.

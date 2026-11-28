@@ -65,6 +65,14 @@ type. A seed whose text reads as another type than the declaration (`1` for a
 integer override for a double parameter. That behaviour is issue 2969's and is
 unchanged.
 
+The refusal names the parameter, both types and the fix on every surface.
+For example, `parameter "ego_nearest_yaw_threshold" is declared double but the
+launch value is the integer 1; write 1.0 in the YAML`. The C++ header already
+printed this (`report_param_value_type_mismatch`). The C (`rclc`) and Rust
+declarations now print the same sentence through
+`nros_params::LaunchTypeMismatch`, where they used to say only that the types
+differed.
+
 Sweep: `nros_cpp_node_has_param` is the only has-parameter query. It backs
 `rclcpp::Node`, `rclcpp::NodeParametersInterface` and
 `rclcpp_lifecycle::LifecycleNode`. The C surface (`rclc_parameter`) and the
@@ -80,6 +88,8 @@ covers four cases:
 - a code-declared name is declared.
 
 The test fails with `is_declared` reverted to the old "is it stored" answer.
+`a_launch_type_mismatch_names_the_key_both_types_and_the_fix` pins the
+refusal's text.
 
 The acceptance witness is the island's own check with issue 2901's partial
 seeding relanded: 150 declared / 150 seeded on the freertos-posix job, and

@@ -801,6 +801,34 @@ mod tests {
         assert!(!server.is_declared(NODE, "absent"));
     }
 
+    // Issue 3020.
+    /// The refusal names the parameter and both types, and for an integer
+    /// under a `double` declaration the exact text to write.
+    #[test]
+    fn a_launch_type_mismatch_names_the_key_both_types_and_the_fix() {
+        use crate::{LaunchTypeMismatch, ParameterType, ParameterValue};
+        let line = |declared, launch: &ParameterValue| {
+            std::format!(
+                "{}",
+                LaunchTypeMismatch {
+                    name: "ego_nearest_yaw_threshold",
+                    declared,
+                    launch,
+                }
+            )
+        };
+        assert_eq!(
+            line(ParameterType::Double, &ParameterValue::Integer(1)),
+            "parameter \"ego_nearest_yaw_threshold\" is declared double but the launch value \
+             is the integer 1; write 1.0 in the YAML"
+        );
+        assert_eq!(
+            line(ParameterType::Bool, &ParameterValue::Double(0.5)),
+            "parameter \"ego_nearest_yaw_threshold\" is declared bool but the launch value \
+             is the double 0.5; write a bool value in the YAML"
+        );
+    }
+
     // Issue 2992.
     /// A launch seed parsed straight into its slot is the seed the
     /// value-then-mark path made: adopted by the first typed declaration. A
