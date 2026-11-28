@@ -91,5 +91,21 @@ spare. The worst single sleep under load is wakeup latency of the sleeping
 thread, not tick loss: the next sleep's deadline does not move. A tick at
 100 Hz is 10 ms, so over 60 s the measurement resolves about 0.017 %.
 
-No committed regression test, the same as issue 3010. A test that loads the
-host would make the result depend on whatever else the runner is doing.
+## Regression test
+
+`tests/threadx_linux_tick.rs`, over the build-stage probe
+`packages/testing/nros-tests/fixtures/threadx-linux-tick-drift`
+(`[[compile_check_fixture]]` row `threadx_linux_tick_drift`). The probe does
+not load the host. That would measure the runner as much as the port. Instead
+it makes the delay itself: about ten times a second it masks interrupts for
+30 ms of host time (`TX_DISABLE` holds the port's mutex, so the timer thread
+blocks), then sleeps 70 ms of ticks, for 5 s of host time. The test asserts
+|drift| < 0.5 %.
+
+| probe built from | drift (positive is slow) |
+|---|---|
+| the old pin (`ee703dae`) | 22.65 %, 22.61 % (the test fails) |
+| the fixed pin (`36ce16ff`) | 0.0003 %, both runs |
+
+The FreeRTOS POSIX port gets the same probe shape with the fix for issue
+3010, sharing `nros_tests::output::TICK_DRIFT_RESULT_PREFIX`.

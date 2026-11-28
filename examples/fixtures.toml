@@ -5936,6 +5936,18 @@ dir = "packages/testing/nros-tests/fixtures/cyclone-slirp-guest"
 platform = "linux"
 output = "nros_rmw_cyclonedds_ros2_pub"
 
+# issue 3017 -- the threadx-linux port's tick-drift probe, run by
+# `tests/threadx_linux_tick.rs`. A bare kernel process (no nano-ros runtime)
+# that masks interrupts for 30 ms about ten times a second and reports how far
+# the tick fell behind host time; `<dir>/build.sh` builds it with the board's
+# kernel configuration.
+[[compile_check_fixture]]
+id = "threadx_linux_tick_drift"
+builder = "fixture-script"
+dir = "packages/testing/nros-tests/fixtures/threadx-linux-tick-drift"
+platform = "threadx-linux"
+output = "tick-drift"
+
 # --- cargo-build: the binary is the point; tests run it.
 [[compile_check_fixture]]
 id = "orch_sched_tasks_multi"

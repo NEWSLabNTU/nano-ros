@@ -2552,3 +2552,8 @@ pub const LARGE_MSG_PUB_DONE: &str = "LARGE_PUB_DONE:";
 /// Phase 574 W2 -- `bins/large-msg`'s listener summary line
 /// (`LARGE_RECV_DONE: size=N received=K valid=V invalid=I errors=E first_error=...`).
 pub const LARGE_MSG_RECV_DONE: &str = "LARGE_RECV_DONE:";
+
+/// A tick-drift probe's one result line (`fixtures/<board>-tick-drift/main.c`),
+/// followed by `host_s= tick_s= drift_pct= worst_period_ms=` fields.
+/// `drift_pct` is positive when the tick runs slow.
+pub const TICK_DRIFT_RESULT_PREFIX: &str = "TICK_DRIFT ";
