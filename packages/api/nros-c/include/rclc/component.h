@@ -54,6 +54,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "rclc/log.h"   /* rclc_log_emit_fmt, for the full-table refusal */
 #include "rclc/types.h" /* rcl_ret_t, rcl_node_t, rclc_executor_t */
 /* `NROS_ASSERT_DECLARED_DEPTH`, for a C component that states a
  * QoS depth at a call site. The header is self-guarding and C-only, so a C++ TU
@@ -83,37 +84,72 @@ int32_t nros_cpp_node_bind_c(const nros_cpp_node_t* node, void* node_out, void**
 
 #define RCLC_C_PASTE_(a, b) a##b
 #define RCLC_C_PASTE(a, b) RCLC_C_PASTE_(a, b)
+#define RCLC_C_STR_(a) #a
+#define RCLC_C_STR(a) RCLC_C_STR_(a)
+
+/**
+ * How many nodes of ONE C component an image may run. Each instance gets its
+ * own state struct and `rcl_node_t`; a launch file that names the same package
+ * more times than this is refused at boot, naming the package, rather than
+ * sharing one instance. Define it (`-DRCLC_C_COMPONENT_MAX_INSTANCES=<n>`) on
+ * the component's compile to raise it. 2 is the same per-class default the
+ * Rust component store uses.
+ */
+#ifndef RCLC_C_COMPONENT_MAX_INSTANCES
+#define RCLC_C_COMPONENT_MAX_INSTANCES 2
+#endif
+#if RCLC_C_COMPONENT_MAX_INSTANCES < 1
+#error "RCLC_C_COMPONENT_MAX_INSTANCES must be >= 1"
+#endif
 
 /**
  * Emit the C-ABI factory + configure exports the generated entry calls, keyed
  * on `NROS_PKG_NAME` (the sanitized pkg id the build passes as
  * `-DNROS_PKG_NAME=<pkg>` — the same token the C++ register macro keys on):
  *
- *   void*     __nros_c_component_<pkg>_create(void);    // -> &static instance
+ *   void*     __nros_c_component_<pkg>_create(void);    // -> a FRESH instance, or NULL
  *   rcl_ret_t __nros_c_component_<pkg>_configure(const nros_cpp_node_t*, void*, void*);
  *
  * `StructT` is the component state struct; `configure_fn` has signature
  * `rcl_ret_t configure_fn(rcl_node_t* node, rclc_executor_t* executor, StructT* self)`.
- * The component's state and its `rcl_node_t` live in this TU as statics (no
- * heap, no sizeof leak to the entry), so every handle the component creates
- * stays valid for as long as the host spins.
+ * Each instance's state and `rcl_node_t` live in this TU in a static table of
+ * `RCLC_C_COMPONENT_MAX_INSTANCES` slots (no heap, no sizeof leak to the
+ * entry), so every handle a component creates stays valid for as long as the
+ * host spins. `create` hands out the next free slot, and NULL once the table is
+ * full; `configure` binds the node into the slot `self` belongs to.
  */
 #define RCLC_C_COMPONENT(StructT, configure_fn)                                                    \
-    static StructT RCLC_C_PASTE(__nros_c_inst_, NROS_PKG_NAME);                                    \
-    static rcl_node_t RCLC_C_PASTE(__nros_c_node_, NROS_PKG_NAME);                                 \
+    static StructT RCLC_C_PASTE(__nros_c_insts_, NROS_PKG_NAME)[RCLC_C_COMPONENT_MAX_INSTANCES];   \
+    static rcl_node_t RCLC_C_PASTE(__nros_c_nodes_,                                                \
+                                   NROS_PKG_NAME)[RCLC_C_COMPONENT_MAX_INSTANCES];                 \
+    static unsigned RCLC_C_PASTE(__nros_c_used_, NROS_PKG_NAME);                                   \
     void* RCLC_C_PASTE(RCLC_C_PASTE(__nros_c_component_, NROS_PKG_NAME), _create)(void) {          \
-        return &RCLC_C_PASTE(__nros_c_inst_, NROS_PKG_NAME);                                       \
+        if (RCLC_C_PASTE(__nros_c_used_, NROS_PKG_NAME) >= RCLC_C_COMPONENT_MAX_INSTANCES) {       \
+            rclc_log_emit_fmt(rclc_log_get_logger("nros"), RCLC_LOG_SEVERITY_ERROR,                \
+                              "C component `%s` has no free instance: one image runs at most %d "  \
+                              "nodes of it. Define RCLC_C_COMPONENT_MAX_INSTANCES higher on the "  \
+                              "package's compile.",                                                \
+                              RCLC_C_STR(NROS_PKG_NAME), (int)RCLC_C_COMPONENT_MAX_INSTANCES);     \
+            return NULL;                                                                           \
+        }                                                                                          \
+        return &RCLC_C_PASTE(__nros_c_insts_,                                                      \
+                             NROS_PKG_NAME)[RCLC_C_PASTE(__nros_c_used_, NROS_PKG_NAME)++];        \
     }                                                                                              \
     rcl_ret_t RCLC_C_PASTE(RCLC_C_PASTE(__nros_c_component_, NROS_PKG_NAME),                       \
                            _configure)(const nros_cpp_node_t* node, void* executor, void* self) {  \
         rclc_executor_t* rclc_executor = NULL;                                                     \
+        StructT* inst = (StructT*)self;                                                            \
+        StructT* first = RCLC_C_PASTE(__nros_c_insts_, NROS_PKG_NAME);                             \
         (void)executor; /* the host's context; the node names its executor */                      \
-        if (nros_cpp_node_bind_c(node, &RCLC_C_PASTE(__nros_c_node_, NROS_PKG_NAME),               \
-                                 (void**)&rclc_executor) != 0) {                                   \
+        /* `self` is one of this table's slots, from `create`: its index names its node. */        \
+        if (inst == NULL || inst < first || inst >= first + RCLC_C_COMPONENT_MAX_INSTANCES) {      \
             return RCL_RET_INVALID_ARGUMENT;                                                       \
         }                                                                                          \
-        return configure_fn(&RCLC_C_PASTE(__nros_c_node_, NROS_PKG_NAME), rclc_executor,           \
-                            (StructT*)self);                                                       \
+        rcl_node_t* rnode = &RCLC_C_PASTE(__nros_c_nodes_, NROS_PKG_NAME)[inst - first];           \
+        if (nros_cpp_node_bind_c(node, rnode, (void**)&rclc_executor) != 0) {                      \
+            return RCL_RET_INVALID_ARGUMENT;                                                       \
+        }                                                                                          \
+        return configure_fn(rnode, rclc_executor, inst);                                           \
     }
 
 #ifdef __cplusplus

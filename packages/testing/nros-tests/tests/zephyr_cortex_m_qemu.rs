@@ -837,8 +837,6 @@ fn zephyr_cortex_m_two_managed_xrce_nodes_boot_on_the_derived_heap() {
     // managed parameter nodes register (2 x 5 lifecycle + 2 x 6 parameter), and
     // `/talker2` ran with no parameter services while this test stayed green.
     // Every server of both nodes must exist: no refused slot, no refused family.
-    // (That both nodes PUBLISH is not asserted here: both instances of this C
-    // component share one static state today, so one timer runs -- issue 3023.)
     assert!(
         !output.contains(nros_tests::output::XRCE_SERVICE_SERVER_SLOT_REFUSED),
         "a service server found no XRCE slot: the derived NROS_XRCE_MAX_SERVICE_SERVERS \
@@ -848,6 +846,21 @@ fn zephyr_cortex_m_two_managed_xrce_nodes_boot_on_the_derived_heap() {
     assert!(
         !output.contains(nros_tests::output::PARAM_SERVICES_REFUSED),
         "a node came up without its parameter services (issue 3021). Output:\n{output}"
+    );
+    // Issue 3023 -- both talkers are the SAME C component, and its macro used
+    // to hand both nodes one static instance: the second configure overwrote
+    // the first, one timer ran, and four publishes from it satisfied the count
+    // above. Each instance counts from 0, so two first samples means two
+    // instances running.
+    let firsts = output
+        .lines()
+        .filter_map(|l| l.split_once(INT32_TALKER_LOG_PREFIX))
+        .filter(|(_, n)| n.trim() == "0")
+        .count();
+    assert!(
+        firsts >= 2,
+        "only {firsts} talker(s) published their first sample: the two nodes of one C \
+         component must run as two instances (issue 3023). Output:\n{output}"
     );
     // The peak, for whoever re-prices the floor (issue 2780: every heap default
     // is sized from these lines).

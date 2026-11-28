@@ -718,6 +718,8 @@ fn typed_emit_c_node_uses_factory_configure_seam() {
     ));
     // setup uses create() + configure(ffi_handle, executor_handle, self) — not a C++ class.
     assert!(src.contains("void* self = __nros_c_component_sensor_pkg_create();"));
+    // Issue 3023 -- the C++ entry's C arm refuses a full instance table too.
+    assert!(src.contains("if (self == NULL) return static_cast<int32_t>(NROS_CPP_RET_FULL);"));
     assert!(src.contains(
         "__nros_c_component_sensor_pkg_configure(__nros_node_0.ffi_handle(), __nros_node_0.executor_handle(), self)"
     ));
